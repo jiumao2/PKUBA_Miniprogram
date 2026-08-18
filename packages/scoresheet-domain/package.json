@@ -1,0 +1,10 @@
+{
+  "name": "@pkuba/scoresheet-domain",
+  "version": "0.0.0-paused",
+  "private": true,
+  "scripts": {
+    "build": "node -e \"console.log('scoresheet-domain: paused by product decision')\"",
+    "test": "node -e \"console.log('scoresheet-domain: no implementation yet')\"",
+    "typecheck": "node -e \"console.log('scoresheet-domain: no implementation yet')\""
+  }
+}

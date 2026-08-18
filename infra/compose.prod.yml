@@ -1,0 +1,75 @@
+name: pkuba
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      PKUBA_DOMAIN: ${PKUBA_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./apps/admin-web/dist:/srv/admin-web:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    image: ${PKUBA_IMAGE}
+    restart: unless-stopped
+    env_file: ./.env.production
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 60
+    expose:
+      - "8000"
+    volumes:
+      - private-media:/app/.local/media
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  outbox:
+    image: ${PKUBA_IMAGE}
+    restart: unless-stopped
+    env_file: ./.env.production
+    command: python manage.py process_outbox --loop
+    depends_on:
+      db:
+        condition: service_healthy
+
+  expiry:
+    image: ${PKUBA_IMAGE}
+    restart: unless-stopped
+    env_file: ./.env.production
+    command: python manage.py expire_reschedules --loop
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file: ./.env.production
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  caddy-data:
+  caddy-config:
+  private-media:
+  postgres-data:

@@ -1,0 +1,1339 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PKUBA API",
+    "version": "1.0.0",
+    "description": "PKUBA authoritative API. Clients submit commands; the server owns all rules."
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "core_api_health",
+        "summary": "Health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/v1/public/season": {
+      "get": {
+        "operationId": "core_api_get_current_season",
+        "summary": "Get Current Season",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/games": {
+      "get": {
+        "operationId": "core_api_list_games",
+        "summary": "List Games",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "division_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Division Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "team_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Team Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GameOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/games/{game_id}": {
+      "get": {
+        "operationId": "core_api_get_game",
+        "summary": "Get Game",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/auth/admin/login-challenge": {
+      "get": {
+        "operationId": "core_api_auth_admin_login_challenge",
+        "summary": "Admin Login Challenge",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginChallengeOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/admin/session": {
+      "get": {
+        "operationId": "core_api_auth_admin_session",
+        "summary": "Admin Session",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSessionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/admin/password-login": {
+      "post": {
+        "operationId": "core_api_auth_admin_password_login",
+        "summary": "Admin Password Login",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLoginIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/admin/me": {
+      "get": {
+        "operationId": "core_api_auth_admin_me",
+        "summary": "Admin Me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/admin/logout": {
+      "post": {
+        "operationId": "core_api_auth_admin_logout",
+        "summary": "Admin Logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/me": {
+      "get": {
+        "operationId": "core_api_admin_admin_health",
+        "summary": "Admin Health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/accounts": {
+      "get": {
+        "operationId": "core_api_admin_list_admin_accounts",
+        "summary": "List Admin Accounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminAccountOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/accounts/{account_id}/promote": {
+      "post": {
+        "operationId": "core_api_admin_promote_admin_account",
+        "summary": "Promote Admin Account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccountOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/accounts/{account_id}/active": {
+      "post": {
+        "operationId": "core_api_admin_change_admin_active",
+        "summary": "Change Admin Active",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccountOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAdminActiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/schedule-template": {
+      "get": {
+        "operationId": "core_api_admin_download_schedule_template",
+        "summary": "Download Schedule Template",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/schedule-imports": {
+      "post": {
+        "operationId": "core_api_admin_upload_schedule",
+        "summary": "Upload Schedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleImportOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "schedule_file": {
+                    "format": "binary",
+                    "title": "Schedule File",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schedule_file"
+                ],
+                "title": "FileParams",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/schedule-imports/{batch_id}": {
+      "get": {
+        "operationId": "core_api_admin_get_schedule_import",
+        "summary": "Get Schedule Import",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleImportOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/schedule-imports/{batch_id}/confirm": {
+      "post": {
+        "operationId": "core_api_admin_confirm_schedule",
+        "summary": "Confirm Schedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleImportOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmScheduleImportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checked_at"
+        ],
+        "title": "HealthOut",
+        "type": "object"
+      },
+      "DivisionOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "title": "DivisionOut",
+        "type": "object"
+      },
+      "SeasonOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "competition_type": {
+            "title": "Competition Type",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          },
+          "ends_on": {
+            "format": "date",
+            "title": "Ends On",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "divisions": {
+            "items": {
+              "$ref": "#/components/schemas/DivisionOut"
+            },
+            "title": "Divisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "competition_type",
+          "year",
+          "status",
+          "starts_on",
+          "ends_on",
+          "version",
+          "divisions"
+        ],
+        "title": "SeasonOut",
+        "type": "object"
+      },
+      "ErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorOut",
+        "type": "object"
+      },
+      "GameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "period_code": {
+            "title": "Period Code",
+            "type": "string"
+          },
+          "period_name": {
+            "title": "Period Name",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "venue_id": {
+            "format": "uuid",
+            "title": "Venue Id",
+            "type": "string"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "participants_resolved": {
+            "title": "Participants Resolved",
+            "type": "boolean"
+          },
+          "leader_adjustable": {
+            "title": "Leader Adjustable",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "division_id",
+          "division_name",
+          "group_name",
+          "stage",
+          "round_number",
+          "date",
+          "period_code",
+          "period_name",
+          "start_time",
+          "venue_id",
+          "venue_name",
+          "home_team_id",
+          "away_team_id",
+          "home_name",
+          "away_name",
+          "participants_resolved",
+          "leader_adjustable",
+          "status",
+          "version"
+        ],
+        "title": "GameOut",
+        "type": "object"
+      },
+      "LoginChallengeOut": {
+        "properties": {
+          "challenge": {
+            "title": "Challenge",
+            "type": "string"
+          },
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "challenge",
+          "csrf_token",
+          "expires_in"
+        ],
+        "title": "LoginChallengeOut",
+        "type": "object"
+      },
+      "AccountOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "version"
+        ],
+        "title": "AccountOut",
+        "type": "object"
+      },
+      "AdminSessionOut": {
+        "properties": {
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "authenticated",
+          "account"
+        ],
+        "title": "AdminSessionOut",
+        "type": "object"
+      },
+      "AuthErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AuthErrorOut",
+        "type": "object"
+      },
+      "AdminLoginIn": {
+        "properties": {
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          },
+          "challenge": {
+            "title": "Challenge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "challenge"
+        ],
+        "title": "AdminLoginIn",
+        "type": "object"
+      },
+      "AdminAccountOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role",
+          "is_active",
+          "version"
+        ],
+        "title": "AdminAccountOut",
+        "type": "object"
+      },
+      "AdminErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AdminErrorOut",
+        "type": "object"
+      },
+      "ExpectedVersionIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ExpectedVersionIn",
+        "type": "object"
+      },
+      "SetAdminActiveIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version",
+          "active"
+        ],
+        "title": "SetAdminActiveIn",
+        "type": "object"
+      },
+      "ImportIssueOut": {
+        "properties": {
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "cell": {
+            "title": "Cell",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": true,
+            "title": "Context",
+            "type": "object"
+          }
+        },
+        "required": [
+          "severity",
+          "code",
+          "cell",
+          "message",
+          "context"
+        ],
+        "title": "ImportIssueOut",
+        "type": "object"
+      },
+      "ScheduleImportOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "template_version": {
+            "title": "Template Version",
+            "type": "string"
+          },
+          "file_sha256": {
+            "title": "File Sha256",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ImportIssueOut"
+            },
+            "title": "Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "season_id",
+          "status",
+          "template_version",
+          "file_sha256",
+          "summary",
+          "issues"
+        ],
+        "title": "ScheduleImportOut",
+        "type": "object"
+      },
+      "ConfirmScheduleImportIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "leader_adjustable_by_game": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Leader Adjustable By Game",
+            "type": "object"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "leader_adjustable_by_game"
+        ],
+        "title": "ConfirmScheduleImportIn",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "AdminSessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "pkuba_sessionid"
+      },
+      "SuperadminSessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "pkuba_sessionid"
+      }
+    }
+  },
+  "servers": []
+}

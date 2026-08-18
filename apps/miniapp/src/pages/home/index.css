@@ -1,0 +1,88 @@
+.hero {
+  display: flex;
+  align-items: center;
+  min-height: 210rpx;
+  padding: 24rpx 8rpx 32rpx;
+}
+
+.ball-mark {
+  position: relative;
+  width: 124rpx;
+  height: 124rpx;
+  flex: 0 0 auto;
+  margin-right: 28rpx;
+  overflow: hidden;
+  border: 9rpx solid #c91f26;
+  border-radius: 50%;
+  transform: rotate(-10deg);
+}
+
+.ball-line {
+  position: absolute;
+  border: 6rpx solid #c91f26;
+  border-radius: 50%;
+}
+
+.line-one {
+  width: 110rpx;
+  height: 190rpx;
+  left: -64rpx;
+  top: -38rpx;
+}
+
+.line-two {
+  width: 190rpx;
+  height: 72rpx;
+  left: -34rpx;
+  top: 46rpx;
+}
+
+.hero-subtitle {
+  display: block;
+  margin-top: 12rpx;
+  color: #6f6b65;
+  font-size: 24rpx;
+}
+
+.next-game {
+  padding: 34rpx 32rpx;
+  border-radius: 24rpx;
+  color: #fff;
+  background: #191715;
+}
+
+.next-label {
+  display: block;
+  margin-bottom: 8rpx;
+  color: #e58e91;
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 3rpx;
+}
+
+.next-date,
+.next-venue {
+  display: block;
+  color: #c8c2ba;
+  font-size: 23rpx;
+}
+
+.next-matchup {
+  display: grid;
+  grid-template-columns: 1fr 66rpx 1fr;
+  align-items: center;
+  gap: 10rpx;
+  margin: 34rpx 0;
+  font-size: 34rpx;
+  font-weight: 780;
+  text-align: center;
+}
+
+.next-vs {
+  color: #e58e91;
+  font-size: 22rpx;
+}
+
+.next-venue {
+  text-align: center;
+}

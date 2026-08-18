@@ -1,0 +1,19 @@
+{
+  "name": "@pkuba/design-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./logo-full.svg": "./src/assets/logo-full.svg",
+    "./logo-mark.svg": "./src/assets/logo-mark.svg"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

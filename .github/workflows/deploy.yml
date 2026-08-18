@@ -1,0 +1,20 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: Existing version tag to deploy
+        required: true
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version_tag }}
+      - name: Require an immutable version tag
+        run: git describe --tags --exact-match HEAD
+      - name: Deployment boundary
+        run: echo "Server deployment is intentionally manual until production secrets and host are configured."

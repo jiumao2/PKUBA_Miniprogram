@@ -1,0 +1,16 @@
+:root {
+  color-scheme: light;
+  --pkuba-red: #c91f26;
+  --pkuba-red-dark: #9f151b;
+  --pkuba-ink: #171614;
+  --pkuba-muted: #6f6b65;
+  --pkuba-warm-white: #faf9f6;
+  --pkuba-canvas: #f2f0eb;
+  --pkuba-line: #dedbd4;
+  --pkuba-success: #24754d;
+  --pkuba-warning: #a05a10;
+  --pkuba-radius-sm: 6px;
+  --pkuba-radius-md: 10px;
+  --pkuba-radius-lg: 16px;
+  --pkuba-content: 1180px;
+}

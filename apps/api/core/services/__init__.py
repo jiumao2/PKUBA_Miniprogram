@@ -1,0 +1,1 @@
+"""Authoritative transactional domain services."""

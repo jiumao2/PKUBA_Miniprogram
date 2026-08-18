@@ -1,0 +1,115 @@
+page {
+  min-height: 100%;
+  color: #171614;
+  background: #f2f0eb;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 32rpx 28rpx 72rpx;
+  box-sizing: border-box;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 8rpx;
+  color: #c91f26;
+  font-size: 22rpx;
+  font-weight: 700;
+  letter-spacing: 4rpx;
+}
+
+.page-title {
+  display: block;
+  font-size: 52rpx;
+  line-height: 1.18;
+  font-weight: 800;
+  letter-spacing: -2rpx;
+}
+
+.muted {
+  color: #6f6b65;
+}
+
+.state {
+  margin-top: 34rpx;
+  padding: 40rpx 30rpx;
+  border: 1rpx solid #dedbd4;
+  border-radius: 20rpx;
+  background: #faf9f6;
+}
+
+.state-title {
+  display: block;
+  margin-bottom: 12rpx;
+  font-size: 30rpx;
+  font-weight: 750;
+}
+
+.state-detail {
+  display: block;
+  color: #6f6b65;
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+
+.section-title {
+  display: block;
+  margin: 44rpx 0 18rpx;
+  font-size: 30rpx;
+  font-weight: 760;
+}
+
+.game-list {
+  overflow: hidden;
+  border: 1rpx solid #dedbd4;
+  border-radius: 22rpx;
+  background: #faf9f6;
+}
+
+.game-item {
+  display: grid;
+  grid-template-columns: 106rpx minmax(0, 1fr) 110rpx;
+  gap: 18rpx;
+  align-items: center;
+  min-height: 122rpx;
+  padding: 20rpx 24rpx;
+  border-bottom: 1rpx solid #e6e2dc;
+  box-sizing: border-box;
+}
+
+.game-item:last-child {
+  border-bottom: 0;
+}
+
+.game-time,
+.game-place,
+.game-code {
+  color: #6f6b65;
+  font-size: 22rpx;
+}
+
+.game-teams {
+  min-width: 0;
+}
+
+.team-name {
+  display: block;
+  overflow: hidden;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.versus {
+  margin: 0 8rpx;
+  color: #9a958e;
+  font-size: 20rpx;
+}
+
+.right-meta {
+  text-align: right;
+}

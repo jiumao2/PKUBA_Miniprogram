@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pkuba-api"
+version = "0.1.0"
+description = "PKUBA authoritative Django API"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "Django>=5.2,<5.3",
+  "django-ninja>=1.4,<2",
+  "defusedxml>=0.7,<1",
+  "gunicorn>=23,<24",
+  "openpyxl>=3.1.5,<3.2",
+  "psycopg[binary]>=3.2,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-django>=4.10,<5",
+  "ruff>=0.11,<1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["config*", "core*"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["test_*.py", "tests.py"]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["core/migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

@@ -1,0 +1,53 @@
+.schedule-hint {
+  display: block;
+  margin-top: 14rpx;
+  color: #6f6b65;
+  font-size: 24rpx;
+}
+
+.schedule-days {
+  margin-top: 32rpx;
+}
+
+.date-divider {
+  display: block;
+  margin: 34rpx 0 12rpx;
+  color: #6f6b65;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.schedule-game {
+  display: grid;
+  grid-template-columns: 112rpx minmax(0, 1fr) 112rpx;
+  gap: 18rpx;
+  align-items: center;
+  min-height: 120rpx;
+  padding: 18rpx 22rpx;
+  border-bottom: 1rpx solid #dedbd4;
+  background: #faf9f6;
+}
+
+.schedule-time text,
+.schedule-teams text,
+.schedule-side text {
+  display: block;
+}
+
+.schedule-time,
+.schedule-side {
+  color: #6f6b65;
+  font-size: 21rpx;
+  line-height: 1.7;
+}
+
+.schedule-teams {
+  overflow: hidden;
+  font-size: 27rpx;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.schedule-side {
+  text-align: right;
+}

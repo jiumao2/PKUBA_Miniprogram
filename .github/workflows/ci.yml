@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: pkuba_test
+          POSTGRES_USER: pkuba
+          POSTGRES_PASSWORD: pkuba
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pkuba -d pkuba_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://pkuba:pkuba@127.0.0.1:5432/pkuba_test
+      DJANGO_SECRET_KEY: ci-only
+      DJANGO_DEBUG: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - run: python -m pip install -e "apps/api[dev]"
+      - run: ruff check apps/api
+      - run: python apps/api/manage.py makemigrations --check --dry-run
+      - run: python apps/api/manage.py migrate
+      - run: pytest apps/api
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: python -m pip install -e apps/api
+      - run: npm ci
+      - run: python apps/api/manage.py export_openapi --output docs/openapi.json
+        env:
+          DATABASE_URL: postgresql://unused:unused@127.0.0.1:5432/unused
+          DJANGO_SECRET_KEY: ci-only
+      - run: npm run generate:api
+      - run: git diff --exit-code -- docs/openapi.json packages/api-client/src/generated/schema.ts

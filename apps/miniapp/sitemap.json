@@ -1,0 +1,4 @@
+{
+  "desc": "PKUBA 当前公开赛季页面",
+  "rules": [{ "action": "allow", "page": "*" }]
+}
