@@ -21,4 +21,5 @@ backups/
 Thumbs.db
 apps/miniapp/dist/
 apps/miniapp/.swc/
+apps/miniapp/project.private.config.json
 apps/admin-web/dist/

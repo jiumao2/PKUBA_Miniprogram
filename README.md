@@ -19,8 +19,14 @@
 
 ```powershell
 ./scripts/bootstrap.ps1
-./scripts/dev.ps1
+./scripts/start-local.ps1 -AdminUsername jiumao
 ```
+
+首次命令安装依赖、启动 PostgreSQL 并迁移数据库；第二条命令会提示设置管理员密码，然后构建小程序、打开管理网站和微信开发者工具。在开发者工具中导入 `C:\Users\jiumao\Desktop\PKUBA_Miniprogram\apps\miniapp`，不要直接导入 `dist`。本地调试已关闭微信合法域名校验；真机和生产环境仍必须使用已配置的 HTTPS 域名。
+
+如果已在微信开发者工具的“设置 → 安全设置”中手动开启服务端口，可给启动命令增加 `-UseWechatCli` 自动导入项目；默认启动不依赖该安全开关。
+
+`bootstrap.ps1` 会复用已有的 `pkuba-dev-api` 镜像，避免每次访问 Docker Hub。修改 Python 依赖或 Dockerfile 后使用 `./scripts/bootstrap.ps1 -Rebuild`；如果首次构建无法访问 Docker Hub，需要先在 Docker Desktop 中配置可用的 HTTPS 代理或镜像源。
 
 默认地址：
 
@@ -29,14 +35,15 @@
 - 管理网站：`http://127.0.0.1:5173`
 - Mailpit：`http://127.0.0.1:8025`
 
-首次启动后运行：
+如需单独创建或重设本地管理员：
 
 ```powershell
-./scripts/seed.ps1
 ./scripts/create-admin.ps1 -Username your-name
 ```
 
-第二条命令会交互式读取并校验密码，不会把密码写入命令行、日志或仓库。小程序构建输出位于 `apps/miniapp/dist`，在微信开发者工具中导入该目录。
+该命令会交互式读取并校验密码，不会把密码写入命令行、日志或仓库。小程序构建输出位于 `apps/miniapp/dist`，在微信开发者工具中导入该目录。
+
+如果只想启动后端和前端监听而不自动打开应用，可运行 `./scripts/dev.ps1`。管理站地址为 `http://127.0.0.1:5173`；微信开发者工具项目根目录必须选择 `apps/miniapp`，而不是 `dist`。
 
 赛程模板基线位于 `docs/templates/PKUBA_赛程模板_v1.xlsx`，用于确定填写结构和校验规则。登录管理网站后，可在“赛程导入”按当前赛季下载动态签名模板，上传进入暂存校验，逐场确认调赛政策后再原子写入。
 

@@ -7,4 +7,4 @@
 - `ScoresheetReader` 尚未完成：未经用户明确恢复待办，不得复制或迁移其代码，不实现结构化记录表功能。
 - V1 暂不实现裁判、公众历史、OCR、实时计分、微信订阅消息、Redis/Celery 或微服务。
 - 业务规则改变时同步更新 `Plan.md`、规格、模型和测试。
-- 常用命令：`./scripts/dev.ps1`、`./scripts/seed.ps1`、`./scripts/create-admin.ps1 -Username <name>`、`./scripts/check.ps1`。
+- 常用命令：`./scripts/bootstrap.ps1`、`./scripts/start-local.ps1 -AdminUsername <name>`、`./scripts/dev.ps1`、`./scripts/check.ps1`。

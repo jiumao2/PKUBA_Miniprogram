@@ -21,8 +21,18 @@ from core.models import (
 class Command(BaseCommand):
     help = "Create an idempotent synthetic season for local development."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--if-empty",
+            action="store_true",
+            help="Create demo data only when the database has no seasons.",
+        )
+
     @transaction.atomic
     def handle(self, *args, **options):
+        if options["if_empty"] and Season.objects.exists():
+            self.stdout.write("Existing season found; demo seed skipped.")
+            return
         today = timezone.localdate()
         Season.objects.filter(is_public=True).exclude(name="PKUBA 本地演示赛季").update(
             status=Season.Status.ARCHIVED, is_public=False
