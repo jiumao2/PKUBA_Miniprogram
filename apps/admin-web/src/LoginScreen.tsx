@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { type AdminAccount, type createAdminClient } from "@pkuba/api-client";
-import logoUrl from "@pkuba/design-tokens/logo-full.svg";
+import logoUrl from "@pkuba/design-tokens/pkuba-logo.png";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -34,10 +34,10 @@ export function LoginScreen({
   return (
     <main className="login-shell">
       <section className="login-panel" aria-labelledby="login-title">
-        <img className="login-brand" src={logoUrl} alt="PKUBA 1997" />
+        <img className="login-brand" src={logoUrl} alt="北大篮协 PKUBA·1997" />
         <p className="eyebrow">内部赛事工作台</p>
         <h1 id="login-title">管理员登录</h1>
-        <p className="login-intro">使用个人管理员账号。小程序扫码确认将在后续身份里程碑接入。</p>
+        <p className="login-intro">使用个人管理员账号。首次注册后的初始密码与当时的赛季邀请码相同。</p>
         <form onSubmit={(event) => void submit(event)}>
           <label>
             用户名
@@ -63,7 +63,7 @@ export function LoginScreen({
             {submitting ? "正在验证…" : "登录"}
           </button>
         </form>
-        <p className="login-footnote">本地首次使用请先运行创建管理员脚本，密码不会写入仓库。</p>
+        <p className="login-footnote">登录后可在工作台右上角修改个人密码；修改不会影响赛季邀请码。</p>
       </section>
     </main>
   );

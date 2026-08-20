@@ -7,7 +7,7 @@ page {
 
 .page {
   min-height: 100vh;
-  padding: 32rpx 28rpx 72rpx;
+  padding: 32rpx 28rpx 168rpx;
   box-sizing: border-box;
 }
 
@@ -15,7 +15,7 @@ page {
   display: block;
   margin-bottom: 8rpx;
   color: #c91f26;
-  font-size: 22rpx;
+  font-size: 26rpx;
   font-weight: 700;
   letter-spacing: 4rpx;
 }
@@ -50,7 +50,7 @@ page {
 .state-detail {
   display: block;
   color: #6f6b65;
-  font-size: 25rpx;
+  font-size: 28rpx;
   line-height: 1.6;
 }
 
@@ -87,7 +87,7 @@ page {
 .game-place,
 .game-code {
   color: #6f6b65;
-  font-size: 22rpx;
+  font-size: 26rpx;
 }
 
 .game-teams {
@@ -97,7 +97,7 @@ page {
 .team-name {
   display: block;
   overflow: hidden;
-  font-size: 28rpx;
+  font-size: 30rpx;
   font-weight: 700;
   line-height: 1.4;
   text-overflow: ellipsis;
@@ -107,7 +107,7 @@ page {
 .versus {
   margin: 0 8rpx;
   color: #9a958e;
-  font-size: 20rpx;
+  font-size: 26rpx;
 }
 
 .right-meta {

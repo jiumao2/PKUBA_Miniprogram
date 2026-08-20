@@ -1,7 +1,6 @@
 ﻿[CmdletBinding()]
 param(
     [string]$AdminUsername = '',
-    [string]$AdminDisplayName = '本地超级管理员',
     [switch]$NoBrowser,
     [switch]$NoWechat,
     [switch]$UseWechatCli
@@ -25,7 +24,7 @@ Invoke-PkubaCompose exec -T api python manage.py seed_demo --if-empty
 Wait-PkubaUrl -Url $apiHealthUrl -TimeoutSeconds 60
 
 if ($AdminUsername) {
-    Invoke-PkubaCompose run --rm api python manage.py create_local_admin $AdminUsername --display-name $AdminDisplayName
+    Invoke-PkubaCompose run --rm api python manage.py create_local_admin $AdminUsername
 }
 
 Push-Location $root

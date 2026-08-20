@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -64,10 +65,14 @@ def _game_snapshot(game: Game) -> dict[str, object]:
         "date": game.date.isoformat(),
         "period_id": str(game.period_id),
         "period_code": game.period.code,
+        "period_name": game.period.name,
+        "start_time": game.period.start_time.strftime("%H:%M"),
         "venue_id": str(game.venue_id),
         "venue_name": game.venue.name,
         "home_team_id": str(game.home_team_id),
         "away_team_id": str(game.away_team_id),
+        "home_name": game.home_display,
+        "away_name": game.away_display,
         "leader_adjustable": game.leader_adjustable,
         "schedule_version": game.version,
     }
@@ -188,6 +193,135 @@ def _validate_target_team_conflicts(game: Game, target_date: date, period: Perio
     )
     if formal_conflict or reserved_conflict:
         _raise("TEAM_TIME_CONFLICT", "目标时段与参赛球队的另一场比赛或预留冲突。")
+
+
+def available_reschedule_targets(
+    *,
+    actor: Account,
+    game_id: UUID,
+    now: datetime | None = None,
+) -> list[dict[str, object]]:
+    """Return a non-authoritative preview; submission repeats every check under locks."""
+    now = now or timezone.now()
+    try:
+        game = Game.objects.select_related(
+            "season",
+            "period",
+            "venue",
+            "home_team",
+            "away_team",
+        ).get(id=game_id)
+    except Game.DoesNotExist:
+        _raise("GAME_NOT_FOUND", "比赛不存在。")
+    if game.season.status != game.season.Status.ACTIVE:
+        _raise("SEASON_NOT_ACTIVE", "只有正式进行中的赛季可以申请调赛。")
+    if not game.home_team_id or not game.away_team_id:
+        _raise("DRAW_NOT_RESOLVED", "签位尚未解析，不能申请调赛。")
+    if game.status != Game.Status.SCHEDULED:
+        _raise("GAME_NOT_SCHEDULED", "只有未开始的比赛可以申请调赛。")
+    if not game.leader_adjustable:
+        _raise("LEADER_ADJUSTMENT_DISABLED", "该场比赛不允许领队调赛。")
+    if game.active_reschedule_request_id:
+        _raise("GAME_ALREADY_LOCKED", "该场比赛已有活动调赛申请。")
+    game_start = datetime.combine(
+        game.date,
+        game.period.start_time,
+        tzinfo=ZoneInfo(game.season.timezone),
+    )
+    if now >= game_start:
+        _raise("GAME_ALREADY_STARTED", "比赛已经开始，不能申请调赛。")
+    _leader_team(actor, game)
+
+    periods = list(Period.objects.filter(season=game.season).order_by("sort_order", "start_time"))
+    venues = list(
+        Venue.objects.filter(season=game.season, active=True).order_by("sort_order", "name")
+    )
+    capacities = {
+        (item.weekday, item.period_id): item.capacity
+        for item in PeriodCapacity.objects.filter(season=game.season)
+    }
+    occupancy: defaultdict[tuple[date, UUID], int] = defaultdict(int)
+    occupied_venues: defaultdict[tuple[date, UUID], set[UUID]] = defaultdict(set)
+    team_conflicts: set[tuple[date, UUID]] = set()
+    team_ids = {game.home_team_id, game.away_team_id}
+    formal_rows = (
+        Game.objects.filter(season=game.season)
+        .exclude(status=Game.Status.VOID)
+        .values(
+            "date",
+            "period_id",
+            "venue_id",
+            "home_team_id",
+            "away_team_id",
+        )
+    )
+    for row in formal_rows:
+        key = (row["date"], row["period_id"])
+        occupancy[key] += 1
+        occupied_venues[key].add(row["venue_id"])
+        if row["home_team_id"] in team_ids or row["away_team_id"] in team_ids:
+            team_conflicts.add(key)
+    reservation_rows = SlotReservation.objects.filter(
+        season=game.season,
+        status=SlotReservation.Status.ACTIVE,
+    ).values(
+        "date",
+        "period_id",
+        "venue_id",
+        "request__game__home_team_id",
+        "request__game__away_team_id",
+    )
+    for row in reservation_rows:
+        key = (row["date"], row["period_id"])
+        occupancy[key] += 1
+        occupied_venues[key].add(row["venue_id"])
+        if (
+            row["request__game__home_team_id"] in team_ids
+            or row["request__game__away_team_id"] in team_ids
+        ):
+            team_conflicts.add(key)
+    targets: list[dict[str, object]] = []
+    target_date = game.season.starts_on
+    while target_date <= game.season.ends_on:
+        submit_deadline, confirmation_deadline = reschedule_deadlines(
+            game.date,
+            target_date,
+            game.season.timezone,
+        )
+        if now < submit_deadline:
+            for period in periods:
+                if target_date == game.date and period.id == game.period_id:
+                    continue
+                key = (target_date, period.id)
+                capacity = capacities.get((target_date.weekday(), period.id), 0)
+                if key in team_conflicts or capacity <= 0 or occupancy[key] >= capacity:
+                    continue
+                venue = next(
+                    (candidate for candidate in venues if candidate.id not in occupied_venues[key]),
+                    None,
+                )
+                if venue is None:
+                    continue
+                targets.append(
+                    {
+                        "date": target_date,
+                        "period_id": period.id,
+                        "period_code": period.code,
+                        "period_name": period.name,
+                        "start_time": period.start_time.strftime("%H:%M"),
+                        "preview_venue_id": venue.id,
+                        "preview_venue_name": venue.name,
+                        "request_type": (
+                            RescheduleRequest.RequestType.SAME_WEEK
+                            if game.date.isocalendar()[:2] == target_date.isocalendar()[:2]
+                            else RescheduleRequest.RequestType.CROSS_WEEK
+                        ),
+                        "submit_deadline": submit_deadline,
+                        "confirmation_deadline": confirmation_deadline,
+                    }
+                )
+        target_date += timedelta(days=1)
+    return targets
 
 
 @transaction.atomic

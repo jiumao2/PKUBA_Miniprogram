@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from django.http import HttpRequest
-from ninja.security import SessionAuth
+from django.utils import timezone
+from ninja.security import HttpBearer, SessionAuth
 
-from core.models import Account
+from core.models import Account, MiniAppSession
+from core.services.wechat import token_digest
 
 
 class AdminSessionAuth(SessionAuth):
@@ -24,3 +26,26 @@ class SuperadminSessionAuth(SessionAuth):
 
 admin_session_auth = AdminSessionAuth()
 superadmin_session_auth = SuperadminSessionAuth()
+
+
+class MiniAppBearerAuth(HttpBearer):
+    def authenticate(self, request: HttpRequest, token: str) -> Account | None:
+        session = (
+            MiniAppSession.objects.select_related("account")
+            .filter(
+                token_hash=token_digest(token),
+                revoked_at__isnull=True,
+                expires_at__gt=timezone.now(),
+                account__is_active=True,
+            )
+            .first()
+        )
+        if session is None:
+            return None
+        session.last_seen_at = timezone.now()
+        session.save(update_fields=["last_seen_at", "updated_at"])
+        request.miniapp_session = session
+        return session.account
+
+
+miniapp_bearer_auth = MiniAppBearerAuth()

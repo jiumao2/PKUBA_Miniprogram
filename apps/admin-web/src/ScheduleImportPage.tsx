@@ -17,12 +17,21 @@ interface Assignment {
 }
 
 function assignmentsFrom(batch: ScheduleImport | null): Record<string, Assignment> {
-  const value = batch?.summary.assignments;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return value as Record<string, Assignment>;
+  if (!batch) return {};
+  return Object.fromEntries(
+    batch.summary.games.map((game) => [
+      game.code,
+      {
+        date: game.date ?? undefined,
+        period_code: game.period_code ?? undefined,
+        venue_code: game.venue_code ?? undefined,
+        cell: game.cell,
+      },
+    ]),
+  );
 }
 
-function summaryCount(batch: ScheduleImport | null, key: string): number {
+function summaryCount(batch: ScheduleImport | null, key: keyof ScheduleImport["summary"]): number {
   const value = batch?.summary[key];
   return typeof value === "number" ? value : 0;
 }
@@ -100,7 +109,6 @@ export function ScheduleImportPage({
     try {
       const confirmed = await client.confirmScheduleImport(batch.id, {
         expected_season_version: season.version,
-        leader_adjustable_by_game: policies,
       });
       setBatch(confirmed);
       setMessage("赛程已原子写入，比赛 ID 保持不变，审计日志已生成。");
@@ -181,15 +189,15 @@ export function ScheduleImportPage({
           </div>
 
           <div className="import-summary">
-            <Summary label="应有" value={summaryCount(batch, "expected")} />
-            <Summary label="实际唯一" value={summaryCount(batch, "actual_unique")} />
+            <Summary label="已有比赛" value={summaryCount(batch, "existing_game_count")} />
+            <Summary label="新增小组" value={summaryCount(batch, "new_group_count")} />
             <Summary
-              label="修改"
-              value={Array.isArray(batch.summary.modified) ? batch.summary.modified.length : 0}
+              label="新增签位"
+              value={batch.summary.new_slot_count}
             />
             <Summary
-              label="移除"
-              value={Array.isArray(batch.summary.removed) ? batch.summary.removed.length : 0}
+              label="新增比赛"
+              value={batch.summary.new_game_count}
             />
           </div>
 

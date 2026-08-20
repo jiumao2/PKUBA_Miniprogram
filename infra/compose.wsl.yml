@@ -1,0 +1,75 @@
+name: pkuba-wsl
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pkuba
+      POSTGRES_USER: pkuba
+      POSTGRES_PASSWORD: ${PKUBA_DB_PASSWORD:?PKUBA_DB_PASSWORD is required}
+    volumes:
+      - pkuba-wsl-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pkuba -d pkuba"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: ./apps/api
+      target: production
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://pkuba:${PKUBA_DB_PASSWORD}@db:5432/pkuba
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,api
+      DJANGO_SECURE_COOKIES: "0"
+      CSRF_TRUSTED_ORIGINS: http://localhost:${PKUBA_WEB_PORT:-8088},http://127.0.0.1:${PKUBA_WEB_PORT:-8088}
+      WECHAT_APP_ID: ${WECHAT_APP_ID:-}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
+      WECHAT_API_BASE_URL: https://api.weixin.qq.com
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: "1025"
+      LOCAL_MEDIA_ROOT: /app/media
+    volumes:
+      - pkuba-wsl-media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"
+      interval: 5s
+      timeout: 4s
+      retries: 30
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/admin-web.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PKUBA_WEB_PORT:-8088}:8080"
+    volumes:
+      - ./infra/Caddyfile.wsl:/etc/caddy/Caddyfile:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    ports:
+      - "${PKUBA_MAIL_PORT:-8089}:8025"
+
+volumes:
+  pkuba-wsl-postgres:
+  pkuba-wsl-media:

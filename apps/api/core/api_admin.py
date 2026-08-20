@@ -1,26 +1,39 @@
 from __future__ import annotations
 
+from datetime import date, datetime, time
 from urllib.parse import quote
 from uuid import UUID
 
+from django.contrib.auth.hashers import make_password
+from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from ninja import File, Router, Schema, Status
 from ninja.files import UploadedFile
 
 from core.api_security import admin_session_auth, superadmin_session_auth
-from core.models import Account, ScheduleImportBatch, Season
+from core.models import Account, AdminAuditLog, ScheduleImportBatch, Season
 from core.services.admin_accounts import (
     AdminAccountError,
     promote_admin,
     set_admin_active,
 )
-from core.services.schedule_imports import (
+from core.services.schedule_imports_v2 import (
     MAX_UPLOAD_BYTES,
     ScheduleImportError,
     confirm_schedule_import,
     generate_schedule_template,
+    reset_schedule_imports,
+    schedule_import_readiness,
+    schedule_import_reset_preview,
     validate_schedule_upload,
+)
+from core.services.season_management import (
+    SeasonManagementError,
+    create_season,
+    season_configuration,
+    update_season_configuration,
 )
 
 router = Router(tags=["admin"])
@@ -39,25 +52,254 @@ class ImportIssueOut(Schema):
     context: dict[str, object]
 
 
+class ScheduleImportBlockerOut(Schema):
+    code: str
+    message: str
+    count: int
+
+
+class ScheduleImportReadinessOut(Schema):
+    season_id: UUID
+    season_version: int
+    ready: bool
+    division_count: int
+    team_count: int
+    period_count: int
+    venue_count: int
+    open_grid_row_count: int
+    existing_game_count: int
+    blockers: list[ScheduleImportBlockerOut]
+
+
+class ScheduleImportPrerequisitesOut(Schema):
+    division_count: int
+    team_count: int
+    period_count: int
+    venue_count: int
+    open_grid_row_count: int
+
+
+class ScheduleImportGroupPreviewOut(Schema):
+    action: str
+    division_code: str
+    division_name: str
+    code: str
+    name: str
+    sort_order: int
+
+
+class ScheduleImportSlotPreviewOut(Schema):
+    action: str
+    division_code: str
+    division_name: str
+    group_code: str | None
+    code: str
+    label: str
+    seed: int | None
+
+
+class ScheduleImportGamePreviewOut(Schema):
+    action: str
+    code: str
+    division_code: str
+    division_name: str
+    group_code: str | None
+    stage: str
+    stage_name: str
+    round_number: int
+    home_slot_code: str
+    home_slot_label: str
+    away_slot_code: str
+    away_slot_label: str
+    date: str | None
+    period_code: str | None
+    period_name: str | None
+    start_time: str | None
+    venue_code: str | None
+    venue_name: str | None
+    cell: str
+
+
+class ScheduleImportSummaryOut(Schema):
+    existing_game_count: int
+    new_group_count: int
+    referenced_group_count: int
+    new_slot_count: int
+    referenced_slot_count: int
+    new_game_count: int
+    groups: list[ScheduleImportGroupPreviewOut]
+    slots: list[ScheduleImportSlotPreviewOut]
+    games: list[ScheduleImportGamePreviewOut]
+    prerequisites: ScheduleImportPrerequisitesOut
+    error_count: int
+    warning_count: int
+    confirmed_season_version: int | None = None
+    created_group_ids: list[str] | None = None
+    created_slot_ids: list[str] | None = None
+    created_game_ids: list[str] | None = None
+    rolled_back_at: str | None = None
+    rolled_back_season_version: int | None = None
+
+
 class ScheduleImportOut(Schema):
     id: UUID
     season_id: UUID
     status: str
     template_version: str
     file_sha256: str
-    summary: dict[str, object]
+    summary: ScheduleImportSummaryOut
     issues: list[ImportIssueOut]
 
 
 class ConfirmScheduleImportIn(Schema):
     expected_season_version: int
-    leader_adjustable_by_game: dict[str, bool]
+
+
+class ScheduleImportResetPreviewOut(Schema):
+    season_id: UUID
+    season_name: str
+    season_version: int
+    eligible: bool
+    confirmed_batch_count: int
+    game_count: int
+    slot_count: int
+    group_count: int
+    batch_ids: list[str]
+    blockers: list[ScheduleImportBlockerOut]
+
+
+class ScheduleImportResetIn(Schema):
+    expected_season_version: int
+    season_name: str
+
+
+class ScheduleImportResetResultOut(Schema):
+    season_id: UUID
+    season_version: int
+    rolled_back_at: datetime
+    game_count: int
+    slot_count: int
+    group_count: int
+    batch_count: int
+
+
+class AdminDivisionOut(Schema):
+    id: UUID
+    code: str
+    name: str
+    gender: str
+
+
+class AdminSeasonOut(Schema):
+    id: UUID
+    name: str
+    competition_type: str
+    year: int
+    status: str
+    starts_on: date
+    ends_on: date
+    version: int
+    divisions: list[AdminDivisionOut]
+
+
+class SeasonDivisionConfigurationOut(Schema):
+    id: UUID
+    code: str
+    name: str
+    gender: str
+    sort_order: int
+    team_count: int
+    group_count: int
+    game_count: int
+
+
+class SeasonVenueConfigurationOut(Schema):
+    id: UUID
+    code: str
+    name: str
+    sort_order: int
+    active: bool
+    game_count: int
+    active_reservation_count: int
+
+
+class SeasonPeriodConfigurationOut(Schema):
+    id: UUID
+    code: str
+    name: str
+    start_time: str
+    sort_order: int
+    capacities: list[int]
+    game_count: int
+    active_reservation_count: int
+
+
+class SeasonConfigurationOut(Schema):
+    id: UUID
+    name: str
+    competition_type: str
+    year: int
+    status: str
+    starts_on: date
+    ends_on: date
+    timezone: str
+    version: int
+    editable: bool
+    locked_reason: str
+    divisions: list[SeasonDivisionConfigurationOut]
+    venues: list[SeasonVenueConfigurationOut]
+    periods: list[SeasonPeriodConfigurationOut]
+
+
+class CreateSeasonIn(Schema):
+    name: str
+    competition_type: str
+    year: int
+    starts_on: date
+    ends_on: date
+    template_season_id: UUID | None = None
+
+
+class SeasonDivisionConfigurationIn(Schema):
+    id: UUID | None = None
+    code: str
+    name: str
+    gender: str
+    sort_order: int
+
+
+class SeasonVenueConfigurationIn(Schema):
+    id: UUID | None = None
+    code: str
+    name: str
+    sort_order: int
+    active: bool
+
+
+class SeasonPeriodConfigurationIn(Schema):
+    id: UUID | None = None
+    code: str
+    name: str
+    start_time: time
+    sort_order: int
+    capacities: list[int]
+
+
+class UpdateSeasonConfigurationIn(Schema):
+    expected_version: int
+    name: str
+    competition_type: str
+    year: int
+    starts_on: date
+    ends_on: date
+    divisions: list[SeasonDivisionConfigurationIn]
+    venues: list[SeasonVenueConfigurationIn]
+    periods: list[SeasonPeriodConfigurationIn]
 
 
 class AdminAccountOut(Schema):
     id: UUID
     username: str
-    display_name: str
     role: str
     is_active: bool
     version: int
@@ -69,6 +311,18 @@ class ExpectedVersionIn(Schema):
 
 class SetAdminActiveIn(ExpectedVersionIn):
     active: bool
+
+
+class SeasonInviteOut(Schema):
+    season_id: UUID
+    configured: bool
+    updated_at: datetime | None
+    version: int
+
+
+class SetSeasonInviteIn(Schema):
+    invite_code: str
+    expected_version: int
 
 
 def _serialize_batch(batch: ScheduleImportBatch) -> dict[str, object]:
@@ -92,13 +346,37 @@ def _serialize_batch(batch: ScheduleImportBatch) -> dict[str, object]:
     }
 
 
+def _serialize_season(season: Season) -> dict[str, object]:
+    return {
+        "id": season.id,
+        "name": season.name,
+        "competition_type": season.competition_type,
+        "year": season.year,
+        "status": season.status,
+        "starts_on": season.starts_on,
+        "ends_on": season.ends_on,
+        "version": season.version,
+        "divisions": [
+            {
+                "id": division.id,
+                "code": division.code,
+                "name": division.name,
+                "gender": division.gender,
+            }
+            for division in season.divisions.all()
+        ],
+    }
+
+
 def _schedule_error(error: ScheduleImportError):
     if error.code == "PERMISSION_DENIED":
         status = 403
     elif error.code in {
         "VERSION_CONFLICT",
         "REVALIDATION_FAILED",
-        "ACTIVE_REQUEST_BLOCKS_POLICY_CHANGE",
+        "CONCURRENT_CONFLICT",
+        "RESET_BLOCKED",
+        "RESET_PROTECTED",
     }:
         status = 409
     else:
@@ -116,11 +394,25 @@ def _admin_account_error(error: AdminAccountError):
     return Status(status, {"code": error.code, "message": str(error)})
 
 
+def _season_management_error(error: SeasonManagementError):
+    if error.code in {
+        "VERSION_CONFLICT",
+        "SEASON_LOCKED",
+        "RESOURCE_IN_USE",
+        "CAPACITY_BELOW_OCCUPANCY",
+    }:
+        status = 409
+    elif error.code in {"SEASON_NOT_FOUND", "TEMPLATE_NOT_FOUND"}:
+        status = 404
+    else:
+        status = 400
+    return Status(status, {"code": error.code, "message": str(error)})
+
+
 def _serialize_admin_account(account) -> dict[str, object]:
     return {
         "id": account.id,
         "username": account.username,
-        "display_name": account.display_name,
         "role": account.role,
         "is_active": account.is_active,
         "version": account.version,
@@ -190,6 +482,171 @@ def change_admin_active(
     except AdminAccountError as error:
         return _admin_account_error(error)
     return _serialize_admin_account(account)
+
+
+@router.get(
+    "/seasons",
+    auth=superadmin_session_auth,
+    response=list[AdminSeasonOut],
+)
+def list_admin_seasons(request: HttpRequest):
+    del request
+    seasons = Season.objects.prefetch_related("divisions").order_by("-year", "-created_at")
+    return [_serialize_season(season) for season in seasons]
+
+
+@router.post(
+    "/seasons",
+    auth=superadmin_session_auth,
+    response={201: SeasonConfigurationOut, 400: AdminErrorOut, 404: AdminErrorOut},
+)
+def create_admin_season(request: HttpRequest, payload: CreateSeasonIn):
+    try:
+        created = create_season(
+            actor=request.auth,
+            name=payload.name,
+            competition_type=payload.competition_type,
+            year=payload.year,
+            starts_on=payload.starts_on,
+            ends_on=payload.ends_on,
+            template_season_id=payload.template_season_id,
+        )
+    except SeasonManagementError as error:
+        return _season_management_error(error)
+    return Status(201, season_configuration(created))
+
+
+@router.get(
+    "/seasons/{season_id}/configuration",
+    auth=superadmin_session_auth,
+    response={200: SeasonConfigurationOut, 404: AdminErrorOut},
+)
+def get_admin_season_configuration(request: HttpRequest, season_id: UUID):
+    del request
+    season = Season.objects.filter(id=season_id).first()
+    if season is None:
+        return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+    return season_configuration(season)
+
+
+@router.put(
+    "/seasons/{season_id}/configuration",
+    auth=superadmin_session_auth,
+    response={
+        200: SeasonConfigurationOut,
+        400: AdminErrorOut,
+        404: AdminErrorOut,
+        409: AdminErrorOut,
+    },
+)
+def update_admin_season_configuration(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: UpdateSeasonConfigurationIn,
+):
+    values = payload.model_dump()
+    expected_version = values.pop("expected_version")
+    try:
+        updated = update_season_configuration(
+            actor=request.auth,
+            season_id=season_id,
+            expected_version=expected_version,
+            payload=values,
+        )
+    except SeasonManagementError as error:
+        return _season_management_error(error)
+    return season_configuration(updated)
+
+
+@router.get(
+    "/seasons/{season_id}/admin-invite-code",
+    auth=superadmin_session_auth,
+    response={200: SeasonInviteOut, 404: AdminErrorOut},
+)
+def get_season_admin_invite(request: HttpRequest, season_id: UUID):
+    del request
+    season = Season.objects.filter(id=season_id).first()
+    if season is None:
+        return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+    return {
+        "season_id": season.id,
+        "configured": bool(season.admin_invite_code_hash),
+        "updated_at": season.admin_invite_updated_at,
+        "version": season.version,
+    }
+
+
+@router.put(
+    "/seasons/{season_id}/admin-invite-code",
+    auth=superadmin_session_auth,
+    response={200: SeasonInviteOut, 400: AdminErrorOut, 404: AdminErrorOut, 409: AdminErrorOut},
+)
+def set_season_admin_invite(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: SetSeasonInviteIn,
+):
+    invite_code = payload.invite_code.strip()
+    if len(invite_code) < 8:
+        return Status(
+            400,
+            {"code": "INVITE_CODE_TOO_SHORT", "message": "邀请码至少需要 8 个字符。"},
+        )
+    with transaction.atomic():
+        season = Season.objects.select_for_update().filter(id=season_id).first()
+        if season is None:
+            return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+        if season.version != payload.expected_version:
+            return Status(
+                409,
+                {"code": "VERSION_CONFLICT", "message": "赛季信息已变化，请刷新后重试。"},
+            )
+        before = {
+            "configured": bool(season.admin_invite_code_hash),
+            "updated_at": (
+                season.admin_invite_updated_at.isoformat()
+                if season.admin_invite_updated_at
+                else None
+            ),
+        }
+        season.admin_invite_code_hash = make_password(invite_code)
+        season.admin_invite_updated_at = timezone.now()
+        season.admin_invite_updated_by = request.auth
+        season.version += 1
+        season.save(
+            update_fields=[
+                "admin_invite_code_hash",
+                "admin_invite_updated_at",
+                "admin_invite_updated_by",
+                "version",
+                "updated_at",
+            ]
+        )
+        AdminAuditLog.objects.create(
+            actor=request.auth,
+            action="SEASON_ADMIN_INVITE_UPDATED",
+            object_type="Season",
+            object_id=season.id,
+            before=before,
+            after={"configured": True, "updated_at": season.admin_invite_updated_at.isoformat()},
+        )
+    return {
+        "season_id": season.id,
+        "configured": True,
+        "updated_at": season.admin_invite_updated_at,
+        "version": season.version,
+    }
+
+
+@router.get(
+    "/seasons/{season_id}/schedule-import-readiness",
+    auth=superadmin_session_auth,
+    response=ScheduleImportReadinessOut,
+)
+def get_schedule_import_readiness(request: HttpRequest, season_id: UUID):
+    del request
+    season = get_object_or_404(Season, id=season_id)
+    return schedule_import_readiness(season)
 
 
 @router.get("/seasons/{season_id}/schedule-template", auth=superadmin_session_auth)
@@ -265,7 +722,6 @@ def confirm_schedule(
             actor=request.auth,
             batch_id=batch_id,
             expected_season_version=payload.expected_season_version,
-            leader_adjustable_by_game=payload.leader_adjustable_by_game,
         )
     except ScheduleImportBatch.DoesNotExist:
         return Status(400, {"code": "BATCH_NOT_FOUND", "message": "导入批次不存在。"})
@@ -273,3 +729,40 @@ def confirm_schedule(
         return _schedule_error(error)
     batch = ScheduleImportBatch.objects.prefetch_related("issues").get(id=batch.id)
     return _serialize_batch(batch)
+
+
+@router.get(
+    "/seasons/{season_id}/schedule-import-reset",
+    auth=superadmin_session_auth,
+    response=ScheduleImportResetPreviewOut,
+)
+def get_schedule_import_reset_preview(request: HttpRequest, season_id: UUID):
+    season = get_object_or_404(Season, id=season_id)
+    return schedule_import_reset_preview(actor=request.auth, season=season)
+
+
+@router.post(
+    "/seasons/{season_id}/schedule-import-reset",
+    auth=superadmin_session_auth,
+    response={
+        200: ScheduleImportResetResultOut,
+        400: AdminErrorOut,
+        409: AdminErrorOut,
+    },
+)
+def reset_season_schedule_imports(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: ScheduleImportResetIn,
+):
+    try:
+        return reset_schedule_imports(
+            actor=request.auth,
+            season_id=season_id,
+            expected_season_version=payload.expected_season_version,
+            season_name=payload.season_name,
+        )
+    except Season.DoesNotExist:
+        return Status(400, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+    except ScheduleImportError as error:
+        return _schedule_error(error)

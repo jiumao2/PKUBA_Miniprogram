@@ -1,0 +1,9 @@
+.rule-section { display: grid; grid-template-columns: 76rpx minmax(0, 1fr); gap: 18rpx; padding: 30rpx 0; border-bottom: 1rpx solid #d8d3cb; }
+.rule-section:first-of-type { margin-top: 28rpx; border-top: 2rpx solid #272421; }
+.rule-index { color: #c91f26; font-size: 27rpx; font-weight: 900; }
+.rule-title, .rule-body { display: block; }
+.rule-title { font-size: 31rpx; font-weight: 900; }
+.rule-body { margin-top: 10rpx; color: #5f5a54; font-size: 28rpx; line-height: 1.7; }
+.contact-line { display: flex; align-items: baseline; justify-content: space-between; margin-top: 34rpx; padding: 22rpx 0; border-bottom: 2rpx solid #272421; }
+.contact-label { color: #6f6b65; font-size: 27rpx; }
+.contact-value { font-size: 28rpx; font-weight: 850; }

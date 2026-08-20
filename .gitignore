@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 node_modules/
 dist/
 coverage/
@@ -20,6 +21,7 @@ backups/
 .DS_Store
 Thumbs.db
 apps/miniapp/dist/
+apps/miniapp/.dist-staging/
 apps/miniapp/.swc/
 apps/miniapp/project.private.config.json
 apps/admin-web/dist/

@@ -5,11 +5,19 @@ from uuid import UUID
 
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest
+from django.utils import timezone
 from ninja import NinjaAPI, Router, Schema, Status
 
 from .api_admin import router as admin_router
+from .api_admin_schedule import router as admin_schedule_router
 from .api_auth import router as auth_router
+from .api_game_media import admin_router as admin_game_media_router
+from .api_game_media import router as game_media_router
+from .api_mobile_admin import router as mobile_admin_router
+from .api_reschedule import router as reschedule_router
 from .models import Game, Season
+from .services.brackets import build_brackets
+from .services.standings import build_standings
 
 api = NinjaAPI(
     title="PKUBA API",
@@ -34,6 +42,7 @@ class DivisionOut(Schema):
     id: UUID
     code: str
     name: str
+    gender: str
 
 
 class SeasonOut(Schema):
@@ -53,6 +62,7 @@ class GameOut(Schema):
     code: str
     division_id: UUID
     division_name: str
+    division_gender: str
     group_name: str | None
     stage: str
     round_number: int
@@ -66,10 +76,107 @@ class GameOut(Schema):
     away_team_id: UUID | None
     home_name: str
     away_name: str
+    home_score: int | None
+    away_score: int | None
     participants_resolved: bool
     leader_adjustable: bool
     status: str
     version: int
+
+
+class HomeDashboardOut(Schema):
+    mode: str
+    display_date: date | None
+    total_games: int
+    games: list[GameOut]
+
+
+class StandingsEntryOut(Schema):
+    rank: int
+    team_id: UUID
+    team_name: str
+    team_short_name: str
+    played: int
+    wins: int
+    losses: int
+    competition_points: int
+    points_for: int
+    points_against: int
+    point_difference: int
+
+
+class StandingsMatchOut(Schema):
+    game_id: UUID
+    home_team_id: UUID
+    away_team_id: UUID
+    home_score: int | None
+    away_score: int | None
+    home_competition_points: int | None
+    away_competition_points: int | None
+    status: str
+
+
+class GroupStandingsOut(Schema):
+    id: UUID
+    code: str
+    name: str
+    entries: list[StandingsEntryOut]
+    matches: list[StandingsMatchOut]
+
+
+class DivisionStandingsOut(Schema):
+    id: UUID
+    code: str
+    name: str
+    gender: str
+    groups: list[GroupStandingsOut]
+
+
+class StandingsOut(Schema):
+    season_id: UUID
+    season_name: str
+    divisions: list[DivisionStandingsOut]
+
+
+class BracketGameOut(Schema):
+    id: UUID
+    code: str
+    date: date
+    start_time: str
+    venue_name: str
+    stage: str
+    home_team_id: UUID | None
+    away_team_id: UUID | None
+    home_name: str
+    away_name: str
+    home_score: int | None
+    away_score: int | None
+    winner_team_id: UUID | None
+    winner_name: str | None
+    source_game_ids: list[UUID]
+    status: str
+
+
+class BracketRoundOut(Schema):
+    stage: str
+    label: str
+    games: list[BracketGameOut]
+
+
+class DivisionBracketOut(Schema):
+    id: UUID
+    code: str
+    name: str
+    gender: str
+    rounds: list[BracketRoundOut]
+    placement_games: list[BracketGameOut]
+    champion_name: str | None
+
+
+class BracketsOut(Schema):
+    season_id: UUID
+    season_name: str
+    divisions: list[DivisionBracketOut]
 
 
 def current_public_season() -> Season | None:
@@ -99,6 +206,7 @@ def serialize_game(game: Game) -> dict[str, object]:
         "code": game.code,
         "division_id": game.division_id,
         "division_name": game.division.name,
+        "division_gender": game.division.gender,
         "group_name": game.group.name if game.group_id else None,
         "stage": game.stage,
         "round_number": game.round_number,
@@ -112,6 +220,8 @@ def serialize_game(game: Game) -> dict[str, object]:
         "away_team_id": game.away_team_id,
         "home_name": game.home_display,
         "away_name": game.away_display,
+        "home_score": game.home_score,
+        "away_score": game.away_score,
         "participants_resolved": bool(game.home_team_id and game.away_team_id),
         "leader_adjustable": game.leader_adjustable,
         "status": game.status,
@@ -144,10 +254,75 @@ def get_current_season(request: HttpRequest):
         "ends_on": season.ends_on,
         "version": season.version,
         "divisions": [
-            {"id": division.id, "code": division.code, "name": division.name}
+            {
+                "id": division.id,
+                "code": division.code,
+                "name": division.name,
+                "gender": division.gender,
+            }
             for division in season.divisions.all()
         ],
     }
+
+
+@public.get("/home", response={200: HomeDashboardOut, 404: ErrorOut})
+def home_dashboard(request: HttpRequest):
+    del request
+    season = current_public_season()
+    if season is None:
+        return Status(
+            404,
+            {"code": "NO_PUBLIC_SEASON", "message": "当前处于休赛期，暂无公开赛季。"},
+        )
+    today = timezone.localdate()
+    games = public_games()
+    today_games = list(games.filter(date=today)[:6])
+    if today_games:
+        return {
+            "mode": "TODAY",
+            "display_date": today,
+            "total_games": games.filter(date=today).count(),
+            "games": [serialize_game(game) for game in today_games],
+        }
+    next_date = (
+        games.filter(date__gt=today, status=Game.Status.SCHEDULED)
+        .order_by("date")
+        .values_list("date", flat=True)
+        .first()
+    )
+    if next_date:
+        next_games = list(games.filter(date=next_date)[:6])
+        return {
+            "mode": "NEXT_DAY",
+            "display_date": next_date,
+            "total_games": games.filter(date=next_date).count(),
+            "games": [serialize_game(game) for game in next_games],
+        }
+    recent_dates = list(
+        games.filter(
+            date__lt=today,
+            home_score__isnull=False,
+            away_score__isnull=False,
+        )
+        .order_by("-date")
+        .values_list("date", flat=True)
+        .distinct()[:3]
+    )
+    if recent_dates:
+        recent_games = list(
+            games.filter(
+                date__in=recent_dates,
+                home_score__isnull=False,
+                away_score__isnull=False,
+            ).order_by("-date", "period__sort_order", "venue__sort_order")
+        )
+        return {
+            "mode": "RECENT_RESULTS",
+            "display_date": recent_dates[0],
+            "total_games": len(recent_games),
+            "games": [serialize_game(game) for game in recent_games],
+        }
+    return {"mode": "EMPTY", "display_date": None, "total_games": 0, "games": []}
 
 
 @public.get("/games", response=list[GameOut])
@@ -171,6 +346,30 @@ def list_games(
     return [serialize_game(game) for game in games]
 
 
+@public.get("/standings", response={200: StandingsOut, 404: ErrorOut})
+def standings(request: HttpRequest):
+    del request
+    season = current_public_season()
+    if season is None:
+        return Status(
+            404,
+            {"code": "NO_PUBLIC_SEASON", "message": "当前处于休赛期，暂无公开赛季。"},
+        )
+    return build_standings(season)
+
+
+@public.get("/brackets", response={200: BracketsOut, 404: ErrorOut})
+def brackets(request: HttpRequest):
+    del request
+    season = current_public_season()
+    if season is None:
+        return Status(
+            404,
+            {"code": "NO_PUBLIC_SEASON", "message": "当前处于休赛期，暂无公开赛季。"},
+        )
+    return build_brackets(season)
+
+
 @public.get("/games/{game_id}", response={200: GameOut, 404: ErrorOut})
 def get_game(request: HttpRequest, game_id: UUID):
     del request
@@ -186,3 +385,8 @@ def get_game(request: HttpRequest, game_id: UUID):
 api.add_router("/public", public)
 api.add_router("/auth", auth_router)
 api.add_router("/admin", admin_router)
+api.add_router("/admin/schedule", admin_schedule_router)
+api.add_router("/admin/mobile", mobile_admin_router)
+api.add_router("/admin/game-media", admin_game_media_router)
+api.add_router("/reschedule-requests", reschedule_router)
+api.add_router("/game-media", game_media_router)

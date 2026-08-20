@@ -1,0 +1,153 @@
+.game-timeline {
+  margin-top: 22rpx;
+}
+
+.timeline-day + .timeline-day {
+  margin-top: 42rpx;
+}
+
+.timeline-date {
+  display: block;
+  margin-bottom: 16rpx;
+  color: #171614;
+  font-size: 34rpx;
+  font-weight: 800;
+}
+
+.timeline-time-block + .timeline-time-block {
+  margin-top: 24rpx;
+}
+
+.timeline-time-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10rpx;
+  padding-bottom: 10rpx;
+  border-bottom: 2rpx solid #24211f;
+}
+
+.timeline-time {
+  font-size: 36rpx;
+  font-weight: 850;
+  letter-spacing: -1rpx;
+}
+
+.timeline-count {
+  color: #77716a;
+  font-size: 26rpx;
+  font-weight: 650;
+}
+
+.timeline-games {
+  overflow: hidden;
+  border-radius: 14rpx;
+}
+
+.timeline-game {
+  padding: 20rpx 22rpx 18rpx;
+  border-left: 8rpx solid;
+  border-bottom: 1rpx solid #ded9d1;
+}
+
+.timeline-game:last-child {
+  border-bottom: 0;
+}
+
+.timeline-game.is-clickable:active {
+  opacity: 0.72;
+}
+
+.timeline-men {
+  border-left-color: #272421;
+  background: #f9f8f5;
+}
+
+.timeline-women {
+  border-left-color: #c91f26;
+  background: #fff3f3;
+}
+
+.timeline-game-topline,
+.timeline-team-row,
+.timeline-game-footline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.timeline-game-topline {
+  margin-bottom: 12rpx;
+}
+
+.timeline-division {
+  padding: 5rpx 10rpx;
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 800;
+  letter-spacing: 1rpx;
+}
+
+.timeline-men .timeline-division {
+  background: #272421;
+}
+
+.timeline-women .timeline-division {
+  background: #c91f26;
+}
+
+.timeline-venue {
+  color: #6f6b65;
+  font-size: 26rpx;
+}
+
+.timeline-team-row {
+  min-height: 48rpx;
+}
+
+.timeline-team {
+  overflow: hidden;
+  padding-right: 20rpx;
+  font-size: 30rpx;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-score {
+  flex: 0 0 58rpx;
+  text-align: right;
+}
+
+.timeline-score.has-score {
+  font-size: 34rpx;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-score.no-score {
+  color: #9a958e;
+  font-size: 26rpx;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.timeline-game-footline {
+  min-height: 30rpx;
+  margin-top: 9rpx;
+  color: #817b74;
+  font-size: 26rpx;
+}
+
+.forfeit-label,
+.pending-label {
+  font-weight: 750;
+}
+
+.forfeit-label {
+  color: #a13a3e;
+}
+
+.pending-label {
+  color: #6f6b65;
+}

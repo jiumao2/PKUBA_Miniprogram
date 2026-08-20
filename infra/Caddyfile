@@ -1,18 +1,23 @@
 {
-  email {$ACME_EMAIL}
+	email {$ACME_EMAIL}
 }
 
 api.{$PKUBA_DOMAIN} {
-  encode zstd gzip
-  reverse_proxy api:8000
+	encode zstd gzip
+	reverse_proxy api:8000
 }
 
 admin.{$PKUBA_DOMAIN} {
-  encode zstd gzip
-  root * /srv/admin-web
-  handle /api/* {
-    reverse_proxy api:8000
-  }
-  try_files {path} /index.html
-  file_server
+	encode zstd gzip
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /_maintenance/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		root * /srv/admin-web
+		try_files {path} /index.html
+		file_server
+	}
 }

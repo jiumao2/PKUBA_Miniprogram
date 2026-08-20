@@ -1,0 +1,227 @@
+.standings-page {
+  overflow-x: hidden;
+}
+
+.standings-tabs,
+.group-tabs {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.standings-tabs {
+  margin-top: 34rpx;
+  border-bottom: 1rpx solid #cfc9c0;
+}
+
+.standings-tab-row,
+.group-tab-row {
+  display: inline-flex;
+  min-width: 100%;
+}
+
+.standings-tab {
+  position: relative;
+  padding: 18rpx 26rpx 20rpx;
+  color: #6f6b65;
+  font-size: 30rpx;
+  font-weight: 750;
+}
+
+.standings-tab::after {
+  position: absolute;
+  right: 26rpx;
+  bottom: -1rpx;
+  left: 26rpx;
+  height: 5rpx;
+  background: transparent;
+  content: "";
+}
+
+.standings-tab.is-active {
+  color: #171614;
+}
+
+.standings-tab.gender-men.is-active::after {
+  background: #272421;
+}
+
+.standings-tab.gender-women.is-active::after {
+  background: #c91f26;
+}
+
+.group-tabs {
+  margin-top: 18rpx;
+}
+
+.group-tab {
+  margin-right: 14rpx;
+  padding: 11rpx 22rpx;
+  border: 1rpx solid #bdb7ae;
+  border-radius: 999rpx;
+  color: #5f5a54;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.group-tab.is-active {
+  color: #fff;
+  border-color: #272421;
+  background: #272421;
+}
+
+.ranking-table {
+  margin-top: 30rpx;
+  border-top: 6rpx solid;
+  border-bottom: 1rpx solid #cfc9c0;
+  background: #faf9f6;
+}
+
+.ranking-table.gender-men {
+  border-top-color: #272421;
+}
+
+.ranking-table.gender-women {
+  border-top-color: #c91f26;
+}
+
+.ranking-row {
+  display: grid;
+  grid-template-columns: 82rpx minmax(166rpx, 1fr) repeat(3, 58rpx) 72rpx 82rpx;
+  align-items: center;
+  min-height: 82rpx;
+  padding: 0 14rpx;
+  border-bottom: 1rpx solid #e0dbd3;
+  font-size: 26rpx;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.ranking-row:last-child {
+  border-bottom: 0;
+}
+
+.ranking-head {
+  min-height: 70rpx;
+  color: #6f6b65;
+  font-weight: 700;
+}
+
+.rank-cell {
+  font-weight: 850;
+}
+
+.rank-1,
+.rank-2,
+.rank-3 {
+  font-size: 32rpx;
+}
+
+.team-cell {
+  overflow: hidden;
+  padding-right: 10rpx;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking-team,
+.points-cell {
+  color: #171614;
+  font-weight: 850;
+}
+
+.matrix-heading .section-title {
+  margin-bottom: 16rpx;
+}
+
+.matrix-scroll {
+  width: 100%;
+  padding-bottom: 12rpx;
+}
+
+.result-matrix {
+  min-width: 100%;
+  border-top: 2rpx solid #272421;
+  border-bottom: 1rpx solid #cfc9c0;
+  background: #faf9f6;
+}
+
+.matrix-row {
+  display: flex;
+  min-height: 94rpx;
+  border-bottom: 1rpx solid #e0dbd3;
+}
+
+.matrix-row:last-child {
+  border-bottom: 0;
+}
+
+.matrix-head-row {
+  min-height: 84rpx;
+  color: #6f6b65;
+  font-weight: 750;
+}
+
+.matrix-team-cell,
+.matrix-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 8rpx;
+  border-right: 1rpx solid #e0dbd3;
+  font-size: 26rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.matrix-team-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 210rpx;
+  justify-content: flex-start;
+  padding-left: 18rpx;
+  background: #faf9f6;
+  font-weight: 800;
+}
+
+.matrix-cell {
+  width: 132rpx;
+}
+
+.matrix-opponent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.self-cell {
+  color: #9a958e;
+  background: #efede8;
+}
+
+.result-cell {
+  flex-direction: column;
+}
+
+.matrix-score,
+.matrix-points {
+  display: block;
+}
+
+.matrix-score {
+  font-size: 28rpx;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix-points {
+  margin-top: 3rpx;
+  color: #6f6b65;
+  font-size: 26rpx;
+}
+
+.standings-state {
+  margin-top: 30rpx;
+}

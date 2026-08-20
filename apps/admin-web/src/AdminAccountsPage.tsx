@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   type AdminAccount,
   type AdminManagedAccount,
+  type Season,
+  type SeasonInvite,
   type createAdminClient,
 } from "@pkuba/api-client";
 
@@ -13,11 +15,16 @@ type PendingAction =
 export function AdminAccountsPage({
   account,
   client,
+  season,
 }: {
   account: AdminAccount;
   client: AdminClient;
+  season: Season | null;
 }) {
   const [accounts, setAccounts] = useState<AdminManagedAccount[]>([]);
+  const [invite, setInvite] = useState<SeasonInvite | null>(null);
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteAgain, setInviteAgain] = useState("");
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -28,13 +35,18 @@ export function AdminAccountsPage({
     setLoading(true);
     setError(null);
     try {
-      setAccounts(await client.listAdminAccounts());
+      const [nextAccounts, nextInvite] = await Promise.all([
+        client.listAdminAccounts(),
+        season ? client.getSeasonInvite(season.id) : Promise.resolve(null),
+      ]);
+      setAccounts(nextAccounts);
+      setInvite(nextInvite);
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "无法读取管理员列表");
     } finally {
       setLoading(false);
     }
-  }, [client]);
+  }, [client, season]);
 
   useEffect(() => {
     if (account.role === "SUPERADMIN") void load();
@@ -68,6 +80,32 @@ export function AdminAccountsPage({
     }
   };
 
+  const rotateInvite = async () => {
+    if (!season || !invite) return;
+    if (inviteCode.length < 8) {
+      setError("邀请码至少需要 8 个字符。");
+      return;
+    }
+    if (inviteCode !== inviteAgain) {
+      setError("两次输入的邀请码不一致。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const next = await client.setSeasonInvite(season.id, inviteCode, invite.version);
+      setInvite(next);
+      setInviteCode("");
+      setInviteAgain("");
+      setMessage(`${season.name} 的管理员邀请码已更新，旧邀请码立即失效。`);
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "邀请码更新失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (account.role !== "SUPERADMIN") {
     return (
       <section className="state-panel error">
@@ -91,6 +129,36 @@ export function AdminAccountsPage({
           刷新列表
         </button>
       </section>
+
+      {season && invite && (
+        <section className="panel invite-panel">
+          <div className="invite-copy">
+            <p className="eyebrow">赛季元信息</p>
+            <h2>管理员邀请码</h2>
+            <p>
+              当前赛季：{season.name}。系统只保存邀请码摘要；更新后旧邀请码立即失效，已注册管理员不受影响。
+            </p>
+            <span className="subtle">
+              {invite.updated_at
+                ? `最近更新：${new Date(invite.updated_at).toLocaleString("zh-CN")}`
+                : "尚未设置"}
+            </span>
+          </div>
+          <div className="invite-form">
+            <label>
+              新邀请码
+              <input type="password" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} />
+            </label>
+            <label>
+              再次输入
+              <input type="password" value={inviteAgain} onChange={(event) => setInviteAgain(event.target.value)} />
+            </label>
+            <button className="primary-action" disabled={busy} onClick={() => void rotateInvite()} type="button">
+              {busy ? "正在更新…" : "更新邀请码"}
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className="panel account-panel">
         <div className="panel-heading">
@@ -171,7 +239,7 @@ export function AdminAccountsPage({
 }
 
 function accountName(account: AdminManagedAccount): string {
-  return account.display_name || account.username;
+  return account.username;
 }
 
 function confirmationTitle(action: PendingAction): string {

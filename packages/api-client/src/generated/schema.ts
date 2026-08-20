@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Home Dashboard */
+        get: operations["core_api_home_dashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/games": {
         parameters: {
             query?: never;
@@ -47,6 +64,40 @@ export interface paths {
         };
         /** List Games */
         get: operations["core_api_list_games"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/standings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Standings */
+        get: operations["core_api_standings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/brackets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Brackets */
+        get: operations["core_api_brackets"];
         put?: never;
         post?: never;
         delete?: never;
@@ -66,6 +117,125 @@ export interface paths {
         get: operations["core_api_get_game"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/wechat/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wechat Exchange */
+        post: operations["core_api_auth_wechat_exchange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/wechat/complete-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wechat Complete Profile */
+        post: operations["core_api_auth_wechat_complete_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Miniapp Me */
+        get: operations["core_api_auth_miniapp_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Miniapp Logout */
+        post: operations["core_api_auth_miniapp_logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/leader/claimable-teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Claimable Teams */
+        get: operations["core_api_auth_claimable_teams"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/leader/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim Leader Team */
+        post: operations["core_api_auth_claim_leader_team"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/admin/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Admin */
+        post: operations["core_api_auth_register_admin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -134,6 +304,23 @@ export interface paths {
         get: operations["core_api_auth_admin_me"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/admin/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin Change Password */
+        post: operations["core_api_auth_admin_change_password"];
         delete?: never;
         options?: never;
         head?: never;
@@ -225,6 +412,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/seasons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Seasons */
+        get: operations["core_api_admin_list_admin_seasons"];
+        put?: never;
+        /** Create Admin Season */
+        post: operations["core_api_admin_create_admin_season"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Season Configuration */
+        get: operations["core_api_admin_get_admin_season_configuration"];
+        /** Update Admin Season Configuration */
+        put: operations["core_api_admin_update_admin_season_configuration"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/admin-invite-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Season Admin Invite */
+        get: operations["core_api_admin_get_season_admin_invite"];
+        /** Set Season Admin Invite */
+        put: operations["core_api_admin_set_season_admin_invite"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/schedule-import-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schedule Import Readiness */
+        get: operations["core_api_admin_get_schedule_import_readiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/seasons/{season_id}/schedule-template": {
         parameters: {
             query?: never;
@@ -293,6 +551,402 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/seasons/{season_id}/schedule-import-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schedule Import Reset Preview */
+        get: operations["core_api_admin_get_schedule_import_reset_preview"];
+        put?: never;
+        /** Reset Season Schedule Imports */
+        post: operations["core_api_admin_reset_season_schedule_imports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/schedule/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Web Schedule Options */
+        get: operations["core_api_admin_schedule_web_schedule_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/schedule/games": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Web Admin Games */
+        get: operations["core_api_admin_schedule_web_admin_games"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/schedule/games/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Web Admin Game */
+        get: operations["core_api_admin_schedule_web_admin_game"];
+        /** Web Update Admin Game */
+        put: operations["core_api_admin_schedule_web_update_admin_game"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/mobile/schedule-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Schedule Options */
+        get: operations["core_api_mobile_admin_schedule_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/mobile/games/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Game */
+        get: operations["core_api_mobile_admin_get_admin_game"];
+        /** Update Admin Game */
+        put: operations["core_api_mobile_admin_update_admin_game"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/game-media/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Game Media */
+        get: operations["core_api_game_media_list_admin_game_media"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/game-media/{asset_id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace Admin Game Media */
+        post: operations["core_api_game_media_replace_admin_game_media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/game-media/{asset_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Admin Game Media */
+        post: operations["core_api_game_media_review_admin_game_media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/game-media/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Admin Game Media */
+        delete: operations["core_api_game_media_delete_admin_game_media"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Requests */
+        get: operations["core_api_reschedule_list_requests"];
+        put?: never;
+        /** Create Request */
+        post: operations["core_api_reschedule_create_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/eligible-games": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Eligible Games */
+        get: operations["core_api_reschedule_eligible_games"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/games/{game_id}/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Available Targets */
+        get: operations["core_api_reschedule_available_targets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/{request_id}/opponent-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Opponent Response */
+        post: operations["core_api_reschedule_opponent_response"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/{request_id}/selected-team-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Selected Team Response */
+        post: operations["core_api_reschedule_selected_team_response"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/{request_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw */
+        post: operations["core_api_reschedule_withdraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/{request_id}/voter-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Voter Candidates */
+        get: operations["core_api_reschedule_voter_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/{request_id}/admin-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin Decision */
+        post: operations["core_api_reschedule_admin_decision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/{request_id}/admin-final": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin Final */
+        post: operations["core_api_reschedule_admin_final"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reschedule-requests/{request_id}/admin-cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Admin Cancel */
+        post: operations["core_api_reschedule_admin_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/game-media/games/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Game Media */
+        get: operations["core_api_game_media_list_game_media"];
+        put?: never;
+        /** Create Game Media */
+        post: operations["core_api_game_media_create_game_media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/game-media/assets/{asset_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Game Media Content */
+        get: operations["core_api_game_media_game_media_content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/game-media/assets/{asset_id}/replace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace Miniapp Game Media */
+        post: operations["core_api_game_media_replace_miniapp_game_media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -318,6 +972,8 @@ export interface components {
             code: string;
             /** Name */
             name: string;
+            /** Gender */
+            gender: string;
         };
         /** SeasonOut */
         SeasonOut: {
@@ -372,6 +1028,8 @@ export interface components {
             division_id: string;
             /** Division Name */
             division_name: string;
+            /** Division Gender */
+            division_gender: string;
             /** Group Name */
             group_name: string | null;
             /** Stage */
@@ -404,6 +1062,10 @@ export interface components {
             home_name: string;
             /** Away Name */
             away_name: string;
+            /** Home Score */
+            home_score: number | null;
+            /** Away Score */
+            away_score: number | null;
             /** Participants Resolved */
             participants_resolved: boolean;
             /** Leader Adjustable */
@@ -413,14 +1075,198 @@ export interface components {
             /** Version */
             version: number;
         };
-        /** LoginChallengeOut */
-        LoginChallengeOut: {
-            /** Challenge */
-            challenge: string;
-            /** Csrf Token */
-            csrf_token: string;
-            /** Expires In */
-            expires_in: number;
+        /** HomeDashboardOut */
+        HomeDashboardOut: {
+            /** Mode */
+            mode: string;
+            /** Display Date */
+            display_date: string | null;
+            /** Total Games */
+            total_games: number;
+            /** Games */
+            games: components["schemas"]["GameOut"][];
+        };
+        /** DivisionStandingsOut */
+        DivisionStandingsOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Gender */
+            gender: string;
+            /** Groups */
+            groups: components["schemas"]["GroupStandingsOut"][];
+        };
+        /** GroupStandingsOut */
+        GroupStandingsOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Entries */
+            entries: components["schemas"]["StandingsEntryOut"][];
+            /** Matches */
+            matches: components["schemas"]["StandingsMatchOut"][];
+        };
+        /** StandingsEntryOut */
+        StandingsEntryOut: {
+            /** Rank */
+            rank: number;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /** Team Short Name */
+            team_short_name: string;
+            /** Played */
+            played: number;
+            /** Wins */
+            wins: number;
+            /** Losses */
+            losses: number;
+            /** Competition Points */
+            competition_points: number;
+            /** Points For */
+            points_for: number;
+            /** Points Against */
+            points_against: number;
+            /** Point Difference */
+            point_difference: number;
+        };
+        /** StandingsMatchOut */
+        StandingsMatchOut: {
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /**
+             * Home Team Id
+             * Format: uuid
+             */
+            home_team_id: string;
+            /**
+             * Away Team Id
+             * Format: uuid
+             */
+            away_team_id: string;
+            /** Home Score */
+            home_score: number | null;
+            /** Away Score */
+            away_score: number | null;
+            /** Home Competition Points */
+            home_competition_points: number | null;
+            /** Away Competition Points */
+            away_competition_points: number | null;
+            /** Status */
+            status: string;
+        };
+        /** StandingsOut */
+        StandingsOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Divisions */
+            divisions: components["schemas"]["DivisionStandingsOut"][];
+        };
+        /** BracketGameOut */
+        BracketGameOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Start Time */
+            start_time: string;
+            /** Venue Name */
+            venue_name: string;
+            /** Stage */
+            stage: string;
+            /** Home Team Id */
+            home_team_id: string | null;
+            /** Away Team Id */
+            away_team_id: string | null;
+            /** Home Name */
+            home_name: string;
+            /** Away Name */
+            away_name: string;
+            /** Home Score */
+            home_score: number | null;
+            /** Away Score */
+            away_score: number | null;
+            /** Winner Team Id */
+            winner_team_id: string | null;
+            /** Winner Name */
+            winner_name: string | null;
+            /** Source Game Ids */
+            source_game_ids: string[];
+            /** Status */
+            status: string;
+        };
+        /** BracketRoundOut */
+        BracketRoundOut: {
+            /** Stage */
+            stage: string;
+            /** Label */
+            label: string;
+            /** Games */
+            games: components["schemas"]["BracketGameOut"][];
+        };
+        /** BracketsOut */
+        BracketsOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Divisions */
+            divisions: components["schemas"]["DivisionBracketOut"][];
+        };
+        /** DivisionBracketOut */
+        DivisionBracketOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Gender */
+            gender: string;
+            /** Rounds */
+            rounds: components["schemas"]["BracketRoundOut"][];
+            /** Placement Games */
+            placement_games: components["schemas"]["BracketGameOut"][];
+            /** Champion Name */
+            champion_name: string | null;
         };
         /** AccountOut */
         AccountOut: {
@@ -431,18 +1277,77 @@ export interface components {
             id: string;
             /** Username */
             username: string;
-            /** Display Name */
-            display_name: string;
             /** Role */
             role: string;
             /** Version */
             version: number;
         };
-        /** AdminSessionOut */
-        AdminSessionOut: {
-            /** Authenticated */
-            authenticated: boolean;
-            account: components["schemas"]["AccountOut"] | null;
+        /** LeaderBindingOut */
+        LeaderBindingOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+        };
+        /** MiniAppMeOut */
+        MiniAppMeOut: {
+            account: components["schemas"]["AccountOut"];
+            leader_binding: components["schemas"]["LeaderBindingOut"] | null;
+            /** Admin Role */
+            admin_role: string | null;
+            next_game: components["schemas"]["PersonalGameOut"] | null;
+        };
+        /** PersonalGameOut */
+        PersonalGameOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Start Time */
+            start_time: string;
+            /** Venue Name */
+            venue_name: string;
+            /** Home Name */
+            home_name: string;
+            /** Away Name */
+            away_name: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+        };
+        /** WeChatExchangeOut */
+        WeChatExchangeOut: {
+            /** Requires Profile */
+            requires_profile: boolean;
+            /** Profile Ticket */
+            profile_ticket: string | null;
+            /** Session Token */
+            session_token: string | null;
+            me: components["schemas"]["MiniAppMeOut"] | null;
         };
         /** AuthErrorOut */
         AuthErrorOut: {
@@ -450,6 +1355,87 @@ export interface components {
             code: string;
             /** Message */
             message: string;
+        };
+        /** WeChatExchangeIn */
+        WeChatExchangeIn: {
+            /** Code */
+            code: string;
+        };
+        /** CompleteProfileOut */
+        CompleteProfileOut: {
+            /** Session Token */
+            session_token: string;
+            me: components["schemas"]["MiniAppMeOut"];
+        };
+        /** CompleteProfileIn */
+        CompleteProfileIn: {
+            /** Profile Ticket */
+            profile_ticket: string;
+            /** Username */
+            username: string;
+        };
+        /** ClaimableTeamOut */
+        ClaimableTeamOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Division Id
+             * Format: uuid
+             */
+            division_id: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+            /** Group Name */
+            group_name: string | null;
+            /** Version */
+            version: number;
+        };
+        /** LeaderClaimIn */
+        LeaderClaimIn: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Expected Team Version */
+            expected_team_version: number;
+        };
+        /** AdminRegisterIn */
+        AdminRegisterIn: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Invite Code */
+            invite_code: string;
+        };
+        /** LoginChallengeOut */
+        LoginChallengeOut: {
+            /** Challenge */
+            challenge: string;
+            /** Csrf Token */
+            csrf_token: string;
+            /** Expires In */
+            expires_in: number;
+        };
+        /** AdminSessionOut */
+        AdminSessionOut: {
+            /** Authenticated */
+            authenticated: boolean;
+            account: components["schemas"]["AccountOut"] | null;
         };
         /** AdminLoginIn */
         AdminLoginIn: {
@@ -460,6 +1446,13 @@ export interface components {
             /** Challenge */
             challenge: string;
         };
+        /** AdminPasswordChangeIn */
+        AdminPasswordChangeIn: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
         /** AdminAccountOut */
         AdminAccountOut: {
             /**
@@ -469,8 +1462,6 @@ export interface components {
             id: string;
             /** Username */
             username: string;
-            /** Display Name */
-            display_name: string;
             /** Role */
             role: string;
             /** Is Active */
@@ -497,6 +1488,302 @@ export interface components {
             /** Active */
             active: boolean;
         };
+        /** AdminDivisionOut */
+        AdminDivisionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Gender */
+            gender: string;
+        };
+        /** AdminSeasonOut */
+        AdminSeasonOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Competition Type */
+            competition_type: string;
+            /** Year */
+            year: number;
+            /** Status */
+            status: string;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Version */
+            version: number;
+            /** Divisions */
+            divisions: components["schemas"]["AdminDivisionOut"][];
+        };
+        /** SeasonConfigurationOut */
+        SeasonConfigurationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Competition Type */
+            competition_type: string;
+            /** Year */
+            year: number;
+            /** Status */
+            status: string;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Timezone */
+            timezone: string;
+            /** Version */
+            version: number;
+            /** Editable */
+            editable: boolean;
+            /** Locked Reason */
+            locked_reason: string;
+            /** Divisions */
+            divisions: components["schemas"]["SeasonDivisionConfigurationOut"][];
+            /** Venues */
+            venues: components["schemas"]["SeasonVenueConfigurationOut"][];
+            /** Periods */
+            periods: components["schemas"]["SeasonPeriodConfigurationOut"][];
+        };
+        /** SeasonDivisionConfigurationOut */
+        SeasonDivisionConfigurationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Gender */
+            gender: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Team Count */
+            team_count: number;
+            /** Group Count */
+            group_count: number;
+            /** Game Count */
+            game_count: number;
+        };
+        /** SeasonPeriodConfigurationOut */
+        SeasonPeriodConfigurationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Start Time */
+            start_time: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Capacities */
+            capacities: number[];
+            /** Game Count */
+            game_count: number;
+            /** Active Reservation Count */
+            active_reservation_count: number;
+        };
+        /** SeasonVenueConfigurationOut */
+        SeasonVenueConfigurationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Active */
+            active: boolean;
+            /** Game Count */
+            game_count: number;
+            /** Active Reservation Count */
+            active_reservation_count: number;
+        };
+        /** CreateSeasonIn */
+        CreateSeasonIn: {
+            /** Name */
+            name: string;
+            /** Competition Type */
+            competition_type: string;
+            /** Year */
+            year: number;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Template Season Id */
+            template_season_id?: string | null;
+        };
+        /** SeasonDivisionConfigurationIn */
+        SeasonDivisionConfigurationIn: {
+            /** Id */
+            id?: string | null;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Gender */
+            gender: string;
+            /** Sort Order */
+            sort_order: number;
+        };
+        /** SeasonPeriodConfigurationIn */
+        SeasonPeriodConfigurationIn: {
+            /** Id */
+            id?: string | null;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Capacities */
+            capacities: number[];
+        };
+        /** SeasonVenueConfigurationIn */
+        SeasonVenueConfigurationIn: {
+            /** Id */
+            id?: string | null;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Active */
+            active: boolean;
+        };
+        /** UpdateSeasonConfigurationIn */
+        UpdateSeasonConfigurationIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Name */
+            name: string;
+            /** Competition Type */
+            competition_type: string;
+            /** Year */
+            year: number;
+            /**
+             * Starts On
+             * Format: date
+             */
+            starts_on: string;
+            /**
+             * Ends On
+             * Format: date
+             */
+            ends_on: string;
+            /** Divisions */
+            divisions: components["schemas"]["SeasonDivisionConfigurationIn"][];
+            /** Venues */
+            venues: components["schemas"]["SeasonVenueConfigurationIn"][];
+            /** Periods */
+            periods: components["schemas"]["SeasonPeriodConfigurationIn"][];
+        };
+        /** SeasonInviteOut */
+        SeasonInviteOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Configured */
+            configured: boolean;
+            /** Updated At */
+            updated_at: string | null;
+            /** Version */
+            version: number;
+        };
+        /** SetSeasonInviteIn */
+        SetSeasonInviteIn: {
+            /** Invite Code */
+            invite_code: string;
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** ScheduleImportBlockerOut */
+        ScheduleImportBlockerOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Count */
+            count: number;
+        };
+        /** ScheduleImportReadinessOut */
+        ScheduleImportReadinessOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Version */
+            season_version: number;
+            /** Ready */
+            ready: boolean;
+            /** Division Count */
+            division_count: number;
+            /** Team Count */
+            team_count: number;
+            /** Period Count */
+            period_count: number;
+            /** Venue Count */
+            venue_count: number;
+            /** Open Grid Row Count */
+            open_grid_row_count: number;
+            /** Existing Game Count */
+            existing_game_count: number;
+            /** Blockers */
+            blockers: components["schemas"]["ScheduleImportBlockerOut"][];
+        };
         /** ImportIssueOut */
         ImportIssueOut: {
             /** Severity */
@@ -511,6 +1798,62 @@ export interface components {
             context: {
                 [key: string]: unknown;
             };
+        };
+        /** ScheduleImportGamePreviewOut */
+        ScheduleImportGamePreviewOut: {
+            /** Action */
+            action: string;
+            /** Code */
+            code: string;
+            /** Division Code */
+            division_code: string;
+            /** Division Name */
+            division_name: string;
+            /** Group Code */
+            group_code: string | null;
+            /** Stage */
+            stage: string;
+            /** Stage Name */
+            stage_name: string;
+            /** Round Number */
+            round_number: number;
+            /** Home Slot Code */
+            home_slot_code: string;
+            /** Home Slot Label */
+            home_slot_label: string;
+            /** Away Slot Code */
+            away_slot_code: string;
+            /** Away Slot Label */
+            away_slot_label: string;
+            /** Date */
+            date: string | null;
+            /** Period Code */
+            period_code: string | null;
+            /** Period Name */
+            period_name: string | null;
+            /** Start Time */
+            start_time: string | null;
+            /** Venue Code */
+            venue_code: string | null;
+            /** Venue Name */
+            venue_name: string | null;
+            /** Cell */
+            cell: string;
+        };
+        /** ScheduleImportGroupPreviewOut */
+        ScheduleImportGroupPreviewOut: {
+            /** Action */
+            action: string;
+            /** Division Code */
+            division_code: string;
+            /** Division Name */
+            division_name: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Sort Order */
+            sort_order: number;
         };
         /** ScheduleImportOut */
         ScheduleImportOut: {
@@ -530,21 +1873,634 @@ export interface components {
             template_version: string;
             /** File Sha256 */
             file_sha256: string;
-            /** Summary */
-            summary: {
-                [key: string]: unknown;
-            };
+            summary: components["schemas"]["ScheduleImportSummaryOut"];
             /** Issues */
             issues: components["schemas"]["ImportIssueOut"][];
+        };
+        /** ScheduleImportPrerequisitesOut */
+        ScheduleImportPrerequisitesOut: {
+            /** Division Count */
+            division_count: number;
+            /** Team Count */
+            team_count: number;
+            /** Period Count */
+            period_count: number;
+            /** Venue Count */
+            venue_count: number;
+            /** Open Grid Row Count */
+            open_grid_row_count: number;
+        };
+        /** ScheduleImportSlotPreviewOut */
+        ScheduleImportSlotPreviewOut: {
+            /** Action */
+            action: string;
+            /** Division Code */
+            division_code: string;
+            /** Division Name */
+            division_name: string;
+            /** Group Code */
+            group_code: string | null;
+            /** Code */
+            code: string;
+            /** Label */
+            label: string;
+            /** Seed */
+            seed: number | null;
+        };
+        /** ScheduleImportSummaryOut */
+        ScheduleImportSummaryOut: {
+            /** Existing Game Count */
+            existing_game_count: number;
+            /** New Group Count */
+            new_group_count: number;
+            /** Referenced Group Count */
+            referenced_group_count: number;
+            /** New Slot Count */
+            new_slot_count: number;
+            /** Referenced Slot Count */
+            referenced_slot_count: number;
+            /** New Game Count */
+            new_game_count: number;
+            /** Groups */
+            groups: components["schemas"]["ScheduleImportGroupPreviewOut"][];
+            /** Slots */
+            slots: components["schemas"]["ScheduleImportSlotPreviewOut"][];
+            /** Games */
+            games: components["schemas"]["ScheduleImportGamePreviewOut"][];
+            prerequisites: components["schemas"]["ScheduleImportPrerequisitesOut"];
+            /** Error Count */
+            error_count: number;
+            /** Warning Count */
+            warning_count: number;
+            /** Confirmed Season Version */
+            confirmed_season_version?: number | null;
+            /** Created Group Ids */
+            created_group_ids?: string[] | null;
+            /** Created Slot Ids */
+            created_slot_ids?: string[] | null;
+            /** Created Game Ids */
+            created_game_ids?: string[] | null;
+            /** Rolled Back At */
+            rolled_back_at?: string | null;
+            /** Rolled Back Season Version */
+            rolled_back_season_version?: number | null;
         };
         /** ConfirmScheduleImportIn */
         ConfirmScheduleImportIn: {
             /** Expected Season Version */
             expected_season_version: number;
-            /** Leader Adjustable By Game */
-            leader_adjustable_by_game: {
-                [key: string]: boolean;
-            };
+        };
+        /** ScheduleImportResetPreviewOut */
+        ScheduleImportResetPreviewOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Season Version */
+            season_version: number;
+            /** Eligible */
+            eligible: boolean;
+            /** Confirmed Batch Count */
+            confirmed_batch_count: number;
+            /** Game Count */
+            game_count: number;
+            /** Slot Count */
+            slot_count: number;
+            /** Group Count */
+            group_count: number;
+            /** Batch Ids */
+            batch_ids: string[];
+            /** Blockers */
+            blockers: components["schemas"]["ScheduleImportBlockerOut"][];
+        };
+        /** ScheduleImportResetResultOut */
+        ScheduleImportResetResultOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Version */
+            season_version: number;
+            /**
+             * Rolled Back At
+             * Format: date-time
+             */
+            rolled_back_at: string;
+            /** Game Count */
+            game_count: number;
+            /** Slot Count */
+            slot_count: number;
+            /** Group Count */
+            group_count: number;
+            /** Batch Count */
+            batch_count: number;
+        };
+        /** ScheduleImportResetIn */
+        ScheduleImportResetIn: {
+            /** Expected Season Version */
+            expected_season_version: number;
+            /** Season Name */
+            season_name: string;
+        };
+        /** MobileAdminTeamOptionOut */
+        MobileAdminTeamOptionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Division Id
+             * Format: uuid
+             */
+            division_id: string;
+            /** Division Name */
+            division_name: string;
+        };
+        /** PeriodOptionOut */
+        PeriodOptionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Start Time */
+            start_time: string;
+        };
+        /** ScheduleOptionsOut */
+        ScheduleOptionsOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Periods */
+            periods: components["schemas"]["PeriodOptionOut"][];
+            /** Venues */
+            venues: components["schemas"]["VenueOptionOut"][];
+            /** Teams */
+            teams: components["schemas"]["MobileAdminTeamOptionOut"][];
+        };
+        /** VenueOptionOut */
+        VenueOptionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** MobileAdminErrorOut */
+        MobileAdminErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** AdminGameOut */
+        AdminGameOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /**
+             * Division Id
+             * Format: uuid
+             */
+            division_id: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Period Id
+             * Format: uuid
+             */
+            period_id: string;
+            /** Period Name */
+            period_name: string;
+            /** Start Time */
+            start_time: string;
+            /**
+             * Venue Id
+             * Format: uuid
+             */
+            venue_id: string;
+            /** Venue Name */
+            venue_name: string;
+            /** Home Team Id */
+            home_team_id: string | null;
+            /** Away Team Id */
+            away_team_id: string | null;
+            /** Home Name */
+            home_name: string;
+            /** Away Name */
+            away_name: string;
+            /** Home Score */
+            home_score: number | null;
+            /** Away Score */
+            away_score: number | null;
+            /** Status */
+            status: string;
+            /** Stage */
+            stage: string;
+            /** Leader Adjustable */
+            leader_adjustable: boolean;
+            /** Active Reschedule Request Id */
+            active_reschedule_request_id: string | null;
+            /** Version */
+            version: number;
+        };
+        /** UpdateAdminGameIn */
+        UpdateAdminGameIn: {
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Period Id
+             * Format: uuid
+             */
+            period_id: string;
+            /**
+             * Venue Id
+             * Format: uuid
+             */
+            venue_id: string;
+            /** Home Team Id */
+            home_team_id: string | null;
+            /** Away Team Id */
+            away_team_id: string | null;
+            /** Home Score */
+            home_score: number | null;
+            /** Away Score */
+            away_score: number | null;
+            /** Status */
+            status: string;
+            /** Leader Adjustable */
+            leader_adjustable: boolean;
+            /**
+             * Cancel Active Request
+             * @default false
+             */
+            cancel_active_request: boolean;
+            /**
+             * Override Rules
+             * @default false
+             */
+            override_rules: boolean;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+        };
+        /** GameMediaAssetOut */
+        GameMediaAssetOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Game Code */
+            game_code: string;
+            /** Game Label */
+            game_label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "SCORESHEET" | "GROUP_PHOTO" | "GAME_PHOTO";
+            /** Content Url */
+            content_url: string;
+            /** Original Filename */
+            original_filename: string;
+            /** Mime Type */
+            mime_type: string;
+            /** Byte Size */
+            byte_size: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Sort Order */
+            sort_order: number;
+            /** Scoresheet Complete Confirmed */
+            scoresheet_complete_confirmed: boolean;
+            /** Review Status */
+            review_status: string;
+            /** Review Note */
+            review_note: string;
+            /** Uploaded By */
+            uploaded_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Version */
+            version: number;
+        };
+        /** GameMediaErrorOut */
+        GameMediaErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** ReviewGameMediaIn */
+        ReviewGameMediaIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Approve */
+            approve: boolean;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** DeleteGameMediaIn */
+        DeleteGameMediaIn: {
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** ConfirmationOut */
+        ConfirmationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /** Purpose */
+            purpose: string;
+            /** Response */
+            response: string;
+            /** Responded At */
+            responded_at: string | null;
+        };
+        /** RescheduleGameOut */
+        RescheduleGameOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+            /** Group Name */
+            group_name: string | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Start Time */
+            start_time: string;
+            /** Venue Name */
+            venue_name: string;
+            /** Home Name */
+            home_name: string;
+            /** Away Name */
+            away_name: string;
+            /** Leader Adjustable */
+            leader_adjustable: boolean;
+            /** Status */
+            status: string;
+            /** Version */
+            version: number;
+        };
+        /** RescheduleRequestOut */
+        RescheduleRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Request Type */
+            request_type: string;
+            /** Request Type Label */
+            request_type_label: string;
+            /** Status */
+            status: string;
+            /** Status Label */
+            status_label: string;
+            /**
+             * Requester Team Id
+             * Format: uuid
+             */
+            requester_team_id: string;
+            /** Requester Team Name */
+            requester_team_name: string;
+            game: components["schemas"]["RescheduleGameOut"];
+            /**
+             * Original Date
+             * Format: date
+             */
+            original_date: string;
+            /** Original Start Time */
+            original_start_time: string;
+            /** Original Venue Name */
+            original_venue_name: string;
+            /** Original Home Name */
+            original_home_name: string;
+            /** Original Away Name */
+            original_away_name: string;
+            /**
+             * Target Date
+             * Format: date
+             */
+            target_date: string;
+            /**
+             * Target Period Id
+             * Format: uuid
+             */
+            target_period_id: string;
+            /** Target Period Name */
+            target_period_name: string;
+            /** Target Start Time */
+            target_start_time: string;
+            /**
+             * Target Venue Id
+             * Format: uuid
+             */
+            target_venue_id: string;
+            /** Target Venue Name */
+            target_venue_name: string;
+            /**
+             * Submit Deadline
+             * Format: date-time
+             */
+            submit_deadline: string;
+            /**
+             * Confirmation Deadline
+             * Format: date-time
+             */
+            confirmation_deadline: string;
+            /** Confirmations */
+            confirmations: components["schemas"]["ConfirmationOut"][];
+            /** Actions */
+            actions: string[];
+            /** Is Terminal */
+            is_terminal: boolean;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+        };
+        /** RescheduleErrorOut */
+        RescheduleErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** CreateRescheduleIn */
+        CreateRescheduleIn: {
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Expected Game Version */
+            expected_game_version: number;
+            /**
+             * Target Date
+             * Format: date
+             */
+            target_date: string;
+            /**
+             * Target Period Id
+             * Format: uuid
+             */
+            target_period_id: string;
+        };
+        /** RescheduleTargetOut */
+        RescheduleTargetOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Period Id
+             * Format: uuid
+             */
+            period_id: string;
+            /** Period Code */
+            period_code: string;
+            /** Period Name */
+            period_name: string;
+            /** Start Time */
+            start_time: string;
+            /**
+             * Preview Venue Id
+             * Format: uuid
+             */
+            preview_venue_id: string;
+            /** Preview Venue Name */
+            preview_venue_name: string;
+            /** Request Type */
+            request_type: string;
+            /**
+             * Submit Deadline
+             * Format: date-time
+             */
+            submit_deadline: string;
+            /**
+             * Confirmation Deadline
+             * Format: date-time
+             */
+            confirmation_deadline: string;
+        };
+        /** VersionedResponseIn */
+        VersionedResponseIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Accept */
+            accept: boolean;
+        };
+        /** RescheduleVoterTeamOut */
+        RescheduleVoterTeamOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Division Name */
+            division_name: string;
+            /** Group Name */
+            group_name: string | null;
+        };
+        /** AdminDecisionIn */
+        AdminDecisionIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Action */
+            action: string;
+            /** Selected Team Ids */
+            selected_team_ids?: string[] | null;
+        };
+        /** GameMediaCollectionOut */
+        GameMediaCollectionOut: {
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Can Upload */
+            can_upload: boolean;
+            /** Can Review */
+            can_review: boolean;
+            /** Assets */
+            assets: components["schemas"]["GameMediaAssetOut"][];
         };
     };
     responses: never;
@@ -604,6 +2560,35 @@ export interface operations {
             };
         };
     };
+    core_api_home_dashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeDashboardOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     core_api_list_games: {
         parameters: {
             query?: {
@@ -625,6 +2610,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GameOut"][];
+                };
+            };
+        };
+    };
+    core_api_standings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandingsOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_brackets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BracketsOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };
@@ -656,6 +2699,252 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_auth_wechat_exchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeChatExchangeIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeChatExchangeOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_auth_wechat_complete_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteProfileIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompleteProfileOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_auth_miniapp_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppMeOut"];
+                };
+            };
+        };
+    };
+    core_api_auth_miniapp_logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    core_api_auth_claimable_teams: {
+        parameters: {
+            query: {
+                season_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimableTeamOut"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_auth_claim_leader_team: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaderClaimIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppMeOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_auth_register_admin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRegisterIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniAppMeOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
                 };
             };
         };
@@ -767,6 +3056,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+        };
+    };
+    core_api_auth_admin_change_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPasswordChangeIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
                 };
             };
         };
@@ -915,6 +3237,258 @@ export interface operations {
             };
         };
     };
+    core_api_admin_list_admin_seasons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSeasonOut"][];
+                };
+            };
+        };
+    };
+    core_api_admin_create_admin_season: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSeasonIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeasonConfigurationOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_get_admin_season_configuration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeasonConfigurationOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_update_admin_season_configuration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSeasonConfigurationIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeasonConfigurationOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_get_season_admin_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeasonInviteOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_set_season_admin_invite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetSeasonInviteIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeasonInviteOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_get_schedule_import_readiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleImportReadinessOut"];
+                };
+            };
+        };
+    };
     core_api_admin_download_schedule_template: {
         parameters: {
             query?: never;
@@ -1038,6 +3612,1321 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_get_schedule_import_reset_preview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleImportResetPreviewOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_reset_season_schedule_imports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleImportResetIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleImportResetResultOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_schedule_web_schedule_options: {
+        parameters: {
+            query?: {
+                season_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOptionsOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_schedule_web_admin_games: {
+        parameters: {
+            query: {
+                season_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGameOut"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_schedule_web_admin_game: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGameOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_schedule_web_update_admin_game: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAdminGameIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGameOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_mobile_admin_schedule_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOptionsOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_mobile_admin_get_admin_game: {
+        parameters: {
+            query?: {
+                allow_nonpublic?: boolean;
+            };
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGameOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_mobile_admin_update_admin_game: {
+        parameters: {
+            query?: {
+                allow_nonpublic?: boolean;
+            };
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAdminGameIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGameOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_list_admin_game_media: {
+        parameters: {
+            query?: {
+                review_status?: string | null;
+                kind?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaAssetOut"][];
+                };
+            };
+        };
+    };
+    core_api_game_media_replace_admin_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Expected Version */
+                    expected_version: number;
+                    /** Scoresheet Complete Confirmed */
+                    scoresheet_complete_confirmed: boolean;
+                    /**
+                     * Image
+                     * Format: binary
+                     */
+                    image: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaAssetOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_review_admin_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewGameMediaIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaAssetOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_delete_admin_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteGameMediaIn"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_list_requests: {
+        parameters: {
+            query?: {
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleRequestOut"][];
+                };
+            };
+        };
+    };
+    core_api_reschedule_create_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRescheduleIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleRequestOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_eligible_games: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleGameOut"][];
+                };
+            };
+        };
+    };
+    core_api_reschedule_available_targets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleTargetOut"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_opponent_response: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedResponseIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleRequestOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_selected_team_response: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedResponseIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleRequestOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_withdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpectedVersionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleRequestOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_voter_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleVoterTeamOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_admin_decision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminDecisionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleRequestOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_admin_final: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionedResponseIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleRequestOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_reschedule_admin_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpectedVersionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleRequestOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_list_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaCollectionOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_create_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Kind */
+                    kind: string;
+                    /** Scoresheet Complete Confirmed */
+                    scoresheet_complete_confirmed: boolean;
+                    /**
+                     * Image
+                     * Format: binary
+                     */
+                    image: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaAssetOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_game_media_content: {
+        parameters: {
+            query: {
+                ticket: string;
+            };
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_replace_miniapp_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Expected Version */
+                    expected_version: number;
+                    /** Scoresheet Complete Confirmed */
+                    scoresheet_complete_confirmed: boolean;
+                    /**
+                     * Image
+                     * Format: binary
+                     */
+                    image: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaAssetOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
                 };
             };
         };

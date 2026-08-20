@@ -60,6 +60,38 @@
         ]
       }
     },
+    "/api/v1/public/home": {
+      "get": {
+        "operationId": "core_api_home_dashboard",
+        "summary": "Home Dashboard",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeDashboardOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
     "/api/v1/public/games": {
       "get": {
         "operationId": "core_api_list_games",
@@ -155,6 +187,70 @@
         ]
       }
     },
+    "/api/v1/public/standings": {
+      "get": {
+        "operationId": "core_api_standings",
+        "summary": "Standings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandingsOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/brackets": {
+      "get": {
+        "operationId": "core_api_brackets",
+        "summary": "Brackets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketsOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
     "/api/v1/public/games/{game_id}": {
       "get": {
         "operationId": "core_api_get_game",
@@ -195,6 +291,333 @@
         },
         "tags": [
           "public"
+        ]
+      }
+    },
+    "/api/v1/auth/wechat/exchange": {
+      "post": {
+        "operationId": "core_api_auth_wechat_exchange",
+        "summary": "Wechat Exchange",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeChatExchangeOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeChatExchangeIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/wechat/complete-profile": {
+      "post": {
+        "operationId": "core_api_auth_wechat_complete_profile",
+        "summary": "Wechat Complete Profile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompleteProfileOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteProfileIn"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "core_api_auth_miniapp_me",
+        "summary": "Miniapp Me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppMeOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "core_api_auth_miniapp_logout",
+        "summary": "Miniapp Logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/leader/claimable-teams": {
+      "get": {
+        "operationId": "core_api_auth_claimable_teams",
+        "summary": "Claimable Teams",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimableTeamOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/leader/claims": {
+      "post": {
+        "operationId": "core_api_auth_claim_leader_team",
+        "summary": "Claim Leader Team",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppMeOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaderClaimIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/admin/register": {
+      "post": {
+        "operationId": "core_api_auth_register_admin",
+        "summary": "Register Admin",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MiniAppMeOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRegisterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
         ]
       }
     },
@@ -324,6 +747,53 @@
         "tags": [
           "auth"
         ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/admin/change-password": {
+      "post": {
+        "operationId": "core_api_auth_admin_change_password",
+        "summary": "Admin Change Password",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPasswordChangeIn"
+              }
+            }
+          },
+          "required": true
+        },
         "security": [
           {
             "AdminSessionAuth": []
@@ -538,6 +1008,378 @@
         ]
       }
     },
+    "/api/v1/admin/seasons": {
+      "get": {
+        "operationId": "core_api_admin_list_admin_seasons",
+        "summary": "List Admin Seasons",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminSeasonOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "core_api_admin_create_admin_season",
+        "summary": "Create Admin Season",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonConfigurationOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSeasonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/configuration": {
+      "get": {
+        "operationId": "core_api_admin_get_admin_season_configuration",
+        "summary": "Get Admin Season Configuration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonConfigurationOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "core_api_admin_update_admin_season_configuration",
+        "summary": "Update Admin Season Configuration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonConfigurationOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSeasonConfigurationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/admin-invite-code": {
+      "get": {
+        "operationId": "core_api_admin_get_season_admin_invite",
+        "summary": "Get Season Admin Invite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonInviteOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "core_api_admin_set_season_admin_invite",
+        "summary": "Set Season Admin Invite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonInviteOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSeasonInviteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/schedule-import-readiness": {
+      "get": {
+        "operationId": "core_api_admin_get_schedule_import_readiness",
+        "summary": "Get Schedule Import Readiness",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleImportReadinessOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/seasons/{season_id}/schedule-template": {
       "get": {
         "operationId": "core_api_admin_download_schedule_template",
@@ -743,6 +1585,1983 @@
           }
         ]
       }
+    },
+    "/api/v1/admin/seasons/{season_id}/schedule-import-reset": {
+      "get": {
+        "operationId": "core_api_admin_get_schedule_import_reset_preview",
+        "summary": "Get Schedule Import Reset Preview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleImportResetPreviewOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "core_api_admin_reset_season_schedule_imports",
+        "summary": "Reset Season Schedule Imports",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleImportResetResultOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleImportResetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/schedule/options": {
+      "get": {
+        "operationId": "core_api_admin_schedule_web_schedule_options",
+        "summary": "Web Schedule Options",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "season_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season Id"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOptionsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-schedule"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/schedule/games": {
+      "get": {
+        "operationId": "core_api_admin_schedule_web_admin_games",
+        "summary": "Web Admin Games",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminGameOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-schedule"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/schedule/games/{game_id}": {
+      "get": {
+        "operationId": "core_api_admin_schedule_web_admin_game",
+        "summary": "Web Admin Game",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGameOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-schedule"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "core_api_admin_schedule_web_update_admin_game",
+        "summary": "Web Update Admin Game",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGameOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-schedule"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAdminGameIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/mobile/schedule-options": {
+      "get": {
+        "operationId": "core_api_mobile_admin_schedule_options",
+        "summary": "Schedule Options",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOptionsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "mobile-admin"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/mobile/games/{game_id}": {
+      "get": {
+        "operationId": "core_api_mobile_admin_get_admin_game",
+        "summary": "Get Admin Game",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "allow_nonpublic",
+            "schema": {
+              "default": false,
+              "title": "Allow Nonpublic",
+              "type": "boolean"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGameOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "mobile-admin"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "core_api_mobile_admin_update_admin_game",
+        "summary": "Update Admin Game",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "allow_nonpublic",
+            "schema": {
+              "default": false,
+              "title": "Allow Nonpublic",
+              "type": "boolean"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGameOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "mobile-admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAdminGameIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/game-media/": {
+      "get": {
+        "operationId": "core_api_game_media_list_admin_game_media",
+        "summary": "List Admin Game Media",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "review_status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Review Status"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GameMediaAssetOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-game-media"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/game-media/{asset_id}/replace": {
+      "post": {
+        "operationId": "core_api_game_media_replace_admin_game_media",
+        "summary": "Replace Admin Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaAssetOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "expected_version": {
+                    "title": "Expected Version",
+                    "type": "integer"
+                  },
+                  "scoresheet_complete_confirmed": {
+                    "title": "Scoresheet Complete Confirmed",
+                    "type": "boolean"
+                  },
+                  "image": {
+                    "format": "binary",
+                    "title": "Image",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_version",
+                  "scoresheet_complete_confirmed",
+                  "image"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/game-media/{asset_id}/review": {
+      "post": {
+        "operationId": "core_api_game_media_review_admin_game_media",
+        "summary": "Review Admin Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaAssetOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewGameMediaIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/game-media/{asset_id}": {
+      "delete": {
+        "operationId": "core_api_game_media_delete_admin_game_media",
+        "summary": "Delete Admin Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteGameMediaIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/": {
+      "get": {
+        "operationId": "core_api_reschedule_list_requests",
+        "summary": "List Requests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "active_only",
+            "schema": {
+              "default": false,
+              "title": "Active Only",
+              "type": "boolean"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RescheduleRequestOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "core_api_reschedule_create_request",
+        "summary": "Create Request",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleRequestOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRescheduleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/eligible-games": {
+      "get": {
+        "operationId": "core_api_reschedule_eligible_games",
+        "summary": "Eligible Games",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RescheduleGameOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/games/{game_id}/targets": {
+      "get": {
+        "operationId": "core_api_reschedule_available_targets",
+        "summary": "Available Targets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RescheduleTargetOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/{request_id}/opponent-response": {
+      "post": {
+        "operationId": "core_api_reschedule_opponent_response",
+        "summary": "Opponent Response",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleRequestOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionedResponseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/{request_id}/selected-team-response": {
+      "post": {
+        "operationId": "core_api_reschedule_selected_team_response",
+        "summary": "Selected Team Response",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleRequestOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionedResponseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/{request_id}/withdraw": {
+      "post": {
+        "operationId": "core_api_reschedule_withdraw",
+        "summary": "Withdraw",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleRequestOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/{request_id}/voter-candidates": {
+      "get": {
+        "operationId": "core_api_reschedule_voter_candidates",
+        "summary": "Voter Candidates",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RescheduleVoterTeamOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/{request_id}/admin-decision": {
+      "post": {
+        "operationId": "core_api_reschedule_admin_decision",
+        "summary": "Admin Decision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleRequestOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/{request_id}/admin-final": {
+      "post": {
+        "operationId": "core_api_reschedule_admin_final",
+        "summary": "Admin Final",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleRequestOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionedResponseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reschedule-requests/{request_id}/admin-cancel": {
+      "post": {
+        "operationId": "core_api_reschedule_admin_cancel",
+        "summary": "Admin Cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleRequestOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reschedule-requests"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/game-media/games/{game_id}": {
+      "get": {
+        "operationId": "core_api_game_media_list_game_media",
+        "summary": "List Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaCollectionOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "game-media"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "core_api_game_media_create_game_media",
+        "summary": "Create Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaAssetOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "scoresheet_complete_confirmed": {
+                    "title": "Scoresheet Complete Confirmed",
+                    "type": "boolean"
+                  },
+                  "image": {
+                    "format": "binary",
+                    "title": "Image",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "scoresheet_complete_confirmed",
+                  "image"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/game-media/assets/{asset_id}/content": {
+      "get": {
+        "operationId": "core_api_game_media_game_media_content",
+        "summary": "Game Media Content",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "ticket",
+            "schema": {
+              "title": "Ticket",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "game-media"
+        ]
+      }
+    },
+    "/api/v1/game-media/assets/{asset_id}/replace": {
+      "post": {
+        "operationId": "core_api_game_media_replace_miniapp_game_media",
+        "summary": "Replace Miniapp Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaAssetOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "expected_version": {
+                    "title": "Expected Version",
+                    "type": "integer"
+                  },
+                  "scoresheet_complete_confirmed": {
+                    "title": "Scoresheet Complete Confirmed",
+                    "type": "boolean"
+                  },
+                  "image": {
+                    "format": "binary",
+                    "title": "Image",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_version",
+                  "scoresheet_complete_confirmed",
+                  "image"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -780,12 +3599,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "code",
-          "name"
+          "name",
+          "gender"
         ],
         "title": "DivisionOut",
         "type": "object"
@@ -887,6 +3711,10 @@
             "title": "Division Name",
             "type": "string"
           },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          },
           "group_name": {
             "anyOf": [
               {
@@ -964,6 +3792,28 @@
             "title": "Away Name",
             "type": "string"
           },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
           "participants_resolved": {
             "title": "Participants Resolved",
             "type": "boolean"
@@ -986,6 +3836,7 @@
           "code",
           "division_id",
           "division_name",
+          "division_gender",
           "group_name",
           "stage",
           "round_number",
@@ -999,12 +3850,925 @@
           "away_team_id",
           "home_name",
           "away_name",
+          "home_score",
+          "away_score",
           "participants_resolved",
           "leader_adjustable",
           "status",
           "version"
         ],
         "title": "GameOut",
+        "type": "object"
+      },
+      "HomeDashboardOut": {
+        "properties": {
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "display_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Date"
+          },
+          "total_games": {
+            "title": "Total Games",
+            "type": "integer"
+          },
+          "games": {
+            "items": {
+              "$ref": "#/components/schemas/GameOut"
+            },
+            "title": "Games",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "display_date",
+          "total_games",
+          "games"
+        ],
+        "title": "HomeDashboardOut",
+        "type": "object"
+      },
+      "DivisionStandingsOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupStandingsOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "gender",
+          "groups"
+        ],
+        "title": "DivisionStandingsOut",
+        "type": "object"
+      },
+      "GroupStandingsOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/StandingsEntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/StandingsMatchOut"
+            },
+            "title": "Matches",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "entries",
+          "matches"
+        ],
+        "title": "GroupStandingsOut",
+        "type": "object"
+      },
+      "StandingsEntryOut": {
+        "properties": {
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "team_short_name": {
+            "title": "Team Short Name",
+            "type": "string"
+          },
+          "played": {
+            "title": "Played",
+            "type": "integer"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          },
+          "losses": {
+            "title": "Losses",
+            "type": "integer"
+          },
+          "competition_points": {
+            "title": "Competition Points",
+            "type": "integer"
+          },
+          "points_for": {
+            "title": "Points For",
+            "type": "integer"
+          },
+          "points_against": {
+            "title": "Points Against",
+            "type": "integer"
+          },
+          "point_difference": {
+            "title": "Point Difference",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "team_id",
+          "team_name",
+          "team_short_name",
+          "played",
+          "wins",
+          "losses",
+          "competition_points",
+          "points_for",
+          "points_against",
+          "point_difference"
+        ],
+        "title": "StandingsEntryOut",
+        "type": "object"
+      },
+      "StandingsMatchOut": {
+        "properties": {
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "home_team_id": {
+            "format": "uuid",
+            "title": "Home Team Id",
+            "type": "string"
+          },
+          "away_team_id": {
+            "format": "uuid",
+            "title": "Away Team Id",
+            "type": "string"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "home_competition_points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Competition Points"
+          },
+          "away_competition_points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Competition Points"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id",
+          "home_team_id",
+          "away_team_id",
+          "home_score",
+          "away_score",
+          "home_competition_points",
+          "away_competition_points",
+          "status"
+        ],
+        "title": "StandingsMatchOut",
+        "type": "object"
+      },
+      "StandingsOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "divisions": {
+            "items": {
+              "$ref": "#/components/schemas/DivisionStandingsOut"
+            },
+            "title": "Divisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "divisions"
+        ],
+        "title": "StandingsOut",
+        "type": "object"
+      },
+      "BracketGameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "winner_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Team Id"
+          },
+          "winner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner Name"
+          },
+          "source_game_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Source Game Ids",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "date",
+          "start_time",
+          "venue_name",
+          "stage",
+          "home_team_id",
+          "away_team_id",
+          "home_name",
+          "away_name",
+          "home_score",
+          "away_score",
+          "winner_team_id",
+          "winner_name",
+          "source_game_ids",
+          "status"
+        ],
+        "title": "BracketGameOut",
+        "type": "object"
+      },
+      "BracketRoundOut": {
+        "properties": {
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "games": {
+            "items": {
+              "$ref": "#/components/schemas/BracketGameOut"
+            },
+            "title": "Games",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stage",
+          "label",
+          "games"
+        ],
+        "title": "BracketRoundOut",
+        "type": "object"
+      },
+      "BracketsOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "divisions": {
+            "items": {
+              "$ref": "#/components/schemas/DivisionBracketOut"
+            },
+            "title": "Divisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "divisions"
+        ],
+        "title": "BracketsOut",
+        "type": "object"
+      },
+      "DivisionBracketOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/BracketRoundOut"
+            },
+            "title": "Rounds",
+            "type": "array"
+          },
+          "placement_games": {
+            "items": {
+              "$ref": "#/components/schemas/BracketGameOut"
+            },
+            "title": "Placement Games",
+            "type": "array"
+          },
+          "champion_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Champion Name"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "gender",
+          "rounds",
+          "placement_games",
+          "champion_name"
+        ],
+        "title": "DivisionBracketOut",
+        "type": "object"
+      },
+      "AccountOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role",
+          "version"
+        ],
+        "title": "AccountOut",
+        "type": "object"
+      },
+      "LeaderBindingOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "season_id",
+          "team_id",
+          "team_name",
+          "division_name",
+          "division_gender"
+        ],
+        "title": "LeaderBindingOut",
+        "type": "object"
+      },
+      "MiniAppMeOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountOut"
+          },
+          "leader_binding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaderBindingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "admin_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Role"
+          },
+          "next_game": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonalGameOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "account",
+          "leader_binding",
+          "admin_role",
+          "next_game"
+        ],
+        "title": "MiniAppMeOut",
+        "type": "object"
+      },
+      "PersonalGameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "start_time",
+          "venue_name",
+          "home_name",
+          "away_name",
+          "division_name",
+          "division_gender"
+        ],
+        "title": "PersonalGameOut",
+        "type": "object"
+      },
+      "WeChatExchangeOut": {
+        "properties": {
+          "requires_profile": {
+            "title": "Requires Profile",
+            "type": "boolean"
+          },
+          "profile_ticket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Ticket"
+          },
+          "session_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Token"
+          },
+          "me": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MiniAppMeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "requires_profile",
+          "profile_ticket",
+          "session_token",
+          "me"
+        ],
+        "title": "WeChatExchangeOut",
+        "type": "object"
+      },
+      "AuthErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AuthErrorOut",
+        "type": "object"
+      },
+      "WeChatExchangeIn": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "WeChatExchangeIn",
+        "type": "object"
+      },
+      "CompleteProfileOut": {
+        "properties": {
+          "session_token": {
+            "title": "Session Token",
+            "type": "string"
+          },
+          "me": {
+            "$ref": "#/components/schemas/MiniAppMeOut"
+          }
+        },
+        "required": [
+          "session_token",
+          "me"
+        ],
+        "title": "CompleteProfileOut",
+        "type": "object"
+      },
+      "CompleteProfileIn": {
+        "properties": {
+          "profile_ticket": {
+            "title": "Profile Ticket",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_ticket",
+          "username"
+        ],
+        "title": "CompleteProfileIn",
+        "type": "object"
+      },
+      "ClaimableTeamOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "division_id",
+          "division_name",
+          "division_gender",
+          "group_name",
+          "version"
+        ],
+        "title": "ClaimableTeamOut",
+        "type": "object"
+      },
+      "LeaderClaimIn": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "expected_team_version": {
+            "title": "Expected Team Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season_id",
+          "team_id",
+          "expected_team_version"
+        ],
+        "title": "LeaderClaimIn",
+        "type": "object"
+      },
+      "AdminRegisterIn": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "invite_code": {
+            "title": "Invite Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "season_id",
+          "invite_code"
+        ],
+        "title": "AdminRegisterIn",
         "type": "object"
       },
       "LoginChallengeOut": {
@@ -1028,40 +4792,6 @@
           "expires_in"
         ],
         "title": "LoginChallengeOut",
-        "type": "object"
-      },
-      "AccountOut": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string"
-          },
-          "display_name": {
-            "title": "Display Name",
-            "type": "string"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "username",
-          "display_name",
-          "role",
-          "version"
-        ],
-        "title": "AccountOut",
         "type": "object"
       },
       "AdminSessionOut": {
@@ -1088,24 +4818,6 @@
         "title": "AdminSessionOut",
         "type": "object"
       },
-      "AuthErrorOut": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "message"
-        ],
-        "title": "AuthErrorOut",
-        "type": "object"
-      },
       "AdminLoginIn": {
         "properties": {
           "username": {
@@ -1129,6 +4841,24 @@
         "title": "AdminLoginIn",
         "type": "object"
       },
+      "AdminPasswordChangeIn": {
+        "properties": {
+          "current_password": {
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "AdminPasswordChangeIn",
+        "type": "object"
+      },
       "AdminAccountOut": {
         "properties": {
           "id": {
@@ -1138,10 +4868,6 @@
           },
           "username": {
             "title": "Username",
-            "type": "string"
-          },
-          "display_name": {
-            "title": "Display Name",
             "type": "string"
           },
           "role": {
@@ -1160,7 +4886,6 @@
         "required": [
           "id",
           "username",
-          "display_name",
           "role",
           "is_active",
           "version"
@@ -1217,6 +4942,709 @@
         "title": "SetAdminActiveIn",
         "type": "object"
       },
+      "AdminDivisionOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "gender"
+        ],
+        "title": "AdminDivisionOut",
+        "type": "object"
+      },
+      "AdminSeasonOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "competition_type": {
+            "title": "Competition Type",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          },
+          "ends_on": {
+            "format": "date",
+            "title": "Ends On",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "divisions": {
+            "items": {
+              "$ref": "#/components/schemas/AdminDivisionOut"
+            },
+            "title": "Divisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "competition_type",
+          "year",
+          "status",
+          "starts_on",
+          "ends_on",
+          "version",
+          "divisions"
+        ],
+        "title": "AdminSeasonOut",
+        "type": "object"
+      },
+      "SeasonConfigurationOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "competition_type": {
+            "title": "Competition Type",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          },
+          "ends_on": {
+            "format": "date",
+            "title": "Ends On",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "locked_reason": {
+            "title": "Locked Reason",
+            "type": "string"
+          },
+          "divisions": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonDivisionConfigurationOut"
+            },
+            "title": "Divisions",
+            "type": "array"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonVenueConfigurationOut"
+            },
+            "title": "Venues",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonPeriodConfigurationOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "competition_type",
+          "year",
+          "status",
+          "starts_on",
+          "ends_on",
+          "timezone",
+          "version",
+          "editable",
+          "locked_reason",
+          "divisions",
+          "venues",
+          "periods"
+        ],
+        "title": "SeasonConfigurationOut",
+        "type": "object"
+      },
+      "SeasonDivisionConfigurationOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "team_count": {
+            "title": "Team Count",
+            "type": "integer"
+          },
+          "group_count": {
+            "title": "Group Count",
+            "type": "integer"
+          },
+          "game_count": {
+            "title": "Game Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "gender",
+          "sort_order",
+          "team_count",
+          "group_count",
+          "game_count"
+        ],
+        "title": "SeasonDivisionConfigurationOut",
+        "type": "object"
+      },
+      "SeasonPeriodConfigurationOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "capacities": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Capacities",
+            "type": "array"
+          },
+          "game_count": {
+            "title": "Game Count",
+            "type": "integer"
+          },
+          "active_reservation_count": {
+            "title": "Active Reservation Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "start_time",
+          "sort_order",
+          "capacities",
+          "game_count",
+          "active_reservation_count"
+        ],
+        "title": "SeasonPeriodConfigurationOut",
+        "type": "object"
+      },
+      "SeasonVenueConfigurationOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "game_count": {
+            "title": "Game Count",
+            "type": "integer"
+          },
+          "active_reservation_count": {
+            "title": "Active Reservation Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "sort_order",
+          "active",
+          "game_count",
+          "active_reservation_count"
+        ],
+        "title": "SeasonVenueConfigurationOut",
+        "type": "object"
+      },
+      "CreateSeasonIn": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "competition_type": {
+            "title": "Competition Type",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          },
+          "ends_on": {
+            "format": "date",
+            "title": "Ends On",
+            "type": "string"
+          },
+          "template_season_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Season Id"
+          }
+        },
+        "required": [
+          "name",
+          "competition_type",
+          "year",
+          "starts_on",
+          "ends_on"
+        ],
+        "title": "CreateSeasonIn",
+        "type": "object"
+      },
+      "SeasonDivisionConfigurationIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "gender",
+          "sort_order"
+        ],
+        "title": "SeasonDivisionConfigurationIn",
+        "type": "object"
+      },
+      "SeasonPeriodConfigurationIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "capacities": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Capacities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "start_time",
+          "sort_order",
+          "capacities"
+        ],
+        "title": "SeasonPeriodConfigurationIn",
+        "type": "object"
+      },
+      "SeasonVenueConfigurationIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "sort_order",
+          "active"
+        ],
+        "title": "SeasonVenueConfigurationIn",
+        "type": "object"
+      },
+      "UpdateSeasonConfigurationIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "competition_type": {
+            "title": "Competition Type",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "starts_on": {
+            "format": "date",
+            "title": "Starts On",
+            "type": "string"
+          },
+          "ends_on": {
+            "format": "date",
+            "title": "Ends On",
+            "type": "string"
+          },
+          "divisions": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonDivisionConfigurationIn"
+            },
+            "title": "Divisions",
+            "type": "array"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonVenueConfigurationIn"
+            },
+            "title": "Venues",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/SeasonPeriodConfigurationIn"
+            },
+            "title": "Periods",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version",
+          "name",
+          "competition_type",
+          "year",
+          "starts_on",
+          "ends_on",
+          "divisions",
+          "venues",
+          "periods"
+        ],
+        "title": "UpdateSeasonConfigurationIn",
+        "type": "object"
+      },
+      "SeasonInviteOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season_id",
+          "configured",
+          "updated_at",
+          "version"
+        ],
+        "title": "SeasonInviteOut",
+        "type": "object"
+      },
+      "SetSeasonInviteIn": {
+        "properties": {
+          "invite_code": {
+            "title": "Invite Code",
+            "type": "string"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "invite_code",
+          "expected_version"
+        ],
+        "title": "SetSeasonInviteIn",
+        "type": "object"
+      },
+      "ScheduleImportBlockerOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "count"
+        ],
+        "title": "ScheduleImportBlockerOut",
+        "type": "object"
+      },
+      "ScheduleImportReadinessOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "division_count": {
+            "title": "Division Count",
+            "type": "integer"
+          },
+          "team_count": {
+            "title": "Team Count",
+            "type": "integer"
+          },
+          "period_count": {
+            "title": "Period Count",
+            "type": "integer"
+          },
+          "venue_count": {
+            "title": "Venue Count",
+            "type": "integer"
+          },
+          "open_grid_row_count": {
+            "title": "Open Grid Row Count",
+            "type": "integer"
+          },
+          "existing_game_count": {
+            "title": "Existing Game Count",
+            "type": "integer"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleImportBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_version",
+          "ready",
+          "division_count",
+          "team_count",
+          "period_count",
+          "venue_count",
+          "open_grid_row_count",
+          "existing_game_count",
+          "blockers"
+        ],
+        "title": "ScheduleImportReadinessOut",
+        "type": "object"
+      },
       "ImportIssueOut": {
         "properties": {
           "severity": {
@@ -1251,6 +5679,196 @@
         "title": "ImportIssueOut",
         "type": "object"
       },
+      "ScheduleImportGamePreviewOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "division_code": {
+            "title": "Division Code",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "group_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Code"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "stage_name": {
+            "title": "Stage Name",
+            "type": "string"
+          },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
+          "home_slot_code": {
+            "title": "Home Slot Code",
+            "type": "string"
+          },
+          "home_slot_label": {
+            "title": "Home Slot Label",
+            "type": "string"
+          },
+          "away_slot_code": {
+            "title": "Away Slot Code",
+            "type": "string"
+          },
+          "away_slot_label": {
+            "title": "Away Slot Label",
+            "type": "string"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "period_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Code"
+          },
+          "period_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Name"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "venue_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Code"
+          },
+          "venue_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Name"
+          },
+          "cell": {
+            "title": "Cell",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "code",
+          "division_code",
+          "division_name",
+          "group_code",
+          "stage",
+          "stage_name",
+          "round_number",
+          "home_slot_code",
+          "home_slot_label",
+          "away_slot_code",
+          "away_slot_label",
+          "date",
+          "period_code",
+          "period_name",
+          "start_time",
+          "venue_code",
+          "venue_name",
+          "cell"
+        ],
+        "title": "ScheduleImportGamePreviewOut",
+        "type": "object"
+      },
+      "ScheduleImportGroupPreviewOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "division_code": {
+            "title": "Division Code",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "division_code",
+          "division_name",
+          "code",
+          "name",
+          "sort_order"
+        ],
+        "title": "ScheduleImportGroupPreviewOut",
+        "type": "object"
+      },
       "ScheduleImportOut": {
         "properties": {
           "id": {
@@ -1276,9 +5894,7 @@
             "type": "string"
           },
           "summary": {
-            "additionalProperties": true,
-            "title": "Summary",
-            "type": "object"
+            "$ref": "#/components/schemas/ScheduleImportSummaryOut"
           },
           "issues": {
             "items": {
@@ -1300,29 +5916,1486 @@
         "title": "ScheduleImportOut",
         "type": "object"
       },
+      "ScheduleImportPrerequisitesOut": {
+        "properties": {
+          "division_count": {
+            "title": "Division Count",
+            "type": "integer"
+          },
+          "team_count": {
+            "title": "Team Count",
+            "type": "integer"
+          },
+          "period_count": {
+            "title": "Period Count",
+            "type": "integer"
+          },
+          "venue_count": {
+            "title": "Venue Count",
+            "type": "integer"
+          },
+          "open_grid_row_count": {
+            "title": "Open Grid Row Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "division_count",
+          "team_count",
+          "period_count",
+          "venue_count",
+          "open_grid_row_count"
+        ],
+        "title": "ScheduleImportPrerequisitesOut",
+        "type": "object"
+      },
+      "ScheduleImportSlotPreviewOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "division_code": {
+            "title": "Division Code",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "group_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Code"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "required": [
+          "action",
+          "division_code",
+          "division_name",
+          "group_code",
+          "code",
+          "label",
+          "seed"
+        ],
+        "title": "ScheduleImportSlotPreviewOut",
+        "type": "object"
+      },
+      "ScheduleImportSummaryOut": {
+        "properties": {
+          "existing_game_count": {
+            "title": "Existing Game Count",
+            "type": "integer"
+          },
+          "new_group_count": {
+            "title": "New Group Count",
+            "type": "integer"
+          },
+          "referenced_group_count": {
+            "title": "Referenced Group Count",
+            "type": "integer"
+          },
+          "new_slot_count": {
+            "title": "New Slot Count",
+            "type": "integer"
+          },
+          "referenced_slot_count": {
+            "title": "Referenced Slot Count",
+            "type": "integer"
+          },
+          "new_game_count": {
+            "title": "New Game Count",
+            "type": "integer"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleImportGroupPreviewOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleImportSlotPreviewOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "games": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleImportGamePreviewOut"
+            },
+            "title": "Games",
+            "type": "array"
+          },
+          "prerequisites": {
+            "$ref": "#/components/schemas/ScheduleImportPrerequisitesOut"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "warning_count": {
+            "title": "Warning Count",
+            "type": "integer"
+          },
+          "confirmed_season_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Season Version"
+          },
+          "created_group_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Group Ids"
+          },
+          "created_slot_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Slot Ids"
+          },
+          "created_game_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Game Ids"
+          },
+          "rolled_back_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rolled Back At"
+          },
+          "rolled_back_season_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rolled Back Season Version"
+          }
+        },
+        "required": [
+          "existing_game_count",
+          "new_group_count",
+          "referenced_group_count",
+          "new_slot_count",
+          "referenced_slot_count",
+          "new_game_count",
+          "groups",
+          "slots",
+          "games",
+          "prerequisites",
+          "error_count",
+          "warning_count"
+        ],
+        "title": "ScheduleImportSummaryOut",
+        "type": "object"
+      },
       "ConfirmScheduleImportIn": {
         "properties": {
           "expected_season_version": {
             "title": "Expected Season Version",
             "type": "integer"
+          }
+        },
+        "required": [
+          "expected_season_version"
+        ],
+        "title": "ConfirmScheduleImportIn",
+        "type": "object"
+      },
+      "ScheduleImportResetPreviewOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
           },
-          "leader_adjustable_by_game": {
-            "additionalProperties": {
-              "type": "boolean"
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "confirmed_batch_count": {
+            "title": "Confirmed Batch Count",
+            "type": "integer"
+          },
+          "game_count": {
+            "title": "Game Count",
+            "type": "integer"
+          },
+          "slot_count": {
+            "title": "Slot Count",
+            "type": "integer"
+          },
+          "group_count": {
+            "title": "Group Count",
+            "type": "integer"
+          },
+          "batch_ids": {
+            "items": {
+              "type": "string"
             },
-            "title": "Leader Adjustable By Game",
-            "type": "object"
+            "title": "Batch Ids",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleImportBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "season_version",
+          "eligible",
+          "confirmed_batch_count",
+          "game_count",
+          "slot_count",
+          "group_count",
+          "batch_ids",
+          "blockers"
+        ],
+        "title": "ScheduleImportResetPreviewOut",
+        "type": "object"
+      },
+      "ScheduleImportResetResultOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "rolled_back_at": {
+            "format": "date-time",
+            "title": "Rolled Back At",
+            "type": "string"
+          },
+          "game_count": {
+            "title": "Game Count",
+            "type": "integer"
+          },
+          "slot_count": {
+            "title": "Slot Count",
+            "type": "integer"
+          },
+          "group_count": {
+            "title": "Group Count",
+            "type": "integer"
+          },
+          "batch_count": {
+            "title": "Batch Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_version",
+          "rolled_back_at",
+          "game_count",
+          "slot_count",
+          "group_count",
+          "batch_count"
+        ],
+        "title": "ScheduleImportResetResultOut",
+        "type": "object"
+      },
+      "ScheduleImportResetIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
           }
         },
         "required": [
           "expected_season_version",
-          "leader_adjustable_by_game"
+          "season_name"
         ],
-        "title": "ConfirmScheduleImportIn",
+        "title": "ScheduleImportResetIn",
+        "type": "object"
+      },
+      "MobileAdminTeamOptionOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "division_id",
+          "division_name"
+        ],
+        "title": "MobileAdminTeamOptionOut",
+        "type": "object"
+      },
+      "PeriodOptionOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "start_time"
+        ],
+        "title": "PeriodOptionOut",
+        "type": "object"
+      },
+      "ScheduleOptionsOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodOptionOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/VenueOptionOut"
+            },
+            "title": "Venues",
+            "type": "array"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/MobileAdminTeamOptionOut"
+            },
+            "title": "Teams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "periods",
+          "venues",
+          "teams"
+        ],
+        "title": "ScheduleOptionsOut",
+        "type": "object"
+      },
+      "VenueOptionOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "title": "VenueOptionOut",
+        "type": "object"
+      },
+      "MobileAdminErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "MobileAdminErrorOut",
+        "type": "object"
+      },
+      "AdminGameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "period_name": {
+            "title": "Period Name",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "venue_id": {
+            "format": "uuid",
+            "title": "Venue Id",
+            "type": "string"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "leader_adjustable": {
+            "title": "Leader Adjustable",
+            "type": "boolean"
+          },
+          "active_reschedule_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Reschedule Request Id"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "division_id",
+          "division_name",
+          "division_gender",
+          "date",
+          "period_id",
+          "period_name",
+          "start_time",
+          "venue_id",
+          "venue_name",
+          "home_team_id",
+          "away_team_id",
+          "home_name",
+          "away_name",
+          "home_score",
+          "away_score",
+          "status",
+          "stage",
+          "leader_adjustable",
+          "active_reschedule_request_id",
+          "version"
+        ],
+        "title": "AdminGameOut",
+        "type": "object"
+      },
+      "UpdateAdminGameIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "venue_id": {
+            "format": "uuid",
+            "title": "Venue Id",
+            "type": "string"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "leader_adjustable": {
+            "title": "Leader Adjustable",
+            "type": "boolean"
+          },
+          "cancel_active_request": {
+            "default": false,
+            "title": "Cancel Active Request",
+            "type": "boolean"
+          },
+          "override_rules": {
+            "default": false,
+            "title": "Override Rules",
+            "type": "boolean"
+          },
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version",
+          "date",
+          "period_id",
+          "venue_id",
+          "home_team_id",
+          "away_team_id",
+          "home_score",
+          "away_score",
+          "status",
+          "leader_adjustable"
+        ],
+        "title": "UpdateAdminGameIn",
+        "type": "object"
+      },
+      "GameMediaAssetOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "game_code": {
+            "title": "Game Code",
+            "type": "string"
+          },
+          "game_label": {
+            "title": "Game Label",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "SCORESHEET",
+              "GROUP_PHOTO",
+              "GAME_PHOTO"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "content_url": {
+            "title": "Content Url",
+            "type": "string"
+          },
+          "original_filename": {
+            "title": "Original Filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "scoresheet_complete_confirmed": {
+            "title": "Scoresheet Complete Confirmed",
+            "type": "boolean"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "review_note": {
+            "title": "Review Note",
+            "type": "string"
+          },
+          "uploaded_by": {
+            "title": "Uploaded By",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "game_id",
+          "game_code",
+          "game_label",
+          "kind",
+          "content_url",
+          "original_filename",
+          "mime_type",
+          "byte_size",
+          "width",
+          "height",
+          "sort_order",
+          "scoresheet_complete_confirmed",
+          "review_status",
+          "review_note",
+          "uploaded_by",
+          "created_at",
+          "version"
+        ],
+        "title": "GameMediaAssetOut",
+        "type": "object"
+      },
+      "GameMediaErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "GameMediaErrorOut",
+        "type": "object"
+      },
+      "ReviewGameMediaIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "approve": {
+            "title": "Approve",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "approve"
+        ],
+        "title": "ReviewGameMediaIn",
+        "type": "object"
+      },
+      "DeleteGameMediaIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "DeleteGameMediaIn",
+        "type": "object"
+      },
+      "ConfirmationOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "response": {
+            "title": "Response",
+            "type": "string"
+          },
+          "responded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded At"
+          }
+        },
+        "required": [
+          "id",
+          "team_id",
+          "team_name",
+          "purpose",
+          "response",
+          "responded_at"
+        ],
+        "title": "ConfirmationOut",
+        "type": "object"
+      },
+      "RescheduleGameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "leader_adjustable": {
+            "title": "Leader Adjustable",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "division_name",
+          "division_gender",
+          "group_name",
+          "date",
+          "start_time",
+          "venue_name",
+          "home_name",
+          "away_name",
+          "leader_adjustable",
+          "status",
+          "version"
+        ],
+        "title": "RescheduleGameOut",
+        "type": "object"
+      },
+      "RescheduleRequestOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "request_type": {
+            "title": "Request Type",
+            "type": "string"
+          },
+          "request_type_label": {
+            "title": "Request Type Label",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "requester_team_id": {
+            "format": "uuid",
+            "title": "Requester Team Id",
+            "type": "string"
+          },
+          "requester_team_name": {
+            "title": "Requester Team Name",
+            "type": "string"
+          },
+          "game": {
+            "$ref": "#/components/schemas/RescheduleGameOut"
+          },
+          "original_date": {
+            "format": "date",
+            "title": "Original Date",
+            "type": "string"
+          },
+          "original_start_time": {
+            "title": "Original Start Time",
+            "type": "string"
+          },
+          "original_venue_name": {
+            "title": "Original Venue Name",
+            "type": "string"
+          },
+          "original_home_name": {
+            "title": "Original Home Name",
+            "type": "string"
+          },
+          "original_away_name": {
+            "title": "Original Away Name",
+            "type": "string"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          },
+          "target_period_id": {
+            "format": "uuid",
+            "title": "Target Period Id",
+            "type": "string"
+          },
+          "target_period_name": {
+            "title": "Target Period Name",
+            "type": "string"
+          },
+          "target_start_time": {
+            "title": "Target Start Time",
+            "type": "string"
+          },
+          "target_venue_id": {
+            "format": "uuid",
+            "title": "Target Venue Id",
+            "type": "string"
+          },
+          "target_venue_name": {
+            "title": "Target Venue Name",
+            "type": "string"
+          },
+          "submit_deadline": {
+            "format": "date-time",
+            "title": "Submit Deadline",
+            "type": "string"
+          },
+          "confirmation_deadline": {
+            "format": "date-time",
+            "title": "Confirmation Deadline",
+            "type": "string"
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmationOut"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "is_terminal": {
+            "title": "Is Terminal",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          }
+        },
+        "required": [
+          "id",
+          "request_type",
+          "request_type_label",
+          "status",
+          "status_label",
+          "requester_team_id",
+          "requester_team_name",
+          "game",
+          "original_date",
+          "original_start_time",
+          "original_venue_name",
+          "original_home_name",
+          "original_away_name",
+          "target_date",
+          "target_period_id",
+          "target_period_name",
+          "target_start_time",
+          "target_venue_id",
+          "target_venue_name",
+          "submit_deadline",
+          "confirmation_deadline",
+          "confirmations",
+          "actions",
+          "is_terminal",
+          "version",
+          "created_at",
+          "decided_at"
+        ],
+        "title": "RescheduleRequestOut",
+        "type": "object"
+      },
+      "RescheduleErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "RescheduleErrorOut",
+        "type": "object"
+      },
+      "CreateRescheduleIn": {
+        "properties": {
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "expected_game_version": {
+            "title": "Expected Game Version",
+            "type": "integer"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          },
+          "target_period_id": {
+            "format": "uuid",
+            "title": "Target Period Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id",
+          "expected_game_version",
+          "target_date",
+          "target_period_id"
+        ],
+        "title": "CreateRescheduleIn",
+        "type": "object"
+      },
+      "RescheduleTargetOut": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "period_code": {
+            "title": "Period Code",
+            "type": "string"
+          },
+          "period_name": {
+            "title": "Period Name",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "preview_venue_id": {
+            "format": "uuid",
+            "title": "Preview Venue Id",
+            "type": "string"
+          },
+          "preview_venue_name": {
+            "title": "Preview Venue Name",
+            "type": "string"
+          },
+          "request_type": {
+            "title": "Request Type",
+            "type": "string"
+          },
+          "submit_deadline": {
+            "format": "date-time",
+            "title": "Submit Deadline",
+            "type": "string"
+          },
+          "confirmation_deadline": {
+            "format": "date-time",
+            "title": "Confirmation Deadline",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "period_id",
+          "period_code",
+          "period_name",
+          "start_time",
+          "preview_venue_id",
+          "preview_venue_name",
+          "request_type",
+          "submit_deadline",
+          "confirmation_deadline"
+        ],
+        "title": "RescheduleTargetOut",
+        "type": "object"
+      },
+      "VersionedResponseIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "accept": {
+            "title": "Accept",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version",
+          "accept"
+        ],
+        "title": "VersionedResponseIn",
+        "type": "object"
+      },
+      "RescheduleVoterTeamOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "division_name",
+          "group_name"
+        ],
+        "title": "RescheduleVoterTeamOut",
+        "type": "object"
+      },
+      "AdminDecisionIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "selected_team_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Team Ids"
+          }
+        },
+        "required": [
+          "expected_version",
+          "action"
+        ],
+        "title": "AdminDecisionIn",
+        "type": "object"
+      },
+      "GameMediaCollectionOut": {
+        "properties": {
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "can_upload": {
+            "title": "Can Upload",
+            "type": "boolean"
+          },
+          "can_review": {
+            "title": "Can Review",
+            "type": "boolean"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/GameMediaAssetOut"
+            },
+            "title": "Assets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "game_id",
+          "can_upload",
+          "can_review",
+          "assets"
+        ],
+        "title": "GameMediaCollectionOut",
         "type": "object"
       }
     },
     "securitySchemes": {
+      "MiniAppBearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      },
       "AdminSessionAuth": {
         "type": "apiKey",
         "in": "cookie",

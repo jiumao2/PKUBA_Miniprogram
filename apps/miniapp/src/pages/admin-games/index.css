@@ -1,0 +1,9 @@
+.admin-games-page { overflow-x: hidden; }
+.admin-division-tabs { width: 100%; margin-top: 28rpx; border-bottom: 1rpx solid #cfc9c0; white-space: nowrap; }
+.admin-division-row { display: inline-flex; min-width: 100%; }
+.admin-division-tab { position: relative; padding: 18rpx 25rpx 20rpx; color: #6f6b65; font-size: 29rpx; font-weight: 780; }
+.admin-division-tab::after { position: absolute; right: 25rpx; bottom: -1rpx; left: 25rpx; height: 5rpx; background: transparent; content: ""; }
+.admin-division-tab.is-active { color: #171614; }
+.admin-division-tab.is-active::after { background: #272421; }
+.admin-division-tab.is-active.is-women::after { background: #c91f26; }
+.admin-games-page .game-timeline { margin-top: 28rpx; }

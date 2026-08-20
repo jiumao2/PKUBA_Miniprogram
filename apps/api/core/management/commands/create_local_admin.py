@@ -1,3 +1,4 @@
+import os
 from getpass import getpass
 
 from django.contrib.auth.password_validation import validate_password
@@ -12,11 +13,19 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("username")
-        parser.add_argument("--display-name", default="本地超级管理员")
+        parser.add_argument(
+            "--password-env",
+            help="Read the password from this environment variable instead of prompting.",
+        )
 
     def handle(self, *args, **options):
-        password = getpass("Password: ")
-        confirmation = getpass("Password (again): ")
+        password_env = options.get("password_env")
+        if password_env:
+            password = os.getenv(password_env, "")
+            confirmation = password
+        else:
+            password = getpass("Password: ")
+            confirmation = getpass("Password (again): ")
         if not password or password != confirmation:
             raise CommandError("两次密码不一致或密码为空。")
         username = options["username"].strip()
@@ -27,7 +36,6 @@ class Command(BaseCommand):
             validate_password(password, user=account)
         except ValidationError as error:
             raise CommandError("；".join(error.messages)) from error
-        account.display_name = options["display_name"].strip()
         account.role = Account.Role.SUPERADMIN
         account.is_staff = True
         account.is_superuser = True

@@ -1,88 +1,204 @@
+.home-page {
+  padding-top: 18rpx;
+}
+
 .hero {
+  position: relative;
   display: flex;
   align-items: center;
-  min-height: 210rpx;
-  padding: 24rpx 8rpx 32rpx;
-}
-
-.ball-mark {
-  position: relative;
-  width: 124rpx;
-  height: 124rpx;
-  flex: 0 0 auto;
-  margin-right: 28rpx;
+  justify-content: space-between;
+  min-height: 236rpx;
+  padding: 18rpx 0 30rpx;
+  border-bottom: 2rpx solid #272421;
   overflow: hidden;
-  border: 9rpx solid #c91f26;
-  border-radius: 50%;
-  transform: rotate(-10deg);
 }
 
-.ball-line {
-  position: absolute;
-  border: 6rpx solid #c91f26;
-  border-radius: 50%;
-}
-
-.line-one {
-  width: 110rpx;
-  height: 190rpx;
-  left: -64rpx;
-  top: -38rpx;
-}
-
-.line-two {
+.association-logo {
   width: 190rpx;
-  height: 72rpx;
-  left: -34rpx;
-  top: 46rpx;
+  height: 190rpx;
+  flex: 0 0 auto;
+  margin-left: 20rpx;
+  animation: hero-mark-in 420ms ease-out both;
 }
 
-.hero-subtitle {
+.hero-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.hero-year,
+.hero-title {
   display: block;
-  margin-top: 12rpx;
-  color: #6f6b65;
-  font-size: 24rpx;
 }
 
-.next-game {
-  padding: 34rpx 32rpx;
-  border-radius: 24rpx;
-  color: #fff;
-  background: #191715;
+.hero-year {
+  color: #c91f26;
+  font-size: 30rpx;
+  font-weight: 850;
+  letter-spacing: 3rpx;
+  animation: hero-copy-in 360ms ease-out both;
 }
 
-.next-label {
+.hero-title {
+  margin-top: 6rpx;
+  font-size: 68rpx;
+  font-weight: 950;
+  letter-spacing: -4rpx;
+  line-height: 1.08;
+  animation: hero-copy-in 420ms 40ms ease-out both;
+}
+
+.hero-rule {
+  width: 210rpx;
+  height: 5rpx;
+  margin-top: 24rpx;
+  background: #d9d4cc;
+}
+
+.hero-rule-accent {
+  width: 74rpx;
+  height: 100%;
+  background: #c91f26;
+}
+
+@keyframes hero-copy-in {
+  from {
+    opacity: 0;
+    transform: translateY(10rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-mark-in {
+  from {
+    opacity: 0;
+    transform: translateX(10rpx) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.matchday {
+  padding: 40rpx 0 8rpx;
+  border-bottom: 1rpx solid #d9d4cc;
+}
+
+.matchday-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-kicker {
   display: block;
   margin-bottom: 8rpx;
-  color: #e58e91;
-  font-size: 22rpx;
-  font-weight: 700;
-  letter-spacing: 3rpx;
+  color: #c91f26;
+  font-size: 26rpx;
+  font-weight: 750;
+  letter-spacing: 2rpx;
 }
 
-.next-date,
-.next-venue {
+.matchday-title {
   display: block;
-  color: #c8c2ba;
-  font-size: 23rpx;
+  font-size: 40rpx;
+  font-weight: 800;
 }
 
-.next-matchup {
+.game-count {
+  color: #6f6b65;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.matchday-games {
+  margin-top: 24rpx;
+}
+
+.matchday-game {
+  position: relative;
   display: grid;
-  grid-template-columns: 1fr 66rpx 1fr;
+  grid-template-columns: 118rpx minmax(0, 1fr) 86rpx;
+  gap: 18rpx;
   align-items: center;
-  gap: 10rpx;
-  margin: 34rpx 0;
-  font-size: 34rpx;
-  font-weight: 780;
-  text-align: center;
+  min-height: 116rpx;
+  padding: 18rpx 8rpx 18rpx 22rpx;
+  border-bottom: 1rpx solid #e0dbd3;
+  box-sizing: border-box;
 }
 
-.next-vs {
-  color: #e58e91;
-  font-size: 22rpx;
+.matchday-game::before,
+.identity-line::before {
+  position: absolute;
+  left: 0;
+  top: 22rpx;
+  bottom: 22rpx;
+  width: 5rpx;
+  content: "";
 }
 
-.next-venue {
-  text-align: center;
+.gender-men::before {
+  background: #34312e;
+}
+
+.gender-women::before {
+  background: #c91f26;
+}
+
+.time-column text,
+.game-teams text {
+  display: block;
+}
+
+.game-time {
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.game-place {
+  margin-top: 6rpx;
+  color: #77716a;
+  font-size: 26rpx;
+}
+
+.team-name {
+  overflow: hidden;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.55;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.division-label {
+  justify-self: end;
+  padding: 5rpx 8rpx;
+  border: 1rpx solid #bdb7ae;
+  color: #494540;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.text-button {
+  width: auto;
+  margin: 22rpx 0 16rpx;
+  padding: 0;
+  color: #c91f26;
+  background: transparent;
+  font-size: 28rpx;
+  font-weight: 750;
+  line-height: 1.8;
+  text-align: left;
+}
+
+.text-button::after {
+  border: 0;
+}
+
+.empty-matchday {
+  padding-bottom: 20rpx;
 }

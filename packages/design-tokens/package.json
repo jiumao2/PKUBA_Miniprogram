@@ -6,8 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./tokens.css": "./src/tokens.css",
-    "./logo-full.svg": "./src/assets/logo-full.svg",
-    "./logo-mark.svg": "./src/assets/logo-mark.svg"
+    "./pkuba-logo.png": "./src/assets/pkuba-logo.png"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

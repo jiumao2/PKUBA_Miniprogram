@@ -4,6 +4,7 @@ param()
 . (Join-Path $PSScriptRoot 'lib.ps1')
 $root = Get-PkubaRoot
 
+Invoke-PkubaCompose build api
 Invoke-PkubaCompose up -d db
 Invoke-PkubaCompose run --rm api ruff check .
 Invoke-PkubaCompose run --rm api python manage.py makemigrations --check --dry-run

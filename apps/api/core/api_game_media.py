@@ -1,0 +1,336 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+from urllib.parse import quote
+from uuid import UUID
+
+from django.core.files.storage import default_storage
+from django.http import FileResponse, HttpRequest
+from ninja import File, Form, Router, Schema, Status
+from ninja.files import UploadedFile
+
+from core.api_security import admin_session_auth, miniapp_bearer_auth
+from core.models import Game, GameMediaAsset
+from core.services.game_media import (
+    GameMediaError,
+    asset_from_ticket,
+    delete_game_media,
+    issue_media_ticket,
+    media_permissions,
+    replace_game_media,
+    review_game_media,
+    upload_game_media,
+)
+
+router = Router(tags=["game-media"])
+admin_router = Router(tags=["admin-game-media"], auth=admin_session_auth)
+
+
+class GameMediaErrorOut(Schema):
+    code: str
+    message: str
+
+
+class GameMediaAssetOut(Schema):
+    id: UUID
+    game_id: UUID
+    game_code: str
+    game_label: str
+    kind: Literal["SCORESHEET", "GROUP_PHOTO", "GAME_PHOTO"]
+    content_url: str
+    original_filename: str
+    mime_type: str
+    byte_size: int
+    width: int
+    height: int
+    sort_order: int
+    scoresheet_complete_confirmed: bool
+    review_status: str
+    review_note: str
+    uploaded_by: str
+    created_at: datetime
+    version: int
+
+
+class GameMediaCollectionOut(Schema):
+    game_id: UUID
+    can_upload: bool
+    can_review: bool
+    assets: list[GameMediaAssetOut]
+
+
+class ReviewGameMediaIn(Schema):
+    expected_version: int
+    approve: bool
+    note: str = ""
+
+
+class DeleteGameMediaIn(Schema):
+    expected_version: int
+
+
+def _error_response(error: GameMediaError):
+    if error.code in {"MEDIA_UPLOAD_FORBIDDEN", "ADMIN_REQUIRED"}:
+        status = 403
+    elif error.code in {"MEDIA_NOT_FOUND"}:
+        status = 404
+    elif error.code in {"DUPLICATE_MEDIA", "VERSION_CONFLICT"}:
+        status = 409
+    elif error.code == "FILE_TOO_LARGE":
+        status = 413
+    else:
+        status = 400
+    return Status(status, {"code": error.code, "message": str(error)})
+
+
+def _game_queryset():
+    return Game.objects.select_related(
+        "season",
+        "division",
+        "home_team",
+        "away_team",
+        "home_slot",
+        "away_slot",
+    )
+
+
+def _asset_queryset():
+    return GameMediaAsset.objects.filter(deleted_at__isnull=True).select_related(
+        "game",
+        "game__division",
+        "game__home_team",
+        "game__away_team",
+        "game__home_slot",
+        "game__away_slot",
+        "uploaded_by",
+    )
+
+
+def _serialize_asset(asset: GameMediaAsset) -> dict[str, object]:
+    ticket = quote(issue_media_ticket(asset), safe="")
+    return {
+        "id": asset.id,
+        "game_id": asset.game_id,
+        "game_code": asset.game.code,
+        "game_label": (
+            f"{asset.game.division.name} · "
+            f"{asset.game.home_display} vs {asset.game.away_display}"
+        ),
+        "kind": asset.kind,
+        "content_url": f"/api/v1/game-media/assets/{asset.id}/content?ticket={ticket}",
+        "original_filename": asset.original_filename,
+        "mime_type": asset.mime_type,
+        "byte_size": asset.byte_size,
+        "width": asset.width,
+        "height": asset.height,
+        "sort_order": asset.sort_order,
+        "scoresheet_complete_confirmed": asset.scoresheet_complete_confirmed,
+        "review_status": asset.review_status,
+        "review_note": asset.review_note,
+        "uploaded_by": asset.uploaded_by.username,
+        "created_at": asset.created_at,
+        "version": asset.version,
+    }
+
+
+@router.get(
+    "/games/{game_id}",
+    auth=miniapp_bearer_auth,
+    response={200: GameMediaCollectionOut, 403: GameMediaErrorOut, 404: GameMediaErrorOut},
+)
+def list_game_media(request: HttpRequest, game_id: UUID):
+    game = _game_queryset().filter(id=game_id, season__is_public=True).first()
+    if game is None:
+        return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
+    permissions = media_permissions(request.auth, game)
+    if not permissions.can_view:
+        return Status(
+            403,
+            {"code": "MEDIA_VIEW_FORBIDDEN", "message": "仅当季领队和管理员可查看比赛资料。"},
+        )
+    assets = _asset_queryset().filter(game=game)
+    return {
+        "game_id": game.id,
+        "can_upload": permissions.can_upload,
+        "can_review": permissions.can_review,
+        "assets": [_serialize_asset(asset) for asset in assets],
+    }
+
+
+@router.post(
+    "/games/{game_id}",
+    auth=miniapp_bearer_auth,
+    response={
+        201: GameMediaAssetOut,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+        413: GameMediaErrorOut,
+    },
+)
+def create_game_media(
+    request: HttpRequest,
+    game_id: UUID,
+    kind: Form[str],
+    scoresheet_complete_confirmed: Form[bool],
+    image: File[UploadedFile],
+):
+    game = _game_queryset().filter(id=game_id, season__is_public=True).first()
+    if game is None:
+        return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
+    try:
+        asset = upload_game_media(
+            actor=request.auth,
+            game=game,
+            kind=kind,
+            scoresheet_complete_confirmed=scoresheet_complete_confirmed,
+            uploaded_file=image,
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
+
+
+@router.get(
+    "/assets/{asset_id}/content",
+    response={200: None, 400: GameMediaErrorOut, 404: GameMediaErrorOut},
+)
+def game_media_content(request: HttpRequest, asset_id: UUID, ticket: str):
+    del request
+    try:
+        asset = asset_from_ticket(ticket)
+    except GameMediaError as error:
+        return Status(400, {"code": error.code, "message": str(error)})
+    if asset.id != asset_id or not default_storage.exists(asset.file_key):
+        return Status(404, {"code": "MEDIA_NOT_FOUND", "message": "图片不存在。"})
+    response = FileResponse(
+        default_storage.open(asset.file_key, "rb"),
+        content_type=asset.mime_type,
+    )
+    encoded_name = quote(asset.original_filename)
+    response["Content-Disposition"] = f"inline; filename*=UTF-8''{encoded_name}"
+    response["Cache-Control"] = "private, max-age=300"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@router.post(
+    "/assets/{asset_id}/replace",
+    auth=miniapp_bearer_auth,
+    response={
+        201: GameMediaAssetOut,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+        413: GameMediaErrorOut,
+    },
+)
+def replace_miniapp_game_media(
+    request: HttpRequest,
+    asset_id: UUID,
+    expected_version: Form[int],
+    scoresheet_complete_confirmed: Form[bool],
+    image: File[UploadedFile],
+):
+    try:
+        asset = replace_game_media(
+            actor=request.auth,
+            asset_id=asset_id,
+            expected_version=expected_version,
+            scoresheet_complete_confirmed=scoresheet_complete_confirmed,
+            uploaded_file=image,
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
+
+
+@admin_router.get("/", response=list[GameMediaAssetOut])
+def list_admin_game_media(
+    request: HttpRequest,
+    review_status: str | None = None,
+    kind: str | None = None,
+):
+    del request
+    assets = _asset_queryset().filter(game__season__is_public=True).order_by(
+        "review_status",
+        "-created_at",
+    )
+    if review_status:
+        assets = assets.filter(review_status=review_status)
+    if kind:
+        assets = assets.filter(kind=kind)
+    return [_serialize_asset(asset) for asset in assets]
+
+
+@admin_router.post(
+    "/{asset_id}/replace",
+    response={
+        201: GameMediaAssetOut,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+        413: GameMediaErrorOut,
+    },
+)
+def replace_admin_game_media(
+    request: HttpRequest,
+    asset_id: UUID,
+    expected_version: Form[int],
+    scoresheet_complete_confirmed: Form[bool],
+    image: File[UploadedFile],
+):
+    try:
+        asset = replace_game_media(
+            actor=request.auth,
+            asset_id=asset_id,
+            expected_version=expected_version,
+            scoresheet_complete_confirmed=scoresheet_complete_confirmed,
+            uploaded_file=image,
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
+
+
+@admin_router.post(
+    "/{asset_id}/review",
+    response={
+        200: GameMediaAssetOut,
+        400: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+    },
+)
+def review_admin_game_media(request: HttpRequest, asset_id: UUID, payload: ReviewGameMediaIn):
+    try:
+        asset = review_game_media(
+            actor=request.auth,
+            asset_id=asset_id,
+            expected_version=payload.expected_version,
+            approve=payload.approve,
+            note=payload.note,
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    return _serialize_asset(_asset_queryset().get(id=asset.id))
+
+
+@admin_router.delete(
+    "/{asset_id}",
+    response={204: None, 400: GameMediaErrorOut, 404: GameMediaErrorOut, 409: GameMediaErrorOut},
+)
+def delete_admin_game_media(request: HttpRequest, asset_id: UUID, payload: DeleteGameMediaIn):
+    try:
+        delete_game_media(
+            actor=request.auth,
+            asset_id=asset_id,
+            expected_version=payload.expected_version,
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    return Status(204, None)

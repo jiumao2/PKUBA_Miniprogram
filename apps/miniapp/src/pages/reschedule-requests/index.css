@@ -1,0 +1,27 @@
+.request-list { margin-top: 24rpx; }
+.request-card { margin-bottom: 24rpx; padding: 24rpx; border-left: 7rpx solid #272421; background: #faf9f6; }
+.request-card.is-women { border-left-color: #c91f26; background: #fff6f5; }
+.request-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }
+.request-division, .request-teams, .request-status, .request-slot text, .request-requester { display: block; }
+.request-division { color: #6f6b65; font-size: 26rpx; font-weight: 750; }
+.request-teams { margin-top: 7rpx; font-size: 31rpx; font-weight: 900; }
+.request-status { flex: 0 0 auto; padding: 7rpx 12rpx; background: #ebe7e0; font-size: 26rpx; font-weight: 800; }
+.status-approved { color: #2f6349; background: #e7f0ea; }
+.status-rejected, .status-expired, .status-admin_cancelled { color: #96262b; background: #f5e5e5; }
+.request-route { display: grid; grid-template-columns: minmax(0, 1fr) 34rpx minmax(0, 1fr); gap: 10rpx; align-items: center; margin-top: 22rpx; padding-top: 20rpx; border-top: 1rpx solid #ded9d1; }
+.request-arrow { color: #9a958e; font-size: 30rpx; text-align: center; }
+.request-slot-label { color: #7a746d; font-size: 26rpx; }
+.request-slot-main { margin-top: 6rpx; font-size: 27rpx; font-weight: 800; line-height: 1.45; }
+.request-slot-meta { margin-top: 4rpx; color: #6f6b65; font-size: 26rpx; }
+.request-requester { margin-top: 18rpx; color: #6f6b65; font-size: 26rpx; }
+.confirmation-list { display: flex; flex-wrap: wrap; gap: 8rpx; margin-top: 14rpx; }
+.confirmation-item { padding: 6rpx 10rpx; border: 1rpx solid #d4cec5; font-size: 26rpx; }
+.request-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 22rpx; }
+.request-actions button { margin: 0; border-radius: 8rpx; color: #fff; background: #c91f26; font-size: 27rpx; font-weight: 800; }
+.request-actions button::after { border: 0; }
+.request-actions button.outline { color: #2a2724; border: 1rpx solid #948e86; background: transparent; }
+.request-actions button.danger { color: #9b1f25; border: 1rpx solid #ba777a; background: transparent; }
+.voter-panel { margin-top: 22rpx; padding-top: 20rpx; border-top: 1rpx solid #d5d0c8; }
+.voter-title { display: block; margin-bottom: 12rpx; font-size: 28rpx; font-weight: 850; }
+.voter-option { display: flex; align-items: center; min-height: 68rpx; gap: 12rpx; font-size: 27rpx; }
+.voter-empty { color: #6f6b65; font-size: 27rpx; }

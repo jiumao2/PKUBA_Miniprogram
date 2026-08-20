@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev:weapp": "taro build --type weapp --watch",
-    "build:weapp": "taro build --type weapp",
+    "build:weapp": "node ./scripts/build-weapp.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPkubaClient, type Game, type Season } from "@pkuba/api-client";
-import logoUrl from "@pkuba/design-tokens/logo-full.svg";
+import logoUrl from "@pkuba/design-tokens/pkuba-logo.png";
 
-import { formatGameDate, groupGamesByDate } from "./domain";
+import { groupGamesByDate } from "./domain";
+import { ScheduleOverview } from "./ScheduleOverview";
 
 const client = createPkubaClient(import.meta.env.VITE_API_BASE_URL ?? "");
 
@@ -46,7 +47,7 @@ export function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <img className="brand" src={logoUrl} alt="PKUBA 1997" />
+        <img className="brand" src={logoUrl} alt="北大篮协 PKUBA·1997" />
         <nav aria-label="赛事管理导航">
           {navigation.map((item, index) => (
             <button className={index === 0 ? "nav-item active" : "nav-item"} key={item} type="button">
@@ -89,42 +90,7 @@ export function App() {
               <Metric label="领队不可调" value={`${locked} 场`} />
             </section>
 
-            <section className="panel schedule-panel">
-              <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">公开接口实时数据</p>
-                  <h2>近期赛程</h2>
-                </div>
-                <span className="subtle">共 {gameDays.length} 个比赛日</span>
-              </div>
-
-              {gameDays.length === 0 ? (
-                <div className="empty-state">赛季已公开，但尚未安排比赛。</div>
-              ) : (
-                <div className="schedule-table" role="table" aria-label="近期赛程">
-                  {gameDays.slice(0, 4).map((day) => (
-                    <div className="day-group" key={day.date}>
-                      <div className="day-label">{formatGameDate(day.date)}</div>
-                      <div className="day-games">
-                        {day.games.map((game) => (
-                          <div className="game-row" role="row" key={game.id}>
-                            <span className="game-time">{game.start_time}</span>
-                            <span className="game-code">{game.code}</span>
-                            <strong>{game.home_name}</strong>
-                            <span className="versus">vs</span>
-                            <strong>{game.away_name}</strong>
-                            <span className="game-meta">{game.venue_name}</span>
-                            <span className={game.participants_resolved ? "status ready" : "status waiting"}>
-                              {game.participants_resolved ? "已确认" : "待抽签"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+            <ScheduleOverview gameDays={gameDays} />
           </>
         )}
       </main>

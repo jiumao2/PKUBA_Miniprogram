@@ -42,6 +42,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate production Compose template
+        run: >-
+          PKUBA_ENV_FILE=.env.production.example
+          docker compose
+          --project-directory .
+          --env-file .env.production.example
+          -f infra/compose.prod.yml
+          config --quiet
       - uses: actions/setup-node@v4
         with:
           node-version: "24"

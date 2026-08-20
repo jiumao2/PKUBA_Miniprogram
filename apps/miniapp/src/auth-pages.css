@@ -1,0 +1,163 @@
+.auth-flow-page {
+  padding-top: 54rpx;
+}
+
+.auth-kicker,
+.auth-title,
+.auth-intro,
+.auth-panel-title,
+.auth-detail,
+.auth-privacy,
+.picker-division,
+.picker-team,
+.picker-group {
+  display: block;
+}
+
+.auth-kicker {
+  color: #c91f26;
+  font-size: 26rpx;
+  font-weight: 850;
+  letter-spacing: 3rpx;
+}
+
+.auth-title {
+  margin-top: 12rpx;
+  font-size: 48rpx;
+  font-weight: 900;
+  letter-spacing: -2rpx;
+}
+
+.auth-intro {
+  max-width: 620rpx;
+  margin-top: 18rpx;
+  color: #6f6b65;
+  font-size: 28rpx;
+  line-height: 1.65;
+}
+
+.auth-panel {
+  margin-top: 50rpx;
+  padding: 30rpx 0;
+  border-top: 2rpx solid #24211f;
+  border-bottom: 1rpx solid #d9d4cc;
+}
+
+.auth-success-panel {
+  border-top-color: #35654d;
+}
+
+.auth-panel-title {
+  font-size: 31rpx;
+  font-weight: 850;
+}
+
+.auth-detail,
+.auth-privacy {
+  margin-top: 12rpx;
+  color: #6f6b65;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
+.auth-field {
+  min-height: 88rpx;
+  margin-top: 18rpx;
+  padding: 0 22rpx;
+  border: 1rpx solid #cfc9c0;
+  border-radius: 10rpx;
+  background: #faf9f6;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.auth-primary,
+.auth-secondary {
+  margin: 26rpx 0 0;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+  font-weight: 850;
+}
+
+.auth-primary {
+  color: #fff;
+  background: #c91f26;
+}
+
+.auth-secondary {
+  color: #171614;
+  border: 1rpx solid #8f8981;
+  background: transparent;
+}
+
+.auth-primary::after,
+.auth-secondary::after {
+  border: 0;
+}
+
+.auth-picker {
+  margin-top: 22rpx;
+  padding: 22rpx 24rpx;
+  border-left: 8rpx solid;
+}
+
+.auth-step-label {
+  display: block;
+  margin-top: 28rpx;
+  color: #4e4943;
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.auth-step-label.second-step {
+  margin-top: 34rpx;
+}
+
+.compact-picker {
+  min-height: 104rpx;
+}
+
+.team-picker {
+  border-left-color: #8d8780;
+  background: #faf9f6;
+}
+
+.picker-men {
+  border-left-color: #272421;
+  background: #f9f8f5;
+}
+
+.picker-women {
+  border-left-color: #c91f26;
+  background: #fff3f3;
+}
+
+.picker-division {
+  font-size: 26rpx;
+  font-weight: 850;
+}
+
+.picker-team {
+  margin-top: 8rpx;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.picker-group {
+  margin-top: 8rpx;
+  color: #6f6b65;
+  font-size: 26rpx;
+}
+
+.auth-feedback {
+  margin-top: 24rpx;
+  padding: 20rpx 22rpx;
+  border-left: 6rpx solid;
+  font-size: 26rpx;
+  line-height: 1.55;
+}
+
+.auth-error {
+  border-color: #c91f26;
+  background: #f8e9e9;
+}

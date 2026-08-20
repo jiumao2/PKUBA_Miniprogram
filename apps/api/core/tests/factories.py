@@ -128,7 +128,6 @@ def reschedule_setup(*, capacity: int = 3):
             season=target_season,
             account=account,
             team=team,
-            leader_name=account.username,
         )
     admin = Account.objects.create_user(
         username="test-admin",

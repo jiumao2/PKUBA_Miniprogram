@@ -10,13 +10,13 @@ export default defineConfig({
     828: 1.81 / 2,
   },
   sourceRoot: "src",
-  outputRoot: "dist",
+  outputRoot: process.env.PKUBA_MINIAPP_OUTPUT_ROOT ?? "dist",
   framework: "react",
   compiler: "webpack5",
   cache: { enable: true },
   defineConstants: {
     PKUBA_API_BASE_URL: JSON.stringify(
-      process.env.PKUBA_API_BASE_URL ?? "http://127.0.0.1:8000",
+      process.env.PKUBA_API_BASE_URL ?? "http://localhost:8088",
     ),
   },
   mini: {

@@ -1,29 +1,39 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   createAdminClient,
   createPkubaClient,
+  ApiError,
   type AdminAccount,
+  type AdminSeason,
   type Game,
+  type MobileAdminGame,
   type Season,
 } from "@pkuba/api-client";
-import logoUrl from "@pkuba/design-tokens/logo-full.svg";
+import logoUrl from "@pkuba/design-tokens/pkuba-logo.png";
 
-import { formatGameDate, groupGamesByDate } from "./domain";
+import { groupGamesByDate } from "./domain";
 import { AdminAccountsPage } from "./AdminAccountsPage";
 import { LoginScreen } from "./LoginScreen";
-import { ScheduleImportPage } from "./ScheduleImportPage";
+import { MediaReviewPage } from "./MediaReviewPage";
+import { ScheduleEditorPage } from "./ScheduleEditorPage";
+import { ScheduleImportWorkspace } from "./ScheduleImportWorkspace";
+import { ScheduleOverview } from "./ScheduleOverview";
+import { SeasonManagementPage } from "./SeasonManagementPage";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 const client = createPkubaClient(baseUrl);
 const adminClient = createAdminClient(baseUrl);
+type AdminClient = ReturnType<typeof createAdminClient>;
 
 const navigation = [
   { id: "overview", label: "总览", available: true },
-  { id: "season", label: "赛季与组别", available: false },
+  { id: "season", label: "赛季与组别", available: true },
   { id: "teams", label: "球队与名单", available: false },
   { id: "schedule-import", label: "赛程导入", available: true },
+  { id: "schedule-edit", label: "赛程编辑", available: true },
   { id: "draw", label: "抽签映射", available: false },
   { id: "reschedule", label: "调赛处理", available: false },
+  { id: "media", label: "比赛资料", available: true },
   { id: "admins", label: "管理员账户", available: true },
 ] as const;
 
@@ -33,9 +43,14 @@ export function AdminWorkspace() {
   const [account, setAccount] = useState<AdminAccount | null>();
   const [season, setSeason] = useState<Season | null>(null);
   const [games, setGames] = useState<Game[]>([]);
+  const [adminSeasons, setAdminSeasons] = useState<AdminSeason[]>([]);
+  const [selectedAdminSeasonId, setSelectedAdminSeasonId] = useState("");
+  const [adminGames, setAdminGames] = useState<MobileAdminGame[]>([]);
   const [page, setPage] = useState<PageId>("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
 
   const loadPublicData = useCallback(async () => {
     setLoading(true);
@@ -48,10 +63,31 @@ export function AdminWorkspace() {
       setSeason(nextSeason);
       setGames(nextGames);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "无法读取赛事数据");
+      if (reason instanceof ApiError && reason.code === "NO_PUBLIC_SEASON") {
+        setSeason(null);
+        setGames([]);
+      } else {
+        setError(reason instanceof Error ? reason.message : "无法读取赛事数据");
+      }
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const loadAdminData = useCallback(async (preferredSeasonId?: string) => {
+    const nextSeasons = await adminClient.listAdminSeasons();
+    setAdminSeasons(nextSeasons);
+    const selected =
+      nextSeasons.find((item) => item.id === preferredSeasonId) ??
+      nextSeasons.find((item) => item.status === "SETUP") ??
+      nextSeasons[0];
+    if (!selected) {
+      setSelectedAdminSeasonId("");
+      setAdminGames([]);
+      return;
+    }
+    setSelectedAdminSeasonId(selected.id);
+    setAdminGames(await adminClient.listAdminScheduleGames(selected.id));
   }, []);
 
   const refreshPublicData = useCallback(async () => {
@@ -63,9 +99,21 @@ export function AdminWorkspace() {
       setSeason(nextSeason);
       setGames(nextGames);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "无法刷新赛事数据");
+      if (reason instanceof ApiError && reason.code === "NO_PUBLIC_SEASON") {
+        setSeason(null);
+        setGames([]);
+      } else {
+        setError(reason instanceof Error ? reason.message : "无法刷新赛事数据");
+      }
     }
   }, []);
+
+  const refreshWorkspaceData = useCallback(async (preferredSeasonId?: string) => {
+    await Promise.all([
+      refreshPublicData(),
+      loadAdminData(preferredSeasonId ?? selectedAdminSeasonId),
+    ]);
+  }, [loadAdminData, refreshPublicData, selectedAdminSeasonId]);
 
   useEffect(() => {
     adminClient
@@ -78,10 +126,44 @@ export function AdminWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (account) void loadPublicData();
-  }, [account, loadPublicData]);
+    if (account) {
+      void loadPublicData();
+      if (account.role === "SUPERADMIN") {
+        void loadAdminData().catch((reason: unknown) => {
+          setError(reason instanceof Error ? reason.message : "无法读取管理赛季");
+        });
+      } else {
+        setAdminSeasons([]);
+        setSelectedAdminSeasonId("");
+        setAdminGames([]);
+      }
+    }
+  }, [account, loadAdminData, loadPublicData]);
+
+  useEffect(() => {
+    if (
+      account &&
+      account.role !== "SUPERADMIN" &&
+      (["season", "schedule-import", "schedule-edit", "admins"] as PageId[]).includes(page)
+    ) {
+      setPage("overview");
+    }
+  }, [account, page]);
+
+  useEffect(() => {
+    if (!selectedAdminSeasonId) return;
+    void adminClient
+      .listAdminScheduleGames(selectedAdminSeasonId)
+      .then(setAdminGames)
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : "无法读取管理赛程");
+      });
+  }, [selectedAdminSeasonId]);
 
   const gameDays = useMemo(() => groupGamesByDate(games), [games]);
+  const selectedAdminSeason = adminSeasons.find(
+    (item) => item.id === selectedAdminSeasonId,
+  );
 
   if (account === undefined) {
     return <StatePanel title="正在检查登录状态" detail="请稍候。" />;
@@ -94,7 +176,7 @@ export function AdminWorkspace() {
   const locked = games.filter((game) => !game.leader_adjustable).length;
   const canOpenPage = (pageId: PageId, available: boolean) =>
     available &&
-    (!(["schedule-import", "admins"] as PageId[]).includes(pageId) ||
+    (!(["season", "schedule-import", "schedule-edit", "admins"] as PageId[]).includes(pageId) ||
       account.role === "SUPERADMIN");
 
   const handleLogout = async () => {
@@ -105,7 +187,7 @@ export function AdminWorkspace() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <img className="brand" src={logoUrl} alt="PKUBA 1997" />
+        <img className="brand" src={logoUrl} alt="北大篮协 PKUBA·1997" />
         <nav aria-label="赛事管理导航">
           {navigation.map((item) => (
             <button
@@ -117,7 +199,7 @@ export function AdminWorkspace() {
             >
               <span>{item.label}</span>
               {!item.available && <small>待接入</small>}
-              {(["schedule-import", "admins"] as PageId[]).includes(item.id) &&
+              {(["season", "schedule-import", "schedule-edit", "admins"] as PageId[]).includes(item.id) &&
                 account.role !== "SUPERADMIN" && (
                 <small>需超级管理员</small>
               )}
@@ -125,7 +207,7 @@ export function AdminWorkspace() {
           ))}
         </nav>
         <div className="sidebar-account">
-          <strong>{account.display_name || account.username}</strong>
+          <strong>{account.username}</strong>
           <span>{account.role === "SUPERADMIN" ? "超级管理员" : "普通管理员"}</span>
           <button type="button" onClick={() => void handleLogout()}>
             退出登录
@@ -140,18 +222,41 @@ export function AdminWorkspace() {
             <h1>
               {page === "schedule-import"
                 ? "赛程导入"
+                : page === "season"
+                  ? "赛季与组别"
+                : page === "schedule-edit"
+                  ? "赛程编辑"
+                  : page === "media"
+                    ? "比赛资料"
                 : page === "admins"
                   ? "管理员账户"
                   : season?.name ?? "赛事总览"}
             </h1>
           </div>
           <div className="topbar-actions">
+            <button
+              className="account-security-action"
+              type="button"
+              onClick={() => {
+                setPasswordNotice(null);
+                setShowPasswordDialog(true);
+              }}
+            >
+              修改密码
+            </button>
             <span className="environment">本地开发</span>
             <span className="account-role">
               {account.role === "SUPERADMIN" ? "超级管理员" : "普通管理员"}
             </span>
           </div>
         </header>
+
+        {passwordNotice && (
+          <div className="workspace-notice" role="status">
+            <span>{passwordNotice}</span>
+            <button type="button" onClick={() => setPasswordNotice(null)} aria-label="关闭提示">×</button>
+          </div>
+        )}
 
         {page !== "admins" && loading && (
           <StatePanel title="正在读取赛程" detail="数据来自本地 Django API。" />
@@ -163,17 +268,41 @@ export function AdminWorkspace() {
             tone="error"
           />
         )}
-        {!loading && !error && season && page === "schedule-import" && (
-          <ScheduleImportPage
+        {!loading && !error && selectedAdminSeason && page === "schedule-import" && (
+          <ScheduleImportWorkspace
             account={account}
             client={adminClient}
-            games={games}
-            season={season}
-            onConfirmed={refreshPublicData}
+            seasons={adminSeasons}
+            season={selectedAdminSeason}
+            onSeasonChange={setSelectedAdminSeasonId}
+            onDataChanged={refreshWorkspaceData}
+            onOpenEditor={() => setPage("schedule-edit")}
           />
         )}
+        {!loading && !error && page === "season" && account.role === "SUPERADMIN" && (
+          <SeasonManagementPage
+            client={adminClient}
+            seasons={adminSeasons}
+            seasonId={selectedAdminSeasonId}
+            onSeasonChange={setSelectedAdminSeasonId}
+            onDataChanged={refreshWorkspaceData}
+          />
+        )}
+        {!loading && !error && selectedAdminSeason && page === "schedule-edit" && (
+          <ScheduleEditorPage
+            client={adminClient}
+            games={adminGames}
+            seasons={adminSeasons}
+            season={selectedAdminSeason}
+            onSeasonChange={setSelectedAdminSeasonId}
+            onUpdated={refreshWorkspaceData}
+          />
+        )}
+        {!loading && !error && page === "media" && (
+          <MediaReviewPage client={adminClient} />
+        )}
         {page === "admins" && (
-          <AdminAccountsPage account={account} client={adminClient} />
+          <AdminAccountsPage account={account} client={adminClient} season={season} />
         )}
         {!loading && !error && season && page === "overview" && (
           <>
@@ -190,49 +319,113 @@ export function AdminWorkspace() {
           </>
         )}
       </main>
+      {showPasswordDialog && (
+        <PasswordChangeDialog
+          client={adminClient}
+          onClose={() => setShowPasswordDialog(false)}
+          onChanged={(updatedAccount) => {
+            setAccount(updatedAccount);
+            setShowPasswordDialog(false);
+            setPasswordNotice("密码已修改，当前登录保持有效；下次登录请使用新密码。");
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ScheduleOverview({ gameDays }: { gameDays: ReturnType<typeof groupGamesByDate> }) {
+function PasswordChangeDialog({
+  client,
+  onClose,
+  onChanged,
+}: {
+  client: AdminClient;
+  onClose: () => void;
+  onChanged: (account: AdminAccount) => void;
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordAgain, setNewPasswordAgain] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    if (!currentPassword || !newPassword) {
+      setError("请填写当前密码和新密码。");
+      return;
+    }
+    if (newPassword !== newPasswordAgain) {
+      setError("两次输入的新密码不一致。");
+      return;
+    }
+    setBusy(true);
+    try {
+      onChanged(await client.changePassword(currentPassword, newPassword));
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "密码修改失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <section className="panel schedule-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">公开接口实时数据</p>
-          <h2>近期赛程</h2>
+    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="password-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="password-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <p className="eyebrow">账号安全</p>
+            <h2 id="password-dialog-title">修改网页登录密码</h2>
+          </div>
+          <button className="dialog-close" type="button" onClick={onClose} aria-label="关闭">×</button>
         </div>
-        <span className="subtle">共 {gameDays.length} 个比赛日</span>
-      </div>
-      {gameDays.length === 0 ? (
-        <div className="empty-state">赛季已公开，但尚未安排比赛。</div>
-      ) : (
-        <div className="schedule-table" role="table" aria-label="近期赛程">
-          {gameDays.slice(0, 4).map((day) => (
-            <div className="day-group" key={day.date}>
-              <div className="day-label">{formatGameDate(day.date)}</div>
-              <div className="day-games">
-                {day.games.map((game) => (
-                  <div className="game-row" role="row" key={game.id}>
-                    <span className="game-time">{game.start_time}</span>
-                    <span className="game-code">{game.code}</span>
-                    <strong>{game.home_name}</strong>
-                    <span className="versus">vs</span>
-                    <strong>{game.away_name}</strong>
-                    <span className="game-meta">{game.venue_name}</span>
-                    <span
-                      className={game.participants_resolved ? "status ready" : "status waiting"}
-                    >
-                      {game.participants_resolved ? "已确认" : "待抽签"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+        <p className="dialog-detail">首次注册时，初始密码与当时的邀请码相同。修改密码不会改变赛季邀请码。</p>
+        <form className="password-form" onSubmit={(event) => void submit(event)}>
+          <label>
+            当前密码
+            <input
+              autoComplete="current-password"
+              autoFocus
+              type="password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+            />
+          </label>
+          <label>
+            新密码
+            <input
+              autoComplete="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+            />
+          </label>
+          <label>
+            再次输入新密码
+            <input
+              autoComplete="new-password"
+              type="password"
+              value={newPasswordAgain}
+              onChange={(event) => setNewPasswordAgain(event.target.value)}
+            />
+          </label>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <div className="dialog-actions">
+            <button className="dialog-secondary" type="button" onClick={onClose}>取消</button>
+            <button className="primary-action" type="submit" disabled={busy}>
+              {busy ? "正在保存…" : "保存新密码"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 

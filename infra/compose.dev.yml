@@ -25,6 +25,9 @@ services:
       DATABASE_URL: postgresql://pkuba:pkuba@db:5432/pkuba
       DJANGO_DEBUG: "1"
       DJANGO_SECRET_KEY: local-development-only
+      WECHAT_APP_ID: ${WECHAT_APP_ID:-}
+      WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
+      WECHAT_API_BASE_URL: ${WECHAT_API_BASE_URL:-https://api.weixin.qq.com}
       EMAIL_HOST: mailpit
       EMAIL_PORT: "1025"
     command: python manage.py runserver 0.0.0.0:8000

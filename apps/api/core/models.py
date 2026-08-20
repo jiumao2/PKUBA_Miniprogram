@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.hashers import make_password
+from django.contrib.auth.models import AbstractUser, UserManager
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
+from django.db.models.functions import Lower
+from django.utils import timezone
 
 
 class UUIDModel(models.Model):
@@ -17,6 +20,18 @@ class UUIDModel(models.Model):
         abstract = True
 
 
+class AccountManager(UserManager):
+    def _create_user(self, username, email=None, password=None, **extra_fields):
+        if email:
+            raise ValueError("PKUBA accounts do not store email addresses.")
+        if not username:
+            raise ValueError("The username must be set.")
+        user = self.model(username=self.model.normalize_username(username), **extra_fields)
+        user.password = make_password(password)
+        user.save(using=self._db)
+        return user
+
+
 class Account(AbstractUser):
     class Role(models.TextChoices):
         USER = "USER", "普通用户"
@@ -24,9 +39,17 @@ class Account(AbstractUser):
         SUPERADMIN = "SUPERADMIN", "超级管理员"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    display_name = models.CharField(max_length=80, blank=True)
+    first_name = None
+    last_name = None
+    email = None
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.USER)
     version = models.PositiveIntegerField(default=1)
+    objects = AccountManager()
+
+    class Meta(AbstractUser.Meta):
+        constraints = [
+            models.UniqueConstraint(Lower("username"), name="uniq_account_username_ci")
+        ]
 
     @property
     def is_pkuba_admin(self) -> bool:
@@ -61,6 +84,25 @@ class AdminProfile(UUIDModel):
     )
 
 
+class WeChatAuthTicket(UUIDModel):
+    app_id = models.CharField(max_length=64)
+    openid = models.CharField(max_length=128)
+    unionid = models.CharField(max_length=128, blank=True)
+    token_hash = models.CharField(max_length=128, unique=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+
+class MiniAppSession(UUIDModel):
+    account = models.ForeignKey(
+        Account, on_delete=models.CASCADE, related_name="miniapp_sessions"
+    )
+    token_hash = models.CharField(max_length=128, unique=True)
+    expires_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+
 class Season(UUIDModel):
     class Status(models.TextChoices):
         SETUP = "SETUP", "准备中"
@@ -81,6 +123,15 @@ class Season(UUIDModel):
     starts_on = models.DateField()
     ends_on = models.DateField()
     version = models.PositiveIntegerField(default=1)
+    admin_invite_code_hash = models.CharField(max_length=128, blank=True)
+    admin_invite_updated_at = models.DateTimeField(null=True, blank=True)
+    admin_invite_updated_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="updated_season_invites",
+    )
 
     class Meta:
         ordering = ["-year", "name"]
@@ -102,6 +153,9 @@ class Season(UUIDModel):
 
     def save(self, *args, **kwargs):
         self.is_public = self.status in {self.Status.PRE_DRAW_PUBLIC, self.Status.ACTIVE}
+        if not self.admin_invite_code_hash:
+            self.admin_invite_code_hash = make_password("PKUBA1997")
+            self.admin_invite_updated_at = timezone.now()
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -109,9 +163,14 @@ class Season(UUIDModel):
 
 
 class Division(UUIDModel):
+    class Gender(models.TextChoices):
+        MEN = "MEN", "男篮"
+        WOMEN = "WOMEN", "女篮"
+
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="divisions")
     code = models.SlugField(max_length=32)
     name = models.CharField(max_length=80)
+    gender = models.CharField(max_length=8, choices=Gender.choices, default=Gender.MEN)
     sort_order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
@@ -126,6 +185,13 @@ class Division(UUIDModel):
 
 class CompetitionGroup(UUIDModel):
     division = models.ForeignKey(Division, on_delete=models.PROTECT, related_name="groups")
+    created_by_import_batch = models.ForeignKey(
+        "ScheduleImportBatch",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="created_groups",
+    )
     code = models.SlugField(max_length=16)
     name = models.CharField(max_length=40)
     sort_order = models.PositiveSmallIntegerField(default=0)
@@ -145,6 +211,13 @@ class ParticipantSlot(UUIDModel):
         blank=True,
         on_delete=models.PROTECT,
         related_name="participant_slots",
+    )
+    created_by_import_batch = models.ForeignKey(
+        "ScheduleImportBatch",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="created_slots",
     )
     code = models.CharField(max_length=32)
     label = models.CharField(max_length=80)
@@ -216,7 +289,6 @@ class SeasonLeaderBinding(UUIDModel):
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="leader_bindings")
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="leader_bindings")
     team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="leader_bindings")
-    leader_name = models.CharField(max_length=80)
     active = models.BooleanField(default=True)
 
     class Meta:
@@ -320,6 +392,13 @@ class Game(UUIDModel):
     away_slot = models.ForeignKey(
         ParticipantSlot, null=True, blank=True, on_delete=models.PROTECT, related_name="away_games"
     )
+    created_by_import_batch = models.ForeignKey(
+        "ScheduleImportBatch",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="created_games",
+    )
     leader_adjustable = models.BooleanField(default=True)
     active_reschedule_request = models.ForeignKey(
         "RescheduleRequest",
@@ -328,6 +407,8 @@ class Game(UUIDModel):
         on_delete=models.PROTECT,
         related_name="locked_games",
     )
+    home_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    away_score = models.PositiveSmallIntegerField(null=True, blank=True)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.SCHEDULED)
     version = models.PositiveIntegerField(default=1)
 
@@ -345,6 +426,18 @@ class Game(UUIDModel):
             ),
             models.CheckConstraint(
                 condition=~Q(home_slot=models.F("away_slot")), name="game_distinct_slots"
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(home_score__isnull=True, away_score__isnull=True)
+                    | Q(home_score__isnull=False, away_score__isnull=False)
+                ),
+                name="game_scores_both_set_or_null",
+            ),
+            models.CheckConstraint(
+                condition=Q(home_score__isnull=True)
+                | ~Q(home_score=models.F("away_score")),
+                name="game_official_score_not_tied",
             ),
         ]
 
@@ -364,6 +457,10 @@ class Game(UUIDModel):
             raise ValidationError("主队或主队签位至少填写一项。")
         if not self.away_team_id and not self.away_slot_id:
             raise ValidationError("客队或客队签位至少填写一项。")
+        if (self.home_score is None) != (self.away_score is None):
+            raise ValidationError("主客队比分必须同时填写或同时留空。")
+        if self.home_score is not None and self.home_score == self.away_score:
+            raise ValidationError("正式比分不允许平局。")
 
     @property
     def home_display(self) -> str:
@@ -503,6 +600,7 @@ class ScheduleImportBatch(UUIDModel):
         VALIDATED = "VALIDATED", "已校验"
         CONFIRMED = "CONFIRMED", "已确认"
         REJECTED = "REJECTED", "已拒绝"
+        ROLLED_BACK = "ROLLED_BACK", "已回滚"
 
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="schedule_imports")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.UPLOADED)
@@ -527,6 +625,75 @@ class ImportIssue(UUIDModel):
     cell = models.CharField(max_length=32, blank=True)
     message = models.TextField()
     context = models.JSONField(default=dict)
+
+
+class GameMediaAsset(UUIDModel):
+    class Kind(models.TextChoices):
+        SCORESHEET = "SCORESHEET", "记录表"
+        GROUP_PHOTO = "GROUP_PHOTO", "比赛合照"
+        GAME_PHOTO = "GAME_PHOTO", "其他照片"
+
+    class ReviewStatus(models.TextChoices):
+        PENDING = "PENDING", "待审核"
+        APPROVED = "APPROVED", "已通过"
+        REJECTED = "REJECTED", "未通过"
+
+    game = models.ForeignKey(Game, on_delete=models.PROTECT, related_name="media_assets")
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    file_key = models.CharField(max_length=512, unique=True)
+    original_filename = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=80)
+    file_sha256 = models.CharField(max_length=64)
+    byte_size = models.PositiveIntegerField()
+    width = models.PositiveIntegerField()
+    height = models.PositiveIntegerField()
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    scoresheet_complete_confirmed = models.BooleanField(default=False)
+    review_status = models.CharField(
+        max_length=16,
+        choices=ReviewStatus.choices,
+        default=ReviewStatus.PENDING,
+    )
+    review_note = models.CharField(max_length=300, blank=True)
+    uploaded_by = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="uploaded_game_media",
+    )
+    reviewed_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="reviewed_game_media",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="deleted_game_media",
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["kind", "sort_order", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "kind", "file_sha256"],
+                condition=Q(deleted_at__isnull=True),
+                name="uniq_active_game_media_hash",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(kind="SCORESHEET")
+                    | Q(scoresheet_complete_confirmed=True)
+                ),
+                name="scoresheet_requires_complete_confirmation",
+            ),
+        ]
 
 
 class InboxItem(UUIDModel):

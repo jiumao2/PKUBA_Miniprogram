@@ -21,7 +21,6 @@ def _snapshot(account: Account) -> dict[str, object]:
     return {
         "id": str(account.id),
         "username": account.username,
-        "display_name": account.display_name,
         "role": account.role,
         "is_active": account.is_active,
         "version": account.version,
