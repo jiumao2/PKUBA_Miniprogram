@@ -31,11 +31,22 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # healthcheck:
+    #   test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 12
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import http.client,sys; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=3); c.request('GET','/api/v1/health',headers={'Host':'api','X-Forwarded-Proto':'https'}); r=c.getresponse(); status=r.status; c.close(); sys.exit(0 if status == 200 else 1)",
+        ]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 12  
 
   outbox:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
