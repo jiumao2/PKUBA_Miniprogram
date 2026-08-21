@@ -18,7 +18,7 @@
     "build": "npm run build:packages && npm --workspace @pkuba/admin-web run build && npm --workspace @pkuba/miniapp run build:weapp",
     "build:packages": "npm --workspace @pkuba/design-tokens run build && npm --workspace @pkuba/scoresheet-domain run build && npm --workspace @pkuba/api-client run build",
     "test": "npm --workspace @pkuba/scoresheet-domain run test && npm --workspace @pkuba/admin-web run test && npm --workspace @pkuba/miniapp run test",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm --workspace @pkuba/scoresheet-domain run build && npm run typecheck --workspaces --if-present"
   },
   "engines": {
     "node": ">=24 <25",
