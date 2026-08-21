@@ -64,18 +64,15 @@
   gap: 7rpx;
 }
 
-.sheet-list-main > view:first-child {
+.sheet-list-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.sheet-list-code {
-  font-size: 27rpx;
-  font-weight: 800;
+  gap: 16rpx;
 }
 
 .sheet-list-status {
+  flex: none;
   border-radius: 999rpx;
   background: #e7e4dd;
   color: #5f5b54;
@@ -112,6 +109,10 @@
 .sheet-list-recognition {
   color: #6f6a63;
   font-size: 25rpx;
+}
+
+.sheet-list-date {
+  font-variant-numeric: tabular-nums;
 }
 
 .sheet-list-recognition {

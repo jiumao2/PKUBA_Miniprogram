@@ -424,6 +424,41 @@ def test_web_edit_is_returned_by_miniapp_sync_endpoint(tmp_path):
     assert synced.json()["lease"]["surface"] == "WEB"
 
 
+def test_miniapp_bearer_can_write_without_csrf_cookie(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    mini_token = issue_session(setup["admin"])
+    mini = Client(enforce_csrf_checks=True)
+
+    lease_response = mini.post(
+        f"/api/v1/scoresheets/{scoresheet.id}/lease",
+        data=json.dumps({"client_id": "mini-csrf", "surface": "MINIAPP"}),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {mini_token}",
+    )
+
+    assert lease_response.status_code == 200
+    assert lease_response.json()["read_only"] is False
+    lease_token = lease_response.json()["lease_token"]
+    saved = mini.patch(
+        f"/api/v1/scoresheets/{scoresheet.id}/draft",
+        data=json.dumps(
+            {
+                "expected_version": scoresheet.draft_version,
+                "lease_token": lease_token,
+                "client_id": "mini-csrf",
+                "surface": "MINIAPP",
+                "changes": [{"path": "/game/venue", "value": "小程序无 CSRF 保存"}],
+            }
+        ),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {mini_token}",
+    )
+
+    assert saved.status_code == 200
+    assert saved.json()["draft"]["game"]["venue"] == "小程序无 CSRF 保存"
+
+
 def test_retryable_recognition_uses_initial_call_plus_three_retries(tmp_path, monkeypatch):
     from core.services import scoresheet_recognition as recognition
 

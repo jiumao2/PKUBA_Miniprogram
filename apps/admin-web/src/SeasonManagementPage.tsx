@@ -10,6 +10,7 @@ import type {
 
 import { CapacityCalendar } from "./CapacityCalendar";
 import { buildSeasonConfigurationPayload } from "./season-configuration-payload";
+import { SeasonLifecyclePanel } from "./SeasonLifecyclePanel";
 import "./season-management.css";
 
 type AdminClient = ReturnType<typeof import("@pkuba/api-client").createAdminClient>;
@@ -355,6 +356,18 @@ export function SeasonManagementPage({
 
     {!editable && <div className="season-lock-notice" role="note"><strong>只读</strong><span>{draft.locked_reason}</span></div>}
 
+    {configuration && (
+      <SeasonLifecyclePanel
+        client={client}
+        configuration={configuration}
+        dirty={dirty}
+        onApplied={async () => {
+          await onDataChanged(configuration.id);
+          await loadConfiguration(configuration.id);
+        }}
+      />
+    )}
+
     <section className="season-config-section">
       <div className="season-section-heading"><div><h2>赛季信息</h2></div><span>版本 v{draft.version}</span></div>
       <div className="season-core-grid">
@@ -368,7 +381,7 @@ export function SeasonManagementPage({
     </section>
 
     <section className="season-config-section">
-      <div className="season-section-heading"><div><h2>赛事组别</h2><p>球队、签位和比赛均归属于组别。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, divisions: [...draft.divisions, { id: "", key: nextKey("division"), code: nextCode(draft.divisions, "division-"), name: "新组别", gender: "MEN", sort_order: nextSortOrder(draft.divisions), team_count: 0, group_count: 0, game_count: 0 }] })}>＋ 添加组别</button>}</div>
+      <div className="season-section-heading"><div><h2>赛事组别</h2><p>球队、签位和比赛均归属于组别。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, divisions: [...draft.divisions, { id: "", key: nextKey("division"), code: nextCode(draft.divisions, "division-"), name: "新组别", gender: "MEN", sort_order: nextSortOrder(draft.divisions), operation_status: "SETUP", version: 1, team_count: 0, group_count: 0, game_count: 0 }] })}>＋ 添加组别</button>}</div>
       <div className="division-config-table">
         <div className="division-config-row division-config-head"><span>顺序</span><span>代码</span><span>名称</span><span>分类</span><span>已关联</span><span /></div>
         {draft.divisions.map((row) => {

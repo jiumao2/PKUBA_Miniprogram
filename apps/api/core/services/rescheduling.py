@@ -227,6 +227,8 @@ def available_reschedule_targets(
         _raise("GAME_NOT_FOUND", "比赛不存在。")
     if game.season.status != game.season.Status.ACTIVE:
         _raise("SEASON_NOT_ACTIVE", "只有正式进行中的赛季可以申请调赛。")
+    if game.division.operation_status != game.division.OperationStatus.ACTIVE:
+        _raise("DIVISION_NOT_ACTIVE", "当前组别尚未正式上线，不能申请调赛。")
     if not game.home_team_id or not game.away_team_id:
         _raise("DRAW_NOT_RESOLVED", "签位尚未解析，不能申请调赛。")
     if game.status != Game.Status.SCHEDULED:
@@ -370,6 +372,8 @@ def submit_reschedule(
         _raise("VERSION_CONFLICT", "赛程已被其他操作更新，请刷新后重试。")
     if game.season.status != game.season.Status.ACTIVE:
         _raise("SEASON_NOT_ACTIVE", "只有正式进行中的赛季可以申请调赛。")
+    if game.division.operation_status != game.division.OperationStatus.ACTIVE:
+        _raise("DIVISION_NOT_ACTIVE", "当前组别尚未正式上线，不能申请调赛。")
     if not game.home_team_id or not game.away_team_id:
         _raise("DRAW_NOT_RESOLVED", "签位尚未解析，不能申请调赛。")
     if game.status != Game.Status.SCHEDULED:
@@ -525,6 +529,19 @@ def _approve_request(
     ).exclude(id=reservation.id).exists()
     if collision:
         _raise("TARGET_VENUE_CONFLICT", "预留场地被异常占用，需要管理员显式处理。")
+
+    previous_allocations = list(
+        SlotReservation.objects.select_for_update()
+        .filter(
+            converted_game=game,
+            status=SlotReservation.Status.CONVERTED,
+        )
+        .exclude(id=reservation.id)
+    )
+    for allocation in previous_allocations:
+        allocation.status = SlotReservation.Status.RELEASED
+        allocation.released_at = decided_at
+        allocation.save(update_fields=["status", "released_at", "updated_at"])
 
     reservation.status = SlotReservation.Status.CONVERTED
     reservation.converted_game = game

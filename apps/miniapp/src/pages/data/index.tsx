@@ -71,7 +71,7 @@ export default function DataPage() {
                   key={game.game_id}
                   onClick={() => setSelectedId(game.game_id)}
                 >
-                  <Text>{game.game_code}</Text>
+                  <Text>{game.date} · {game.start_time} · {game.division_name}</Text>
                   <Text>{game.home_name} {game.home_score}:{game.away_score} {game.away_name}</Text>
                 </Button>
               ))}
@@ -84,7 +84,7 @@ export default function DataPage() {
         <View className="data-detail">
           <View className="data-score-header">
             <View><Text>{selected.home_name}</Text><Text className="data-final-score">{selected.home_score}</Text></View>
-            <View className="data-score-meta"><Text>{selected.division_name}</Text><Text>{selected.date}</Text><Text>发布 v{selected.publication_number}</Text></View>
+            <View className="data-score-meta"><Text>{selected.division_name}</Text><Text>{selected.date} · {selected.start_time}</Text><Text>发布 v{selected.publication_number}</Text></View>
             <View><Text>{selected.away_name}</Text><Text className="data-final-score">{selected.away_score}</Text></View>
           </View>
 

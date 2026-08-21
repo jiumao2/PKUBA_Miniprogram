@@ -28,19 +28,20 @@ export default function SchedulePage() {
 
   return (
     <View className="page schedule-page">
-      <Text className="page-title">对阵</Text>
-      <View className="schedule-view-tabs">
-        <View
-          className={`schedule-view-tab ${view === "schedule" ? "is-active" : ""}`}
-          onClick={() => setView("schedule")}
-        >
-          <Text>赛程赛果</Text>
-        </View>
-        <View
-          className={`schedule-view-tab ${view === "bracket" ? "is-active" : ""}`}
-          onClick={() => setView("bracket")}
-        >
-          <Text>淘汰赛</Text>
+      <View className="schedule-sticky-header">
+        <View className="schedule-view-tabs">
+          <View
+            className={`schedule-view-tab ${view === "schedule" ? "is-active" : ""}`}
+            onClick={() => setView("schedule")}
+          >
+            <Text>赛程赛果</Text>
+          </View>
+          <View
+            className={`schedule-view-tab ${view === "bracket" ? "is-active" : ""}`}
+            onClick={() => setView("bracket")}
+          >
+            <Text>淘汰赛</Text>
+          </View>
         </View>
       </View>
       {message && view === "schedule" && (

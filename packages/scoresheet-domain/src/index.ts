@@ -150,6 +150,7 @@ export interface ScoresheetQueueItem {
   game_code: string;
   game_label: string;
   date: string;
+  start_time: string;
   scoresheet_id: string | null;
   source_asset_id: string | null;
   status: string;

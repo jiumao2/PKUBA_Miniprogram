@@ -57,6 +57,16 @@ class ValidatedImage:
     height: int
 
 
+def _assert_media_mutable(game: Game) -> None:
+    if game.season.status == game.season.Status.ARCHIVED:
+        raise GameMediaError("SEASON_ARCHIVED", "已归档赛季只读。")
+    if game.division.operation_status != game.division.OperationStatus.ACTIVE:
+        raise GameMediaError(
+            "DIVISION_NOT_ACTIVE",
+            "当前组别尚未正式上线，不能维护比赛图片。",
+        )
+
+
 def _register_scoresheet_source(
     *, actor: Account, game: Game, asset: GameMediaAsset
 ) -> None:
@@ -75,7 +85,11 @@ def _register_scoresheet_source(
 
 def media_permissions(account: Account, game: Game) -> MediaPermissions:
     if account.is_pkuba_admin:
-        return MediaPermissions(can_view=True, can_upload=True, can_review=True)
+        mutable = (
+            game.season.status != game.season.Status.ARCHIVED
+            and game.division.operation_status == game.division.OperationStatus.ACTIVE
+        )
+        return MediaPermissions(can_view=True, can_upload=mutable, can_review=mutable)
     binding = (
         SeasonLeaderBinding.objects.filter(
             season=game.season,
@@ -128,6 +142,7 @@ def upload_game_media(
     scoresheet_complete_confirmed: bool,
     uploaded_file,
 ) -> GameMediaAsset:
+    _assert_media_mutable(game)
     if kind not in GameMediaAsset.Kind.values:
         raise GameMediaError("MEDIA_KIND_INVALID", "图片类型不合法。")
     permissions = media_permissions(actor, game)
@@ -238,6 +253,7 @@ def review_game_media(
             )
         except GameMediaAsset.DoesNotExist as error:
             raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。") from error
+        _assert_media_mutable(asset.game)
         if asset.version != expected_version:
             raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
         if asset.kind == GameMediaAsset.Kind.SCORESHEET:
@@ -302,6 +318,7 @@ def replace_game_media(
     )
     if current is None:
         raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。")
+    _assert_media_mutable(current.game)
     if (
         current.kind == GameMediaAsset.Kind.SCORESHEET
         and GameScoresheet.objects.filter(
@@ -337,6 +354,7 @@ def replace_game_media(
                 ).get(id=asset_id, deleted_at__isnull=True)
             except GameMediaAsset.DoesNotExist as error:
                 raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。") from error
+            _assert_media_mutable(replaced.game)
             if replaced.version != expected_version:
                 raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
             if replaced.kind != current.kind or replaced.game_id != current.game_id:
@@ -417,6 +435,7 @@ def delete_game_media(
             )
         except GameMediaAsset.DoesNotExist as error:
             raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。") from error
+        _assert_media_mutable(asset.game)
         if asset.version != expected_version:
             raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
         if (

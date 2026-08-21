@@ -2530,6 +2530,891 @@
         ]
       }
     },
+    "/api/v1/admin/seasons/{season_id}/lifecycle/preview": {
+      "post": {
+        "operationId": "core_api_admin_lifecycle_preview_lifecycle",
+        "summary": "Preview Lifecycle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecyclePreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-lifecycle"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleCommandIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/lifecycle/apply": {
+      "post": {
+        "operationId": "core_api_admin_lifecycle_apply_lifecycle",
+        "summary": "Apply Lifecycle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecyclePreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-lifecycle"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}": {
+      "get": {
+        "operationId": "core_api_admin_brackets_get_bracket_management",
+        "summary": "Get Bracket Management",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "division_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Division Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketManagementOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-brackets"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}/relations/preview": {
+      "post": {
+        "operationId": "core_api_admin_brackets_preview_relations",
+        "summary": "Preview Relations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "division_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Division Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketRelationPreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-brackets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BracketRelationPreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}/relations/apply": {
+      "post": {
+        "operationId": "core_api_admin_brackets_apply_relations",
+        "summary": "Apply Relations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "division_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Division Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketManagementOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-brackets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BracketRelationApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/brackets/games/{game_id}/correction/preview": {
+      "post": {
+        "operationId": "core_api_admin_brackets_preview_correction",
+        "summary": "Preview Correction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionPreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-brackets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionPreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/brackets/games/{game_id}/correction/apply": {
+      "post": {
+        "operationId": "core_api_admin_brackets_apply_correction",
+        "summary": "Apply Correction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionPreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BracketAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-brackets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/advanced-data/models": {
+      "get": {
+        "operationId": "core_api_admin_advanced_data_list_advanced_models",
+        "summary": "List Advanced Models",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdvancedModelOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-advanced-data"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/advanced-data/{model_key}/mutations/preview": {
+      "post": {
+        "operationId": "core_api_admin_advanced_data_preview_advanced_mutation",
+        "summary": "Preview Advanced Mutation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_key",
+            "schema": {
+              "title": "Model Key",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedMutationPreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-advanced-data"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvancedMutationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/advanced-data/{model_key}/mutations/apply": {
+      "post": {
+        "operationId": "core_api_admin_advanced_data_apply_advanced_mutation",
+        "summary": "Apply Advanced Mutation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_key",
+            "schema": {
+              "title": "Model Key",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedRecordOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-advanced-data"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvancedMutationApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/advanced-data/{model_key}": {
+      "get": {
+        "operationId": "core_api_admin_advanced_data_list_advanced_records",
+        "summary": "List Advanced Records",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_key",
+            "schema": {
+              "title": "Model Key",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedRecordListOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-advanced-data"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/advanced-data/{model_key}/{object_id}": {
+      "get": {
+        "operationId": "core_api_admin_advanced_data_get_advanced_record",
+        "summary": "Get Advanced Record",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_key",
+            "schema": {
+              "title": "Model Key",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "object_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Object Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedRecordOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvancedDataErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-advanced-data"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/reschedule-requests": {
       "get": {
         "operationId": "core_api_admin_reschedule_list_admin_reschedule_requests",
@@ -5435,10 +6320,10 @@
         ],
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -5516,10 +6401,10 @@
         ],
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -5617,10 +6502,10 @@
         ],
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -5708,10 +6593,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -5799,10 +6684,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -5883,10 +6768,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -5974,10 +6859,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6065,10 +6950,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6165,10 +7050,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6256,10 +7141,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6347,10 +7232,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6438,10 +7323,10 @@
         },
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6519,10 +7404,10 @@
         ],
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6593,10 +7478,10 @@
         ],
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6667,10 +7552,10 @@
         ],
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6741,10 +7626,10 @@
         ],
         "security": [
           {
-            "AdminSessionAuth": []
+            "MiniAppBearerAuth": []
           },
           {
-            "MiniAppBearerAuth": []
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6833,13 +7718,23 @@
           "gender": {
             "title": "Gender",
             "type": "string"
+          },
+          "operation_status": {
+            "title": "Operation Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "code",
           "name",
-          "gender"
+          "gender",
+          "operation_status",
+          "version"
         ],
         "title": "DivisionOut",
         "type": "object"
@@ -7142,6 +8037,30 @@
             "title": "Games",
             "type": "array"
           },
+          "calendar_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Start Date"
+          },
+          "calendar_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar End Date"
+          },
           "daily_game_counts": {
             "items": {
               "$ref": "#/components/schemas/DailyGameCountOut"
@@ -7155,6 +8074,8 @@
           "display_date",
           "total_games",
           "games",
+          "calendar_start_date",
+          "calendar_end_date",
           "daily_game_counts"
         ],
         "title": "HomeDashboardOut",
@@ -7618,6 +8539,10 @@
             "title": "Gender",
             "type": "string"
           },
+          "relation_mode": {
+            "title": "Relation Mode",
+            "type": "string"
+          },
           "rounds": {
             "items": {
               "$ref": "#/components/schemas/BracketRoundOut"
@@ -7649,6 +8574,7 @@
           "code",
           "name",
           "gender",
+          "relation_mode",
           "rounds",
           "placement_games",
           "champion_name"
@@ -8353,13 +9279,23 @@
           "gender": {
             "title": "Gender",
             "type": "string"
+          },
+          "operation_status": {
+            "title": "Operation Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "code",
           "name",
-          "gender"
+          "gender",
+          "operation_status",
+          "version"
         ],
         "title": "AdminDivisionOut",
         "type": "object"
@@ -8763,6 +9699,14 @@
             "title": "Sort Order",
             "type": "integer"
           },
+          "operation_status": {
+            "title": "Operation Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
           "team_count": {
             "title": "Team Count",
             "type": "integer"
@@ -8782,6 +9726,8 @@
           "name",
           "gender",
           "sort_order",
+          "operation_status",
+          "version",
           "team_count",
           "group_count",
           "game_count"
@@ -9523,6 +10469,10 @@
             "title": "Configured",
             "type": "boolean"
           },
+          "uses_default_invite": {
+            "title": "Uses Default Invite",
+            "type": "boolean"
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -9543,6 +10493,7 @@
         "required": [
           "season_id",
           "configured",
+          "uses_default_invite",
           "updated_at",
           "version"
         ],
@@ -10878,6 +11829,14 @@
             "title": "Sort Order",
             "type": "integer"
           },
+          "operation_status": {
+            "title": "Operation Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
           "slot_count": {
             "title": "Slot Count",
             "type": "integer"
@@ -10915,6 +11874,8 @@
           "name",
           "gender",
           "sort_order",
+          "operation_status",
+          "version",
           "slot_count",
           "active_team_count",
           "assigned_count",
@@ -11370,6 +12331,1344 @@
           "assignments"
         ],
         "title": "DrawPreviewIn",
+        "type": "object"
+      },
+      "LifecycleBlockerOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "count"
+        ],
+        "title": "LifecycleBlockerOut",
+        "type": "object"
+      },
+      "LifecycleDivisionImpactOut": {
+        "properties": {
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "before_status": {
+            "title": "Before Status",
+            "type": "string"
+          },
+          "after_status": {
+            "title": "After Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "division_id",
+          "division_name",
+          "before_status",
+          "after_status",
+          "version"
+        ],
+        "title": "LifecycleDivisionImpactOut",
+        "type": "object"
+      },
+      "LifecyclePreviewOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "before_season_status": {
+            "title": "Before Season Status",
+            "type": "string"
+          },
+          "after_season_status": {
+            "title": "After Season Status",
+            "type": "string"
+          },
+          "target_status": {
+            "title": "Target Status",
+            "type": "string"
+          },
+          "division_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division Id"
+          },
+          "impacts": {
+            "items": {
+              "$ref": "#/components/schemas/LifecycleDivisionImpactOut"
+            },
+            "title": "Impacts",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/LifecycleBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "references": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "References",
+            "type": "object"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "can_apply": {
+            "title": "Can Apply",
+            "type": "boolean"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_version",
+          "before_season_status",
+          "after_season_status",
+          "target_status",
+          "division_id",
+          "impacts",
+          "blockers",
+          "references",
+          "changed",
+          "can_apply",
+          "impact_hash"
+        ],
+        "title": "LifecyclePreviewOut",
+        "type": "object"
+      },
+      "LifecycleErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "LifecycleErrorOut",
+        "type": "object"
+      },
+      "LifecycleCommandIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "target_status": {
+            "title": "Target Status",
+            "type": "string"
+          },
+          "division_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division Id"
+          },
+          "expected_division_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Division Version"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "target_status"
+        ],
+        "title": "LifecycleCommandIn",
+        "type": "object"
+      },
+      "LifecycleApplyIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "target_status": {
+            "title": "Target Status",
+            "type": "string"
+          },
+          "division_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division Id"
+          },
+          "expected_division_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Division Version"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "target_status",
+          "impact_hash"
+        ],
+        "title": "LifecycleApplyIn",
+        "type": "object"
+      },
+      "BracketAdminGameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "stage",
+          "round_number",
+          "date",
+          "start_time",
+          "home_name",
+          "away_name",
+          "home_team_id",
+          "away_team_id",
+          "home_score",
+          "away_score",
+          "status",
+          "version"
+        ],
+        "title": "BracketAdminGameOut",
+        "type": "object"
+      },
+      "BracketManagementOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "season_status": {
+            "title": "Season Status",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_status": {
+            "title": "Division Status",
+            "type": "string"
+          },
+          "division_version": {
+            "title": "Division Version",
+            "type": "integer"
+          },
+          "relation_mode": {
+            "title": "Relation Mode",
+            "type": "string"
+          },
+          "read_only": {
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "locked_reason": {
+            "title": "Locked Reason",
+            "type": "string"
+          },
+          "games": {
+            "items": {
+              "$ref": "#/components/schemas/BracketAdminGameOut"
+            },
+            "title": "Games",
+            "type": "array"
+          },
+          "feeds": {
+            "items": {
+              "$ref": "#/components/schemas/WinnerFeedOut"
+            },
+            "title": "Feeds",
+            "type": "array"
+          },
+          "legacy_suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/WinnerFeedRelationOut"
+            },
+            "title": "Legacy Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "season_status",
+          "season_version",
+          "division_id",
+          "division_name",
+          "division_status",
+          "division_version",
+          "relation_mode",
+          "read_only",
+          "locked_reason",
+          "games",
+          "feeds",
+          "legacy_suggestions"
+        ],
+        "title": "BracketManagementOut",
+        "type": "object"
+      },
+      "WinnerFeedOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "source_game_id": {
+            "format": "uuid",
+            "title": "Source Game Id",
+            "type": "string"
+          },
+          "target_game_id": {
+            "format": "uuid",
+            "title": "Target Game Id",
+            "type": "string"
+          },
+          "target_side": {
+            "title": "Target Side",
+            "type": "string"
+          },
+          "applied_winner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Winner Id"
+          },
+          "applied_winner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Winner Name"
+          },
+          "applied_source_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Source Version"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source_game_id",
+          "target_game_id",
+          "target_side",
+          "applied_winner_id",
+          "applied_winner_name",
+          "applied_source_version",
+          "version"
+        ],
+        "title": "WinnerFeedOut",
+        "type": "object"
+      },
+      "WinnerFeedRelationOut": {
+        "properties": {
+          "source_game_id": {
+            "format": "uuid",
+            "title": "Source Game Id",
+            "type": "string"
+          },
+          "target_game_id": {
+            "format": "uuid",
+            "title": "Target Game Id",
+            "type": "string"
+          },
+          "target_side": {
+            "title": "Target Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_game_id",
+          "target_game_id",
+          "target_side"
+        ],
+        "title": "WinnerFeedRelationOut",
+        "type": "object"
+      },
+      "BracketAdminErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "BracketAdminErrorOut",
+        "type": "object"
+      },
+      "BracketBlockerOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "count"
+        ],
+        "title": "BracketBlockerOut",
+        "type": "object"
+      },
+      "BracketRelationPreviewOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_version": {
+            "title": "Division Version",
+            "type": "integer"
+          },
+          "relation_mode_before": {
+            "title": "Relation Mode Before",
+            "type": "string"
+          },
+          "relation_mode_after": {
+            "title": "Relation Mode After",
+            "type": "string"
+          },
+          "added_count": {
+            "title": "Added Count",
+            "type": "integer"
+          },
+          "removed_count": {
+            "title": "Removed Count",
+            "type": "integer"
+          },
+          "unchanged_count": {
+            "title": "Unchanged Count",
+            "type": "integer"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/BracketBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "can_apply": {
+            "title": "Can Apply",
+            "type": "boolean"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/WinnerFeedRelationOut"
+            },
+            "title": "Relations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_version",
+          "division_id",
+          "division_version",
+          "relation_mode_before",
+          "relation_mode_after",
+          "added_count",
+          "removed_count",
+          "unchanged_count",
+          "blockers",
+          "can_apply",
+          "impact_hash",
+          "relations"
+        ],
+        "title": "BracketRelationPreviewOut",
+        "type": "object"
+      },
+      "BracketRelationPreviewIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "expected_division_version": {
+            "title": "Expected Division Version",
+            "type": "integer"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/WinnerFeedRelationIn"
+            },
+            "title": "Relations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "expected_division_version",
+          "relations"
+        ],
+        "title": "BracketRelationPreviewIn",
+        "type": "object"
+      },
+      "WinnerFeedRelationIn": {
+        "properties": {
+          "source_game_id": {
+            "format": "uuid",
+            "title": "Source Game Id",
+            "type": "string"
+          },
+          "target_game_id": {
+            "format": "uuid",
+            "title": "Target Game Id",
+            "type": "string"
+          },
+          "target_side": {
+            "title": "Target Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_game_id",
+          "target_game_id",
+          "target_side"
+        ],
+        "title": "WinnerFeedRelationIn",
+        "type": "object"
+      },
+      "BracketRelationApplyIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "expected_division_version": {
+            "title": "Expected Division Version",
+            "type": "integer"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/WinnerFeedRelationIn"
+            },
+            "title": "Relations",
+            "type": "array"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "expected_division_version",
+          "relations",
+          "impact_hash"
+        ],
+        "title": "BracketRelationApplyIn",
+        "type": "object"
+      },
+      "AffectedGameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "current_publication_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Publication Id"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "home_team_id",
+          "away_team_id",
+          "home_score",
+          "away_score",
+          "status",
+          "current_publication_id"
+        ],
+        "title": "AffectedGameOut",
+        "type": "object"
+      },
+      "CorrectionPreviewOut": {
+        "properties": {
+          "source_game_id": {
+            "format": "uuid",
+            "title": "Source Game Id",
+            "type": "string"
+          },
+          "source_game_version": {
+            "title": "Source Game Version",
+            "type": "integer"
+          },
+          "affected_games": {
+            "items": {
+              "$ref": "#/components/schemas/AffectedGameOut"
+            },
+            "title": "Affected Games",
+            "type": "array"
+          },
+          "affected_game_count": {
+            "title": "Affected Game Count",
+            "type": "integer"
+          },
+          "affected_feed_count": {
+            "title": "Affected Feed Count",
+            "type": "integer"
+          },
+          "active_request_count": {
+            "title": "Active Request Count",
+            "type": "integer"
+          },
+          "active_reservation_count": {
+            "title": "Active Reservation Count",
+            "type": "integer"
+          },
+          "publication_count": {
+            "title": "Publication Count",
+            "type": "integer"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/BracketBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "can_apply": {
+            "title": "Can Apply",
+            "type": "boolean"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          },
+          "reset_game_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Reset Game Ids",
+            "type": "array"
+          },
+          "reset_feed_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Reset Feed Ids",
+            "type": "array"
+          },
+          "cancelled_request_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Cancelled Request Ids",
+            "type": "array"
+          },
+          "withdrawn_publication_count": {
+            "default": 0,
+            "title": "Withdrawn Publication Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_game_id",
+          "source_game_version",
+          "affected_games",
+          "affected_game_count",
+          "affected_feed_count",
+          "active_request_count",
+          "active_reservation_count",
+          "publication_count",
+          "blockers",
+          "can_apply",
+          "impact_hash"
+        ],
+        "title": "CorrectionPreviewOut",
+        "type": "object"
+      },
+      "CorrectionPreviewIn": {
+        "properties": {
+          "expected_game_version": {
+            "title": "Expected Game Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_game_version"
+        ],
+        "title": "CorrectionPreviewIn",
+        "type": "object"
+      },
+      "CorrectionApplyIn": {
+        "properties": {
+          "expected_game_version": {
+            "title": "Expected Game Version",
+            "type": "integer"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_game_version",
+          "impact_hash"
+        ],
+        "title": "CorrectionApplyIn",
+        "type": "object"
+      },
+      "AdvancedFieldOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "relation": {
+            "title": "Relation",
+            "type": "boolean"
+          },
+          "nullable": {
+            "title": "Nullable",
+            "type": "boolean"
+          },
+          "sensitive": {
+            "title": "Sensitive",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "relation",
+          "nullable",
+          "sensitive"
+        ],
+        "title": "AdvancedFieldOut",
+        "type": "object"
+      },
+      "AdvancedModelOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "model_name": {
+            "title": "Model Name",
+            "type": "string"
+          },
+          "mutation_mode": {
+            "title": "Mutation Mode",
+            "type": "string"
+          },
+          "immutable": {
+            "title": "Immutable",
+            "type": "boolean"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/AdvancedFieldOut"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "model_name",
+          "mutation_mode",
+          "immutable",
+          "fields"
+        ],
+        "title": "AdvancedModelOut",
+        "type": "object"
+      },
+      "AdvancedDataErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AdvancedDataErrorOut",
+        "type": "object"
+      },
+      "AdvancedBlockerOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "count"
+        ],
+        "title": "AdvancedBlockerOut",
+        "type": "object"
+      },
+      "AdvancedMutationPreviewOut": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id"
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdvancedRecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdvancedRecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "references": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "References",
+            "type": "object"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/AdvancedBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "can_apply": {
+            "title": "Can Apply",
+            "type": "boolean"
+          },
+          "requires_confirmation": {
+            "title": "Requires Confirmation",
+            "type": "boolean"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "operation",
+          "object_id",
+          "expected_version",
+          "before",
+          "after",
+          "references",
+          "blockers",
+          "can_apply",
+          "requires_confirmation",
+          "impact_hash"
+        ],
+        "title": "AdvancedMutationPreviewOut",
+        "type": "object"
+      },
+      "AdvancedRecordOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "model",
+          "values"
+        ],
+        "title": "AdvancedRecordOut",
+        "type": "object"
+      },
+      "AdvancedMutationIn": {
+        "properties": {
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id"
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "title": "AdvancedMutationIn",
+        "type": "object"
+      },
+      "AdvancedMutationApplyIn": {
+        "properties": {
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id"
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "values": {
+            "additionalProperties": true,
+            "title": "Values",
+            "type": "object"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          },
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "operation",
+          "impact_hash",
+          "confirmed"
+        ],
+        "title": "AdvancedMutationApplyIn",
+        "type": "object"
+      },
+      "AdvancedRecordListOut": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "mutation_mode": {
+            "title": "Mutation Mode",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdvancedRecordOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "model",
+          "label",
+          "mutation_mode",
+          "total",
+          "offset",
+          "limit",
+          "items"
+        ],
+        "title": "AdvancedRecordListOut",
         "type": "object"
       },
       "AdminReschedulePageOut": {
@@ -13487,6 +15786,10 @@
             "title": "Date",
             "type": "string"
           },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
           "scoresheet_id": {
             "anyOf": [
               {
@@ -13574,6 +15877,7 @@
           "game_code",
           "game_label",
           "date",
+          "start_time",
           "scoresheet_id",
           "source_asset_id",
           "status",
@@ -14209,6 +16513,10 @@
             "title": "Date",
             "type": "string"
           },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
           "division_name": {
             "title": "Division Name",
             "type": "string"
@@ -14257,6 +16565,7 @@
           "game_id",
           "game_code",
           "date",
+          "start_time",
           "division_name",
           "home_name",
           "away_name",

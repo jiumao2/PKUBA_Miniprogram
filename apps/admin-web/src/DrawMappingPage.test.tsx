@@ -27,6 +27,8 @@ const season: AdminSeason = {
       code: "men-a",
       name: "男甲",
       gender: "MEN",
+      operation_status: "SETUP",
+      version: 1,
     },
   ],
 };
@@ -58,6 +60,8 @@ const dataset: DrawAssignmentDataset = {
       name: "男甲",
       gender: "MEN",
       sort_order: 1,
+      operation_status: "SETUP",
+      version: 1,
       slot_count: 4,
       active_team_count: 4,
       assigned_count: 0,

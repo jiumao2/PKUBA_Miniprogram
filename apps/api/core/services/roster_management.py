@@ -1102,6 +1102,17 @@ def _change_preview(team: Team, payload: dict) -> dict[str, object]:
         "team_version": team.version,
         "name": normalized_name,
         "active": active,
+        "target_players": [
+            {
+                "id": row["id"],
+                "expected_version": row.get("expected_version"),
+                "name": row["name"],
+                "jersey_number": row["jersey_number"],
+                "eligible": row["eligible"],
+                "active": row["active"],
+            }
+            for row in incoming
+        ],
         "changed_player_ids": sorted(changed_players),
         "omitted_player_ids": sorted(omitted),
         "added_player_names": sorted(added_players),

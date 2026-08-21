@@ -28,6 +28,8 @@ const season: AdminSeason = {
       code: "men-a",
       name: "男甲",
       gender: "MEN",
+      operation_status: "SETUP",
+      version: 1,
     },
   ],
 };

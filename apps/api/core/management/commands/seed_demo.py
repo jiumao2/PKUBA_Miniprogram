@@ -49,7 +49,13 @@ class Command(BaseCommand):
             },
         )
         division, _ = Division.objects.update_or_create(
-            season=season, code="men-a", defaults={"name": "男甲", "sort_order": 1}
+            season=season,
+            code="men-a",
+            defaults={
+                "name": "男甲",
+                "sort_order": 1,
+                "operation_status": Division.OperationStatus.ACTIVE,
+            },
         )
         group, _ = CompetitionGroup.objects.update_or_create(
             division=division, code="a", defaults={"name": "A 组", "sort_order": 1}

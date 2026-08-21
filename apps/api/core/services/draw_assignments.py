@@ -129,6 +129,8 @@ def serialize_draw_dataset(season: Season) -> dict[str, object]:
                 "name": division.name,
                 "gender": division.gender,
                 "sort_order": division.sort_order,
+                "operation_status": division.operation_status,
+                "version": division.version,
                 "slot_count": len(division_slots),
                 "active_team_count": len(active_team_ids),
                 "assigned_count": sum(slot.id in assignments for slot in division_slots),
@@ -459,6 +461,7 @@ def apply_draw_assignments(
             mapping: dict[UUID, UUID] = context["mapping"]
             teams_by_id: dict[UUID, Team] = context["teams_by_id"]
             games: list[Game] = context["games"]
+            division: Division = context["division"]
             before = {
                 "season_version": season.version,
                 "assignments": _assignment_snapshot(slots, existing),
@@ -495,8 +498,26 @@ def apply_draw_assignments(
                 game.full_clean()
                 game.save(update_fields=["home_team", "away_team", "version", "updated_at"])
 
+            division_activated = False
+            if division.operation_status == Division.OperationStatus.PRE_DRAW_PUBLIC:
+                division.operation_status = Division.OperationStatus.ACTIVE
+                division.activated_at = now or timezone.now()
+                division.activated_by = actor
+                division.version += 1
+                division.save(
+                    update_fields=[
+                        "operation_status",
+                        "activated_at",
+                        "activated_by",
+                        "version",
+                        "updated_at",
+                    ]
+                )
+                season.status = Season.Status.ACTIVE
+                division_activated = True
+
             season.version += 1
-            season.save(update_fields=["version", "updated_at"])
+            season.save(update_fields=["status", "is_public", "version", "updated_at"])
             refreshed_assignments = {
                 row.slot_id: row
                 for row in DrawAssignment.objects.filter(
@@ -527,6 +548,7 @@ def apply_draw_assignments(
                     "impact_hash": impact_hash,
                     "season_status": season.status,
                     "public_impact": preview["public_impact"],
+                    "division_activated": division_activated,
                     "affected_game_ids": [str(game.id) for game in games],
                 },
             )

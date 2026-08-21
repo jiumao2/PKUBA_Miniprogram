@@ -62,7 +62,11 @@ export default function ScoresheetListPage() {
   }, []);
 
   const visible = useMemo(
-    () => items.filter((item) => !query || `${item.game_code}${item.game_label}`.includes(query)),
+    () =>
+      items.filter(
+        (item) =>
+          !query || `${item.game_label}${item.date}${item.start_time}`.includes(query),
+      ),
     [items, query],
   );
 
@@ -119,14 +123,15 @@ export default function ScoresheetListPage() {
         {visible.map((item) => (
           <View className="sheet-list-item" key={item.game_id}>
             <View className="sheet-list-main">
-              <View>
-                <Text className="sheet-list-code">{item.game_code}</Text>
+              <View className="sheet-list-meta">
+                <Text className="sheet-list-date">
+                  {item.date} · {item.start_time}
+                </Text>
                 <Text className={`sheet-list-status status-${item.status.toLowerCase()}`}>
                   {STATUS[item.status] ?? item.status}
                 </Text>
               </View>
               <Text className="sheet-list-label">{item.game_label}</Text>
-              <Text className="sheet-list-date">{item.date}</Text>
               {item.recognition_status && (
                 <Text className="sheet-list-recognition">
                   识别第 {item.recognition_attempt}/{item.recognition_max_attempts} 次

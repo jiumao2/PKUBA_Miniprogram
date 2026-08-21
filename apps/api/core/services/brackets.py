@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from core.models import Division, Game, Season
+from core.models import Division, Game, GameWinnerFeed, Season
 
 BRACKET_STAGES = (
     Game.Stage.KNOCKOUT,
@@ -13,6 +13,8 @@ BRACKET_STAGES = (
 
 def _winner(game: Game) -> tuple[object | None, str | None]:
     if game.home_score is None or game.away_score is None:
+        return None, None
+    if game.home_score == game.away_score:
         return None, None
     if game.home_score > game.away_score:
         return game.home_team_id, game.home_display
@@ -81,6 +83,19 @@ def _division_bracket(division: Division) -> dict[str, object]:
         )
         .order_by("date", "start_time", "venue_name", "code")
     )
+    feeds = list(
+        GameWinnerFeed.objects.filter(source_game__division=division)
+        .select_related(
+            "source_game__home_team",
+            "source_game__away_team",
+            "target_game",
+        )
+        .order_by("target_game__date", "target_game__start_time", "target_side")
+    )
+    authoritative = bool(feeds)
+    feeds_by_target: dict[object, dict[str, GameWinnerFeed]] = {}
+    for feed in feeds:
+        feeds_by_target.setdefault(feed.target_game_id, {})[feed.target_side] = feed
     by_stage = {stage: [game for game in games if game.stage == stage] for stage in BRACKET_STAGES}
     rounds: list[dict[str, object]] = []
     previous_games: list[Game] = []
@@ -92,13 +107,25 @@ def _division_bracket(division: Division) -> dict[str, object]:
         can_feed = bool(previous_games) and len(previous_games) == len(stage_games) * 2
         serialized_games = []
         for index, game in enumerate(stage_games):
-            source_games = previous_games[index * 2 : index * 2 + 2] if can_feed else []
-            derived = previous_winners[index * 2 : index * 2 + 2] if can_feed else []
+            target_feeds = feeds_by_target.get(game.id, {}) if authoritative else {}
+            if authoritative:
+                home_feed = target_feeds.get(GameWinnerFeed.TargetSide.HOME)
+                away_feed = target_feeds.get(GameWinnerFeed.TargetSide.AWAY)
+                source_games = [
+                    feed.source_game for feed in (home_feed, away_feed) if feed is not None
+                ]
+                derived_home = _winner(home_feed.source_game) if home_feed else None
+                derived_away = _winner(away_feed.source_game) if away_feed else None
+            else:
+                source_games = previous_games[index * 2 : index * 2 + 2] if can_feed else []
+                derived = previous_winners[index * 2 : index * 2 + 2] if can_feed else []
+                derived_home = derived[0] if len(derived) > 0 else None
+                derived_away = derived[1] if len(derived) > 1 else None
             serialized_games.append(
                 _serialize_bracket_game(
                     game,
-                    derived_home=derived[0] if len(derived) > 0 else None,
-                    derived_away=derived[1] if len(derived) > 1 else None,
+                    derived_home=derived_home,
+                    derived_away=derived_away,
                     source_game_ids=(source.id for source in source_games),
                 )
             )
@@ -134,6 +161,7 @@ def _division_bracket(division: Division) -> dict[str, object]:
         "code": division.code,
         "name": division.name,
         "gender": division.gender,
+        "relation_mode": "AUTHORITATIVE" if authoritative else "LEGACY_DERIVED",
         "rounds": rounds,
         "placement_games": [_serialize_bracket_game(game) for game in placement_games],
         "champion_name": champion_name,

@@ -297,6 +297,8 @@ def _division_snapshot(division: Division) -> dict:
         "name": division.name,
         "gender": division.gender,
         "sort_order": division.sort_order,
+        "operation_status": division.operation_status,
+        "version": division.version,
         "team_count": division.teams.filter(active=True).count(),
         "group_count": division.groups.count(),
         "game_count": division.games.count(),
@@ -451,6 +453,8 @@ def _impact_hash(expected_version: int, normalized: dict) -> str:
 def preview_season_configuration(
     *, season: Season, expected_version: int, payload: dict
 ) -> dict:
+    if season.status == Season.Status.ARCHIVED:
+        raise SeasonManagementError("SEASON_ARCHIVED", "已归档赛季只读。")
     if season.version != expected_version:
         raise SeasonManagementError("VERSION_CONFLICT", "赛季配置已更新，请刷新后重试。")
     normalized = _normalize_configuration(payload)
@@ -511,9 +515,12 @@ def season_configuration(season: Season) -> dict:
         "ends_on": season.ends_on,
         "timezone": season.timezone,
         "version": season.version,
-        "editable": True,
-        "maintenance_required": season.status != Season.Status.SETUP,
-        "locked_reason": "",
+        "editable": season.status != Season.Status.ARCHIVED,
+        "maintenance_required": season.status not in {
+            Season.Status.SETUP,
+            Season.Status.ARCHIVED,
+        },
+        "locked_reason": "已归档赛季只读。" if season.status == Season.Status.ARCHIVED else "",
         "divisions": [_division_snapshot(item) for item in season.divisions.all()],
         "venues": [
             _venue_snapshot(item) for item in season.venues.filter(is_standard=True)
@@ -712,6 +719,8 @@ def update_season_configuration(
     season = Season.objects.select_for_update().filter(id=season_id).first()
     if season is None:
         raise SeasonManagementError("SEASON_NOT_FOUND", "赛季不存在。")
+    if season.status == Season.Status.ARCHIVED:
+        raise SeasonManagementError("SEASON_ARCHIVED", "已归档赛季只读。")
     normalized = _normalize_configuration(payload)
     if season.version != expected_version:
         raise SeasonManagementError("VERSION_CONFLICT", "赛季配置已更新，请刷新后重试。")

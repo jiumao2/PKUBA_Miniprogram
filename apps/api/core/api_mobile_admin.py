@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from datetime import date, time
 from uuid import UUID
 
@@ -15,12 +16,14 @@ from core.models import (
     AdminAuditLog,
     Game,
     GameScoresheet,
+    GameWinnerFeed,
     Period,
     Season,
     SlotReservation,
     Team,
     Venue,
 )
+from core.services.game_results import GameResultError, propagate_winner_locked
 from core.services.rescheduling import (
     RescheduleError,
     _lock_schedule_slot,
@@ -109,6 +112,11 @@ class UpdateAdminGameIn(Schema):
 
 def _error(code: str, message: str, status: int = 400):
     return Status(status, {"code": code, "message": message})
+
+
+def _venue_key(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value)
+    return "".join(normalized.split()).casefold()
 
 
 def _require_admin(request: HttpRequest):
@@ -287,9 +295,25 @@ def update_admin_game(
             if not allow_nonpublic:
                 games = games.filter(season__is_public=True)
             game = games.get()
+            if game.season.status == Season.Status.ARCHIVED:
+                return _error("SEASON_ARCHIVED", "已归档赛季只读。", 409)
             if game.version != payload.expected_version:
                 return _error("VERSION_CONFLICT", "比赛已被其他操作更新，请刷新。", 409)
             before = _snapshot(game)
+            result_changed = (
+                payload.home_score != game.home_score
+                or payload.away_score != game.away_score
+                or payload.status != game.status
+            )
+            if result_changed and GameWinnerFeed.objects.filter(
+                source_game=game,
+                applied_winner__isnull=False,
+            ).exists():
+                return _error(
+                    "CORRECTION_PREVIEW_REQUIRED",
+                    "该赛果已影响下游对阵；请先在淘汰赛管理中预览并确认级联纠错。",
+                    409,
+                )
             if GameScoresheet.objects.filter(
                 game=game,
                 current_publication__isnull=False,
@@ -353,23 +377,28 @@ def update_admin_game(
                 return _error("DATE_OUTSIDE_SEASON", "比赛日期不在赛季范围内。")
 
             _lock_schedule_slot(game.season_id, payload.date, period.id)
-            venue_conflict = bool(venue) and (
+            target_venue_key = _venue_key(venue_name)
+            occupied_game_venues = (
                 Game.objects.filter(
                     season=game.season,
                     date=payload.date,
                     period=period,
-                    venue_name=venue.name,
                 )
                 .exclude(id=game.id)
                 .exclude(status=Game.Status.VOID)
-                .exists()
-                or SlotReservation.objects.filter(
+                .values_list("venue_name", flat=True)
+            )
+            occupied_reservation_venues = (
+                SlotReservation.objects.filter(
                     season=game.season,
                     date=payload.date,
                     period=period,
-                    venue=venue,
                     status=SlotReservation.Status.ACTIVE,
-                ).exists()
+                ).values_list("venue_name", flat=True)
+            )
+            venue_conflict = any(
+                _venue_key(item) == target_venue_key
+                for item in [*occupied_game_venues, *occupied_reservation_venues]
             )
             if venue_conflict and not payload.override_rules:
                 return _error(
@@ -442,6 +471,8 @@ def update_admin_game(
             game.version += 1
             game.full_clean()
             game.save()
+            if game.status in {Game.Status.COMPLETED, Game.Status.FORFEIT}:
+                propagate_winner_locked(source_game=game, actor=request.auth)
             allocations = list(
                 SlotReservation.objects.select_for_update().filter(
                     converted_game=game,
@@ -488,5 +519,7 @@ def update_admin_game(
     except IntegrityError:
         return _error("SCHEDULE_CONFLICT", "赛程与现有比赛发生并发冲突。", 409)
     except RescheduleError as error:
+        return _error(error.code, str(error), 409)
+    except GameResultError as error:
         return _error(error.code, str(error), 409)
     return _game_out(_game_queryset().get(id=game_id))

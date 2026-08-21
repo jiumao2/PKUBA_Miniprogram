@@ -410,3 +410,38 @@ def test_active_season_requires_superadmin_maintenance_confirmation_and_admin_is
     )
     assert forbidden.status_code == 200
     assert forbidden.json()["editable"] is False
+
+
+def test_archived_season_configuration_is_fully_read_only():
+    setup = reschedule_setup()
+    season = setup["season"]
+    season.status = Season.Status.ARCHIVED
+    season.save(update_fields=["status", "is_public", "updated_at"])
+    superadmin = _superadmin()
+    client = Client(enforce_csrf_checks=True)
+    csrf_token = login_admin(client, superadmin)
+
+    configuration = client.get(f"/api/v1/admin/seasons/{season.id}/configuration")
+    assert configuration.status_code == 200
+    assert configuration.json()["editable"] is False
+    assert configuration.json()["maintenance_required"] is False
+    assert configuration.json()["locked_reason"] == "已归档赛季只读。"
+
+    payload = _update_payload(configuration.json())
+    preview = client.post(
+        f"/api/v1/admin/seasons/{season.id}/configuration/preview",
+        data=json.dumps(payload),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+    assert preview.status_code == 409
+    assert preview.json()["code"] == "SEASON_ARCHIVED"
+
+    saved = client.put(
+        f"/api/v1/admin/seasons/{season.id}/configuration",
+        data=json.dumps(payload),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+    assert saved.status_code == 409
+    assert saved.json()["code"] == "SEASON_ARCHIVED"

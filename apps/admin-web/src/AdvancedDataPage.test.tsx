@@ -1,0 +1,63 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AdvancedModel, createAdminClient } from "@pkuba/api-client";
+
+import { AdvancedDataPage } from "./AdvancedDataPage";
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+const models: AdvancedModel[] = [
+  {
+    key: "accounts",
+    label: "账号",
+    model_name: "Account",
+    mutation_mode: "READ_ONLY",
+    immutable: true,
+    fields: [
+      { name: "id", type: "UUIDField", relation: false, nullable: false, sensitive: false },
+      { name: "username", type: "CharField", relation: false, nullable: false, sensitive: false },
+      { name: "password", type: "CharField", relation: false, nullable: false, sensitive: true },
+    ],
+  },
+];
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe("AdvancedDataPage", () => {
+  it("shows complete sensitive fields but keeps workflow models read only", async () => {
+    const client = {
+      listAdvancedModels: vi.fn().mockResolvedValue(models),
+      listAdvancedRecords: vi.fn().mockResolvedValue({
+        model: "accounts",
+        label: "账号",
+        mutation_mode: "READ_ONLY",
+        total: 1,
+        offset: 0,
+        limit: 50,
+        items: [
+          {
+            id: "10000000-0000-0000-0000-000000000001",
+            model: "account",
+            values: {
+              id: "10000000-0000-0000-0000-000000000001",
+              username: "core-developer",
+              password: "pbkdf2_sha256$full-hash",
+            },
+          },
+        ],
+      }),
+    } as unknown as AdminClient;
+    const user = userEvent.setup();
+    render(<AdvancedDataPage client={client} />);
+
+    expect(await screen.findByText("core-developer")).toBeTruthy();
+    await user.click(screen.getByText("core-developer"));
+    expect(screen.getAllByText("pbkdf2_sha256$full-hash")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "新建" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "编辑" })).toBeNull();
+  });
+});

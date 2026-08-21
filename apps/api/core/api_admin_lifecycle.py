@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+from uuid import UUID
+
+from django.http import HttpRequest
+from ninja import Router, Schema, Status
+
+from core.api_security import superadmin_session_auth
+from core.models import Season
+from core.services.season_lifecycle import (
+    SeasonLifecycleError,
+    apply_season_lifecycle,
+    preview_season_lifecycle,
+)
+
+router = Router(tags=["admin-lifecycle"], auth=superadmin_session_auth)
+
+
+class LifecycleErrorOut(Schema):
+    code: str
+    message: str
+
+
+class LifecycleCommandIn(Schema):
+    expected_season_version: int
+    target_status: str
+    division_id: UUID | None = None
+    expected_division_version: int | None = None
+
+
+class LifecycleApplyIn(LifecycleCommandIn):
+    impact_hash: str
+
+
+class LifecycleBlockerOut(Schema):
+    code: str
+    message: str
+    count: int
+
+
+class LifecycleDivisionImpactOut(Schema):
+    division_id: UUID
+    division_name: str
+    before_status: str
+    after_status: str
+    version: int
+
+
+class LifecyclePreviewOut(Schema):
+    season_id: UUID
+    season_version: int
+    before_season_status: str
+    after_season_status: str
+    target_status: str
+    division_id: UUID | None
+    impacts: list[LifecycleDivisionImpactOut]
+    blockers: list[LifecycleBlockerOut]
+    references: dict[str, int]
+    changed: bool
+    can_apply: bool
+    impact_hash: str
+
+
+def _error(error: SeasonLifecycleError):
+    if error.code in {"SEASON_NOT_FOUND", "DIVISION_NOT_FOUND"}:
+        status = 404
+    elif error.code in {
+        "VERSION_CONFLICT",
+        "SEASON_ARCHIVED",
+        "INVALID_TRANSITION",
+        "IMPACT_HASH_MISMATCH",
+        "LIFECYCLE_BLOCKED",
+    }:
+        status = 409
+    else:
+        status = 400
+    return Status(status, {"code": error.code, "message": str(error)})
+
+
+@router.post(
+    "/seasons/{season_id}/lifecycle/preview",
+    response={
+        200: LifecyclePreviewOut,
+        400: LifecycleErrorOut,
+        404: LifecycleErrorOut,
+        409: LifecycleErrorOut,
+    },
+)
+def preview_lifecycle(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: LifecycleCommandIn,
+):
+    del request
+    season = Season.objects.filter(id=season_id).first()
+    if season is None:
+        return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+    try:
+        return preview_season_lifecycle(
+            season=season,
+            expected_season_version=payload.expected_season_version,
+            target_status=payload.target_status,
+            division_id=payload.division_id,
+            expected_division_version=payload.expected_division_version,
+        )
+    except SeasonLifecycleError as error:
+        return _error(error)
+
+
+@router.post(
+    "/seasons/{season_id}/lifecycle/apply",
+    response={
+        200: LifecyclePreviewOut,
+        400: LifecycleErrorOut,
+        404: LifecycleErrorOut,
+        409: LifecycleErrorOut,
+    },
+)
+def apply_lifecycle(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: LifecycleApplyIn,
+):
+    try:
+        return apply_season_lifecycle(
+            actor=request.auth,
+            season_id=season_id,
+            expected_season_version=payload.expected_season_version,
+            target_status=payload.target_status,
+            division_id=payload.division_id,
+            expected_division_version=payload.expected_division_version,
+            impact_hash=payload.impact_hash,
+        )
+    except SeasonLifecycleError as error:
+        return _error(error)

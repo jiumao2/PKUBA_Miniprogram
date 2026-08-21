@@ -96,6 +96,7 @@ def test_bracket_derives_finalists_from_completed_semifinals():
 
     assert response.status_code == 200
     bracket = response.json()["divisions"][0]
+    assert bracket["relation_mode"] == "LEGACY_DERIVED"
     assert [round_item["label"] for round_item in bracket["rounds"]] == ["半决赛", "决赛"]
     final = bracket["rounds"][1]["games"][0]
     assert final["home_name"] == teams[0].name

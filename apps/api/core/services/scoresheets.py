@@ -123,10 +123,25 @@ def _active_lease_locked(scoresheet: GameScoresheet) -> ScoresheetEditLease | No
 
 
 def _assert_version(scoresheet: GameScoresheet, expected_version: int) -> None:
+    _assert_scoresheet_operable(scoresheet)
     if scoresheet.draft_version != expected_version:
         raise ScoresheetError(
             "VERSION_CONFLICT",
             f"草稿已从版本 {expected_version} 更新到 {scoresheet.draft_version}，请先同步。",
+            status=409,
+        )
+
+
+def _assert_scoresheet_operable(scoresheet: GameScoresheet) -> None:
+    if scoresheet.game.season.status == scoresheet.game.season.Status.ARCHIVED:
+        raise ScoresheetError("SEASON_ARCHIVED", "已归档赛季只读。", status=409)
+    if (
+        scoresheet.game.division.operation_status
+        != scoresheet.game.division.OperationStatus.ACTIVE
+    ):
+        raise ScoresheetError(
+            "DIVISION_NOT_ACTIVE",
+            "当前组别尚未正式上线，不能维护记录表或赛果。",
             status=409,
         )
 
@@ -181,6 +196,17 @@ def register_scoresheet_source(
             .select_related("season", "division", "home_team", "away_team")
             .get(id=game.id)
         )
+        if locked_game.season.status == locked_game.season.Status.ARCHIVED:
+            raise ScoresheetError("SEASON_ARCHIVED", "已归档赛季只读。", status=409)
+        if (
+            locked_game.division.operation_status
+            != locked_game.division.OperationStatus.ACTIVE
+        ):
+            raise ScoresheetError(
+                "DIVISION_NOT_ACTIVE",
+                "当前组别尚未正式上线，不能上传记录表。",
+                status=409,
+            )
         prior = game_prior_snapshot(locked_game)
         roster = roster_prior_snapshot(locked_game)
         scoresheet = GameScoresheet.objects.select_for_update().filter(game=locked_game).first()
@@ -327,6 +353,7 @@ def acquire_edit_lease(
             scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
         except GameScoresheet.DoesNotExist as error:
             raise ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404) from error
+        _assert_scoresheet_operable(scoresheet)
         _assert_correction_permission(scoresheet, actor)
         lease = _active_lease_locked(scoresheet)
         if lease and (
@@ -382,6 +409,7 @@ def heartbeat_edit_lease(
 ) -> ScoresheetEditLease:
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
+        _assert_scoresheet_operable(scoresheet)
         lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
@@ -432,6 +460,7 @@ def force_takeover_edit_lease(
         raise ScoresheetError("CONFIRMATION_REQUIRED", "强制接管前必须二次确认。")
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
+        _assert_scoresheet_operable(scoresheet)
         previous = _active_lease_locked(scoresheet)
         before = {}
         if previous:
@@ -487,6 +516,7 @@ def save_draft_changes(
 ) -> GameScoresheet:
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
+        _assert_scoresheet_operable(scoresheet)
         _assert_correction_permission(scoresheet, actor)
         _assert_version(scoresheet, expected_version)
         _assert_lease_locked(
@@ -892,6 +922,12 @@ def publish_scoresheet(
         game.status = Game.Status.COMPLETED
         game.version += 1
         game.save(update_fields=["home_score", "away_score", "status", "version", "updated_at"])
+        from core.services.game_results import GameResultError, propagate_winner_locked
+
+        try:
+            propagate_winner_locked(source_game=game, actor=actor)
+        except GameResultError as error:
+            raise ScoresheetError(error.code, str(error), status=409) from error
 
         source = scoresheet.source_asset
         source.review_status = GameMediaAsset.ReviewStatus.APPROVED

@@ -68,14 +68,24 @@
 }
 
 .schedule-page {
-  overflow-x: hidden;
+  padding-top: 0;
+}
+
+.schedule-sticky-header {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  margin: 0 -28rpx;
+  padding: 0 28rpx;
+  border-bottom: 1rpx solid #cfc9c0;
+  background: #f2f0eb;
+  box-shadow: 0 8rpx 16rpx rgba(23, 22, 20, 0.04);
 }
 
 .schedule-view-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  margin-top: 28rpx;
-  border-bottom: 1rpx solid #cfc9c0;
+  margin-top: 0;
 }
 
 .schedule-view-tab {

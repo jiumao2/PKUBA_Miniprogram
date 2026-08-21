@@ -1,4 +1,4 @@
-import { Button, Image, ScrollView, Text, View } from "@tarojs/components";
+import { Button, Image, Text, View } from "@tarojs/components";
 import Taro, { useDidShow } from "@tarojs/taro";
 import { useState } from "react";
 import type { HomeDashboard, Season } from "@pkuba/api-client";
@@ -8,6 +8,13 @@ import { api } from "../../api";
 import { GameTimeline } from "../../components/game-timeline";
 import { formatDate } from "../../format";
 import { syncTabBar } from "../../tabbar";
+import {
+  buildSeasonCalendar,
+  densityLevel,
+  localDateKey,
+  shortDate,
+  WEEKDAYS,
+} from "./calendar";
 import "./index.css";
 
 export default function HomePage() {
@@ -50,11 +57,11 @@ export default function HomePage() {
       {error && <State title="暂时无法加载" detail={`${error}，请稍后重试。`} />}
       {!loading && !error && dashboard && (
         <>
+          <GameDensity dashboard={dashboard} />
           <Matchday
             dashboard={dashboard}
             onSchedule={() => Taro.switchTab({ url: "/pages/schedule/index" })}
           />
-          <GameDensity dashboard={dashboard} />
         </>
       )}
 
@@ -64,63 +71,56 @@ export default function HomePage() {
 
 function GameDensity({ dashboard }: { dashboard: HomeDashboard }) {
   const days = dashboard.daily_game_counts;
-  if (!days.length) return null;
+  if (!days.length || !dashboard.calendar_start_date || !dashboard.calendar_end_date) {
+    return (
+      <View className="game-density game-density-empty">
+        <View className="game-density-heading">
+          <Text className="game-density-title">比赛日历</Text>
+          <Text className="game-density-total">暂无赛程</Text>
+        </View>
+      </View>
+    );
+  }
 
   const maxGames = Math.max(...days.map((day) => day.game_count));
   const totalGames = days.reduce((total, day) => total + day.game_count, 0);
-  const focusDate = dashboard.display_date && days.some((day) => day.date === dashboard.display_date)
-    ? dashboard.display_date
-    : days[days.length - 1].date;
+  const cells = buildSeasonCalendar(
+    dashboard.calendar_start_date,
+    dashboard.calendar_end_date,
+    days,
+  );
+  const today = localDateKey(new Date());
 
   return (
     <View className="game-density">
       <View className="game-density-heading">
-        <View>
-          <Text className="section-kicker">赛季节奏</Text>
-          <Text className="game-density-title">每日比赛数量</Text>
-        </View>
-        <Text className="game-density-total">{days.length} 日 · {totalGames} 场</Text>
+        <Text className="game-density-title">比赛日历</Text>
+        <Text className="game-density-total">
+          {shortDate(dashboard.calendar_start_date)}—{shortDate(dashboard.calendar_end_date)} · {totalGames} 场
+        </Text>
       </View>
-      <Text className="game-density-note">仅列有比赛的日期，颜色越深比赛越集中</Text>
-      <ScrollView
-        className="game-density-scroll"
-        scrollX
-        scrollIntoView={`game-density-${focusDate}`}
-        scrollWithAnimation
-        showScrollbar={false}
-      >
-        <View className="game-density-track">
-          {days.map((day) => {
-            const [date, weekday] = densityDate(day.date);
-            return (
-              <View
-                aria-label={`${formatDate(day.date)}，${day.game_count} 场比赛`}
-                className={`game-density-day level-${densityLevel(day.game_count, maxGames)} ${day.date === focusDate ? "is-focus" : ""}`}
-                id={`game-density-${day.date}`}
-                key={day.date}
-              >
-                <Text className="game-density-date">{date}</Text>
-                <Text className="game-density-weekday">{weekday}</Text>
-                <Text className="game-density-count">
-                  {day.game_count}<Text className="game-density-unit">场</Text>
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </ScrollView>
+      <View className="game-density-weekdays" aria-hidden>
+        {WEEKDAYS.map((weekday) => <Text key={weekday}>{weekday}</Text>)}
+      </View>
+      <View className="game-density-grid">
+        {cells.map((cell) => cell.outside ? (
+          <View className="game-density-day is-outside" key={cell.key} />
+        ) : (
+          <View
+            aria-label={`${formatDate(cell.date)}，${cell.gameCount} 场比赛${cell.date === today ? "，今天" : ""}`}
+            className={`game-density-day level-${densityLevel(cell.gameCount, maxGames)} ${cell.date === today ? "is-today" : ""}`}
+            key={cell.key}
+          >
+            <View className="game-density-date-row">
+              <Text className="game-density-date">{shortDate(cell.date)}</Text>
+              {cell.date === today && <Text className="game-density-today">今</Text>}
+            </View>
+            <Text className="game-density-count">{cell.gameCount}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
-}
-
-function densityLevel(value: number, maxValue: number) {
-  return Math.max(1, Math.min(4, Math.ceil(value / maxValue * 4)));
-}
-
-function densityDate(value: string): [string, string] {
-  const [year, month, day] = value.split("-").map(Number);
-  const weekday = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-  return [`${month}/${day}`, weekday[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]];
 }
 
 function Matchday({ dashboard, onSchedule }: { dashboard: HomeDashboard; onSchedule: () => void }) {

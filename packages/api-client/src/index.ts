@@ -49,6 +49,23 @@ export type PreviewSeasonConfiguration =
 export type SeasonConfigurationPreview =
   components["schemas"]["SeasonConfigurationPreviewOut"];
 export type CapacityLedgerRow = components["schemas"]["CapacityLedgerRowOut"];
+export type LifecycleCommand = components["schemas"]["LifecycleCommandIn"];
+export type LifecycleApply = components["schemas"]["LifecycleApplyIn"];
+export type LifecyclePreview = components["schemas"]["LifecyclePreviewOut"];
+export type BracketManagement = components["schemas"]["BracketManagementOut"];
+export type BracketAdminGame = components["schemas"]["BracketAdminGameOut"];
+export type WinnerFeedRelation = components["schemas"]["WinnerFeedRelationIn"];
+export type BracketRelationPreview =
+  components["schemas"]["BracketRelationPreviewOut"];
+export type CorrectionPreview = components["schemas"]["CorrectionPreviewOut"];
+export type AdvancedModel = components["schemas"]["AdvancedModelOut"];
+export type AdvancedRecord = components["schemas"]["AdvancedRecordOut"];
+export type AdvancedRecordList = components["schemas"]["AdvancedRecordListOut"];
+export type AdvancedMutation = components["schemas"]["AdvancedMutationIn"];
+export type AdvancedMutationApply =
+  components["schemas"]["AdvancedMutationApplyIn"];
+export type AdvancedMutationPreview =
+  components["schemas"]["AdvancedMutationPreviewOut"];
 export type RosterDataset = components["schemas"]["RosterDatasetOut"];
 export type RosterDivision = components["schemas"]["RosterDivisionOut"];
 export type TeamRoster = components["schemas"]["TeamRosterOut"];
@@ -141,6 +158,7 @@ export interface PublicScoresheetStat {
   game_id: string;
   game_code: string;
   date: string;
+  start_time: string;
   division_name: string;
   home_name: string;
   away_name: string;
@@ -905,6 +923,123 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       parseAdminResponse<SeasonConfiguration>(
         await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/configuration`, {
           method: "PUT",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    previewSeasonLifecycle: async (seasonId: string, payload: LifecycleCommand) =>
+      parseAdminResponse<LifecyclePreview>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/lifecycle/preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    applySeasonLifecycle: async (seasonId: string, payload: LifecycleApply) =>
+      parseAdminResponse<LifecyclePreview>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/lifecycle/apply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    getBracketManagement: async (seasonId: string, divisionId: string) =>
+      parseAdminResponse<BracketManagement>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/brackets/${divisionId}`,
+        ),
+      ),
+    previewBracketRelations: async (
+      seasonId: string,
+      divisionId: string,
+      payload: {
+        expected_season_version: number;
+        expected_division_version: number;
+        relations: WinnerFeedRelation[];
+      },
+    ) =>
+      parseAdminResponse<BracketRelationPreview>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/brackets/${divisionId}/relations/preview`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            body: JSON.stringify(payload),
+          },
+        ),
+      ),
+    applyBracketRelations: async (
+      seasonId: string,
+      divisionId: string,
+      payload: {
+        expected_season_version: number;
+        expected_division_version: number;
+        relations: WinnerFeedRelation[];
+        impact_hash: string;
+      },
+    ) =>
+      parseAdminResponse<BracketManagement>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/brackets/${divisionId}/relations/apply`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            body: JSON.stringify(payload),
+          },
+        ),
+      ),
+    previewBracketCorrection: async (gameId: string, expectedGameVersion: number) =>
+      parseAdminResponse<CorrectionPreview>(
+        await fetchAdmin(`/api/v1/admin/brackets/games/${gameId}/correction/preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({ expected_game_version: expectedGameVersion }),
+        }),
+      ),
+    applyBracketCorrection: async (
+      gameId: string,
+      expectedGameVersion: number,
+      impactHash: string,
+    ) =>
+      parseAdminResponse<CorrectionPreview>(
+        await fetchAdmin(`/api/v1/admin/brackets/games/${gameId}/correction/apply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({
+            expected_game_version: expectedGameVersion,
+            impact_hash: impactHash,
+          }),
+        }),
+      ),
+    listAdvancedModels: async () =>
+      parseAdminResponse<AdvancedModel[]>(
+        await fetchAdmin("/api/v1/admin/advanced-data/models"),
+      ),
+    listAdvancedRecords: async (modelKey: string, offset = 0, limit = 50) =>
+      parseAdminResponse<AdvancedRecordList>(
+        await fetchAdmin(
+          `/api/v1/admin/advanced-data/${modelKey}?offset=${offset}&limit=${limit}`,
+        ),
+      ),
+    getAdvancedRecord: async (modelKey: string, objectId: string) =>
+      parseAdminResponse<AdvancedRecord>(
+        await fetchAdmin(`/api/v1/admin/advanced-data/${modelKey}/${objectId}`),
+      ),
+    previewAdvancedMutation: async (modelKey: string, payload: AdvancedMutation) =>
+      parseAdminResponse<AdvancedMutationPreview>(
+        await fetchAdmin(`/api/v1/admin/advanced-data/${modelKey}/mutations/preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    applyAdvancedMutation: async (
+      modelKey: string,
+      payload: AdvancedMutationApply,
+    ) =>
+      parseAdminResponse<AdvancedRecord>(
+        await fetchAdmin(`/api/v1/admin/advanced-data/${modelKey}/mutations/apply`, {
+          method: "POST",
           headers: { "Content-Type": "application/json", ...csrfHeaders() },
           body: JSON.stringify(payload),
         }),

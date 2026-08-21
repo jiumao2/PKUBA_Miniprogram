@@ -167,11 +167,31 @@ class Division(UUIDModel):
         MEN = "MEN", "男篮"
         WOMEN = "WOMEN", "女篮"
 
+    class OperationStatus(models.TextChoices):
+        SETUP = "SETUP", "准备中"
+        PRE_DRAW_PUBLIC = "PRE_DRAW_PUBLIC", "抽签前公开"
+        ACTIVE = "ACTIVE", "正式进行中"
+        ARCHIVED = "ARCHIVED", "已归档"
+
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="divisions")
     code = models.SlugField(max_length=32)
     name = models.CharField(max_length=80)
     gender = models.CharField(max_length=8, choices=Gender.choices, default=Gender.MEN)
     sort_order = models.PositiveSmallIntegerField(default=0)
+    operation_status = models.CharField(
+        max_length=24,
+        choices=OperationStatus.choices,
+        default=OperationStatus.SETUP,
+    )
+    version = models.PositiveIntegerField(default=1)
+    activated_at = models.DateTimeField(null=True, blank=True)
+    activated_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="activated_divisions",
+    )
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -523,6 +543,69 @@ class Game(UUIDModel):
     @property
     def away_display(self) -> str:
         return self.away_team.name if self.away_team_id else self.away_slot.label
+
+
+class GameWinnerFeed(UUIDModel):
+    class TargetSide(models.TextChoices):
+        HOME = "HOME", "主队"
+        AWAY = "AWAY", "客队"
+
+    source_game = models.ForeignKey(
+        Game,
+        on_delete=models.PROTECT,
+        related_name="winner_feeds_out",
+    )
+    target_game = models.ForeignKey(
+        Game,
+        on_delete=models.PROTECT,
+        related_name="winner_feeds_in",
+    )
+    target_side = models.CharField(max_length=8, choices=TargetSide.choices)
+    applied_winner = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="applied_winner_feeds",
+    )
+    applied_source_version = models.PositiveIntegerField(null=True, blank=True)
+    confirmed_by = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="confirmed_winner_feeds",
+    )
+    confirmed_at = models.DateTimeField(default=timezone.now)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["target_game__date", "target_game__start_time", "target_side"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["target_game", "target_side"],
+                name="uniq_winner_feed_target_side",
+            ),
+            models.CheckConstraint(
+                condition=~Q(source_game=models.F("target_game")),
+                name="winner_feed_distinct_games",
+            ),
+        ]
+
+    def clean(self):
+        if not self.source_game_id or not self.target_game_id:
+            return
+        if self.source_game.season_id != self.target_game.season_id:
+            raise ValidationError("胜者来源与目标比赛必须属于同一赛季。")
+        if self.source_game.division_id != self.target_game.division_id:
+            raise ValidationError("胜者来源与目标比赛必须属于同一组别。")
+        source_key = (self.source_game.date, self.source_game.start_time)
+        target_key = (self.target_game.date, self.target_game.start_time)
+        if target_key <= source_key:
+            raise ValidationError("目标比赛必须晚于胜者来源比赛。")
+        if self.applied_winner_id and (
+            self.applied_winner.season_id != self.source_game.season_id
+            or self.applied_winner.division_id != self.source_game.division_id
+        ):
+            raise ValidationError("已应用胜者必须属于同一赛季和组别。")
 
 
 class ScheduleSlotFamily(UUIDModel):

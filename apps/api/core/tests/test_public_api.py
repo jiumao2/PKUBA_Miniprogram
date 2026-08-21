@@ -36,6 +36,8 @@ def test_pre_draw_schedule_exposes_placeholders():
     assert dashboard.status_code == 200
     assert dashboard.json()["mode"] == "TODAY"
     assert dashboard.json()["total_games"] == 1
+    assert dashboard.json()["calendar_start_date"] == game.date.isoformat()
+    assert dashboard.json()["calendar_end_date"] == game.date.isoformat()
     assert dashboard.json()["daily_game_counts"] == [
         {"date": game.date.isoformat(), "game_count": 1}
     ]
@@ -76,8 +78,11 @@ def test_home_dashboard_aggregates_public_games_by_date():
 
     assert payload["daily_game_counts"] == [
         {"date": game.date.isoformat(), "game_count": 2},
+        {"date": (game.date + timedelta(days=1)).isoformat(), "game_count": 0},
         {"date": (game.date + timedelta(days=2)).isoformat(), "game_count": 1},
     ]
+    assert payload["calendar_start_date"] == game.date.isoformat()
+    assert payload["calendar_end_date"] == (game.date + timedelta(days=2)).isoformat()
 
 
 def test_archived_schedule_is_not_public():
@@ -107,3 +112,16 @@ def test_home_dashboard_reports_finished_when_no_current_or_future_games():
     assert payload["daily_game_counts"] == [
         {"date": (timezone.localdate() - timedelta(days=1)).isoformat(), "game_count": 1}
     ]
+
+
+def test_home_calendar_ignores_void_boundaries_and_returns_null_for_no_games():
+    target_season = season()
+    game = placeholder_game(target_season)
+    Game.objects.filter(id=game.id).update(status=Game.Status.VOID)
+
+    payload = Client().get("/api/v1/public/home").json()
+
+    assert payload["mode"] == "EMPTY"
+    assert payload["calendar_start_date"] is None
+    assert payload["calendar_end_date"] is None
+    assert payload["daily_game_counts"] == []

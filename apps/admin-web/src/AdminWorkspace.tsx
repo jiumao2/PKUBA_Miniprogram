@@ -13,7 +13,9 @@ import {
 import logoUrl from "@pkuba/design-tokens/pkuba-logo.png";
 
 import { groupGamesByDate } from "./domain";
+import { AdvancedDataPage } from "./AdvancedDataPage";
 import { AdminAccountsPage } from "./AdminAccountsPage";
+import { BracketManagementPage } from "./BracketManagementPage";
 import { CapacityCalendar } from "./CapacityCalendar";
 import { DrawMappingPage } from "./DrawMappingPage";
 import { LoginScreen } from "./LoginScreen";
@@ -36,9 +38,11 @@ const navigation = [
   { id: "schedule-import", label: "赛程编排", available: true },
   { id: "schedule-edit", label: "赛程编辑", available: true },
   { id: "draw", label: "抽签映射", available: true },
+  { id: "bracket", label: "淘汰赛管理", available: true },
   { id: "reschedule", label: "调赛处理", available: true },
   { id: "media", label: "比赛资料", available: true },
   { id: "admins", label: "管理员账户", available: true },
+  { id: "advanced", label: "高级数据", available: true },
 ] as const;
 
 type PageId = (typeof navigation)[number]["id"];
@@ -48,7 +52,9 @@ const superadminPages: PageId[] = [
   "schedule-import",
   "schedule-edit",
   "draw",
+  "bracket",
   "admins",
+  "advanced",
 ];
 
 export function AdminWorkspace() {
@@ -253,12 +259,16 @@ export function AdminWorkspace() {
                   ? "赛程编辑"
                 : page === "draw"
                   ? "抽签映射"
+                : page === "bracket"
+                  ? "淘汰赛管理"
                 : page === "media"
                     ? "比赛资料"
                 : page === "reschedule"
                   ? "调赛处理"
                 : page === "admins"
                   ? "管理员账户"
+                : page === "advanced"
+                  ? "高级数据"
                   : season?.name ?? "赛事总览"}
             </h1>
           </div>
@@ -349,6 +359,14 @@ export function AdminWorkspace() {
             onOpenConfiguration={() => setPage("season")}
           />
         )}
+        {!loading && !error && selectedAdminSeason && page === "bracket" && account.role === "SUPERADMIN" && (
+          <BracketManagementPage
+            client={adminClient}
+            seasons={adminSeasons}
+            seasonId={selectedAdminSeason.id}
+            onSeasonChange={setSelectedAdminSeasonId}
+          />
+        )}
         {!loading && !error && page === "media" && (
           <CompetitionMediaPage
             accountRole={account.role}
@@ -360,7 +378,14 @@ export function AdminWorkspace() {
           <RescheduleManagementPage client={adminClient} />
         )}
         {page === "admins" && (
-          <AdminAccountsPage account={account} client={adminClient} season={season} />
+          <AdminAccountsPage
+            account={account}
+            client={adminClient}
+            season={selectedAdminSeason ?? null}
+          />
+        )}
+        {page === "advanced" && account.role === "SUPERADMIN" && (
+          <AdvancedDataPage client={adminClient} />
         )}
         {!loading && !error && season && page === "overview" && (
           <>

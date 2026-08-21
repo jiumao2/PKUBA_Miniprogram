@@ -283,6 +283,17 @@ def test_online_add_and_active_maintenance_use_stable_ids_versions_and_preview()
     }
     preview = preview_team_change(actor=setup["actor"], team=team, payload=payload)
     assert preview["requires_confirmation"] is True
+    changed_after_preview = {
+        **payload,
+        "players": [*payload["players"][:-1], {**payload["players"][-1], "jersey_number": "9"}],
+    }
+    with pytest.raises(RosterManagementError, match="重新预览"):
+        save_team_roster(
+            actor=setup["actor"],
+            team_id=team.id,
+            payload=changed_after_preview,
+            maintenance_token=preview["maintenance_token"],
+        )
     with pytest.raises(RosterManagementError, match="重新预览"):
         save_team_roster(actor=setup["actor"], team_id=team.id, payload=payload)
     updated = save_team_roster(

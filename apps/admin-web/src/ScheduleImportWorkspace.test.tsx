@@ -37,6 +37,8 @@ const season: AdminSeason = {
       code: "men",
       name: "男子组",
       gender: "MEN",
+      operation_status: "SETUP",
+      version: 1,
     },
   ],
 };

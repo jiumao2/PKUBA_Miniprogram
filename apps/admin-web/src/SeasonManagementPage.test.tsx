@@ -30,6 +30,8 @@ const historical: SeasonConfiguration = {
     name,
     gender: name.startsWith("男") ? "MEN" : "WOMEN",
     sort_order: index + 1,
+    operation_status: "ACTIVE",
+    version: 1,
     team_count: [12, 23, 8, 14][index],
     group_count: [2, 5, 1, 3][index],
     game_count: [30, 57, 16, 43][index],
@@ -105,7 +107,16 @@ const seasons: AdminSeason[] = [{
   starts_on: historical.starts_on,
   ends_on: historical.ends_on,
   version: historical.version,
-  divisions: historical.divisions.map(({ id, code, name, gender }) => ({ id, code, name, gender })),
+  divisions: historical.divisions.map(
+    ({ id, code, name, gender, operation_status, version }) => ({
+      id,
+      code,
+      name,
+      gender,
+      operation_status,
+      version,
+    }),
+  ),
 }];
 
 function clientWith(configuration: SeasonConfiguration, overrides = {}) {

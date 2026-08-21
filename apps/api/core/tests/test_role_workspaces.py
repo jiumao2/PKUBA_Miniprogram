@@ -177,3 +177,84 @@ def test_web_schedule_editor_is_visible_to_admin_but_writable_only_by_superadmin
     assert forbidden.status_code == 401
     assert updated.status_code == 200
     assert updated.json()["home_score"] == 70
+
+
+def test_web_schedule_editor_checks_normalized_custom_venue_conflicts():
+    setup = reschedule_setup()
+    game, conflicting = setup["games"]
+    conflicting.date = game.date
+    conflicting.period = game.period
+    conflicting.start_time = game.start_time
+    conflicting.venue_name = "临时 A 馆"
+    conflicting.save()
+    superadmin = Account.objects.create_user(
+        username="venue-superadmin",
+        password="test-password",
+        role=Account.Role.SUPERADMIN,
+    )
+    client = Client()
+    client.force_login(superadmin)
+    response = client.put(
+        f"/api/v1/admin/schedule/games/{game.id}",
+        data=json.dumps(
+            {
+                "expected_version": game.version,
+                "date": game.date.isoformat(),
+                "period_id": str(game.period_id),
+                "start_time": game.start_time.strftime("%H:%M"),
+                "standard_venue_id": None,
+                "venue_name": "  临时　Ａ馆  ",
+                "home_team_id": str(game.home_team_id),
+                "away_team_id": str(game.away_team_id),
+                "home_score": None,
+                "away_score": None,
+                "status": Game.Status.SCHEDULED,
+                "leader_adjustable": True,
+                "override_rules": False,
+                "confirmed": True,
+            }
+        ),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "VENUE_CONFLICT"
+
+
+def test_web_schedule_editor_rejects_archived_season_writes():
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    setup["season"].status = setup["season"].Status.ARCHIVED
+    setup["season"].save()
+    superadmin = Account.objects.create_user(
+        username="archived-superadmin",
+        password="test-password",
+        role=Account.Role.SUPERADMIN,
+    )
+    client = Client()
+    client.force_login(superadmin)
+    response = client.put(
+        f"/api/v1/admin/schedule/games/{game.id}",
+        data=json.dumps(
+            {
+                "expected_version": game.version,
+                "date": game.date.isoformat(),
+                "period_id": str(game.period_id),
+                "start_time": game.start_time.strftime("%H:%M"),
+                "standard_venue_id": str(setup["venues"][0].id),
+                "venue_name": game.venue_name,
+                "home_team_id": str(game.home_team_id),
+                "away_team_id": str(game.away_team_id),
+                "home_score": None,
+                "away_score": None,
+                "status": Game.Status.SCHEDULED,
+                "leader_adjustable": True,
+                "override_rules": True,
+                "confirmed": True,
+            }
+        ),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SEASON_ARCHIVED"

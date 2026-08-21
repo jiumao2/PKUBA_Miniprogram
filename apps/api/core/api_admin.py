@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 from urllib.parse import quote
 from uuid import UUID
 
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import check_password, make_password
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -303,6 +303,8 @@ class AdminDivisionOut(Schema):
     code: str
     name: str
     gender: str
+    operation_status: str
+    version: int
 
 
 class AdminSeasonOut(Schema):
@@ -323,6 +325,8 @@ class SeasonDivisionConfigurationOut(Schema):
     name: str
     gender: str
     sort_order: int
+    operation_status: str
+    version: int
     team_count: int
     group_count: int
     game_count: int
@@ -549,6 +553,7 @@ class SetAdminActiveIn(ExpectedVersionIn):
 class SeasonInviteOut(Schema):
     season_id: UUID
     configured: bool
+    uses_default_invite: bool
     updated_at: datetime | None
     version: int
 
@@ -597,6 +602,8 @@ def _serialize_season(season: Season) -> dict[str, object]:
                 "code": division.code,
                 "name": division.name,
                 "gender": division.gender,
+                "operation_status": division.operation_status,
+                "version": division.version,
             }
             for division in season.divisions.all()
         ],
@@ -639,6 +646,7 @@ def _season_management_error(error: SeasonManagementError):
         "MAINTENANCE_CONFIRMATION_REQUIRED",
         "ACTIVE_RESERVATION_REQUIRES_CANCELLATION",
         "DATE_RANGE_IN_USE",
+        "SEASON_ARCHIVED",
     }:
         status = 409
     elif error.code in {"SEASON_NOT_FOUND", "TEMPLATE_NOT_FOUND"}:
@@ -868,6 +876,7 @@ def get_season_admin_invite(request: HttpRequest, season_id: UUID):
     return {
         "season_id": season.id,
         "configured": bool(season.admin_invite_code_hash),
+        "uses_default_invite": check_password("PKUBA1997", season.admin_invite_code_hash),
         "updated_at": season.admin_invite_updated_at,
         "version": season.version,
     }
@@ -893,6 +902,11 @@ def set_season_admin_invite(
         season = Season.objects.select_for_update().filter(id=season_id).first()
         if season is None:
             return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+        if season.status == Season.Status.ARCHIVED:
+            return Status(
+                409,
+                {"code": "SEASON_ARCHIVED", "message": "已归档赛季只读。"},
+            )
         if season.version != payload.expected_version:
             return Status(
                 409,
@@ -930,6 +944,7 @@ def set_season_admin_invite(
     return {
         "season_id": season.id,
         "configured": True,
+        "uses_default_invite": check_password("PKUBA1997", season.admin_invite_code_hash),
         "updated_at": season.admin_invite_updated_at,
         "version": season.version,
     }

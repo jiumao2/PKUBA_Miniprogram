@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Count, Max, Min, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import NinjaAPI, Router, Schema, Status
 
 from .api_admin import router as admin_router
+from .api_admin_advanced_data import router as admin_advanced_data_router
+from .api_admin_brackets import router as admin_brackets_router
 from .api_admin_draw import router as admin_draw_router
+from .api_admin_lifecycle import router as admin_lifecycle_router
 from .api_admin_reschedule import router as admin_reschedule_router
 from .api_admin_roster import router as admin_roster_router
 from .api_admin_schedule import router as admin_schedule_router
@@ -48,6 +51,8 @@ class DivisionOut(Schema):
     code: str
     name: str
     gender: str
+    operation_status: str
+    version: int
 
 
 class SeasonOut(Schema):
@@ -100,6 +105,8 @@ class HomeDashboardOut(Schema):
     display_date: date | None
     total_games: int
     games: list[GameOut]
+    calendar_start_date: date | None
+    calendar_end_date: date | None
     daily_game_counts: list[DailyGameCountOut]
 
 
@@ -180,6 +187,7 @@ class DivisionBracketOut(Schema):
     code: str
     name: str
     gender: str
+    relation_mode: str
     rounds: list[BracketRoundOut]
     placement_games: list[BracketGameOut]
     champion_name: str | None
@@ -271,6 +279,8 @@ def get_current_season(request: HttpRequest):
                 "code": division.code,
                 "name": division.name,
                 "gender": division.gender,
+                "operation_status": division.operation_status,
+                "version": division.version,
             }
             for division in season.divisions.all()
         ],
@@ -288,12 +298,31 @@ def home_dashboard(request: HttpRequest):
         )
     today = timezone.localdate()
     games = public_games()
-    daily_game_counts = list(
+    sparse_counts = list(
         games.order_by()
         .values("date")
         .annotate(game_count=Count("id"))
         .order_by("date")
     )
+    bounds = games.aggregate(
+        calendar_start_date=Min("date"),
+        calendar_end_date=Max("date"),
+    )
+    calendar_start_date = bounds["calendar_start_date"]
+    calendar_end_date = bounds["calendar_end_date"]
+    count_by_date = {row["date"]: row["game_count"] for row in sparse_counts}
+    daily_game_counts: list[dict[str, object]] = []
+    cursor = calendar_start_date
+    while cursor is not None and calendar_end_date is not None and cursor <= calendar_end_date:
+        daily_game_counts.append(
+            {"date": cursor, "game_count": count_by_date.get(cursor, 0)}
+        )
+        cursor += timedelta(days=1)
+    calendar = {
+        "calendar_start_date": calendar_start_date,
+        "calendar_end_date": calendar_end_date,
+        "daily_game_counts": daily_game_counts,
+    }
     today_games = list(games.filter(date=today)[:6])
     if today_games:
         return {
@@ -301,7 +330,7 @@ def home_dashboard(request: HttpRequest):
             "display_date": today,
             "total_games": games.filter(date=today).count(),
             "games": [serialize_game(game) for game in today_games],
-            "daily_game_counts": daily_game_counts,
+            **calendar,
         }
     next_date = (
         games.filter(date__gt=today, status=Game.Status.SCHEDULED)
@@ -316,7 +345,7 @@ def home_dashboard(request: HttpRequest):
             "display_date": next_date,
             "total_games": games.filter(date=next_date).count(),
             "games": [serialize_game(game) for game in next_games],
-            "daily_game_counts": daily_game_counts,
+            **calendar,
         }
     recent_dates = list(
         games.filter(
@@ -341,14 +370,14 @@ def home_dashboard(request: HttpRequest):
             "display_date": recent_dates[0],
             "total_games": len(recent_games),
             "games": [serialize_game(game) for game in recent_games],
-            "daily_game_counts": daily_game_counts,
+            **calendar,
         }
     return {
         "mode": "EMPTY",
         "display_date": None,
         "total_games": 0,
         "games": [],
-        "daily_game_counts": daily_game_counts,
+        **calendar,
     }
 
 
@@ -413,6 +442,9 @@ api.add_router("/public", public)
 api.add_router("/auth", auth_router)
 api.add_router("/admin", admin_router)
 api.add_router("/admin", admin_draw_router)
+api.add_router("/admin", admin_lifecycle_router)
+api.add_router("/admin", admin_brackets_router)
+api.add_router("/admin", admin_advanced_data_router)
 api.add_router("/admin", admin_reschedule_router)
 api.add_router("/admin/schedule", admin_schedule_router)
 api.add_router("/admin/roster", admin_roster_router)

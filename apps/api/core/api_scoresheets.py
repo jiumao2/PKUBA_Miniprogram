@@ -5,6 +5,7 @@ from typing import Any, Literal
 from urllib.parse import quote
 from uuid import UUID
 
+from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from ninja import Router, Schema, Status
@@ -36,7 +37,7 @@ from core.services.scoresheets import (
     validate_scoresheet,
 )
 
-router = Router(tags=["scoresheets"], auth=[admin_session_auth, miniapp_bearer_auth])
+router = Router(tags=["scoresheets"], auth=[miniapp_bearer_auth, admin_session_auth])
 public_router = Router(tags=["public-scoresheet-stats"])
 
 
@@ -50,6 +51,7 @@ class ScoresheetQueueItemOut(Schema):
     game_code: str
     game_label: str
     date: str
+    start_time: str
     scoresheet_id: UUID | None
     source_asset_id: UUID | None
     status: str
@@ -157,6 +159,7 @@ class PublicScoresheetStatOut(Schema):
     game_id: UUID
     game_code: str
     date: str
+    start_time: str
     division_name: str
     home_name: str
     away_name: str
@@ -315,7 +318,9 @@ def list_scoresheets(request: HttpRequest, season_id: UUID | None = None):
         if season_id:
             games = games.filter(season_id=season_id)
         else:
-            games = games.filter(season__is_public=True)
+            games = games.filter(
+                Q(season__is_public=True) | Q(scoresheet__isnull=False)
+            )
         rows: list[dict[str, Any]] = []
         for game in games:
             try:
@@ -332,6 +337,7 @@ def list_scoresheets(request: HttpRequest, season_id: UUID | None = None):
                         f"{game.division.name} · {game.home_display} vs {game.away_display}"
                     ),
                     "date": game.date.isoformat(),
+                    "start_time": game.start_time.strftime("%H:%M"),
                     "scoresheet_id": scoresheet.id if scoresheet else None,
                     "source_asset_id": scoresheet.source_asset_id if scoresheet else None,
                     "status": scoresheet.status if scoresheet else GameScoresheet.Status.NO_SOURCE,
@@ -730,6 +736,10 @@ def _public_stat(publication: ScoresheetPublication) -> dict[str, Any]:
         "game_id": game.id,
         "game_code": str(published_game.get("game_number") or game.code),
         "date": str(published_game.get("date") or game.date.isoformat()),
+        "start_time": str(
+            published_game.get("scheduled_time")
+            or game.start_time.strftime("%H:%M")
+        ),
         "division_name": str(published_game.get("division") or game.division.name),
         "home_name": str(home.get("name") or game.home_display),
         "away_name": str(away.get("name") or game.away_display),

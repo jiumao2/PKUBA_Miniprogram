@@ -53,6 +53,8 @@ class DrawDivisionOut(Schema):
     name: str
     gender: str
     sort_order: int
+    operation_status: str
+    version: int
     slot_count: int
     active_team_count: int
     assigned_count: int

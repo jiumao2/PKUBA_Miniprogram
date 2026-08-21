@@ -109,6 +109,58 @@ def test_same_week_acceptance_atomically_converts_reservation():
     assert game.leader_adjustable is True
 
 
+def test_second_approved_reschedule_releases_previous_converted_allocation():
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    original_date = game.date
+    first_now = valid_submission_time(game.date, setup["target_date"])
+    first = submit_reschedule(
+        actor=setup["accounts"][0],
+        game_id=game.id,
+        expected_game_version=game.version,
+        target_date=setup["target_date"],
+        target_period_id=setup["period"].id,
+        now=first_now,
+    )
+    first = respond_to_opponent(
+        actor=setup["accounts"][1],
+        request_id=first.id,
+        expected_version=first.version,
+        accept=True,
+        now=first_now + timedelta(minutes=10),
+    )
+    first_allocation_id = first.reservation_id
+    game.refresh_from_db()
+
+    second = submit_reschedule(
+        actor=setup["accounts"][0],
+        game_id=game.id,
+        expected_game_version=game.version,
+        target_date=original_date,
+        target_period_id=setup["period"].id,
+        now=first_now + timedelta(minutes=20),
+    )
+    second = respond_to_opponent(
+        actor=setup["accounts"][1],
+        request_id=second.id,
+        expected_version=second.version,
+        accept=True,
+        now=first_now + timedelta(minutes=30),
+    )
+
+    previous = SlotReservation.objects.get(id=first_allocation_id)
+    current = SlotReservation.objects.get(id=second.reservation_id)
+    assert previous.status == SlotReservation.Status.RELEASED
+    assert previous.released_at is not None
+    assert previous.converted_game_id == game.id
+    assert current.status == SlotReservation.Status.CONVERTED
+    assert current.converted_game_id == game.id
+    assert SlotReservation.objects.filter(
+        converted_game=game,
+        status=SlotReservation.Status.CONVERTED,
+    ).count() == 1
+
+
 def test_withdraw_and_expiry_release_both_resources_without_changing_policy():
     setup = reschedule_setup()
     game = setup["games"][0]

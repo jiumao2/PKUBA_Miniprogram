@@ -202,6 +202,9 @@ def test_superadmin_can_rotate_season_invite_without_exposing_value():
     )
     client = Client()
     client.force_login(superadmin)
+    current = client.get(f"/api/v1/admin/seasons/{season.id}/admin-invite-code")
+    assert current.status_code == 200
+    assert current.json()["uses_default_invite"] is True
     response = client.put(
         f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
         data=json.dumps({"invite_code": "NEW-PKUBA-2026", "expected_version": season.version}),
@@ -209,10 +212,33 @@ def test_superadmin_can_rotate_season_invite_without_exposing_value():
     )
     assert response.status_code == 200
     assert "invite_code" not in response.json()
+    assert response.json()["uses_default_invite"] is False
     season.refresh_from_db()
     assert check_password("NEW-PKUBA-2026", season.admin_invite_code_hash)
     assert not check_password("PKUBA1997", season.admin_invite_code_hash)
     assert AdminAuditLog.objects.filter(action="SEASON_ADMIN_INVITE_UPDATED").exists()
+
+
+def test_archived_season_invite_cannot_be_rotated():
+    season, _ = active_season_with_team()
+    season.status = Season.Status.ARCHIVED
+    season.save(update_fields=["status", "is_public", "updated_at"])
+    superadmin = Account.objects.create_user(
+        username="archived-invite-admin",
+        password="StrongPass!2026",
+        role=Account.Role.SUPERADMIN,
+    )
+    client = Client()
+    client.force_login(superadmin)
+
+    response = client.put(
+        f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
+        data=json.dumps({"invite_code": "NEW-PKUBA-2026", "expected_version": season.version}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SEASON_ARCHIVED"
 
 
 def test_wrong_invite_code_is_rate_limited():

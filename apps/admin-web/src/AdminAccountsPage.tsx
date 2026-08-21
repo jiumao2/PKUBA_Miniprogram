@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   type AdminAccount,
   type AdminManagedAccount,
-  type Season,
+  type AdminSeason,
   type SeasonInvite,
   type createAdminClient,
 } from "@pkuba/api-client";
@@ -19,7 +19,7 @@ export function AdminAccountsPage({
 }: {
   account: AdminAccount;
   client: AdminClient;
-  season: Season | null;
+  season: AdminSeason | null;
 }) {
   const [accounts, setAccounts] = useState<AdminManagedAccount[]>([]);
   const [invite, setInvite] = useState<SeasonInvite | null>(null);
@@ -81,7 +81,7 @@ export function AdminAccountsPage({
   };
 
   const rotateInvite = async () => {
-    if (!season || !invite) return;
+    if (!season || !invite || season.status === "ARCHIVED") return;
     if (inviteCode.length < 8) {
       setError("邀请码至少需要 8 个字符。");
       return;
@@ -143,6 +143,14 @@ export function AdminAccountsPage({
                 ? `最近更新：${new Date(invite.updated_at).toLocaleString("zh-CN")}`
                 : "尚未设置"}
             </span>
+            {invite.uses_default_invite && (
+              <span className="form-warning" role="status">
+                当前仍使用默认邀请码 PKUBA1997，正式开放前建议轮换。
+              </span>
+            )}
+            {season.status === "ARCHIVED" && (
+              <span className="subtle">已归档赛季只读，不能轮换邀请码。</span>
+            )}
           </div>
           <div className="invite-form">
             <label>
@@ -153,7 +161,12 @@ export function AdminAccountsPage({
               再次输入
               <input type="password" value={inviteAgain} onChange={(event) => setInviteAgain(event.target.value)} />
             </label>
-            <button className="primary-action" disabled={busy} onClick={() => void rotateInvite()} type="button">
+            <button
+              className="primary-action"
+              disabled={busy || season.status === "ARCHIVED"}
+              onClick={() => void rotateInvite()}
+              type="button"
+            >
               {busy ? "正在更新…" : "更新邀请码"}
             </button>
           </div>
