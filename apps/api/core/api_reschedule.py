@@ -174,8 +174,8 @@ def _game_out(game: Game) -> dict[str, object]:
         "division_gender": game.division.gender,
         "group_name": game.group.name if game.group_id else None,
         "date": game.date,
-        "start_time": game.period.start_time.strftime("%H:%M"),
-        "venue_name": game.venue.name,
+        "start_time": game.start_time.strftime("%H:%M"),
+        "venue_name": game.venue_name,
         "home_name": game.home_display,
         "away_name": game.away_display,
         "leader_adjustable": game.leader_adjustable,
@@ -190,14 +190,13 @@ def _request_queryset() -> QuerySet[RescheduleRequest]:
         "game__division",
         "game__group",
         "game__period",
-        "game__venue",
         "game__home_team",
         "game__away_team",
         "game__home_slot",
         "game__away_slot",
         "requester_team",
         "target_period",
-        "target_venue",
+        "reservation__venue",
     ).prefetch_related("confirmations__team")
 
 
@@ -265,9 +264,9 @@ def _request_out(request_item: RescheduleRequest, actor: Account) -> dict[str, o
         "target_date": request_item.target_date,
         "target_period_id": request_item.target_period_id,
         "target_period_name": request_item.target_period.name,
-        "target_start_time": request_item.target_period.start_time.strftime("%H:%M"),
-        "target_venue_id": request_item.target_venue_id,
-        "target_venue_name": request_item.target_venue.name,
+        "target_start_time": request_item.target_start_time.strftime("%H:%M"),
+        "target_venue_id": request_item.reservation.venue_id,
+        "target_venue_name": request_item.target_venue_name,
         "submit_deadline": request_item.submit_deadline,
         "confirmation_deadline": request_item.confirmation_deadline,
         "confirmations": [
@@ -337,7 +336,6 @@ def eligible_games(request: HttpRequest):
             "division",
             "group",
             "period",
-            "venue",
             "home_team",
             "away_team",
             "home_slot",
@@ -348,7 +346,7 @@ def eligible_games(request: HttpRequest):
     for game in games:
         start = datetime.combine(
             game.date,
-            game.period.start_time,
+            game.start_time,
             tzinfo=ZoneInfo(season.timezone),
         )
         if now < start and game.home_team_id and game.away_team_id:

@@ -10,7 +10,7 @@ from django.core import signing
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 
@@ -19,6 +19,7 @@ from core.models import (
     AdminAuditLog,
     Game,
     GameMediaAsset,
+    GameScoresheet,
     SeasonLeaderBinding,
 )
 
@@ -56,6 +57,22 @@ class ValidatedImage:
     height: int
 
 
+def _register_scoresheet_source(
+    *, actor: Account, game: Game, asset: GameMediaAsset
+) -> None:
+    """Bridge scoresheet domain failures into the stable media error contract."""
+
+    from core.scoresheet_schema import ScoresheetDocumentError
+    from core.services.scoresheets import ScoresheetError, register_scoresheet_source
+
+    try:
+        register_scoresheet_source(actor=actor, game=game, asset=asset)
+    except (ScoresheetError, ScoresheetDocumentError) as error:
+        raise GameMediaError(
+            getattr(error, "code", "SCORESHEET_SOURCE_INVALID"), str(error)
+        ) from error
+
+
 def media_permissions(account: Account, game: Game) -> MediaPermissions:
     if account.is_pkuba_admin:
         return MediaPermissions(can_view=True, can_upload=True, can_review=True)
@@ -71,7 +88,7 @@ def media_permissions(account: Account, game: Game) -> MediaPermissions:
     if binding is None:
         return MediaPermissions(can_view=False, can_upload=False, can_review=False)
     participates = binding.team_id in {game.home_team_id, game.away_team_id}
-    return MediaPermissions(can_view=True, can_upload=participates, can_review=False)
+    return MediaPermissions(can_view=participates, can_upload=False, can_review=False)
 
 
 def validate_image(uploaded_file, *, kind: str) -> ValidatedImage:
@@ -115,11 +132,23 @@ def upload_game_media(
         raise GameMediaError("MEDIA_KIND_INVALID", "图片类型不合法。")
     permissions = media_permissions(actor, game)
     if not permissions.can_upload:
-        raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "只有参赛球队领队或管理员可以上传。")
+        raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "只有管理员可以上传比赛资料。")
     if kind == GameMediaAsset.Kind.SCORESHEET and not scoresheet_complete_confirmed:
         raise GameMediaError(
             "SCORESHEET_CONFIRMATION_REQUIRED",
             "上传记录表前必须确认已正确结表且关键信息清晰完整。",
+        )
+    if (
+        kind == GameMediaAsset.Kind.SCORESHEET
+        and GameMediaAsset.objects.filter(
+            game=game,
+            kind=GameMediaAsset.Kind.SCORESHEET,
+            deleted_at__isnull=True,
+        ).exists()
+    ):
+        raise GameMediaError(
+            "SCORESHEET_SOURCE_EXISTS",
+            "该比赛已有当前记录表；请从记录表编辑器执行重传，以保留来源审计。",
         )
     image = validate_image(uploaded_file, kind=kind)
     asset_id = uuid.uuid4()
@@ -157,6 +186,8 @@ def upload_game_media(
                 ),
                 uploaded_by=actor,
             )
+            if kind == GameMediaAsset.Kind.SCORESHEET:
+                _register_scoresheet_source(actor=actor, game=game, asset=asset)
             AdminAuditLog.objects.create(
                 actor=actor,
                 action="GAME_MEDIA_UPLOADED",
@@ -174,6 +205,11 @@ def upload_game_media(
             )
     except IntegrityError as error:
         default_storage.delete(stored_key)
+        if kind == GameMediaAsset.Kind.SCORESHEET:
+            raise GameMediaError(
+                "SCORESHEET_SOURCE_EXISTS",
+                "该比赛已有当前记录表；请刷新后从编辑器执行重传。",
+            ) from error
         raise GameMediaError("DUPLICATE_MEDIA", "该比赛已上传过同一张图片。") from error
     except Exception:
         default_storage.delete(stored_key)
@@ -204,6 +240,11 @@ def review_game_media(
             raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。") from error
         if asset.version != expected_version:
             raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
+        if asset.kind == GameMediaAsset.Kind.SCORESHEET:
+            raise GameMediaError(
+                "SCORESHEET_REVIEW_IN_EDITOR",
+                "记录表必须在全区域人工核对并通过校验后一次发布，不能在图片审核处直接通过。",
+            )
         before = {
             "review_status": asset.review_status,
             "review_note": asset.review_note,
@@ -263,6 +304,17 @@ def replace_game_media(
         raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。")
     if (
         current.kind == GameMediaAsset.Kind.SCORESHEET
+        and GameScoresheet.objects.filter(
+            current_publication__source_asset_id=current.id
+        ).exists()
+        and not actor.is_pkuba_superadmin
+    ):
+        raise GameMediaError(
+            "SUPERADMIN_REQUIRED",
+            "已发布记录表的重传和纠错仅限超级管理员。",
+        )
+    if (
+        current.kind == GameMediaAsset.Kind.SCORESHEET
         and not scoresheet_complete_confirmed
     ):
         raise GameMediaError(
@@ -315,6 +367,12 @@ def replace_game_media(
                 ),
                 uploaded_by=actor,
             )
+            if replacement.kind == GameMediaAsset.Kind.SCORESHEET:
+                _register_scoresheet_source(
+                    actor=actor,
+                    game=replacement.game,
+                    asset=replacement,
+                )
             AdminAuditLog.objects.create(
                 actor=actor,
                 action="GAME_MEDIA_REPLACED",
@@ -361,6 +419,17 @@ def delete_game_media(
             raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。") from error
         if asset.version != expected_version:
             raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
+        if (
+            asset.kind == GameMediaAsset.Kind.SCORESHEET
+            and GameScoresheet.objects.filter(
+                current_publication__source_asset_id=asset.id
+            ).exists()
+            and not actor.is_pkuba_superadmin
+        ):
+            raise GameMediaError(
+                "SUPERADMIN_REQUIRED",
+                "已发布记录表的删除和纠错仅限超级管理员。",
+            )
         before = {
             "game_id": str(asset.game_id),
             "kind": asset.kind,
@@ -372,6 +441,10 @@ def delete_game_media(
         asset.deleted_at = timezone.now()
         asset.version += 1
         asset.save(update_fields=["deleted_by", "deleted_at", "version", "updated_at"])
+        if asset.kind == GameMediaAsset.Kind.SCORESHEET:
+            from core.services.scoresheets import mark_source_deleted
+
+            mark_source_deleted(actor=actor, asset=asset)
         AdminAuditLog.objects.create(
             actor=actor,
             action="GAME_MEDIA_DELETED",
@@ -398,10 +471,17 @@ def asset_from_ticket(ticket: str) -> GameMediaAsset:
             salt=MEDIA_TICKET_SALT,
             max_age=MEDIA_TICKET_MAX_AGE_SECONDS,
         )
-        return GameMediaAsset.objects.get(
-            id=payload["asset_id"],
-            version=payload["version"],
-            deleted_at__isnull=True,
+        return (
+            GameMediaAsset.objects.filter(
+                id=payload["asset_id"],
+                version=payload["version"],
+            )
+            .filter(
+                Q(deleted_at__isnull=True)
+                | Q(scoresheet_publications__current_for_scoresheets__isnull=False)
+            )
+            .distinct()
+            .get()
         )
     except (signing.BadSignature, KeyError, GameMediaAsset.DoesNotExist) as error:
         raise GameMediaError("MEDIA_TICKET_INVALID", "图片访问链接无效或已过期。") from error

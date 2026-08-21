@@ -16,7 +16,6 @@ from core.models import (
     AdminAuditLog,
     Game,
     Period,
-    PeriodCapacity,
     RescheduleRequest,
     ScheduleSlotLock,
     SeasonLeaderBinding,
@@ -25,6 +24,7 @@ from core.models import (
     TeamConfirmation,
     Venue,
 )
+from core.services.schedule_capacity import effective_capacity
 
 
 @dataclass(slots=True)
@@ -66,9 +66,8 @@ def _game_snapshot(game: Game) -> dict[str, object]:
         "period_id": str(game.period_id),
         "period_code": game.period.code,
         "period_name": game.period.name,
-        "start_time": game.period.start_time.strftime("%H:%M"),
-        "venue_id": str(game.venue_id),
-        "venue_name": game.venue.name,
+        "start_time": game.start_time.strftime("%H:%M"),
+        "venue_name": game.venue_name,
         "home_team_id": str(game.home_team_id),
         "away_team_id": str(game.away_team_id),
         "home_name": game.home_display,
@@ -126,15 +125,32 @@ def _active_occupancy(
         date=target_date,
         period_id=period_id,
     ).exclude(status=Game.Status.VOID)
-    reservations = SlotReservation.objects.filter(
+    active_reservations = SlotReservation.objects.filter(
         season_id=season_id,
         date=target_date,
         period_id=period_id,
         status=SlotReservation.Status.ACTIVE,
     )
-    occupied_venues = set(games.values_list("venue_id", flat=True))
-    occupied_venues.update(reservations.values_list("venue_id", flat=True))
-    return games.count() + reservations.count(), occupied_venues
+    standard_venues = {
+        item.name: item.id
+        for item in Venue.objects.filter(
+            season_id=season_id, active=True, is_standard=True
+        )
+    }
+    occupied_venues = {
+        standard_venues[name]
+        for name in games.values_list("venue_name", flat=True)
+        if name in standard_venues
+    }
+    occupied_venues.update(
+        SlotReservation.objects.filter(
+            season_id=season_id,
+            date=target_date,
+            period_id=period_id,
+            status=SlotReservation.Status.ACTIVE,
+        ).values_list("venue_id", flat=True)
+    )
+    return games.count() + active_reservations.count(), occupied_venues
 
 
 def _first_available_venue(
@@ -143,14 +159,11 @@ def _first_available_venue(
     target_date: date,
     period: Period,
 ) -> Venue:
-    try:
-        capacity = PeriodCapacity.objects.get(
-            season_id=season_id,
-            weekday=target_date.weekday(),
-            period=period,
-        ).capacity
-    except PeriodCapacity.DoesNotExist:
-        capacity = 0
+    capacity = effective_capacity(
+        season_id=season_id,
+        target_date=target_date,
+        period_id=period.id,
+    )
     occupancy, occupied_venues = _active_occupancy(
         season_id=season_id,
         target_date=target_date,
@@ -160,7 +173,7 @@ def _first_available_venue(
         _raise("SLOT_CAPACITY_FULL", "目标时段已达到赛季固定容量。")
 
     venue = (
-        Venue.objects.filter(season_id=season_id, active=True)
+        Venue.objects.filter(season_id=season_id, active=True, is_standard=True)
         .exclude(id__in=occupied_venues)
         .order_by("sort_order", "name")
         .first()
@@ -207,7 +220,6 @@ def available_reschedule_targets(
         game = Game.objects.select_related(
             "season",
             "period",
-            "venue",
             "home_team",
             "away_team",
         ).get(id=game_id)
@@ -225,7 +237,7 @@ def available_reschedule_targets(
         _raise("GAME_ALREADY_LOCKED", "该场比赛已有活动调赛申请。")
     game_start = datetime.combine(
         game.date,
-        game.period.start_time,
+        game.start_time,
         tzinfo=ZoneInfo(game.season.timezone),
     )
     if now >= game_start:
@@ -234,12 +246,10 @@ def available_reschedule_targets(
 
     periods = list(Period.objects.filter(season=game.season).order_by("sort_order", "start_time"))
     venues = list(
-        Venue.objects.filter(season=game.season, active=True).order_by("sort_order", "name")
+        Venue.objects.filter(
+            season=game.season, active=True, is_standard=True
+        ).order_by("sort_order", "name")
     )
-    capacities = {
-        (item.weekday, item.period_id): item.capacity
-        for item in PeriodCapacity.objects.filter(season=game.season)
-    }
     occupancy: defaultdict[tuple[date, UUID], int] = defaultdict(int)
     occupied_venues: defaultdict[tuple[date, UUID], set[UUID]] = defaultdict(set)
     team_conflicts: set[tuple[date, UUID]] = set()
@@ -250,18 +260,20 @@ def available_reschedule_targets(
         .values(
             "date",
             "period_id",
-            "venue_id",
             "home_team_id",
             "away_team_id",
+            "venue_name",
         )
     )
+    venue_ids_by_name = {item.name: item.id for item in venues}
     for row in formal_rows:
         key = (row["date"], row["period_id"])
         occupancy[key] += 1
-        occupied_venues[key].add(row["venue_id"])
+        if row["venue_name"] in venue_ids_by_name:
+            occupied_venues[key].add(venue_ids_by_name[row["venue_name"]])
         if row["home_team_id"] in team_ids or row["away_team_id"] in team_ids:
             team_conflicts.add(key)
-    reservation_rows = SlotReservation.objects.filter(
+    active_reservation_rows = SlotReservation.objects.filter(
         season=game.season,
         status=SlotReservation.Status.ACTIVE,
     ).values(
@@ -271,7 +283,7 @@ def available_reschedule_targets(
         "request__game__home_team_id",
         "request__game__away_team_id",
     )
-    for row in reservation_rows:
+    for row in active_reservation_rows:
         key = (row["date"], row["period_id"])
         occupancy[key] += 1
         occupied_venues[key].add(row["venue_id"])
@@ -293,7 +305,11 @@ def available_reschedule_targets(
                 if target_date == game.date and period.id == game.period_id:
                     continue
                 key = (target_date, period.id)
-                capacity = capacities.get((target_date.weekday(), period.id), 0)
+                capacity = effective_capacity(
+                    season_id=game.season_id,
+                    target_date=target_date,
+                    period_id=period.id,
+                )
                 if key in team_conflicts or capacity <= 0 or occupancy[key] >= capacity:
                     continue
                 venue = next(
@@ -342,7 +358,6 @@ def submit_reschedule(
                 "season",
                 "division",
                 "period",
-                "venue",
                 "home_team",
                 "away_team",
             )
@@ -366,7 +381,7 @@ def submit_reschedule(
 
     game_start = datetime.combine(
         game.date,
-        game.period.start_time,
+        game.start_time,
         tzinfo=ZoneInfo(game.season.timezone),
     )
     if now >= game_start:
@@ -403,6 +418,7 @@ def submit_reschedule(
         date=target_date,
         period=target_period,
         venue=target_venue,
+        venue_name=target_venue.name,
     )
     same_week = game.date.isocalendar()[:2] == target_date.isocalendar()[:2]
     request = RescheduleRequest.objects.create(
@@ -416,7 +432,8 @@ def submit_reschedule(
         ),
         target_date=target_date,
         target_period=target_period,
-        target_venue=target_venue,
+        target_start_time=target_period.start_time,
+        target_venue_name=target_venue.name,
         reservation=reservation,
         original_game_snapshot=_game_snapshot(game),
         game_version_at_submit=game.version,
@@ -496,17 +513,16 @@ def _approve_request(
         _raise("GAME_LOCK_MISMATCH", "原比赛活动锁与申请不一致。")
 
     _lock_schedule_slot(game.season_id, reservation.date, reservation.period_id)
-    collision = (
-        Game.objects.filter(
-            season_id=game.season_id,
-            date=reservation.date,
-            period_id=reservation.period_id,
-            venue_id=reservation.venue_id,
-        )
-        .exclude(id=game.id)
-        .exclude(status=Game.Status.VOID)
-        .exists()
-    )
+    collision = SlotReservation.objects.filter(
+        season_id=game.season_id,
+        date=reservation.date,
+        period_id=reservation.period_id,
+        venue_id=reservation.venue_id,
+        status__in=[
+            SlotReservation.Status.ACTIVE,
+            SlotReservation.Status.CONVERTED,
+        ],
+    ).exclude(id=reservation.id).exists()
     if collision:
         _raise("TARGET_VENUE_CONFLICT", "预留场地被异常占用，需要管理员显式处理。")
 
@@ -515,14 +531,16 @@ def _approve_request(
     reservation.save(update_fields=["status", "converted_game", "updated_at"])
     game.date = reservation.date
     game.period_id = reservation.period_id
-    game.venue_id = reservation.venue_id
+    game.start_time = request.target_start_time
+    game.venue_name = reservation.venue_name
     game.active_reschedule_request = None
     game.version += 1
     game.save(
         update_fields=[
             "date",
             "period",
-            "venue",
+            "start_time",
+            "venue_name",
             "active_reschedule_request",
             "version",
             "updated_at",
@@ -618,11 +636,52 @@ def withdraw_request(
     )
 
 
+def _audit_snapshot(
+    request: RescheduleRequest,
+    game: Game,
+    reservation: SlotReservation,
+) -> dict[str, object]:
+    return {
+        "request": {
+            "status": request.status,
+            "version": request.version,
+        },
+        "game": {
+            "date": game.date.isoformat(),
+            "period_id": str(game.period_id),
+            "start_time": game.start_time.strftime("%H:%M"),
+            "venue_name": game.venue_name,
+            "active_reschedule_request_id": (
+                str(game.active_reschedule_request_id)
+                if game.active_reschedule_request_id
+                else None
+            ),
+            "leader_adjustable": game.leader_adjustable,
+            "version": game.version,
+        },
+        "reservation": {
+            "id": str(reservation.id),
+            "date": reservation.date.isoformat(),
+            "period_id": str(reservation.period_id),
+            "venue_id": str(reservation.venue_id) if reservation.venue_id else None,
+            "venue_name": reservation.venue_name,
+            "status": reservation.status,
+            "converted_game_id": (
+                str(reservation.converted_game_id)
+                if reservation.converted_game_id
+                else None
+            ),
+        },
+    }
+
+
 def _audit_status_change(
     *,
     actor: Account,
     request: RescheduleRequest,
-    before_status: str,
+    game: Game,
+    reservation: SlotReservation,
+    before: dict[str, object],
     action: str,
     metadata: dict[str, object] | None = None,
 ) -> None:
@@ -631,8 +690,8 @@ def _audit_status_change(
         action=action,
         object_type="RescheduleRequest",
         object_id=request.id,
-        before={"status": before_status},
-        after={"status": request.status, "version": request.version},
+        before=before,
+        after=_audit_snapshot(request, game, reservation),
         metadata=metadata or {},
     )
 
@@ -653,7 +712,7 @@ def admin_decide_cross_week(
     _require_version(request, expected_version)
     if request.status != RescheduleRequest.Status.WAITING_ADMIN_DECISION:
         _raise("INVALID_STATE", "当前申请不等待管理员决定。")
-    before_status = request.status
+    before = _audit_snapshot(request, game, reservation)
 
     if action == "approve":
         request = _approve_request(request, game, reservation, now)
@@ -696,7 +755,9 @@ def admin_decide_cross_week(
     _audit_status_change(
         actor=actor,
         request=request,
-        before_status=before_status,
+        game=game,
+        reservation=reservation,
+        before=before,
         action=f"reschedule.admin_{action}",
         metadata={"selected_team_ids": [str(item) for item in selected_team_ids]},
     )
@@ -785,7 +846,7 @@ def admin_final_decision(
     _require_version(request, expected_version)
     if request.status != RescheduleRequest.Status.WAITING_ADMIN_FINAL:
         _raise("INVALID_STATE", "当前申请不等待管理员终审。")
-    before_status = request.status
+    before = _audit_snapshot(request, game, reservation)
     if approve:
         request = _approve_request(request, game, reservation, now)
     else:
@@ -799,7 +860,9 @@ def admin_final_decision(
     _audit_status_change(
         actor=actor,
         request=request,
-        before_status=before_status,
+        game=game,
+        reservation=reservation,
+        before=before,
         action="reschedule.admin_final_approve" if approve else "reschedule.admin_final_reject",
     )
     return request
@@ -819,7 +882,7 @@ def admin_cancel_request(
     _require_version(request, expected_version)
     if request.is_terminal:
         _raise("REQUEST_ALREADY_TERMINAL", "申请已经结束。")
-    before_status = request.status
+    before = _audit_snapshot(request, game, reservation)
     request = _release_request(
         request,
         game,
@@ -830,7 +893,9 @@ def admin_cancel_request(
     _audit_status_change(
         actor=actor,
         request=request,
-        before_status=before_status,
+        game=game,
+        reservation=reservation,
+        before=before,
         action="reschedule.admin_cancel",
         metadata={"released_reservation_id": str(reservation.id)},
     )

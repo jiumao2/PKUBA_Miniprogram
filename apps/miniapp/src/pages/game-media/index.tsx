@@ -81,7 +81,7 @@ export default function GameMediaPage() {
     setMessage("");
     try {
       const selected = await Taro.chooseMedia({
-        count: kind === "SCORESHEET" ? 3 : 9,
+        count: kind === "SCORESHEET" ? 1 : 9,
         mediaType: ["image"],
         sourceType: ["album", "camera"],
         sizeType: ["original"],
@@ -222,7 +222,7 @@ export default function GameMediaPage() {
       )}
 
       {!loading && collection && !collection.can_upload && (
-        <Text className="media-permission-note">仅本场参赛球队领队或管理员可以上传。</Text>
+        <Text className="media-permission-note">比赛资料仅由管理员上传；领队只能查看本队比赛当前已发布记录表原图。</Text>
       )}
 
       {collection && (

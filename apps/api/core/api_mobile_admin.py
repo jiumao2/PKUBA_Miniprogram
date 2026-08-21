@@ -1,26 +1,32 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from uuid import UUID
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpRequest
+from django.utils import timezone
 from ninja import Router, Schema, Status
 
 from core.api_security import miniapp_bearer_auth
 from core.models import (
     AdminAuditLog,
     Game,
+    GameScoresheet,
     Period,
-    PeriodCapacity,
     Season,
     SlotReservation,
     Team,
     Venue,
 )
-from core.services.rescheduling import RescheduleError, admin_cancel_request
+from core.services.rescheduling import (
+    RescheduleError,
+    _lock_schedule_slot,
+    admin_cancel_request,
+)
+from core.services.schedule_capacity import effective_capacity
 
 router = Router(tags=["mobile-admin"], auth=miniapp_bearer_auth)
 
@@ -39,7 +45,6 @@ class PeriodOptionOut(Schema):
 
 class VenueOptionOut(Schema):
     id: UUID
-    code: str
     name: str
 
 
@@ -65,9 +70,11 @@ class AdminGameOut(Schema):
     division_gender: str
     date: date
     period_id: UUID
+    period_code: str
     period_name: str
+    nominal_start_time: str
     start_time: str
-    venue_id: UUID
+    standard_venue_id: UUID | None
     venue_name: str
     home_team_id: UUID | None
     away_team_id: UUID | None
@@ -86,7 +93,9 @@ class UpdateAdminGameIn(Schema):
     expected_version: int
     date: date
     period_id: UUID
-    venue_id: UUID
+    start_time: time
+    standard_venue_id: UUID | None = None
+    venue_name: str
     home_team_id: UUID | None
     away_team_id: UUID | None
     home_score: int | None
@@ -119,12 +128,23 @@ def _game_queryset():
         "season",
         "division",
         "period",
-        "venue",
         "home_team",
         "away_team",
         "home_slot",
         "away_slot",
+    ).prefetch_related("converted_reservations")
+
+
+def _standard_venue_id(game: Game) -> UUID | None:
+    allocation = next(
+        (
+            item
+            for item in game.converted_reservations.all()
+            if item.status == SlotReservation.Status.CONVERTED
+        ),
+        None,
     )
+    return allocation.venue_id if allocation else None
 
 
 def _game_out(game: Game) -> dict[str, object]:
@@ -136,10 +156,12 @@ def _game_out(game: Game) -> dict[str, object]:
         "division_gender": game.division.gender,
         "date": game.date,
         "period_id": game.period_id,
+        "period_code": game.period.code.upper(),
         "period_name": game.period.name,
-        "start_time": game.period.start_time.strftime("%H:%M"),
-        "venue_id": game.venue_id,
-        "venue_name": game.venue.name,
+        "nominal_start_time": game.period.start_time.strftime("%H:%M"),
+        "start_time": game.start_time.strftime("%H:%M"),
+        "standard_venue_id": _standard_venue_id(game),
+        "venue_name": game.venue_name,
         "home_team_id": game.home_team_id,
         "away_team_id": game.away_team_id,
         "home_name": game.home_display,
@@ -158,7 +180,12 @@ def _snapshot(game: Game) -> dict[str, object]:
     return {
         "date": game.date.isoformat(),
         "period_id": str(game.period_id),
-        "venue_id": str(game.venue_id),
+        "period_code": game.period.code.upper(),
+        "start_time": game.start_time.strftime("%H:%M"),
+        "standard_venue_id": (
+            str(_standard_venue_id(game)) if _standard_venue_id(game) else None
+        ),
+        "venue_name": game.venue_name,
         "home_team_id": str(game.home_team_id) if game.home_team_id else None,
         "away_team_id": str(game.away_team_id) if game.away_team_id else None,
         "home_score": game.home_score,
@@ -192,10 +219,10 @@ def schedule_options(request: HttpRequest):
             for period in Period.objects.filter(season=season).order_by("sort_order", "start_time")
         ],
         "venues": [
-            {"id": venue.id, "code": venue.code, "name": venue.name}
-            for venue in Venue.objects.filter(season=season, active=True).order_by(
-                "sort_order", "name"
-            )
+            {"id": venue.id, "name": venue.name}
+            for venue in Venue.objects.filter(
+                season=season, active=True, is_standard=True
+            ).order_by("sort_order", "name")
         ],
         "teams": [
             {
@@ -263,6 +290,19 @@ def update_admin_game(
             if game.version != payload.expected_version:
                 return _error("VERSION_CONFLICT", "比赛已被其他操作更新，请刷新。", 409)
             before = _snapshot(game)
+            if GameScoresheet.objects.filter(
+                game=game,
+                current_publication__isnull=False,
+            ).exists() and (
+                payload.home_score != game.home_score
+                or payload.away_score != game.away_score
+                or payload.status != game.status
+            ):
+                return _error(
+                    "SCORESHEET_REPUBLICATION_REQUIRED",
+                    "该比赛已有正式记录表；比分或赛果纠错必须在记录表工作台重新发布。",
+                    409,
+                )
             cancelled_request_id = game.active_reschedule_request_id
             if cancelled_request_id and not payload.cancel_active_request:
                 return _error(
@@ -280,7 +320,17 @@ def update_admin_game(
                 game.refresh_from_db()
 
             period = Period.objects.get(id=payload.period_id, season=game.season)
-            venue = Venue.objects.get(id=payload.venue_id, season=game.season, active=True)
+            venue = None
+            if payload.standard_venue_id:
+                venue = Venue.objects.get(
+                    id=payload.standard_venue_id,
+                    season=game.season,
+                    active=True,
+                    is_standard=True,
+                )
+            venue_name = venue.name if venue else payload.venue_name.strip()
+            if not venue_name:
+                return _error("VENUE_REQUIRED", "请填写比赛实际场地。")
             if (payload.home_team_id is None) != (payload.away_team_id is None):
                 return _error("TEAM_PAIR_REQUIRED", "主客队必须同时选择或同时保留签位。")
             teams = []
@@ -302,12 +352,13 @@ def update_admin_game(
             ):
                 return _error("DATE_OUTSIDE_SEASON", "比赛日期不在赛季范围内。")
 
-            venue_conflict = (
+            _lock_schedule_slot(game.season_id, payload.date, period.id)
+            venue_conflict = bool(venue) and (
                 Game.objects.filter(
                     season=game.season,
                     date=payload.date,
                     period=period,
-                    venue=venue,
+                    venue_name=venue.name,
                 )
                 .exclude(id=game.id)
                 .exclude(status=Game.Status.VOID)
@@ -320,10 +371,10 @@ def update_admin_game(
                     status=SlotReservation.Status.ACTIVE,
                 ).exists()
             )
-            if venue_conflict:
+            if venue_conflict and not payload.override_rules:
                 return _error(
                     "VENUE_CONFLICT",
-                    "目标场地已被比赛或有效预留占用；系统不会静默抢占。",
+                    "目标场地已被比赛或有效预留占用；如需保留冲突，请显式启用例外。",
                     409,
                 )
             team_ids = [payload.home_team_id, payload.away_team_id]
@@ -349,13 +400,10 @@ def update_admin_game(
                     status=SlotReservation.Status.ACTIVE,
                 ).count()
             )
-            capacity = (
-                PeriodCapacity.objects.filter(
-                    season=game.season,
-                    weekday=payload.date.weekday(),
-                    period=period,
-                ).values_list("capacity", flat=True).first()
-                or 0
+            capacity = effective_capacity(
+                season_id=game.season_id,
+                target_date=payload.date,
+                period_id=period.id,
             )
             if not payload.override_rules and team_conflict:
                 return _error("TEAM_TIME_CONFLICT", "参赛球队在目标时段已有比赛。", 409)
@@ -383,7 +431,8 @@ def update_admin_game(
             team_by_id = {team.id: team for team in teams}
             game.date = payload.date
             game.period = period
-            game.venue = venue
+            game.start_time = payload.start_time
+            game.venue_name = venue_name
             game.home_team = team_by_id.get(payload.home_team_id)
             game.away_team = team_by_id.get(payload.away_team_id)
             game.home_score = payload.home_score
@@ -393,6 +442,29 @@ def update_admin_game(
             game.version += 1
             game.full_clean()
             game.save()
+            allocations = list(
+                SlotReservation.objects.select_for_update().filter(
+                    converted_game=game,
+                    status=SlotReservation.Status.CONVERTED,
+                )
+            )
+            if venue and game.status != Game.Status.VOID:
+                allocation = allocations[0] if allocations else SlotReservation(
+                    season=game.season,
+                    converted_game=game,
+                )
+                allocation.date = game.date
+                allocation.period = game.period
+                allocation.venue = venue
+                allocation.venue_name = venue.name
+                allocation.status = SlotReservation.Status.CONVERTED
+                allocation.released_at = None
+                allocation.save()
+                allocations = allocations[1:]
+            for allocation in allocations:
+                allocation.status = SlotReservation.Status.RELEASED
+                allocation.released_at = timezone.now()
+                allocation.save(update_fields=["status", "released_at", "updated_at"])
             AdminAuditLog.objects.create(
                 actor=request.auth,
                 action="SUPERADMIN_GAME_UPDATED",

@@ -11,53 +11,23 @@ import {
 import type {
   AdminAccount,
   AdminSeason,
+  PreviewSeasonConfiguration,
   ScheduleImport,
   ScheduleImportReadiness,
   ScheduleImportResetPreview,
+  SeasonConfiguration,
+  UpdateSeasonConfiguration,
   createAdminClient,
 } from "@pkuba/api-client";
 
-type AdminClient = ReturnType<typeof createAdminClient>;
-type BusyAction = "context" | "download" | "upload" | "confirm" | "reset" | null;
+import { buildSeasonConfigurationPayload } from "./season-configuration-payload";
 
-const sheetSpecs = [
-  {
-    name: "填写说明",
-    fields: ["格式版本", "填写规则", "错误处理"],
-    example: "格式版本 2.0.0；文件无需签名，可从服务器模板开始填写。",
-  },
-  {
-    name: "赛制定义",
-    fields: [
-      "组别代码",
-      "小组代码",
-      "小组名称",
-      "小组排序",
-      "签位代码",
-      "签位名称",
-      "种子序号",
-    ],
-    example: "men · A · A 组 · 1 · A1 · A 组 1 号签 · 1",
-  },
-  {
-    name: "比赛清单",
-    fields: [
-      "比赛编号",
-      "组别代码",
-      "小组代码",
-      "阶段",
-      "轮次",
-      "主方签位代码",
-      "客方签位代码",
-    ],
-    example: "G001 · men · A · 小组赛 · 1 · A1 · A2",
-  },
-  {
-    name: "赛程网格",
-    fields: ["日期", "星期", "时段代码", "时段名称", "各场地代码列"],
-    example: "2027-03-08 · 周一 · p1 · 第一时段 · court-1 = G001",
-  },
-] as const;
+type AdminClient = ReturnType<typeof createAdminClient>;
+type GridColumnDraft = SeasonConfiguration["grid_columns"][number] & { key: string };
+type BusyAction = "context" | "grid" | "download" | "upload" | "confirm" | "reset" | null;
+
+let localGridKey = 0;
+const nextGridKey = () => `grid-column-new-${++localGridKey}`;
 
 const statusLabels: Record<string, string> = {
   SETUP: "准备中",
@@ -66,6 +36,29 @@ const statusLabels: Record<string, string> = {
   ARCHIVED: "已归档",
 };
 
+const matchupIntegrityCodes = new Set([
+  "DUPLICATE_MATCHUP",
+  "DUPLICATE_FAMILY_MATCHUPS",
+  "MISSING_ROUND_ROBIN_MATCHUPS",
+  "UNUSED_ELIMINATION_SLOTS",
+  "REUSED_ELIMINATION_SLOTS",
+  "NO_GAMES_IN_WORKBOOK",
+  "INVALID_MATCHUP",
+  "UNKNOWN_SLOT",
+  "SAME_PARTICIPANT",
+  "SLOT_FAMILY_MISMATCH",
+  "GAME_CODE_COLLISION",
+  "GAME_COUNT_MISMATCH",
+]);
+const capacityCodes = new Set(["CAPACITY_EXCEEDED"]);
+const scheduleConflictCodes = new Set([
+  "VENUE_OCCUPIED",
+  "PARTICIPANT_TIME_CONFLICT",
+  "FINAL_ONLY_COLUMN",
+  "GRID_DATES_CHANGED",
+  "GRID_COLUMNS_CHANGED",
+]);
+
 export function ScheduleImportWorkspace({
   account,
   client,
@@ -73,6 +66,7 @@ export function ScheduleImportWorkspace({
   season,
   onSeasonChange,
   onDataChanged,
+  onOpenConfiguration,
   onOpenEditor,
 }: {
   account: AdminAccount;
@@ -81,11 +75,15 @@ export function ScheduleImportWorkspace({
   season: AdminSeason;
   onSeasonChange: (seasonId: string) => void;
   onDataChanged: () => Promise<void>;
+  onOpenConfiguration: () => void;
   onOpenEditor: () => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [readiness, setReadiness] = useState<ScheduleImportReadiness | null>(null);
   const [resetPreview, setResetPreview] = useState<ScheduleImportResetPreview | null>(null);
+  const [configuration, setConfiguration] = useState<SeasonConfiguration | null>(null);
+  const [gridColumns, setGridColumns] = useState<GridColumnDraft[]>([]);
+  const [gridDirty, setGridDirty] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [batch, setBatch] = useState<ScheduleImport | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -104,12 +102,18 @@ export function ScheduleImportWorkspace({
     setBusy("context");
     setError(null);
     try {
-      const [nextReadiness, nextReset] = await Promise.all([
+      const [nextReadiness, nextReset, nextConfiguration] = await Promise.all([
         client.getScheduleImportReadiness(season.id),
         client.getScheduleImportResetPreview(season.id),
+        client.getSeasonConfiguration(season.id),
       ]);
       setReadiness(nextReadiness);
       setResetPreview(nextReset);
+      setConfiguration(nextConfiguration);
+      setGridColumns(
+        nextConfiguration.grid_columns.map((row) => ({ ...row, key: row.id })),
+      );
+      setGridDirty(false);
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "无法读取导入前置条件");
     } finally {
@@ -123,6 +127,9 @@ export function ScheduleImportWorkspace({
     setAcknowledged(false);
     setResetName("");
     setResetAcknowledged(false);
+    setConfiguration(null);
+    setGridColumns([]);
+    setGridDirty(false);
     setMessage(null);
     if (fileInput.current) fileInput.current.value = "";
     void loadContext();
@@ -131,7 +138,45 @@ export function ScheduleImportWorkspace({
   const errors = batch?.issues.filter((issue) => issue.severity === "ERROR") ?? [];
   const warnings = batch?.issues.filter((issue) => issue.severity === "WARNING") ?? [];
   const hasErrors = (batch?.summary.error_count ?? 0) > 0;
+  const errorCodes = new Set(errors.map((issue) => issue.code));
   const games = batch?.summary.games ?? [];
+  const expectedGameCount = batch?.summary.prerequisites.expected_game_count ?? 0;
+  const resultingGameCount = batch?.summary.covered_game_count ?? 0;
+  const confirmationChecks = batch
+    ? [
+        {
+          key: "matchups",
+          label: "对阵完整且唯一",
+          passed: ![...matchupIntegrityCodes].some((code) => errorCodes.has(code)),
+          detail: "无缺漏、重复或主客颠倒重复；淘汰签位没有漏用或复用。",
+        },
+        {
+          key: "count",
+          label: "比赛数量正确",
+          passed: resultingGameCount === expectedGameCount,
+          detail: `现有有效赛程与本次导入合计覆盖 ${resultingGameCount} 场，赛制配置预计 ${expectedGameCount} 场；本批次新增 ${batch.summary.new_game_count} 场。`,
+        },
+        {
+          key: "capacity",
+          label: "比赛容量充足",
+          passed: ![...capacityCodes].some((code) => errorCodes.has(code)),
+          detail: "按日期和标准时段核算，已计入既有比赛与有效场地预留。",
+        },
+        {
+          key: "resources",
+          label: "排期资源无冲突",
+          passed: ![...scheduleConflictCodes].some((code) => errorCodes.has(code)),
+          detail: "场地不重占，同一球队或签位不同时参赛，决赛专用列使用正确。",
+        },
+        {
+          key: "safety",
+          label: "文件与新增边界通过",
+          passed: !hasErrors,
+          detail: "日期、签位、文件安全和既有比赛冲突均已检查；确认时还会锁定赛季并重新校验。",
+        },
+      ]
+    : [];
+  const allConfirmationChecksPassed = confirmationChecks.every((check) => check.passed);
   const divisions = useMemo(
     () => [...new Set(games.map((game) => game.division_code))].sort(),
     [games],
@@ -163,6 +208,13 @@ export function ScheduleImportWorkspace({
         .includes(normalized);
     });
   }, [date, division, games, query, stage]);
+  const uploadOnlyBlockers = readiness
+    ? readiness.blockers.filter(
+        (blocker) => !readiness.template_blockers.some(
+          (templateBlocker) => templateBlocker.code === blocker.code,
+        ),
+      )
+    : [];
 
   const chooseFile = (nextFile: File | null) => {
     setError(null);
@@ -195,6 +247,101 @@ export function ScheduleImportWorkspace({
 
   const openFilePicker = () => fileInput.current?.click();
 
+  const updateGridColumn = (key: string, patch: Partial<GridColumnDraft>) => {
+    setGridColumns((rows) => rows.map((row) => row.key === key ? { ...row, ...patch } : row));
+    setGridDirty(true);
+    setMessage(null);
+  };
+
+  const addGridColumn = () => {
+    if (!configuration) return;
+    const used = new Set(gridColumns.map((row) => `${row.period_id}:${row.venue_id}`));
+    const pair = configuration.periods
+      .flatMap((period) => configuration.venues
+        .filter((venue) => venue.active)
+        .map((venue) => ({ period, venue })))
+      .find(({ period, venue }) => !used.has(`${period.id}:${venue.id}`));
+    if (!pair) {
+      setError("没有可添加的时段与标准场地组合；同一组合只能出现一次。");
+      return;
+    }
+    setGridColumns((rows) => [...rows, {
+      id: "",
+      key: nextGridKey(),
+      period_id: pair.period.id,
+      period_code: pair.period.code,
+      period_name: pair.period.name,
+      start_time: pair.period.start_time,
+      venue_id: pair.venue.id,
+      venue_name: pair.venue.name,
+      final_only: false,
+      sort_order: Math.max(0, ...rows.map((row) => row.sort_order)) + 1,
+    }]);
+    setGridDirty(true);
+    setError(null);
+    setMessage(null);
+  };
+
+  const moveGridColumn = (key: string, direction: -1 | 1) => {
+    const rows = [...gridColumns].sort((left, right) => left.sort_order - right.sort_order);
+    const index = rows.findIndex((row) => row.key === key);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= rows.length) return;
+    [rows[index], rows[target]] = [rows[target], rows[index]];
+    setGridColumns(rows.map((row, rowIndex) => ({ ...row, sort_order: rowIndex + 1 })));
+    setGridDirty(true);
+    setMessage(null);
+  };
+
+  const removeGridColumn = (key: string) => {
+    setGridColumns((rows) => rows
+      .filter((row) => row.key !== key)
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((row, index) => ({ ...row, sort_order: index + 1 })));
+    setGridDirty(true);
+    setMessage(null);
+  };
+
+  const saveGridColumns = async () => {
+    if (!configuration || !gridDirty) return;
+    setBusy("grid");
+    setError(null);
+    setMessage(null);
+    try {
+      const proposed = { ...configuration, grid_columns: gridColumns };
+      const payload = buildSeasonConfigurationPayload(proposed);
+      const preview = await client.previewSeasonConfiguration(
+        season.id,
+        payload as PreviewSeasonConfiguration,
+      );
+      const warnings = [
+        preview.maintenance_required ? "当前不是准备期，将以维护模式修改。" : "",
+        preview.templates_invalidated ? "已有模板将失效，需要重新下载。" : "",
+      ].filter(Boolean);
+      if (!window.confirm([
+        `确认保存 ${gridColumns.length} 个赛程网格列？`,
+        ...warnings,
+        "操作会记录完整审计快照。",
+      ].join("\n"))) return;
+      const updated = await client.updateSeasonConfiguration(season.id, {
+        ...payload,
+        maintenance_confirmed: preview.maintenance_required,
+        impact_hash: preview.impact_hash,
+        cancel_reschedule_request_ids: preview.affected_reschedule_request_ids,
+      } as UpdateSeasonConfiguration);
+      setConfiguration(updated);
+      setGridColumns(updated.grid_columns.map((row) => ({ ...row, key: row.id })));
+      setGridDirty(false);
+      setMessage(`已保存 ${updated.grid_columns.length} 个赛程网格列，请使用最新模板。`);
+      await onDataChanged();
+      await loadContext();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "赛程网格列保存失败");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragActive(false);
@@ -211,14 +358,20 @@ export function ScheduleImportWorkspace({
   const download = async () => {
     setBusy("download");
     setError(null);
+    setMessage(null);
     try {
       const blob = await client.downloadScheduleTemplate(season.id);
+      if (blob.size === 0) throw new Error("服务器返回了空模板，请重试。");
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `PKUBA_${season.year}_${season.name}_赛程模板.xlsx`;
+      link.download = `PKUBA_${season.year}_${season.name.replace(/[<>:"/\\|?*]/g, "-")}_赛程模板.xlsx`;
+      link.hidden = true;
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      setMessage("模板下载已开始。第一、二页无需修改，只需填写第三页赛程网格。");
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "模板下载失败");
     } finally {
@@ -248,7 +401,13 @@ export function ScheduleImportWorkspace({
   };
 
   const confirm = async () => {
-    if (!batch || hasErrors || !acknowledged || !readiness) return;
+    if (
+      !batch
+      || hasErrors
+      || !allConfirmationChecksPassed
+      || !acknowledged
+      || !readiness
+    ) return;
     setBusy("confirm");
     setError(null);
     try {
@@ -313,16 +472,15 @@ export function ScheduleImportWorkspace({
   }
 
   const stepState = [
-    readiness?.ready ? "done" : "current",
-    file ? "done" : readiness?.ready ? "current" : "waiting",
-    batch ? (hasErrors ? "error" : "done") : "waiting",
+    readiness?.template_ready ? "done" : "current",
+    batch ? (hasErrors ? "error" : "done") : readiness?.ready ? "current" : "waiting",
     batch?.status === "CONFIRMED" ? "done" : batch && !hasErrors ? "current" : "waiting",
   ];
 
   return (
     <div className="schedule-import-workspace">
       <ol className="import-steps" aria-label="赛程导入步骤">
-        {["格式与前置条件", "选择文件", "校验预览", "确认创建"].map((label, index) => (
+        {["下载并填写第三页", "上传并校验", "确认创建"].map((label, index) => (
           <li className={stepState[index]} key={label}>
             <span>{index + 1}</span>
             <strong>{label}</strong>
@@ -334,8 +492,8 @@ export function ScheduleImportWorkspace({
         <div className="import-section-heading">
           <div>
             <p className="eyebrow">步骤 1</p>
-            <h2 id="format-title">格式与前置条件</h2>
-            <p>工作簿只描述本次新增的小组、签位与比赛；不会更新或删除现有赛程。</p>
+            <h2 id="format-title">下载模板，只填写第三页</h2>
+            <p>第一、二页由“赛季和组别”配置自动生成。第二页仅提示签位字母含义，上传时不会读取其中的业务内容。</p>
           </div>
           <div className="season-actions">
             <label>
@@ -352,51 +510,117 @@ export function ScheduleImportWorkspace({
               </select>
             </label>
             <button
-              className="secondary-action"
-              disabled={!readiness?.ready || busy !== null}
+              className="quiet-action"
+              disabled={busy !== null}
+              onClick={onOpenConfiguration}
+              type="button"
+            >
+              前往赛季和组别
+            </button>
+            <button
+              className="primary-action"
+              disabled={!readiness?.template_ready || busy !== null}
               onClick={() => void download()}
               type="button"
             >
-              {busy === "download" ? "正在生成…" : "下载便捷模板"}
+              {busy === "download" ? "正在生成…" : "下载 XLSX 模板"}
             </button>
           </div>
         </div>
 
+        {configuration && (
+          <div className="import-grid-configuration">
+            <header>
+              <div>
+                <p className="eyebrow">模板列设置</p>
+                <h3>赛程网格列</h3>
+                <p>新赛季固定预填当前系统的 16 个标准场地时段，不从历史赛季读取；只在需要改变第三页排版时调整。</p>
+              </div>
+              <div className="import-grid-heading-actions">
+                <strong>{gridColumns.length} 列</strong>
+                {configuration.editable && <button className="quiet-action" disabled={busy !== null} type="button" onClick={addGridColumn}>＋ 添加列</button>}
+              </div>
+            </header>
+            <div className="import-grid-column-table" role="table" aria-label="赛程网格列设置">
+              <div className="import-grid-column-row import-grid-column-head" role="row">
+                <span>列序</span><span>标准时段</span><span>场地</span><span>用途</span><span>调整</span><span />
+              </div>
+              {[...gridColumns]
+                .sort((left, right) => left.sort_order - right.sort_order)
+                .map((row, index, rows) => (
+                  <div className={`import-grid-column-row${row.final_only ? " final-only" : ""}`} role="row" key={row.key}>
+                    <strong className="import-grid-position">{String(index + 1).padStart(2, "0")}</strong>
+                    <select aria-label={`${row.venue_name}网格列时段`} disabled={!configuration.editable || busy !== null} value={row.period_id} onChange={(event) => {
+                      const period = configuration.periods.find((item) => item.id === event.target.value);
+                      if (!period) return;
+                      updateGridColumn(row.key, {
+                        period_id: period.id,
+                        period_code: period.code,
+                        period_name: period.name,
+                        start_time: period.start_time,
+                      });
+                    }}>
+                      {configuration.periods.map((period) => <option key={period.id} value={period.id}>{period.start_time.slice(0, 5)} · {period.name}</option>)}
+                    </select>
+                    <select aria-label={`${row.start_time}网格列场地`} disabled={!configuration.editable || busy !== null} value={row.venue_id} onChange={(event) => {
+                      const venue = configuration.venues.find((item) => item.id === event.target.value);
+                      if (!venue) return;
+                      updateGridColumn(row.key, { venue_id: venue.id, venue_name: venue.name });
+                    }}>
+                      {!configuration.venues.some((venue) => venue.id === row.venue_id) && <option value={row.venue_id}>{row.venue_name}（特殊场地）</option>}
+                      {configuration.venues.filter((venue) => venue.active).map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}
+                    </select>
+                    <label className="import-grid-final-toggle"><input checked={row.final_only} disabled={!configuration.editable || busy !== null} type="checkbox" onChange={(event) => updateGridColumn(row.key, { final_only: event.target.checked })} /><span>{row.final_only ? "仅决赛" : "通用"}</span></label>
+                    <span className="import-grid-order-actions">
+                      <button aria-label={`上移${row.start_time}${row.venue_name}`} disabled={!configuration.editable || busy !== null || index === 0} type="button" onClick={() => moveGridColumn(row.key, -1)}>↑</button>
+                      <button aria-label={`下移${row.start_time}${row.venue_name}`} disabled={!configuration.editable || busy !== null || index === rows.length - 1} type="button" onClick={() => moveGridColumn(row.key, 1)}>↓</button>
+                    </span>
+                    <button aria-label={`删除${row.start_time}${row.venue_name}网格列`} className="import-grid-remove" disabled={!configuration.editable || busy !== null} type="button" onClick={() => removeGridColumn(row.key)}>×</button>
+                  </div>
+                ))}
+              {gridColumns.length === 0 && <p className="import-grid-empty">至少添加一个时段与场地组合，模板才可下载。</p>}
+            </div>
+            <footer>
+              <span>{gridDirty ? "网格列有未保存修改" : "当前网格列已与服务器同步"}</span>
+              <button className="primary-action" disabled={!gridDirty || busy !== null} type="button" onClick={() => void saveGridColumns()}>{busy === "grid" ? "正在保存…" : "保存网格列"}</button>
+            </footer>
+          </div>
+        )}
+
         {readiness && (
-          <div className="readiness-strip" aria-label="导入前置条件">
-            <ReadinessMetric label="组别" value={readiness.division_count} />
-            <ReadinessMetric label="球队" value={readiness.team_count} />
-            <ReadinessMetric label="时段" value={readiness.period_count} />
-            <ReadinessMetric label="场地" value={readiness.venue_count} />
-            <ReadinessMetric label="开放网格行" value={readiness.open_grid_row_count} />
-            <ReadinessMetric label="已有比赛" value={readiness.existing_game_count} />
-            <span className={readiness.ready ? "readiness-ready" : "readiness-blocked"}>
-              {readiness.ready ? "可以导入" : "尚未就绪"}
+          <div className="grid-template-status" aria-label="第三页模板状态">
+            <div>
+              <small>第三页尺寸</small>
+              <strong>{readiness.calendar_day_count} 个日期 × {readiness.grid_column_count} 个标准场地时段</strong>
+            </div>
+            <span className={readiness.template_ready ? "readiness-ready" : "readiness-blocked"}>
+              {readiness.template_ready ? "模板可下载" : "模板配置未完成"}
             </span>
           </div>
         )}
-        {readiness && readiness.blockers.length > 0 && (
-          <IssueGroup title="阻止导入" tone="error" issues={readiness.blockers} />
+        {readiness && readiness.template_blockers.length > 0 && (
+          <IssueGroup title="请先完成模板前置配置" tone="error" issues={readiness.template_blockers} />
+        )}
+        {uploadOnlyBlockers.length > 0 && (
+          <IssueGroup title="模板可下载，但暂不能导入" tone="warning" issues={uploadOnlyBlockers} />
         )}
 
-        <div className="sheet-spec-table" role="table" aria-label="XLSX 四张表字段说明">
-          <div className="sheet-spec-row sheet-spec-head" role="row">
-            <span>工作表</span>
-            <span>固定字段</span>
-            <span>示例</span>
+        <div className="grid-layout-guide" role="table" aria-label="第三页赛程网格填写示意">
+          <div className="grid-layout-row grid-layout-head" role="row">
+            <span>日期</span>
+            <span>星期</span>
+            <span>12:50 · 五四东一</span>
+            <span>18:30 · 邱德拔</span>
           </div>
-          {sheetSpecs.map((sheet) => (
-            <div className="sheet-spec-row" role="row" key={sheet.name}>
-              <strong>{sheet.name}</strong>
-              <span className="field-tags">
-                {sheet.fields.map((field) => <code key={field}>{field}</code>)}
-              </span>
-              <span>{sheet.example}</span>
-            </div>
-          ))}
+          <div className="grid-layout-row" role="row">
+            <span>2027-03-08</span>
+            <span>周一</span>
+            <strong>A1vsA2</strong>
+            <span className="final-grid-cell">仅决赛</span>
+          </div>
         </div>
         <p className="format-note">
-          比赛阶段仅支持小组赛、循环赛、淘汰赛、半决赛、决赛、保级赛。表格不填写日期以外的可调政策；新比赛统一默认“领队可调”，后续在赛程编辑器逐场修改。
+          日期和星期已自动填写。每个有边框的格子直接填写 <code>A1vsA2</code>；女子比赛写 <code>A1vsA2（女）</code>。浅琥珀列只用于决赛。
         </p>
       </section>
 
@@ -404,7 +628,7 @@ export function ScheduleImportWorkspace({
         <div className="import-section-heading compact">
           <div>
             <p className="eyebrow">步骤 2</p>
-            <h2 id="upload-title">选择 XLSX 文件</h2>
+            <h2 id="upload-title">上传并校验 V3.1 工作簿</h2>
           </div>
           <span className="subtle">仅 .xlsx · 最大 10 MB</span>
         </div>
@@ -466,7 +690,7 @@ export function ScheduleImportWorkspace({
         <section className="import-section validation-workspace" aria-labelledby="preview-title">
           <div className="import-section-heading">
             <div>
-              <p className="eyebrow">步骤 3</p>
+              <p className="eyebrow">步骤 2 · 校验结果</p>
               <h2 id="preview-title">{hasErrors ? "校验未通过" : "校验预览"}</h2>
               <p>批次 {batch.id.slice(0, 8)} · 文件 SHA-256 {batch.file_sha256.slice(0, 12)}…</p>
             </div>
@@ -521,29 +745,49 @@ export function ScheduleImportWorkspace({
             {shownGames.length === 0 && <p className="table-empty">没有符合当前筛选条件的比赛。</p>}
           </div>
 
-          {!hasErrors && batch.status !== "CONFIRMED" && (
+          {batch.status !== "CONFIRMED" && (
             <div className="confirm-create">
-              <div>
-                <p className="eyebrow">步骤 4</p>
-                <h3>确认新增正式赛程</h3>
-                <p>确认时服务器会锁定赛季并重新校验；任一冲突都会使本次事务完整回滚。</p>
+              <div className="confirm-create-heading">
+                <div>
+                  <p className="eyebrow">步骤 3 · 最终核对</p>
+                  <h3>{allConfirmationChecksPassed ? "确认新增正式赛程" : "尚不能确认创建"}</h3>
+                  <p>五项均通过后才可提交；确认时服务器会再次锁定并校验，任一冲突都会完整回滚。</p>
+                </div>
+                <strong className={allConfirmationChecksPassed ? "audit-total passed" : "audit-total failed"}>
+                  {confirmationChecks.filter((check) => check.passed).length} / {confirmationChecks.length} 通过
+                </strong>
               </div>
-              <label className="confirmation-check">
-                <input
-                  checked={acknowledged}
-                  onChange={(event) => setAcknowledged(event.target.checked)}
-                  type="checkbox"
-                />
-                我已核对将新增 {batch.summary.new_group_count} 个小组、{batch.summary.new_slot_count} 个签位和 {batch.summary.new_game_count} 场比赛；现有比赛不会被更新或删除。
-              </label>
-              <button
-                className="primary-action"
-                disabled={!acknowledged || busy !== null}
-                onClick={() => void confirm()}
-                type="button"
-              >
-                {busy === "confirm" ? "正在创建…" : "确认并创建"}
-              </button>
+              <ul className="confirmation-audit" aria-label="最终赛程核对清单">
+                {confirmationChecks.map((check) => (
+                  <li className={check.passed ? "passed" : "failed"} key={check.key}>
+                    <span className="audit-mark" aria-hidden="true">{check.passed ? "✓" : "!"}</span>
+                    <span>
+                      <strong>{check.label}</strong>
+                      <small>{check.detail}</small>
+                    </span>
+                    <b>{check.passed ? "通过" : "未通过"}</b>
+                  </li>
+                ))}
+              </ul>
+              <div className="confirm-create-action">
+                <label className="confirmation-check">
+                  <input
+                    checked={acknowledged}
+                    disabled={!allConfirmationChecksPassed}
+                    onChange={(event) => setAcknowledged(event.target.checked)}
+                    type="checkbox"
+                  />
+                  我已逐项核对以上结果：将新增 {batch.summary.new_group_count} 个小组、{batch.summary.new_slot_count} 个签位和 {batch.summary.new_game_count} 场比赛；现有比赛不会被更新或删除。
+                </label>
+                <button
+                  className="primary-action"
+                  disabled={!acknowledged || !allConfirmationChecksPassed || busy !== null}
+                  onClick={() => void confirm()}
+                  type="button"
+                >
+                  {busy === "confirm" ? "正在创建…" : "确认并创建"}
+                </button>
+              </div>
             </div>
           )}
           {batch.status === "CONFIRMED" && (
@@ -614,10 +858,6 @@ export function ScheduleImportWorkspace({
       {message && <div className="form-success" role="status">{message}</div>}
     </div>
   );
-}
-
-function ReadinessMetric({ label, value }: { label: string; value: number }) {
-  return <span><small>{label}</small><strong>{value}</strong></span>;
 }
 
 function Summary({ label, value, featured = false }: { label: string; value: number; featured?: boolean }) {

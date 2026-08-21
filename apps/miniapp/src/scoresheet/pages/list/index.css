@@ -1,0 +1,153 @@
+.sheet-list-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 34rpx 28rpx calc(40rpx + env(safe-area-inset-bottom));
+  background: #f2f0eb;
+  color: #191816;
+}
+
+.sheet-list-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-bottom: 28rpx;
+}
+
+.sheet-list-eyebrow {
+  color: #b52d28;
+  font-size: 26rpx;
+  font-weight: 800;
+  letter-spacing: 4rpx;
+}
+
+.sheet-list-title {
+  font-size: 48rpx;
+  font-weight: 850;
+}
+
+.sheet-list-detail {
+  color: #6d6962;
+  font-size: 27rpx;
+  line-height: 1.55;
+}
+
+.sheet-list-search {
+  height: 84rpx;
+  box-sizing: border-box;
+  margin-bottom: 20rpx;
+  border: 1rpx solid #d6d2ca;
+  border-radius: 14rpx;
+  background: #fff;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+}
+
+.sheet-list-items {
+  overflow: hidden;
+  border: 1rpx solid #d9d5cd;
+  border-radius: 18rpx;
+  background: #faf9f6;
+}
+
+.sheet-list-item {
+  padding: 24rpx;
+  border-bottom: 1rpx solid #e5e1da;
+}
+
+.sheet-list-item:last-child {
+  border-bottom: 0;
+}
+
+.sheet-list-main {
+  display: flex;
+  flex-direction: column;
+  gap: 7rpx;
+}
+
+.sheet-list-main > view:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet-list-code {
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.sheet-list-status {
+  border-radius: 999rpx;
+  background: #e7e4dd;
+  color: #5f5b54;
+  padding: 6rpx 12rpx;
+  font-size: 24rpx;
+  font-weight: 750;
+}
+
+.sheet-list-status.status-published,
+.sheet-list-status.status-ready {
+  background: #dcefe2;
+  color: #17633d;
+}
+
+.sheet-list-status.status-recognition_failed {
+  background: #f7e1de;
+  color: #972b22;
+}
+
+.sheet-list-status.status-retry_wait,
+.sheet-list-status.status-recognizing,
+.sheet-list-status.status-recognition_queued {
+  background: #f9edce;
+  color: #815809;
+}
+
+.sheet-list-label {
+  font-size: 30rpx;
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.sheet-list-date,
+.sheet-list-recognition {
+  color: #6f6a63;
+  font-size: 25rpx;
+}
+
+.sheet-list-recognition {
+  color: #8a5b09;
+}
+
+.sheet-list-action {
+  height: 74rpx;
+  margin-top: 18rpx;
+  border: 0;
+  border-radius: 12rpx;
+  background: #242321;
+  color: #fff;
+  font-size: 27rpx;
+  font-weight: 800;
+  line-height: 74rpx;
+}
+
+.sheet-list-action::after {
+  border: 0;
+}
+
+.sheet-list-state,
+.sheet-list-message {
+  margin: 22rpx 0;
+  border-radius: 14rpx;
+  background: #faf9f6;
+  color: #6d6962;
+  padding: 28rpx;
+  font-size: 27rpx;
+  text-align: center;
+}
+
+.sheet-list-message {
+  border-left: 6rpx solid #b52d28;
+  background: #fff0ed;
+  color: #872a22;
+  text-align: left;
+}

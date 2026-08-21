@@ -74,12 +74,20 @@ $dbPassword = if ($existing.PKUBA_DB_PASSWORD) { $existing.PKUBA_DB_PASSWORD } e
 $djangoSecret = if ($existing.DJANGO_SECRET_KEY) { $existing.DJANGO_SECRET_KEY } else { New-RandomHex 48 }
 $wechatAppId = if ($projectEnv.WECHAT_APP_ID) { $projectEnv.WECHAT_APP_ID } else { $projectConfig.appid }
 $wechatSecret = if ($projectEnv.WECHAT_APP_SECRET) { $projectEnv.WECHAT_APP_SECRET } else { '' }
+$qwenApiKey = if ($projectEnv.QWEN_API_KEY) { $projectEnv.QWEN_API_KEY } else { '' }
+$qwenBaseUrl = if ($projectEnv.QWEN_BASE_URL) { $projectEnv.QWEN_BASE_URL } else { 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
+$qwenModel = if ($projectEnv.QWEN_MODEL) { $projectEnv.QWEN_MODEL } else { 'qwen-vl-max-latest' }
+$qwenTimeout = if ($projectEnv.QWEN_TIMEOUT_SECONDS) { $projectEnv.QWEN_TIMEOUT_SECONDS } else { '120' }
 
 $envLines = @(
     "PKUBA_DB_PASSWORD=$dbPassword"
     "DJANGO_SECRET_KEY=$djangoSecret"
     "WECHAT_APP_ID=$wechatAppId"
     "WECHAT_APP_SECRET=$wechatSecret"
+    "QWEN_API_KEY=$qwenApiKey"
+    "QWEN_BASE_URL=$qwenBaseUrl"
+    "QWEN_MODEL=$qwenModel"
+    "QWEN_TIMEOUT_SECONDS=$qwenTimeout"
     "PKUBA_LOCAL_ADMIN_USERNAME=$AdminUsername"
     "PKUBA_LOCAL_ADMIN_PASSWORD=$AdminPassword"
     "PKUBA_LEGACY_SOURCE=$legacyWsl"
@@ -165,4 +173,7 @@ Write-Host "管理员用户名：$AdminUsername"
 Write-Host "管理员密码：$AdminPassword"
 if (-not $wechatSecret) {
     Write-Warning 'WECHAT_APP_SECRET 尚未配置；公开页面和网页管理员登录可用，小程序微信身份登录需补充后重新部署。'
+}
+if (-not $qwenApiKey) {
+    Write-Warning 'QWEN_API_KEY 尚未配置；记录表会进入可人工录入的识别失败状态，不会调用外部模型。'
 }

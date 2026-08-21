@@ -36,6 +36,48 @@ def test_pre_draw_schedule_exposes_placeholders():
     assert dashboard.status_code == 200
     assert dashboard.json()["mode"] == "TODAY"
     assert dashboard.json()["total_games"] == 1
+    assert dashboard.json()["daily_game_counts"] == [
+        {"date": game.date.isoformat(), "game_count": 1}
+    ]
+
+
+def test_home_dashboard_aggregates_public_games_by_date():
+    target_season = season()
+    game = placeholder_game(target_season)
+    shared = {
+        "season": target_season,
+        "division": game.division,
+        "period": game.period,
+        "start_time": game.start_time,
+        "home_slot": game.home_slot,
+        "away_slot": game.away_slot,
+    }
+    Game.objects.create(
+        **shared,
+        code="TEST-G002",
+        date=game.date,
+        venue_name="五四东二",
+    )
+    Game.objects.create(
+        **shared,
+        code="TEST-G003",
+        date=game.date + timedelta(days=2),
+        venue_name="五四东一",
+    )
+    Game.objects.create(
+        **shared,
+        code="TEST-G004",
+        date=game.date + timedelta(days=3),
+        venue_name="五四东一",
+        status=Game.Status.VOID,
+    )
+
+    payload = Client().get("/api/v1/public/home").json()
+
+    assert payload["daily_game_counts"] == [
+        {"date": game.date.isoformat(), "game_count": 2},
+        {"date": (game.date + timedelta(days=2)).isoformat(), "game_count": 1},
+    ]
 
 
 def test_archived_schedule_is_not_public():
@@ -62,3 +104,6 @@ def test_home_dashboard_reports_finished_when_no_current_or_future_games():
     assert payload["total_games"] == 1
     assert payload["games"][0]["home_score"] == 72
     assert payload["games"][0]["away_score"] == 68
+    assert payload["daily_game_counts"] == [
+        {"date": (timezone.localdate() - timedelta(days=1)).isoformat(), "game_count": 1}
+    ]

@@ -183,3 +183,22 @@
 .role-workspace-link::after {
   border: 0;
 }
+
+.web-login-action {
+  margin: 16rpx 0 0;
+  border: 1rpx solid #8f8981;
+  border-radius: 8rpx;
+  background: transparent;
+  color: #272421;
+  font-size: 28rpx;
+  font-weight: 750;
+}
+
+.web-login-action::after {
+  border: 0;
+}
+
+.web-login-action[disabled] {
+  color: #8f8981;
+  border-color: #cfc9c0;
+}

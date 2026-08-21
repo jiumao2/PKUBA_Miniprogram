@@ -42,47 +42,68 @@ def upload(
     )
 
 
-def test_scoresheet_upload_requires_confirmation_and_accepts_readable_image(tmp_path):
+def test_scoresheet_upload_is_admin_only_and_requires_confirmation(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
     leader_token = issue_session(setup["accounts"][0])
-    other_leader_token = issue_session(setup["accounts"][2])
     client = Client()
 
     with override_settings(MEDIA_ROOT=tmp_path):
-        missing_confirmation = upload(
-            client,
-            game.id,
-            leader_token,
-            kind=GameMediaAsset.Kind.SCORESHEET,
-            confirmed=False,
-            file=image_file("sheet.jpg", (640, 900)),
-        )
-        created = upload(
+        leader_forbidden = upload(
             client,
             game.id,
             leader_token,
             kind=GameMediaAsset.Kind.SCORESHEET,
             confirmed=True,
-            file=image_file("readable-sheet.jpg", (640, 900)),
+            file=image_file("sheet.jpg", (640, 900)),
         )
+        client.force_login(setup["admin"])
+        missing_confirmation = client.post(
+            f"/api/v1/admin/game-media/games/{game.id}",
+            data={
+                "kind": GameMediaAsset.Kind.SCORESHEET,
+                "scoresheet_complete_confirmed": "false",
+                "image": image_file("sheet.jpg", (640, 900)),
+            },
+        )
+        created = client.post(
+            f"/api/v1/admin/game-media/games/{game.id}",
+            data={
+                "kind": GameMediaAsset.Kind.SCORESHEET,
+                "scoresheet_complete_confirmed": "true",
+                "image": image_file("readable-sheet.jpg", (640, 900)),
+            },
+        )
+        duplicate = client.post(
+            f"/api/v1/admin/game-media/games/{game.id}",
+            data={
+                "kind": GameMediaAsset.Kind.SCORESHEET,
+                "scoresheet_complete_confirmed": "true",
+                "image": image_file("second-sheet.jpg", (640, 900)),
+            },
+        )
+        client.logout()
         listed = client.get(
             f"/api/v1/game-media/games/{game.id}",
-            HTTP_AUTHORIZATION=f"Bearer {other_leader_token}",
+            HTTP_AUTHORIZATION=f"Bearer {leader_token}",
         )
         content_path = urlsplit(created.json()["content_url"]).path
         content_query = urlsplit(created.json()["content_url"]).query
         content = client.get(f"{content_path}?{content_query}")
 
+        assert leader_forbidden.status_code == 403
+        assert leader_forbidden.json()["code"] == "MEDIA_UPLOAD_FORBIDDEN"
         assert missing_confirmation.status_code == 400
         assert missing_confirmation.json()["code"] == "SCORESHEET_CONFIRMATION_REQUIRED"
         assert created.status_code == 201
+        assert duplicate.status_code == 409
+        assert duplicate.json()["code"] == "SCORESHEET_SOURCE_EXISTS"
         assert created.json()["width"] == 640
         assert created.json()["height"] == 900
         assert created.json()["review_status"] == GameMediaAsset.ReviewStatus.PENDING
         assert listed.status_code == 200
         assert listed.json()["can_upload"] is False
-        assert len(listed.json()["assets"]) == 1
+        assert listed.json()["assets"] == []
         assert content.status_code == 200
         asset = GameMediaAsset.objects.get()
         assert (tmp_path / asset.file_key).exists()
@@ -91,14 +112,14 @@ def test_scoresheet_upload_requires_confirmation_and_accepts_readable_image(tmp_
 def test_admin_can_replace_wrong_upload_and_new_asset_requires_review(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
-    leader_token = issue_session(setup["accounts"][0])
+    admin_token = issue_session(setup["admin"])
     client = Client()
 
     with override_settings(MEDIA_ROOT=tmp_path):
         created = upload(
             client,
             game.id,
-            leader_token,
+            admin_token,
             kind=GameMediaAsset.Kind.SCORESHEET,
             confirmed=True,
             file=image_file("wrong-sheet.jpg", (640, 900)),
@@ -145,7 +166,6 @@ def test_admin_can_replace_wrong_upload_and_new_asset_requires_review(tmp_path):
 def test_admin_can_replace_game_photo_from_miniapp(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
-    leader_token = issue_session(setup["accounts"][0])
     admin_token = issue_session(setup["admin"])
     client = Client()
 
@@ -153,7 +173,7 @@ def test_admin_can_replace_game_photo_from_miniapp(tmp_path):
         created = upload(
             client,
             game.id,
-            leader_token,
+            admin_token,
             kind=GameMediaAsset.Kind.GAME_PHOTO,
             confirmed=False,
             file=image_file("wrong-action.jpg", (800, 600)),
@@ -176,14 +196,14 @@ def test_admin_can_replace_game_photo_from_miniapp(tmp_path):
 def test_group_photo_is_separate_from_other_photos_and_can_be_filtered(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
-    leader_token = issue_session(setup["accounts"][0])
+    admin_token = issue_session(setup["admin"])
     client = Client()
 
     with override_settings(MEDIA_ROOT=tmp_path):
         group_photo = upload(
             client,
             game.id,
-            leader_token,
+            admin_token,
             kind=GameMediaAsset.Kind.GROUP_PHOTO,
             confirmed=False,
             file=image_file("team-group.jpg", (1200, 800)),
@@ -191,7 +211,7 @@ def test_group_photo_is_separate_from_other_photos_and_can_be_filtered(tmp_path)
         other_photo = upload(
             client,
             game.id,
-            leader_token,
+            admin_token,
             kind=GameMediaAsset.Kind.GAME_PHOTO,
             confirmed=False,
             file=image_file("game-moment.jpg", (1000, 700)),
@@ -216,6 +236,7 @@ def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):
     game = setup["games"][0]
     participant_token = issue_session(setup["accounts"][0])
     unrelated_token = issue_session(setup["accounts"][2])
+    admin_token = issue_session(setup["admin"])
     client = Client()
 
     with override_settings(MEDIA_ROOT=tmp_path):
@@ -227,13 +248,21 @@ def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):
             confirmed=False,
             file=image_file("action.jpg", (1600, 1200)),
         )
-        created = upload(
+        participant_forbidden = upload(
             client,
             game.id,
             participant_token,
             kind=GameMediaAsset.Kind.GAME_PHOTO,
             confirmed=False,
             file=image_file("action.jpg", (1600, 1200)),
+        )
+        created = upload(
+            client,
+            game.id,
+            admin_token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("admin-action.jpg", (1600, 1200)),
         )
         asset_id = created.json()["id"]
 
@@ -263,6 +292,7 @@ def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):
         )
 
     assert forbidden.status_code == 403
+    assert participant_forbidden.status_code == 403
     assert created.status_code == 201
     assert rejected_without_note.status_code == 400
     assert approved.status_code == 200

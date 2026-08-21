@@ -22,6 +22,7 @@ const historical: SeasonConfiguration = {
   timezone: "Asia/Shanghai",
   version: 1,
   editable: false,
+  maintenance_required: false,
   locked_reason: "赛季公开后，组别、场地、时段与容量元信息即被锁定。",
   divisions: ["男甲", "男乙", "女甲", "女乙"].map((name, index) => ({
     id: `20000000-0000-0000-0000-00000000000${index + 1}`,
@@ -35,7 +36,6 @@ const historical: SeasonConfiguration = {
   })),
   venues: ["五四东一", "五四东二", "五四东三"].map((name, index) => ({
     id: `30000000-0000-0000-0000-00000000000${index + 1}`,
-    code: `legacy-v0${index + 1}`,
     name,
     sort_order: index + 1,
     active: true,
@@ -49,7 +49,7 @@ const historical: SeasonConfiguration = {
       name: "12:50",
       start_time: "12:50",
       sort_order: 1,
-      capacities: [1, 1, 1, 1, 1, 3, 3],
+      default_capacities: { WEEKDAY: 1, WEEKEND: 3 },
       game_count: 70,
       active_reservation_count: 0,
     },
@@ -59,11 +59,41 @@ const historical: SeasonConfiguration = {
       name: "20:40",
       start_time: "20:40",
       sort_order: 2,
-      capacities: [1, 1, 1, 1, 1, 0, 0],
+      default_capacities: { WEEKDAY: 1, WEEKEND: 0 },
       game_count: 20,
       active_reservation_count: 0,
     },
   ],
+  slot_families: [
+    {
+      id: "50000000-0000-0000-0000-000000000001",
+      division_id: "20000000-0000-0000-0000-000000000001",
+      division_code: "legacy-d1",
+      division_name: "男甲",
+      gender: "MEN",
+      stage: "GROUP",
+      stage_name: "小组赛",
+      prefix: "A",
+      slot_count: 12,
+      sort_order: 1,
+      expected_game_count: 66,
+    },
+  ],
+  grid_columns: [
+    {
+      id: "60000000-0000-0000-0000-000000000001",
+      period_id: "40000000-0000-0000-0000-000000000001",
+      period_code: "P1",
+      period_name: "12:50",
+      start_time: "12:50",
+      venue_id: "30000000-0000-0000-0000-000000000001",
+      venue_name: "五四东一",
+      final_only: false,
+      sort_order: 1,
+    },
+  ],
+  date_capacity_overrides: [],
+  over_capacity: [],
 };
 
 const seasons: AdminSeason[] = [{
@@ -81,6 +111,17 @@ const seasons: AdminSeason[] = [{
 function clientWith(configuration: SeasonConfiguration, overrides = {}) {
   return {
     getSeasonConfiguration: vi.fn().mockResolvedValue(configuration),
+    getCapacityLedger: vi.fn().mockResolvedValue([]),
+    previewSeasonConfiguration: vi.fn().mockResolvedValue({
+      season_id: configuration.id,
+      season_version: configuration.version,
+      maintenance_required: false,
+      changed: true,
+      over_capacity: [],
+      affected_reschedule_request_ids: [],
+      templates_invalidated: false,
+      impact_hash: "preview-hash",
+    }),
     updateSeasonConfiguration: vi.fn().mockResolvedValue(configuration),
     createAdminSeason: vi.fn(),
     ...overrides,
@@ -108,12 +149,13 @@ describe("SeasonManagementPage", () => {
   it("renders historical divisions and capacity as locked real data", async () => {
     renderPage(clientWith(historical));
 
-    expect(await screen.findByText("基础配置已锁定")).toBeTruthy();
+    expect(await screen.findByText("只读")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "赛季名称" })).toHaveProperty("value", "北大杯");
     expect(screen.getByDisplayValue("男甲")).toBeTruthy();
     expect(screen.getByDisplayValue("女乙")).toBeTruthy();
     expect(screen.getByDisplayValue("五四东三")).toBeTruthy();
-    expect(screen.getByLabelText("周六12:50容量").hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "＋ 添加场地" })).toBeNull();
+    expect(screen.getByLabelText("12:50周末容量").hasAttribute("disabled")).toBe(true);
   });
 
   it("adds a division and sends one versioned configuration transaction", async () => {
@@ -129,13 +171,61 @@ describe("SeasonManagementPage", () => {
     const nameInput = screen.getByDisplayValue("新组别");
     await user.clear(nameInput);
     await user.type(nameInput, "公开组");
-    await user.click(screen.getByRole("button", { name: "保存全部配置" }));
+    await user.click(screen.getByRole("button", { name: "预览并保存" }));
 
     await waitFor(() => expect(updateSeasonConfiguration).toHaveBeenCalledOnce());
     const [, payload] = updateSeasonConfiguration.mock.calls[0];
     expect(payload.expected_version).toBe(1);
     expect(payload.divisions).toHaveLength(5);
     expect(payload.divisions[4]).toMatchObject({ id: null, name: "公开组" });
+  });
+
+  it("edits slot families while grid-column settings stay out of this page", async () => {
+    const editable = { ...historical, status: "SETUP", editable: true, locked_reason: "" };
+    const updateSeasonConfiguration = vi.fn().mockResolvedValue(editable);
+    const client = clientWith(editable, { updateSeasonConfiguration });
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage(client);
+
+    await screen.findByRole("heading", { name: "签位方案" });
+    expect(screen.queryByText("赛程网格列")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "＋ 添加签位方案" }));
+    expect(screen.getByDisplayValue("B")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "预览并保存" }));
+
+    await waitFor(() => expect(updateSeasonConfiguration).toHaveBeenCalledOnce());
+    const [, payload] = updateSeasonConfiguration.mock.calls[0];
+    expect(payload.slot_families).toHaveLength(2);
+    expect(payload.slot_families[1]).toMatchObject({ prefix: "B", stage: "GROUP" });
+    expect(payload.grid_columns).toHaveLength(0);
+  });
+
+  it("lets a superadmin extend the ordered automatic-allocation venue pool", async () => {
+    const editable = { ...historical, status: "SETUP", editable: true, locked_reason: "" };
+    const updateSeasonConfiguration = vi.fn().mockResolvedValue(editable);
+    const client = clientWith(editable, { updateSeasonConfiguration });
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage(client);
+
+    await screen.findByRole("heading", { name: "标准场地" });
+    await user.click(screen.getByRole("button", { name: "＋ 添加场地" }));
+    const nameInput = screen.getByDisplayValue("新场地 4");
+    await user.clear(nameInput);
+    await user.type(nameInput, "新体育馆");
+    expect(screen.getByLabelText("新体育馆名称")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "预览并保存" }));
+
+    await waitFor(() => expect(updateSeasonConfiguration).toHaveBeenCalledOnce());
+    const [, payload] = updateSeasonConfiguration.mock.calls[0];
+    expect(payload.venues).toHaveLength(4);
+    expect(payload.venues[3]).toMatchObject({
+      id: null,
+      name: "新体育馆",
+      active: true,
+      sort_order: 4,
+    });
   });
 
   it("creates a setup season from the selected historical configuration", async () => {
@@ -154,10 +244,10 @@ describe("SeasonManagementPage", () => {
       />,
     );
 
-    await screen.findByText("基础配置已锁定");
+    await screen.findByText("只读");
     await user.click(screen.getByRole("button", { name: "新建赛季" }));
-    expect(screen.getByRole("combobox", { name: "配置来源" })).toHaveProperty("value", historical.id);
-    await user.click(screen.getByRole("button", { name: "创建并开始配置" }));
+    expect(screen.getByLabelText("配置来源")).toHaveProperty("value", historical.id);
+    await user.click(screen.getByRole("button", { name: "创建赛季" }));
 
     await waitFor(() => expect(createAdminSeason).toHaveBeenCalledOnce());
     expect(createAdminSeason.mock.calls[0][0]).toMatchObject({

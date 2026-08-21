@@ -1,0 +1,416 @@
+.team-roster-workspace,
+.roster-audit {
+  display: grid;
+  gap: 22px;
+}
+
+.roster-toolbar,
+.roster-toolbar-actions,
+.roster-index-heading,
+.roster-editor-heading,
+.roster-table-heading,
+.roster-save-bar,
+.roster-audit-heading,
+.roster-section-title,
+.roster-final-change,
+.roster-confirm-actions,
+.roster-maintenance-preview,
+.roster-maintenance-preview > div:last-child {
+  display: flex;
+  align-items: center;
+}
+
+.roster-toolbar,
+.roster-editor-heading,
+.roster-table-heading,
+.roster-save-bar,
+.roster-audit-heading,
+.roster-section-title,
+.roster-final-change,
+.roster-maintenance-preview {
+  justify-content: space-between;
+}
+
+.roster-toolbar {
+  gap: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--pkuba-line);
+}
+
+.roster-toolbar > label,
+.roster-team-fields label,
+.roster-resolution-list label {
+  display: grid;
+  gap: 7px;
+}
+
+.roster-toolbar > label {
+  width: min(100%, 420px);
+}
+
+.roster-toolbar label > span,
+.roster-team-fields label > span,
+.roster-resolution-list label > span {
+  color: var(--pkuba-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roster-toolbar select,
+.roster-index-controls input,
+.roster-index-controls select,
+.roster-team-fields input,
+.roster-team-fields select,
+.roster-resolution-list input,
+.roster-player-row input {
+  min-height: 40px;
+  padding: 8px 10px;
+  color: var(--pkuba-ink);
+  background: #fff;
+  border: 1px solid var(--pkuba-line);
+  border-radius: 5px;
+  font: inherit;
+}
+
+.roster-toolbar select:focus,
+.roster-index-controls input:focus,
+.roster-index-controls select:focus,
+.roster-team-fields input:focus,
+.roster-team-fields select:focus,
+.roster-resolution-list input:focus,
+.roster-player-row input:focus {
+  border-color: var(--pkuba-red);
+  outline: 2px solid rgb(181 35 40 / 12%);
+  outline-offset: 1px;
+}
+
+.roster-toolbar-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.roster-season-status {
+  padding: 7px 10px;
+  color: var(--pkuba-muted);
+  background: #f3f0eb;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.roster-season-status.setup { color: #7a571d; background: #fbf1de; }
+.roster-season-status.active,
+.roster-season-status.pre_draw_public { color: #1f6745; background: #e8f4ed; }
+.roster-season-status.archived { color: #6f6b65; background: #ece9e5; }
+
+.roster-facts,
+.roster-audit-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid var(--pkuba-line);
+}
+
+.roster-facts > div,
+.roster-audit-facts > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 16px 20px;
+  border-right: 1px solid var(--pkuba-line);
+}
+
+.roster-facts > div:first-child,
+.roster-audit-facts > div:first-child { padding-left: 0; }
+.roster-facts > div:last-child,
+.roster-audit-facts > div:last-child { border-right: 0; }
+.roster-facts span,
+.roster-audit-facts span { color: var(--pkuba-muted); font-size: 12px; }
+.roster-facts strong,
+.roster-audit-facts strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.roster-facts small { color: #8d877f; font-size: 11px; }
+.roster-audit-facts .danger strong { color: #a6262b; }
+.roster-audit-facts .warning strong { color: #9a6717; }
+
+.roster-message,
+.roster-import-lock,
+.roster-resume-audit {
+  padding: 12px 15px;
+  border-left: 3px solid var(--pkuba-red);
+}
+
+.roster-message {
+  color: #5e3e3c;
+  background: #f8edeb;
+}
+
+.roster-message.error {
+  color: #7b2024;
+  background: #fbe8e8;
+  border-left-color: #a6262b;
+}
+
+.roster-import-lock {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  color: #675b4c;
+  background: #f5f2ed;
+  border-left-color: #a39a8d;
+  font-size: 13px;
+}
+
+.roster-import-lock span { color: var(--pkuba-muted); }
+
+.roster-resume-audit {
+  width: 100%;
+  color: var(--pkuba-red-dark);
+  background: #fff;
+  border-block: 1px solid var(--pkuba-line);
+  border-right: 1px solid var(--pkuba-line);
+  text-align: left;
+}
+
+.roster-master-detail {
+  display: grid;
+  min-height: 610px;
+  grid-template-columns: minmax(250px, 29%) minmax(0, 1fr);
+  border: 1px solid var(--pkuba-line);
+  background: #fff;
+}
+
+.roster-team-index {
+  min-width: 0;
+  background: var(--pkuba-warm-white);
+  border-right: 1px solid var(--pkuba-line);
+}
+
+.roster-index-controls {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-bottom: 1px solid var(--pkuba-line);
+}
+
+.roster-index-heading {
+  gap: 12px;
+  padding: 13px 18px;
+  color: var(--pkuba-muted);
+  border-bottom: 1px solid var(--pkuba-line);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roster-index-heading button,
+.roster-table-heading button,
+.roster-player-row button,
+.text-action {
+  padding: 0;
+  color: var(--pkuba-red-dark);
+  background: transparent;
+  border: 0;
+  font-weight: 750;
+}
+
+.roster-team-list {
+  display: grid;
+  align-content: start;
+  max-height: 590px;
+  overflow-y: auto;
+}
+
+.roster-team-list > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 62px;
+  padding: 11px 18px;
+  color: var(--pkuba-ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e8e3dc;
+  text-align: left;
+}
+
+.roster-team-list > button:hover { background: #faf7f3; }
+.roster-team-list > button.selected { background: #f6e9e7; box-shadow: inset 3px 0 var(--pkuba-red); }
+.roster-team-list > button > span:first-child { display: grid; min-width: 0; gap: 4px; }
+.roster-team-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roster-team-list small { color: var(--pkuba-muted); font-size: 11px; }
+.roster-team-list > button > span:last-child { color: var(--pkuba-muted); font-size: 12px; white-space: nowrap; }
+.roster-team-list > button > span.unassigned { color: #9a6717; }
+
+.roster-editor {
+  min-width: 0;
+  padding: 26px 28px 22px;
+}
+
+.roster-editor-empty {
+  display: grid;
+  place-content: center;
+  height: 100%;
+  gap: 6px;
+  color: var(--pkuba-muted);
+  text-align: center;
+}
+
+.roster-editor-empty strong { color: var(--pkuba-ink); font-size: 20px; }
+
+.roster-kicker {
+  margin: 0 0 5px;
+  color: var(--pkuba-red);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.roster-editor-heading { padding-bottom: 18px; border-bottom: 1px solid var(--pkuba-line); }
+.roster-editor-heading h2 { font-size: 18px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.roster-active-toggle,
+.roster-player-status,
+.roster-warning-check { display: flex; align-items: center; gap: 8px; }
+.roster-active-toggle span,
+.roster-player-status span { color: var(--pkuba-muted); font-size: 12px; font-weight: 700; }
+
+.roster-team-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(150px, .8fr);
+  gap: 16px;
+  padding: 20px 0;
+}
+
+.roster-team-fields input:disabled,
+.roster-team-fields select:disabled,
+.roster-player-row input:disabled {
+  color: #5f5a54;
+  background: #f5f2ed;
+  opacity: 1;
+}
+
+.roster-table-heading {
+  align-items: flex-end;
+  gap: 24px;
+  margin-top: 4px;
+  padding: 16px 0 11px;
+  border-top: 1px solid var(--pkuba-line);
+}
+
+.roster-table-heading h3,
+.roster-audit h3 { margin: 0; font-size: 17px; }
+.roster-table-heading p,
+.roster-audit-heading p,
+.roster-final-change p { margin: 5px 0 0; color: var(--pkuba-muted); font-size: 12px; line-height: 1.55; }
+
+.roster-player-table { border-block: 1px solid var(--pkuba-line); }
+.roster-player-row {
+  display: grid;
+  grid-template-columns: 38px minmax(150px, 1.5fr) minmax(104px, .7fr) 88px 46px;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 7px 6px;
+  border-bottom: 1px solid #ebe6df;
+}
+
+.roster-player-row:last-child { border-bottom: 0; }
+.roster-player-row.header { min-height: 37px; color: var(--pkuba-muted); background: #f7f4ef; font-size: 11px; font-weight: 750; }
+.roster-player-row > span:first-child { color: #999187; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.roster-player-row input { width: 100%; min-height: 36px; }
+.roster-player-row.inactive { opacity: .63; }
+.roster-player-row > label.jersey-warning { display: grid; gap: 2px; }
+.jersey-warning input { border-color: #bd8425; }
+.jersey-warning small { color: #8c5c11; font-size: 10px; }
+
+.roster-save-bar { gap: 20px; padding-top: 18px; }
+.roster-save-bar > span { color: var(--pkuba-muted); font-size: 12px; }
+
+.roster-maintenance-preview {
+  align-items: flex-end;
+  gap: 24px;
+  margin-top: 18px;
+  padding: 16px;
+  color: #64461d;
+  background: #fbf2df;
+  border-left: 3px solid #bd8425;
+}
+
+.roster-maintenance-preview p { margin: 5px 0; font-size: 13px; }
+.roster-maintenance-preview span { color: #7c6645; font-size: 11px; }
+.roster-maintenance-preview > div:last-child { gap: 8px; }
+
+.roster-audit-heading { align-items: flex-start; padding-bottom: 18px; border-bottom: 1px solid var(--pkuba-line); }
+.roster-audit-heading h2 { margin: 0; font-size: 24px; }
+.roster-audit-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .85fr); gap: 18px; align-items: start; }
+.roster-audit-section { min-width: 0; background: #fff; border: 1px solid var(--pkuba-line); }
+.roster-section-title { align-items: flex-start; gap: 18px; padding: 17px 19px; border-bottom: 1px solid var(--pkuba-line); }
+.roster-section-title > span { color: var(--pkuba-muted); font-size: 11px; font-weight: 750; }
+.roster-issues { display: grid; max-height: 410px; overflow-y: auto; }
+.roster-issue { padding: 13px 17px; border-bottom: 1px solid #ebe6df; }
+.roster-issue:last-child { border-bottom: 0; }
+.roster-issue > div { display: flex; align-items: center; gap: 8px; }
+.roster-issue strong { color: #8c5c11; font-size: 11px; }
+.roster-issue.error strong { color: #9e2429; }
+.roster-issue code { color: #91897f; font-size: 10px; }
+.roster-issue p { margin: 5px 0 3px; font-size: 13px; line-height: 1.5; }
+.roster-issue > span { color: var(--pkuba-muted); font-size: 10px; }
+
+.roster-resolution-list { display: grid; max-height: 410px; overflow-y: auto; }
+.roster-resolution-list label { padding: 11px 17px; border-bottom: 1px solid #ebe6df; }
+.roster-resolution-list label:last-child { border-bottom: 0; }
+.roster-resolution-list input { min-height: 36px; }
+
+.roster-division-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.roster-division-stats > div { display: grid; gap: 5px; padding: 16px 18px; border-right: 1px solid var(--pkuba-line); }
+.roster-division-stats > div:last-child { border-right: 0; }
+.roster-division-stats span { color: var(--pkuba-muted); font-size: 12px; }
+.roster-division-stats small { color: #8c877f; font-size: 11px; }
+.roster-division-stats .mismatch { background: #fbf2df; }
+.roster-division-stats .mismatch small { color: #8c5c11; }
+
+.roster-final-change { align-items: flex-end; gap: 28px; padding: 20px 22px; background: #f5f2ed; border-left: 3px solid var(--pkuba-red); }
+.roster-confirm-actions { align-items: flex-end; flex-direction: column; gap: 12px; }
+.roster-warning-check { max-width: 520px; color: #705329; font-size: 12px; line-height: 1.45; }
+.roster-empty { margin: 0; padding: 24px 18px; color: var(--pkuba-muted); font-size: 13px; text-align: center; }
+.roster-state { padding: 40px 0; color: var(--pkuba-muted); }
+.roster-state-error { color: #9e2429; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1000px) {
+  .roster-toolbar { align-items: flex-start; flex-direction: column; }
+  .roster-toolbar-actions { justify-content: flex-start; }
+  .roster-master-detail { grid-template-columns: minmax(220px, 34%) minmax(0, 1fr); }
+  .roster-player-row { grid-template-columns: 32px minmax(130px, 1.4fr) 96px 76px 42px; gap: 7px; }
+  .roster-audit-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .roster-facts,
+  .roster-audit-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .roster-facts > div:nth-child(2),
+  .roster-audit-facts > div:nth-child(2) { border-right: 0; }
+  .roster-master-detail { grid-template-columns: 1fr; }
+  .roster-team-index { border-right: 0; border-bottom: 1px solid var(--pkuba-line); }
+  .roster-team-list { max-height: 250px; }
+  .roster-editor { padding: 22px 16px; }
+  .roster-team-fields { grid-template-columns: 1fr; }
+  .roster-player-table { overflow-x: auto; }
+  .roster-player-row { min-width: 620px; }
+  .roster-final-change,
+  .roster-maintenance-preview { align-items: stretch; flex-direction: column; }
+  .roster-confirm-actions { align-items: stretch; }
+  .roster-import-lock { align-items: flex-start; flex-direction: column; gap: 4px; }
+}
+

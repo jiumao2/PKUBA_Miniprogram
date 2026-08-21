@@ -56,7 +56,6 @@ def _standings_setup():
     venues = [
         Venue.objects.create(
             season=target_season,
-            code=f"court-{index}",
             name=f"场地 {index}",
             sort_order=index,
         )
@@ -80,7 +79,8 @@ def test_standings_are_calculated_from_official_group_results():
             code=f"RANK-{index + 1}",
             date=target_season.starts_on + timedelta(days=index),
             period=period,
-            venue=venues[index],
+            start_time=period.start_time,
+            venue_name=venues[index].name,
             home_team=home,
             away_team=away,
             status=Game.Status.COMPLETED,
@@ -115,7 +115,8 @@ def test_forfeit_awards_two_points_to_winner_and_zero_to_loser():
         code="FORFEIT-1",
         date=target_season.starts_on,
         period=period,
-        venue=venues[0],
+        start_time=period.start_time,
+        venue_name=venues[0].name,
         home_team=teams[0],
         away_team=teams[1],
         status=Game.Status.FORFEIT,

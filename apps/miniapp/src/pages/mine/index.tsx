@@ -16,6 +16,7 @@ export default function MinePage() {
   const [me, setMe] = useState<MiniAppMe | null>(null);
   const [loading, setLoading] = useState(true);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const [webLoginBusy, setWebLoginBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const identify = async () => {
@@ -62,6 +63,37 @@ export default function MinePage() {
       clearMiniAppSession();
       setMe(null);
       setLogoutBusy(false);
+    }
+  };
+
+  const confirmWebLogin = async () => {
+    const token = getMiniAppSession();
+    if (!token || !me?.admin_role) {
+      setError("请先使用管理员账号登录小程序。");
+      return;
+    }
+    setWebLoginBusy(true);
+    setError(null);
+    try {
+      const scanned = await Taro.scanCode({ onlyFromCamera: true, scanType: ["qrCode"] });
+      const payload = parseAdminWebLoginPayload(scanned.result ?? "");
+      const decision = await Taro.showModal({
+        title: "确认登录管理后台",
+        content: `浏览器校验码：${payload.verificationCode}\n确认使用账号“${me.account.username}”登录？`,
+        confirmText: "确认登录",
+        confirmColor: "#c91f26",
+      });
+      if (!decision.confirm) return;
+      const confirmation = await api.confirmAdminWebLogin(payload.challengeToken, token);
+      if (confirmation.verification_code !== payload.verificationCode) {
+        throw new Error("登录校验码不一致，请刷新网页二维码后重试。");
+      }
+      Taro.showToast({ title: "已确认登录", icon: "success" });
+    } catch (reason: unknown) {
+      const message = reason instanceof Error ? reason.message : "扫码登录失败";
+      if (!message.toLowerCase().includes("cancel")) setError(message);
+    } finally {
+      setWebLoginBusy(false);
     }
   };
 
@@ -131,6 +163,13 @@ export default function MinePage() {
                 <Button className="role-workspace-link" onClick={() => Taro.navigateTo({ url: "/pages/admin/index" })}>
                   进入管理员工作台
                 </Button>
+                <Button
+                  className="web-login-action"
+                  disabled={webLoginBusy}
+                  onClick={() => void confirmWebLogin()}
+                >
+                  {webLoginBusy ? "正在处理…" : "扫码登录管理后台"}
+                </Button>
               </>
             ) : (
               <>
@@ -164,6 +203,20 @@ export default function MinePage() {
 
 function genderClass(gender: string) {
   return gender === "WOMEN" ? "gender-women" : "gender-men";
+}
+
+function parseAdminWebLoginPayload(value: string) {
+  const [prefix, version, verificationCode, challengeToken, ...extra] = value.trim().split(":");
+  if (
+    prefix !== "PKUBA_ADMIN_WEB_LOGIN" ||
+    version !== "1" ||
+    extra.length > 0 ||
+    !/^[A-F0-9]{6}$/.test(verificationCode ?? "") ||
+    !/^[A-Za-z0-9_-]{32,}$/.test(challengeToken ?? "")
+  ) {
+    throw new Error("这不是有效的 PKUBA 管理后台登录二维码。");
+  }
+  return { verificationCode, challengeToken };
 }
 
 function State({ title, detail }: { title: string; detail?: string }) {

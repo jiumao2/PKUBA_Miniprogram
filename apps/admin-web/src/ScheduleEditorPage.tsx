@@ -89,7 +89,9 @@ export function ScheduleEditorPage({
         expected_version: selected.version,
         date: selected.date,
         period_id: selected.period_id,
-        venue_id: selected.venue_id,
+        start_time: selected.start_time,
+        standard_venue_id: selected.standard_venue_id,
+        venue_name: selected.venue_name,
         home_team_id: selected.home_team_id ?? null,
         away_team_id: selected.away_team_id ?? null,
         home_score: selected.home_score,
@@ -140,8 +142,8 @@ export function ScheduleEditorPage({
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="球队、场地或比赛代码" />
         </div>
         <div className="schedule-color-legend" aria-label="比赛颜色说明">
-          <span className="game-men">男篮</span>
-          <span className="game-women">女篮</span>
+          <span className="game-men">男子组比赛</span>
+          <span className="game-women">女子组比赛</span>
           <span className="game-locked">已锁定 · 领队不可调</span>
         </div>
         <div className="schedule-editor-list">
@@ -167,7 +169,7 @@ export function ScheduleEditorPage({
         ) : (
           <form onSubmit={(event) => void submit(event)}>
             <div className="operation-heading">
-              <div><p className="eyebrow">{selected.division_name}</p><h2>{selected.home_name} vs {selected.away_name}</h2></div>
+              <div><p>{selected.division_name}</p><h2>{selected.home_name} vs {selected.away_name}</h2></div>
               <span className="version-mark">v{selected.version}</span>
             </div>
             {selected.active_reschedule_request_id && (
@@ -179,8 +181,10 @@ export function ScheduleEditorPage({
             </div>
             <div className="schedule-form-grid">
               <label>比赛日期<input type="date" value={selected.date} onChange={(event) => setSelected({ ...selected, date: event.target.value })} /></label>
-              <label>开赛时段<select value={selected.period_id} onChange={(event) => setSelected({ ...selected, period_id: event.target.value })}>{options.periods.map((period) => <option key={period.id} value={period.id}>{period.start_time} · {period.name}</option>)}</select></label>
-              <label>场地<select value={selected.venue_id} onChange={(event) => setSelected({ ...selected, venue_id: event.target.value })}>{options.venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}</select></label>
+              <label>容量时段<select value={selected.period_id} onChange={(event) => { const period = options.periods.find((item) => item.id === event.target.value); setSelected({ ...selected, period_id: event.target.value, period_code: period?.code ?? selected.period_code, period_name: period?.name ?? selected.period_name }); }}>{options.periods.map((period) => <option key={period.id} value={period.id}>{period.code.toUpperCase()} · {period.name} · 默认 {period.start_time}</option>)}</select></label>
+              <label>实际开赛时间<input type="time" value={selected.start_time.slice(0, 5)} onChange={(event) => setSelected({ ...selected, start_time: event.target.value })} /></label>
+              <label>标准场地<select value={selected.standard_venue_id ?? ""} onChange={(event) => { const venue = options.venues.find((item) => item.id === event.target.value); setSelected({ ...selected, standard_venue_id: venue?.id ?? null, venue_name: venue?.name ?? selected.venue_name }); }}><option value="">其他场地 · 手动填写</option>{options.venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}</select></label>
+              <label>实际场地<input disabled={selected.standard_venue_id !== null} value={selected.venue_name} onChange={(event) => setSelected({ ...selected, venue_name: event.target.value })} /></label>
               <label>比赛状态<select value={selected.status} onChange={(event) => setSelected({ ...selected, status: event.target.value })}>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
               <label>主队<select value={selected.home_team_id ?? ""} onChange={(event) => setSelected({ ...selected, home_team_id: event.target.value || null })}><option value="">保留签位 · {selected.home_name}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
               <label>客队<select value={selected.away_team_id ?? ""} onChange={(event) => setSelected({ ...selected, away_team_id: event.target.value || null })}><option value="">保留签位 · {selected.away_name}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
@@ -190,7 +194,7 @@ export function ScheduleEditorPage({
             <div className="schedule-checks">
               <label><input type="checkbox" checked={selected.leader_adjustable} onChange={(event) => setSelected({ ...selected, leader_adjustable: event.target.checked })} />允许领队申请调赛（关闭后显示为“领队不可调”）</label>
               {selected.active_reschedule_request_id && <label><input type="checkbox" checked={cancelRequest} onChange={(event) => setCancelRequest(event.target.checked)} />取消活动申请并释放预留</label>}
-              <label><input type="checkbox" checked={overrideRules} onChange={(event) => setOverrideRules(event.target.checked)} />使用超级管理员例外（容量与日期）</label>
+              <label><input type="checkbox" checked={overrideRules} onChange={(event) => setOverrideRules(event.target.checked)} />使用超级管理员例外（日期、容量或明确保留场地冲突）</label>
               <label className="critical-check"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />我已核对日期、时段、场地、双方、比分及关联申请</label>
             </div>
             <button className="primary-action" disabled={!acknowledged || busy} type="submit">{busy ? "正在保存…" : "二次确认并保存"}</button>

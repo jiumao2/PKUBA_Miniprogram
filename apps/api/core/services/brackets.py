@@ -49,8 +49,8 @@ def _serialize_bracket_game(
         "id": game.id,
         "code": game.code,
         "date": game.date,
-        "start_time": game.period.start_time.strftime("%H:%M"),
-        "venue_name": game.venue.name,
+        "start_time": game.start_time.strftime("%H:%M"),
+        "venue_name": game.venue_name,
         "stage": game.stage,
         "home_team_id": home_team_id,
         "away_team_id": away_team_id,
@@ -74,13 +74,12 @@ def _division_bracket(division: Division) -> dict[str, object]:
         .exclude(status=Game.Status.VOID)
         .select_related(
             "period",
-            "venue",
             "home_team",
             "away_team",
             "home_slot",
             "away_slot",
         )
-        .order_by("date", "period__sort_order", "venue__sort_order", "code")
+        .order_by("date", "start_time", "venue_name", "code")
     )
     by_stage = {stage: [game for game in games if game.stage == stage] for stage in BRACKET_STAGES}
     rounds: list[dict[str, object]] = []
@@ -118,13 +117,12 @@ def _division_bracket(division: Division) -> dict[str, object]:
         .exclude(status=Game.Status.VOID)
         .select_related(
             "period",
-            "venue",
             "home_team",
             "away_team",
             "home_slot",
             "away_slot",
         )
-        .order_by("date", "period__sort_order", "venue__sort_order", "code")
+        .order_by("date", "start_time", "venue_name", "code")
     )
     champion_name = None
     if rounds and rounds[-1]["stage"] == Game.Stage.FINAL:

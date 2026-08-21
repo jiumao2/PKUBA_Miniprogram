@@ -32,7 +32,7 @@ def test_bracket_derives_finalists_from_completed_semifinals():
         start_time=time(12, 10),
     )
     venues = [
-        Venue.objects.create(season=season, code=f"v{index}", name=f"场地 {index}")
+        Venue.objects.create(season=season, name=f"场地 {index}")
         for index in range(1, 4)
     ]
     teams = [
@@ -46,7 +46,8 @@ def test_bracket_derives_finalists_from_completed_semifinals():
         stage=Game.Stage.SEMIFINAL,
         date=today,
         period=period,
-        venue=venues[0],
+        start_time=period.start_time,
+        venue_name=venues[0].name,
         home_team=teams[0],
         away_team=teams[1],
         home_score=70,
@@ -60,7 +61,8 @@ def test_bracket_derives_finalists_from_completed_semifinals():
         stage=Game.Stage.SEMIFINAL,
         date=today,
         period=period,
-        venue=venues[1],
+        start_time=period.start_time,
+        venue_name=venues[1].name,
         home_team=teams[2],
         away_team=teams[3],
         home_score=55,
@@ -84,7 +86,8 @@ def test_bracket_derives_finalists_from_completed_semifinals():
         stage=Game.Stage.FINAL,
         date=today + timedelta(days=3),
         period=period,
-        venue=venues[2],
+        start_time=period.start_time,
+        venue_name=venues[2].name,
         home_slot=final_home,
         away_slot=final_away,
     )

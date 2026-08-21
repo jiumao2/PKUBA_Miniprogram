@@ -19,7 +19,9 @@ export function MediaReviewPage({ client }: { client: AdminClient }) {
   const load = useCallback(async () => {
     setMessage("");
     try {
-      const result = await client.listAdminGameMedia(filter, kindFilter);
+      const result = (await client.listAdminGameMedia(filter, kindFilter)).filter(
+        (asset) => asset.kind !== "SCORESHEET",
+      );
       setAssets(result);
       setSelectedId((current) =>
         result.some((asset) => asset.id === current) ? current : (result[0]?.id ?? ""),
@@ -104,7 +106,7 @@ export function MediaReviewPage({ client }: { client: AdminClient }) {
     <section className="media-review-layout">
       <div className="media-review-list">
         <div className="operation-heading">
-          <div><h2>比赛资料</h2><p>记录表需核对结表完整性与清晰度。</p></div>
+          <div><h2>比赛照片</h2><p>比赛合照和其他照片在这里完成清晰度与内容审核。</p></div>
           <strong>{assets.length} 张</strong>
         </div>
         <div className="review-filter-row">
@@ -124,7 +126,6 @@ export function MediaReviewPage({ client }: { client: AdminClient }) {
           <span>分类</span>
           <div className="review-filters">
             {[
-              { value: "SCORESHEET", label: "记录表" },
               { value: "GROUP_PHOTO", label: "比赛合照" },
               { value: "GAME_PHOTO", label: "其他照片" },
               { value: "", label: "全部" },

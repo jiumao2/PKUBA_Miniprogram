@@ -1,0 +1,255 @@
+.capacity-calendar {
+  min-width: 0;
+}
+
+.capacity-calendar-panel {
+  margin-bottom: 28px;
+  padding: 24px;
+  background: var(--pkuba-warm-white);
+  border: 1px solid var(--pkuba-line);
+  border-radius: var(--pkuba-radius-lg);
+}
+
+.capacity-calendar-embedded {
+  padding: 0 24px 24px;
+}
+
+.capacity-calendar-heading,
+.capacity-calendar-summary,
+.capacity-calendar-block > header,
+.capacity-calendar-legend {
+  display: flex;
+  align-items: center;
+}
+
+.capacity-calendar-heading {
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.capacity-calendar-heading h2,
+.capacity-calendar-block h3,
+.capacity-calendar-block p {
+  margin: 0;
+}
+
+.capacity-calendar-range {
+  color: var(--pkuba-muted);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.capacity-calendar-summary {
+  min-height: 38px;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 9px 12px;
+  color: #615c55;
+  background: #f4f1eb;
+  border-left: 3px solid #b8b0a5;
+  font-size: 12px;
+}
+
+.capacity-calendar-summary strong {
+  color: var(--pkuba-ink);
+  font-size: 14px;
+}
+
+.capacity-calendar-summary b {
+  padding: 3px 7px;
+  color: #356348;
+  background: #dfece2;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.capacity-calendar-summary .capacity-over-label {
+  color: var(--pkuba-red-dark);
+  background: #f4d9d6;
+}
+
+.capacity-calendar-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.capacity-calendar-block {
+  min-width: 0;
+  padding: 17px 18px 14px;
+  background: #fbfaf7;
+  border-top: 3px solid;
+}
+
+.capacity-calendar-games { border-top-color: var(--pkuba-red); }
+.capacity-calendar-remaining { border-top-color: #4f7c60; }
+
+.capacity-calendar-block > header {
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.capacity-calendar-block h3 {
+  font-size: 16px;
+}
+
+.capacity-calendar-block p {
+  color: var(--pkuba-muted);
+  font-size: 11px;
+}
+
+.capacity-calendar-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.capacity-calendar table {
+  width: 100%;
+  min-width: 390px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 4px;
+}
+
+.capacity-calendar th {
+  height: 24px;
+  color: #777168;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.capacity-day,
+.capacity-day-outside {
+  height: 58px;
+}
+
+.capacity-day {
+  position: relative;
+  padding: 7px 8px;
+  outline: 0;
+  vertical-align: top;
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.capacity-day span,
+.capacity-day strong {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
+.capacity-day span {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: .78;
+}
+
+.capacity-day strong {
+  margin-top: 4px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.capacity-day i {
+  position: absolute;
+  right: 6px;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.capacity-day em {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: white;
+  background: #272421;
+  border-radius: 50%;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.capacity-day.is-today { box-shadow: inset 0 0 0 2px #272421; }
+.capacity-day.is-today.is-active {
+  box-shadow: inset 0 0 0 2px #272421, 0 0 0 2px #272421;
+}
+.capacity-day.is-today i { top: 29px; }
+
+.capacity-day.is-active {
+  z-index: 1;
+  box-shadow: 0 0 0 2px #272421;
+  transform: translateY(-1px);
+}
+
+.capacity-day.is-over::after {
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  content: "!";
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.capacity-calendar-games .capacity-day.level-0 { color: #7a746c; background: #efede8; }
+.capacity-calendar-games .capacity-day.level-1 { color: #723d38; background: #f6dcd8; }
+.capacity-calendar-games .capacity-day.level-2 { color: #63302d; background: #eeb4ae; }
+.capacity-calendar-games .capacity-day.level-3 { color: white; background: #d8756c; }
+.capacity-calendar-games .capacity-day.level-4 { color: white; background: #9e3732; }
+
+.capacity-calendar-remaining .capacity-day.level-0 { color: #817a71; background: #ece9e3; }
+.capacity-calendar-remaining .capacity-day.level-1 { color: #345342; background: #dce9df; }
+.capacity-calendar-remaining .capacity-day.level-2 { color: #294637; background: #afd0b8; }
+.capacity-calendar-remaining .capacity-day.level-3 { color: white; background: #75a486; }
+.capacity-calendar-remaining .capacity-day.level-4 { color: white; background: #426f53; }
+
+.capacity-calendar-legend {
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--pkuba-muted);
+  font-size: 10px;
+}
+
+.capacity-calendar-legend i {
+  width: 14px;
+  height: 7px;
+}
+
+.capacity-calendar-games .capacity-calendar-legend .level-1 { background: #f6dcd8; }
+.capacity-calendar-games .capacity-calendar-legend .level-2 { background: #eeb4ae; }
+.capacity-calendar-games .capacity-calendar-legend .level-3 { background: #d8756c; }
+.capacity-calendar-games .capacity-calendar-legend .level-4 { background: #9e3732; }
+.capacity-calendar-remaining .capacity-calendar-legend .level-1 { background: #dce9df; }
+.capacity-calendar-remaining .capacity-calendar-legend .level-2 { background: #afd0b8; }
+.capacity-calendar-remaining .capacity-calendar-legend .level-3 { background: #75a486; }
+.capacity-calendar-remaining .capacity-calendar-legend .level-4 { background: #426f53; }
+
+.capacity-calendar-empty {
+  margin: 0;
+  padding: 26px 0 4px;
+  color: var(--pkuba-muted);
+}
+
+@media (max-width: 1180px) {
+  .capacity-calendar-pair { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .capacity-calendar-panel,
+  .capacity-calendar-embedded { padding: 18px 16px; }
+  .capacity-calendar-heading,
+  .capacity-calendar-block > header { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .capacity-calendar-summary { align-items: flex-start; flex-wrap: wrap; gap: 7px 12px; }
+  .capacity-calendar-block { padding-inline: 12px; }
+}

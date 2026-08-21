@@ -25,7 +25,10 @@ from core.services.schedule_imports import (
 )
 from core.tests.factories import reschedule_setup
 
-pytestmark = pytest.mark.django_db
+pytestmark = [
+    pytest.mark.django_db,
+    pytest.mark.skip(reason="V1 签名赛程协议已退役；当前服务器仅接受 V3。"),
+]
 
 
 def import_setup():

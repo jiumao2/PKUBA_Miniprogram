@@ -9,9 +9,11 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
+from django.db.models import Count
 
 from core.models import (
     CompetitionGroup,
+    DatePeriodCapacityOverride,
     Division,
     DrawAssignment,
     Game,
@@ -22,11 +24,13 @@ from core.models import (
     Team,
     Venue,
 )
+from core.services.season_management import DEFAULT_CAPACITIES, DEFAULT_PERIODS
 
 EXPECTED_TEAM_COUNT = 57
 EXPECTED_GAME_COUNT = 146
 EXPECTED_LOCKED_COUNT = 8
 EXPECTED_SCORED_GAME_COUNT = 142
+LEGACY_CAPACITY_INFERENCE_ENABLED = False
 LEGACY_NAMESPACE = uuid.UUID("f31cc708-056f-4c0f-b5d2-8cc1d8095c4e")
 CHINA_TZ = ZoneInfo("Asia/Shanghai")
 SOURCE_FILES = {
@@ -111,19 +115,16 @@ def _venue_assignments(game_rows: list[dict[str, object]]):
     for (starts_at, original_venue), rows in by_slot.items():
         for index, row in enumerate(rows):
             legacy_id = str(row["_id"])
+            assigned[legacy_id] = original_venue
             if index == 0:
-                assigned[legacy_id] = original_venue
                 continue
-            local_date = _legacy_datetime(row).date().isoformat()
-            virtual = f"历史场地待核实（{local_date}·{index}）"
-            assigned[legacy_id] = virtual
             warnings.append(
                 {
                     "code": "LEGACY_VENUE_COLLISION",
                     "game_id": legacy_id,
                     "starts_at": starts_at,
                     "original_venue": original_venue,
-                    "assigned_venue": virtual,
+                    "assigned_venue": original_venue,
                 }
             )
     return assigned, warnings
@@ -192,13 +193,14 @@ def inspect_legacy_2026(source: Path) -> dict[str, object]:
     }
 
 
-def _capacity(metadata: dict[str, object], weekday: int, starts_at) -> int:
-    legacy_weekday = (weekday + 1) % 7
-    rows = metadata["MAX_GAMES_NUM"][legacy_weekday]
-    for row in rows:
-        if int(row["hour"]) == starts_at.hour and int(row["minute"]) == starts_at.minute:
-            return int(row["max_game"])
-    return 0
+def _canonical_period_code(starts_at: datetime) -> str:
+    minutes = starts_at.hour * 60 + starts_at.minute
+    if starts_at.weekday() < 5:
+        return "p1" if minutes < 17 * 60 else "p6"
+    return min(
+        DEFAULT_PERIODS[:5],
+        key=lambda row: abs(minutes - (row[2].hour * 60 + row[2].minute)),
+    )[0]
 
 
 @transaction.atomic
@@ -300,44 +302,30 @@ def import_legacy_2026(source: Path) -> dict[str, object]:
             )
             final_slots[(division_name, number)] = slot
 
-    period_times = sorted({value.time().replace(tzinfo=None) for value in starts})
     periods = {}
-    for order, starts_at in enumerate(period_times, 1):
-        code = f"legacy-{starts_at.strftime('%H%M')}"
+    for order, (code, name, starts_at) in enumerate(DEFAULT_PERIODS, 1):
         period, _ = Period.objects.update_or_create(
-            id=_stable_uuid("period", starts_at.strftime("%H:%M")),
-            defaults={
-                "season": season,
-                "code": code,
-                "name": starts_at.strftime("%H:%M"),
-                "start_time": starts_at,
-                "sort_order": order,
-            },
+            season=season,
+            code=code,
+            defaults={"name": name, "start_time": starts_at, "sort_order": order},
         )
-        periods[starts_at] = period
-        for weekday in range(7):
+        periods[code] = period
+        for day_type, capacity in DEFAULT_CAPACITIES[code].items():
             PeriodCapacity.objects.update_or_create(
                 season=season,
-                weekday=weekday,
+                day_type=day_type,
                 period=period,
-                defaults={"capacity": _capacity(metadata, weekday, starts_at)},
+                defaults={"capacity": capacity},
             )
 
-    official_venues = set(metadata["PLACE_NAMES"])
-    venue_names = sorted(set(venue_assignment.values()) | official_venues)
-    venues = {}
-    for order, venue_name in enumerate(venue_names, 1):
-        venue, _ = Venue.objects.update_or_create(
-            id=_stable_uuid("venue", str(venue_name)),
-            defaults={
-                "season": season,
-                "code": f"legacy-v{order:02d}",
-                "name": venue_name,
-                "sort_order": order,
-                "active": venue_name in official_venues,
-            },
+    official_venues = list(metadata["PLACE_NAMES"])
+    for order, venue_name in enumerate(official_venues, 1):
+        Venue.objects.update_or_create(
+            season=season,
+            name=str(venue_name),
+            defaults={"sort_order": order, "active": True, "is_standard": True},
         )
-        venues[str(venue_name)] = venue
+    season.venues.exclude(name__in=official_venues).update(is_standard=False)
 
     def participant(division_name: str, raw_name: str):
         official_name = TEAM_ALIASES.get((division_name, raw_name), raw_name)
@@ -374,8 +362,9 @@ def import_legacy_2026(source: Path) -> dict[str, object]:
                 "stage": STAGE_MAP[str(row["description"])],
                 "round_number": 1,
                 "date": local_start.date(),
-                "period": periods[local_start.time().replace(tzinfo=None)],
-                "venue": venues[str(venue_assignment[legacy_id])],
+                "period": periods[_canonical_period_code(local_start)],
+                "start_time": local_start.time().replace(tzinfo=None),
+                "venue_name": str(venue_assignment[legacy_id]),
                 "home_team": home_team,
                 "away_team": away_team,
                 "home_slot": home_slot,
@@ -387,11 +376,33 @@ def import_legacy_2026(source: Path) -> dict[str, object]:
             },
         )
 
+    if LEGACY_CAPACITY_INFERENCE_ENABLED:  # pragma: no cover - retained only for audit
+        DatePeriodCapacityOverride.objects.filter(season=season).delete()
+        occupancy_rows = (
+            Game.objects.filter(season=season)
+            .exclude(status=Game.Status.VOID)
+            .values("date", "period_id")
+            .annotate(count=Count("id"))
+        )
+        period_codes = {period.id: code for code, period in periods.items()}
+        for row in occupancy_rows:
+            code = period_codes[row["period_id"]]
+            day_type = "WEEKEND" if row["date"].weekday() >= 5 else "WEEKDAY"
+            if row["count"] > DEFAULT_CAPACITIES[code][day_type]:
+                DatePeriodCapacityOverride.objects.create(
+                    season=season,
+                    date=row["date"],
+                    period_id=row["period_id"],
+                    capacity=row["count"],
+                    note="由 2026 历史赛程自动保留",
+                    origin=DatePeriodCapacityOverride.Origin.LEGACY_INFERRED,
+                )
+
     report.update(
         {
             "season_id": str(season.id),
             "period_count": len(periods),
-            "venue_count": len(venues),
+            "venue_count": len(official_venues),
             "database_team_count": Team.objects.filter(season=season).count(),
             "database_game_count": Game.objects.filter(season=season).count(),
         }

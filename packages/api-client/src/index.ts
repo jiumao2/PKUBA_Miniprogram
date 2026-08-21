@@ -1,4 +1,17 @@
 import type { components } from "./generated/schema";
+import type {
+  ScoresheetDetail,
+  ScoresheetQueueItem,
+  ScoresheetRegion,
+  ScoresheetSurface,
+} from "@pkuba/scoresheet-domain";
+
+export type {
+  ScoresheetDetail,
+  ScoresheetQueueItem,
+  ScoresheetRegion,
+  ScoresheetSurface,
+} from "@pkuba/scoresheet-domain";
 
 export type Division = components["schemas"]["DivisionOut"];
 export type Season = components["schemas"]["SeasonOut"];
@@ -12,6 +25,9 @@ export type StandingsMatch = components["schemas"]["StandingsMatchOut"];
 export type AdminAccount = components["schemas"]["AccountOut"];
 export type AdminSession = components["schemas"]["AdminSessionOut"];
 export type LoginChallenge = components["schemas"]["LoginChallengeOut"];
+export type AdminWebLoginChallenge = components["schemas"]["AdminWebLoginChallengeOut"];
+export type AdminWebLoginStatus = components["schemas"]["AdminWebLoginStatusOut"];
+export type AdminWebLoginConfirmation = components["schemas"]["AdminWebLoginConfirmOut"];
 export type ScheduleImport = components["schemas"]["ScheduleImportOut"];
 export type ImportIssue = components["schemas"]["ImportIssueOut"];
 export type ConfirmScheduleImport = components["schemas"]["ConfirmScheduleImportIn"];
@@ -28,6 +44,26 @@ export type SeasonConfiguration = components["schemas"]["SeasonConfigurationOut"
 export type CreateSeason = components["schemas"]["CreateSeasonIn"];
 export type UpdateSeasonConfiguration =
   components["schemas"]["UpdateSeasonConfigurationIn"];
+export type PreviewSeasonConfiguration =
+  components["schemas"]["PreviewSeasonConfigurationIn"];
+export type SeasonConfigurationPreview =
+  components["schemas"]["SeasonConfigurationPreviewOut"];
+export type CapacityLedgerRow = components["schemas"]["CapacityLedgerRowOut"];
+export type RosterDataset = components["schemas"]["RosterDatasetOut"];
+export type RosterDivision = components["schemas"]["RosterDivisionOut"];
+export type TeamRoster = components["schemas"]["TeamRosterOut"];
+export type RosterPlayer = components["schemas"]["RosterPlayerOut"];
+export type RosterImport = components["schemas"]["RosterImportOut"];
+export type RosterImportIssue = components["schemas"]["RosterImportIssueOut"];
+export type RosterImportReadiness = components["schemas"]["RosterImportReadinessOut"];
+export type RosterPlayerInput = components["schemas"]["RosterPlayerIn"];
+export type CreateTeamRoster = components["schemas"]["CreateTeamRosterIn"];
+export type SaveTeamRoster = components["schemas"]["SaveTeamRosterIn"];
+export type TeamMaintenancePreview = components["schemas"]["TeamMaintenancePreviewOut"];
+export type DrawAssignmentDataset = components["schemas"]["DrawDatasetOut"];
+export type DrawAssignmentPreview = components["schemas"]["DrawPreviewOut"];
+export type PreviewDrawAssignments = components["schemas"]["DrawPreviewIn"];
+export type ApplyDrawAssignments = components["schemas"]["DrawApplyIn"];
 export type WeChatExchange = components["schemas"]["WeChatExchangeOut"];
 export type MiniAppMe = components["schemas"]["MiniAppMeOut"];
 export type ClaimableTeam = components["schemas"]["ClaimableTeamOut"];
@@ -40,14 +76,166 @@ export type RescheduleRequest = components["schemas"]["RescheduleRequestOut"];
 export type RescheduleGame = components["schemas"]["RescheduleGameOut"];
 export type RescheduleTarget = components["schemas"]["RescheduleTargetOut"];
 export type RescheduleVoterTeam = components["schemas"]["RescheduleVoterTeamOut"];
+export type AdminReschedulePage = components["schemas"]["AdminReschedulePageOut"];
+export type AdminRescheduleRequest =
+  components["schemas"]["AdminRescheduleRequestOut"];
+export type AdminRescheduleAction = components["schemas"]["AdminRescheduleActionIn"];
 export type MobileAdminGame = components["schemas"]["AdminGameOut"];
 export type MobileScheduleOptions = components["schemas"]["ScheduleOptionsOut"];
 export type UpdateMobileAdminGame = components["schemas"]["UpdateAdminGameIn"];
 export type GameMediaAsset = components["schemas"]["GameMediaAssetOut"];
 export type GameMediaCollection = components["schemas"]["GameMediaCollectionOut"];
 
+export interface ScoresheetLeaseResponse {
+  read_only: boolean;
+  lease_token: string | null;
+  holder: {
+    account_id: string;
+    username: string;
+    client_id: string;
+    surface: ScoresheetSurface;
+    expires_at: string;
+  };
+}
+
+export interface ScoresheetMutationContext {
+  expected_version: number;
+  lease_token: string;
+  client_id: string;
+  surface: ScoresheetSurface;
+}
+
+export interface ScoresheetDraftChange {
+  path: string;
+  operation?: "SET" | "DELETE";
+  value?: unknown;
+}
+
+export interface ScoresheetSync {
+  scoresheet_id: string;
+  current_version: number;
+  current_event: number;
+  requires_full_reload: boolean;
+  events: Array<{
+    event_sequence: number;
+    draft_version: number;
+    event_type: string;
+    actor_name: string | null;
+    client_id: string;
+    surface: string;
+    changed_fields: ScoresheetDraftChange[];
+    payload: Record<string, unknown>;
+    created_at: string;
+  }>;
+  reviewed_regions: ScoresheetDetail["reviewed_regions"];
+  validation_report: ScoresheetDetail["validation_report"];
+  status: string;
+  recognition: ScoresheetDetail["recognition"];
+  lease: ScoresheetDetail["lease"];
+  publication: ScoresheetDetail["publication"];
+}
+
+export interface PublicScoresheetStat {
+  publication_id: string;
+  publication_number: number;
+  game_id: string;
+  game_code: string;
+  date: string;
+  division_name: string;
+  home_name: string;
+  away_name: string;
+  home_score: number;
+  away_score: number;
+  team_stats: Array<Record<string, unknown>>;
+  player_stats: Array<{
+    team_id: string;
+    team_name: string;
+    player_id: string | null;
+    player_name: string;
+    jersey_number: string;
+    appeared: boolean;
+    starter: boolean;
+    points: number;
+    one_point_events: number;
+    two_point_events: number;
+    three_point_events: number;
+    personal_fouls: number;
+    foul_types: unknown[];
+  }>;
+  published_at: string;
+}
+
+export interface ScheduleDraftColumn {
+  id: string;
+  period_id: string;
+  period_code: string;
+  period_name: string;
+  start_time: string;
+  venue_name: string;
+  final_only: boolean;
+  sort_order: number;
+}
+
+export interface ScheduleDraftCell {
+  id: string;
+  column_id: string;
+  date: string;
+  matchup: string;
+  leader_adjustable: boolean;
+}
+
+export interface ScheduleDraftMatchup {
+  key: string;
+  matchup: string;
+  division_code: string;
+  division_name: string;
+  gender: "MEN" | "WOMEN";
+  stage: string;
+  stage_name: string;
+  scheduled: boolean;
+  already_formal: boolean;
+}
+
+export interface ScheduleDraft {
+  id: string;
+  season_id: string;
+  season_version: number;
+  version: number;
+  template_version: string;
+  source_name: string;
+  updated_at: string;
+  columns: ScheduleDraftColumn[];
+  cells: ScheduleDraftCell[];
+  dates: { date: string; weekday: string }[];
+  periods: { id: string; code: string; name: string; start_time: string }[];
+  matchup_pool: ScheduleDraftMatchup[];
+  summary: {
+    expected_game_count: number;
+    draft_game_count: number;
+    locked_game_count: number;
+    column_count: number;
+    calendar_day_count: number;
+  };
+}
+
+export interface UpdateScheduleDraft {
+  expected_version: number;
+  columns: Array<{
+    id?: string;
+    period_id: string;
+    venue_name: string;
+    final_only: boolean;
+  }>;
+  cells: Array<{
+    column_id: string;
+    date: string;
+    matchup: string;
+    leader_adjustable: boolean;
+  }>;
+}
+
 export interface RequestOptions {
-  method?: "GET" | "POST" | "PUT";
+  method?: "GET" | "POST" | "PUT" | "PATCH";
   headers?: Record<string, string>;
   body?: string;
 }
@@ -107,8 +295,143 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
     getBrackets: () => send<Brackets>("/api/v1/public/brackets"),
     getGames: (query = "") => send<Game[]>(`/api/v1/public/games${query}`),
     getGame: (gameId: string) => send<Game>(`/api/v1/public/games/${gameId}`),
+    getPublicScoresheetStats: (gameId?: string) =>
+      send<PublicScoresheetStat[]>(
+        `/api/v1/public/scoresheet-stats${gameId ? `?game_id=${encodeURIComponent(gameId)}` : ""}`,
+      ),
     getGameMedia: (gameId: string, token: string) =>
       send<GameMediaCollection>(`/api/v1/game-media/games/${gameId}`, bearer(token)),
+    listScoresheets: (token: string, seasonId?: string) =>
+      send<ScoresheetQueueItem[]>(
+        `/api/v1/scoresheets/${seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : ""}`,
+        bearer(token),
+      ),
+    getScoresheet: (scoresheetId: string, token: string) =>
+      send<ScoresheetDetail>(`/api/v1/scoresheets/${scoresheetId}`, bearer(token)),
+    syncScoresheet: (
+      scoresheetId: string,
+      afterVersion: number,
+      afterEvent: number,
+      token: string,
+    ) =>
+      send<ScoresheetSync>(
+        `/api/v1/scoresheets/${scoresheetId}/sync?after_version=${afterVersion}&after_event=${afterEvent}`,
+        bearer(token),
+      ),
+    acquireScoresheetLease: (
+      scoresheetId: string,
+      clientId: string,
+      surface: ScoresheetSurface,
+      token: string,
+    ) =>
+      send<ScoresheetLeaseResponse>(
+        `/api/v1/scoresheets/${scoresheetId}/lease`,
+        json("POST", { client_id: clientId, surface }, token),
+      ),
+    heartbeatScoresheetLease: (
+      scoresheetId: string,
+      leaseToken: string,
+      clientId: string,
+      surface: ScoresheetSurface,
+      token: string,
+    ) =>
+      send<ScoresheetLeaseResponse>(
+        `/api/v1/scoresheets/${scoresheetId}/lease/heartbeat`,
+        json(
+          "POST",
+          { lease_token: leaseToken, client_id: clientId, surface },
+          token,
+        ),
+      ),
+    releaseScoresheetLease: (
+      scoresheetId: string,
+      leaseToken: string,
+      clientId: string,
+      surface: ScoresheetSurface,
+      token: string,
+    ) =>
+      send<void>(
+        `/api/v1/scoresheets/${scoresheetId}/lease/release`,
+        json(
+          "POST",
+          { lease_token: leaseToken, client_id: clientId, surface },
+          token,
+        ),
+      ),
+    forceScoresheetLease: (
+      scoresheetId: string,
+      clientId: string,
+      surface: ScoresheetSurface,
+      token: string,
+    ) =>
+      send<ScoresheetLeaseResponse>(
+        `/api/v1/scoresheets/${scoresheetId}/lease/force`,
+        json("POST", { client_id: clientId, surface, confirmed: true }, token),
+      ),
+    saveScoresheetDraft: (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      changes: ScoresheetDraftChange[],
+      token: string,
+      options: { changeType?: string; explicitSave?: boolean } = {},
+    ) =>
+      send<ScoresheetDetail>(`/api/v1/scoresheets/${scoresheetId}/draft`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...context,
+          changes,
+          change_type: options.changeType ?? "FIELD_EDIT",
+          explicit_save: options.explicitSave ?? false,
+        }),
+      }),
+    reviewScoresheetRegion: (
+      scoresheetId: string,
+      region: ScoresheetRegion,
+      context: ScoresheetMutationContext,
+      reviewed: boolean,
+      token: string,
+    ) =>
+      send<ScoresheetDetail>(
+        `/api/v1/scoresheets/${scoresheetId}/regions/${region}/review`,
+        json("POST", { ...context, reviewed }, token),
+      ),
+    validateScoresheet: (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      token: string,
+    ) =>
+      send<ScoresheetDetail>(
+        `/api/v1/scoresheets/${scoresheetId}/validate`,
+        json("POST", context, token),
+      ),
+    acknowledgeScoresheetWarnings: (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      warningIds: string[],
+      token: string,
+    ) =>
+      send<ScoresheetDetail>(
+        `/api/v1/scoresheets/${scoresheetId}/warnings/acknowledge`,
+        json("POST", { ...context, warning_ids: warningIds }, token),
+      ),
+    publishScoresheet: (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      token: string,
+    ) =>
+      send<ScoresheetDetail>(
+        `/api/v1/scoresheets/${scoresheetId}/publish`,
+        json("POST", context, token),
+      ),
+    stopScoresheetRecognition: (scoresheetId: string, token: string) =>
+      send<ScoresheetDetail>(
+        `/api/v1/scoresheets/${scoresheetId}/recognition/stop`,
+        { method: "POST", ...bearer(token) },
+      ),
     exchangeWeChat: (code: string) =>
       send<WeChatExchange>("/api/v1/auth/wechat/exchange", json("POST", { code })),
     completeProfile: (profileTicket: string, username: string) =>
@@ -133,6 +456,11 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       payload: { season_id: string; invite_code: string },
       token: string,
     ) => send<MiniAppMe>("/api/v1/auth/admin/register", json("POST", payload, token)),
+    confirmAdminWebLogin: (challengeToken: string, token: string) =>
+      send<AdminWebLoginConfirmation>(
+        "/api/v1/auth/admin/web-login/confirm",
+        json("POST", { challenge_token: challengeToken }, token),
+      ),
     listRescheduleRequests: (token: string, activeOnly = false) =>
       send<RescheduleRequest[]>(
         `/api/v1/reschedule-requests/${activeOnly ? "?active_only=true" : ""}`,
@@ -239,12 +567,31 @@ async function parseAdminResponse<T>(response: Response): Promise<T> {
   );
 }
 
-export function createAdminClient(baseUrl = "") {
-  const fetchAdmin = (path: string, init: RequestInit = {}) =>
-    fetch(`${baseUrl}${path}`, { credentials: "include", ...init });
+export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
+  const fetchAdmin = async (path: string, init: RequestInit = {}) => {
+    const response = await fetch(`${baseUrl}${path}`, { credentials: "include", ...init });
+    if (response.status === 401) onUnauthorized?.();
+    return response;
+  };
   const csrfHeaders = () => ({ "X-CSRFToken": csrfToken() });
 
   return {
+    createWebLoginChallenge: async () =>
+      parseAdminResponse<AdminWebLoginChallenge>(
+        await fetchAdmin("/api/v1/auth/admin/web-login/challenge", { method: "POST" }),
+      ),
+    getWebLoginStatus: async () =>
+      parseAdminResponse<AdminWebLoginStatus>(
+        await fetchAdmin("/api/v1/auth/admin/web-login/status"),
+      ),
+    consumeWebLogin: async (browserToken: string) =>
+      parseAdminResponse<AdminAccount>(
+        await fetchAdmin("/api/v1/auth/admin/web-login/consume", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ browser_token: browserToken }),
+        }),
+      ),
     getLoginChallenge: async () =>
       parseAdminResponse<LoginChallenge>(
         await fetchAdmin("/api/v1/auth/admin/login-challenge"),
@@ -282,10 +629,70 @@ export function createAdminClient(baseUrl = "") {
     downloadScheduleTemplate: async (seasonId: string) => {
       const response = await fetchAdmin(
         `/api/v1/admin/seasons/${seasonId}/schedule-template`,
+        {
+          headers: {
+            Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          },
+        },
       );
       if (!response.ok) await parseAdminResponse<never>(response);
-      return response.blob();
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new ApiError("服务器返回了空模板，请重试。", response.status);
+      }
+      return blob;
     },
+    getScheduleDraft: async (seasonId: string) =>
+      parseAdminResponse<ScheduleDraft>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/schedule-draft`),
+      ),
+    updateScheduleDraft: async (seasonId: string, payload: UpdateScheduleDraft) =>
+      parseAdminResponse<ScheduleDraft>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/schedule-draft`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    importScheduleDraft: async (seasonId: string, expectedVersion: number, file: File) => {
+      const form = new FormData();
+      form.append("schedule_file", file);
+      return parseAdminResponse<ScheduleDraft>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/schedule-draft/import-xlsx?expected_version=${expectedVersion}`,
+          {
+            method: "POST",
+            headers: csrfHeaders(),
+            body: form,
+          },
+        ),
+      );
+    },
+    exportScheduleDraft: async (seasonId: string) => {
+      const response = await fetchAdmin(
+        `/api/v1/admin/seasons/${seasonId}/schedule-draft/export-xlsx`,
+        {
+          headers: {
+            Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          },
+        },
+      );
+      if (!response.ok) await parseAdminResponse<never>(response);
+      const blob = await response.blob();
+      if (blob.size === 0) throw new ApiError("服务器返回了空草稿。", response.status);
+      return blob;
+    },
+    validateScheduleDraft: async (seasonId: string, expectedVersion: number) =>
+      parseAdminResponse<ScheduleImport>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/schedule-draft/validate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            body: JSON.stringify({ expected_version: expectedVersion }),
+          },
+        ),
+      ),
     getScheduleImportReadiness: async (seasonId: string) =>
       parseAdminResponse<ScheduleImportReadiness>(
         await fetchAdmin(
@@ -332,6 +739,122 @@ export function createAdminClient(baseUrl = "") {
           },
         ),
       ),
+    getRosterDataset: async (seasonId: string) =>
+      parseAdminResponse<RosterDataset>(
+        await fetchAdmin(`/api/v1/admin/roster/seasons/${seasonId}/roster`),
+      ),
+    getRosterImportReadiness: async (seasonId: string) =>
+      parseAdminResponse<RosterImportReadiness>(
+        await fetchAdmin(
+          `/api/v1/admin/roster/seasons/${seasonId}/roster-import-readiness`,
+        ),
+      ),
+    downloadRosterTemplate: async (seasonId: string) => {
+      const response = await fetchAdmin(
+        `/api/v1/admin/roster/seasons/${seasonId}/roster-template`,
+        {
+          headers: {
+            Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          },
+        },
+      );
+      if (!response.ok) await parseAdminResponse<never>(response);
+      const blob = await response.blob();
+      if (blob.size === 0) {
+        throw new ApiError("服务器返回了空模板，请重试。", response.status);
+      }
+      return blob;
+    },
+    uploadRoster: async (seasonId: string, file: File) => {
+      const form = new FormData();
+      form.append("roster_file", file);
+      return parseAdminResponse<RosterImport>(
+        await fetchAdmin(`/api/v1/admin/roster/seasons/${seasonId}/roster-imports`, {
+          method: "POST",
+          headers: csrfHeaders(),
+          body: form,
+        }),
+      );
+    },
+    getRosterImport: async (batchId: string) =>
+      parseAdminResponse<RosterImport>(
+        await fetchAdmin(`/api/v1/admin/roster/roster-imports/${batchId}`),
+      ),
+    resolveRosterNames: async (batchId: string, resolutions: Record<string, string>) =>
+      parseAdminResponse<RosterImport>(
+        await fetchAdmin(
+          `/api/v1/admin/roster/roster-imports/${batchId}/resolutions`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            body: JSON.stringify({ resolutions }),
+          },
+        ),
+      ),
+    confirmRosterImport: async (
+      batchId: string,
+      payload: components["schemas"]["ConfirmRosterImportIn"],
+    ) =>
+      parseAdminResponse<RosterImport>(
+        await fetchAdmin(`/api/v1/admin/roster/roster-imports/${batchId}/confirm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    createRosterTeam: async (seasonId: string, payload: CreateTeamRoster) =>
+      parseAdminResponse<TeamRoster>(
+        await fetchAdmin(`/api/v1/admin/roster/seasons/${seasonId}/teams`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    previewTeamRoster: async (teamId: string, payload: SaveTeamRoster) =>
+      parseAdminResponse<TeamMaintenancePreview>(
+        await fetchAdmin(`/api/v1/admin/roster/teams/${teamId}/roster-preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    saveTeamRoster: async (teamId: string, payload: SaveTeamRoster) =>
+      parseAdminResponse<TeamRoster>(
+        await fetchAdmin(`/api/v1/admin/roster/teams/${teamId}/roster`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    getDrawAssignments: async (seasonId: string) =>
+      parseAdminResponse<DrawAssignmentDataset>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/draw-assignments`),
+      ),
+    previewDrawAssignments: async (
+      seasonId: string,
+      payload: PreviewDrawAssignments,
+    ) =>
+      parseAdminResponse<DrawAssignmentPreview>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/draw-assignments/preview`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            body: JSON.stringify(payload),
+          },
+        ),
+      ),
+    updateDrawAssignments: async (
+      seasonId: string,
+      payload: ApplyDrawAssignments,
+    ) =>
+      parseAdminResponse<DrawAssignmentDataset>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/draw-assignments`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
     listAdminSeasons: async () =>
       parseAdminResponse<AdminSeason[]>(await fetchAdmin("/api/v1/admin/seasons")),
     createAdminSeason: async (payload: CreateSeason) =>
@@ -346,6 +869,35 @@ export function createAdminClient(baseUrl = "") {
       parseAdminResponse<SeasonConfiguration>(
         await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/configuration`),
       ),
+    previewSeasonConfiguration: async (
+      seasonId: string,
+      payload: PreviewSeasonConfiguration,
+    ) =>
+      parseAdminResponse<SeasonConfigurationPreview>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/configuration/preview`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            body: JSON.stringify(payload),
+          },
+        ),
+      ),
+    getCapacityLedger: async (
+      seasonId: string,
+      startsOn?: string,
+      endsOn?: string,
+    ) => {
+      const query = new URLSearchParams();
+      if (startsOn) query.set("starts_on", startsOn);
+      if (endsOn) query.set("ends_on", endsOn);
+      const suffix = query.size ? `?${query.toString()}` : "";
+      return parseAdminResponse<CapacityLedgerRow[]>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/capacity-ledger${suffix}`,
+        ),
+      );
+    },
     updateSeasonConfiguration: async (
       seasonId: string,
       payload: UpdateSeasonConfiguration,
@@ -420,6 +972,50 @@ export function createAdminClient(baseUrl = "") {
           body: JSON.stringify(payload),
         }),
       ),
+    listAdminRescheduleRequests: async (filters: {
+      view?: "active" | "history" | "all";
+      status?: string;
+      requestType?: string;
+      divisionId?: string;
+      query?: string;
+      page?: number;
+      pageSize?: number;
+    } = {}) => {
+      const params = new URLSearchParams();
+      if (filters.view) params.set("view", filters.view);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.requestType) params.set("request_type", filters.requestType);
+      if (filters.divisionId) params.set("division_id", filters.divisionId);
+      if (filters.query) params.set("q", filters.query);
+      if (filters.page) params.set("page", String(filters.page));
+      if (filters.pageSize) params.set("page_size", String(filters.pageSize));
+      const query = params.toString();
+      return parseAdminResponse<AdminReschedulePage>(
+        await fetchAdmin(
+          `/api/v1/admin/reschedule-requests${query ? `?${query}` : ""}`,
+        ),
+      );
+    },
+    getAdminRescheduleVoterCandidates: async (requestId: string) =>
+      parseAdminResponse<RescheduleVoterTeam[]>(
+        await fetchAdmin(
+          `/api/v1/admin/reschedule-requests/${requestId}/voter-candidates`,
+        ),
+      ),
+    actOnAdminReschedule: async (
+      requestId: string,
+      payload: AdminRescheduleAction,
+    ) =>
+      parseAdminResponse<AdminRescheduleRequest>(
+        await fetchAdmin(
+          `/api/v1/admin/reschedule-requests/${requestId}/actions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            body: JSON.stringify(payload),
+          },
+        ),
+      ),
     listAdminGameMedia: async (reviewStatus = "", kind = "") => {
       const params = new URLSearchParams();
       if (reviewStatus) params.set("review_status", reviewStatus);
@@ -427,6 +1023,27 @@ export function createAdminClient(baseUrl = "") {
       const query = params.toString();
       return parseAdminResponse<GameMediaAsset[]>(
         await fetchAdmin(`/api/v1/admin/game-media/${query ? `?${query}` : ""}`),
+      );
+    },
+    uploadAdminGameMedia: async (
+      gameId: string,
+      kind: "SCORESHEET" | "GROUP_PHOTO" | "GAME_PHOTO",
+      scoresheetCompleteConfirmed: boolean,
+      file: File,
+    ) => {
+      const form = new FormData();
+      form.append("kind", kind);
+      form.append(
+        "scoresheet_complete_confirmed",
+        scoresheetCompleteConfirmed ? "true" : "false",
+      );
+      form.append("image", file);
+      return parseAdminResponse<GameMediaAsset>(
+        await fetchAdmin(`/api/v1/admin/game-media/games/${gameId}`, {
+          method: "POST",
+          headers: csrfHeaders(),
+          body: form,
+        }),
       );
     },
     reviewAdminGameMedia: async (
@@ -469,5 +1086,172 @@ export function createAdminClient(baseUrl = "") {
           body: JSON.stringify({ expected_version: expectedVersion }),
         }),
       ),
+    listScoresheets: async (seasonId?: string) =>
+      parseAdminResponse<ScoresheetQueueItem[]>(
+        await fetchAdmin(
+          `/api/v1/scoresheets/${seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : ""}`,
+        ),
+      ),
+    getScoresheet: async (scoresheetId: string) =>
+      parseAdminResponse<ScoresheetDetail>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}`),
+      ),
+    syncScoresheet: async (
+      scoresheetId: string,
+      afterVersion: number,
+      afterEvent: number,
+    ) =>
+      parseAdminResponse<ScoresheetSync>(
+        await fetchAdmin(
+          `/api/v1/scoresheets/${scoresheetId}/sync?after_version=${afterVersion}&after_event=${afterEvent}`,
+        ),
+      ),
+    acquireScoresheetLease: async (
+      scoresheetId: string,
+      clientId: string,
+      surface: ScoresheetSurface,
+    ) =>
+      parseAdminResponse<ScoresheetLeaseResponse>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/lease`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({ client_id: clientId, surface }),
+        }),
+      ),
+    heartbeatScoresheetLease: async (
+      scoresheetId: string,
+      leaseToken: string,
+      clientId: string,
+      surface: ScoresheetSurface,
+    ) =>
+      parseAdminResponse<ScoresheetLeaseResponse>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/lease/heartbeat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({
+            lease_token: leaseToken,
+            client_id: clientId,
+            surface,
+          }),
+        }),
+      ),
+    releaseScoresheetLease: async (
+      scoresheetId: string,
+      leaseToken: string,
+      clientId: string,
+      surface: ScoresheetSurface,
+    ) =>
+      parseAdminResponse<void>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/lease/release`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({
+            lease_token: leaseToken,
+            client_id: clientId,
+            surface,
+          }),
+        }),
+      ),
+    forceScoresheetLease: async (
+      scoresheetId: string,
+      clientId: string,
+      surface: ScoresheetSurface,
+    ) =>
+      parseAdminResponse<ScoresheetLeaseResponse>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/lease/force`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({ client_id: clientId, surface, confirmed: true }),
+        }),
+      ),
+    saveScoresheetDraft: async (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      changes: ScoresheetDraftChange[],
+      options: { changeType?: string; explicitSave?: boolean } = {},
+    ) =>
+      parseAdminResponse<ScoresheetDetail>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/draft`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({
+            ...context,
+            changes,
+            change_type: options.changeType ?? "FIELD_EDIT",
+            explicit_save: options.explicitSave ?? false,
+          }),
+        }),
+      ),
+    reviewScoresheetRegion: async (
+      scoresheetId: string,
+      region: ScoresheetRegion,
+      context: ScoresheetMutationContext,
+      reviewed: boolean,
+    ) =>
+      parseAdminResponse<ScoresheetDetail>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/regions/${region}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({ ...context, reviewed }),
+        }),
+      ),
+    validateScoresheet: async (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+    ) =>
+      parseAdminResponse<ScoresheetDetail>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/validate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(context),
+        }),
+      ),
+    acknowledgeScoresheetWarnings: async (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      warningIds: string[],
+    ) =>
+      parseAdminResponse<ScoresheetDetail>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/warnings/acknowledge`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({ ...context, warning_ids: warningIds }),
+        }),
+      ),
+    publishScoresheet: async (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+    ) =>
+      parseAdminResponse<ScoresheetDetail>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/publish`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(context),
+        }),
+      ),
+    stopScoresheetRecognition: async (scoresheetId: string) =>
+      parseAdminResponse<ScoresheetDetail>(
+        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/recognition/stop`, {
+          method: "POST",
+          headers: csrfHeaders(),
+        }),
+      ),
+    downloadScoresheetPdf: async (scoresheetId: string) => {
+      const response = await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/exports/pdf`);
+      if (!response.ok) await parseAdminResponse<never>(response);
+      return response.blob();
+    },
+    downloadScoresheetCsv: async (scoresheetId: string) => {
+      const response = await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/exports/csv`);
+      if (!response.ok) await parseAdminResponse<never>(response);
+      return response.blob();
+    },
+    downloadSeasonScoresheetStats: async (seasonId: string) => {
+      const response = await fetchAdmin(
+        `/api/v1/scoresheets/exports/seasons/${seasonId}/xlsx`,
+      );
+      if (!response.ok) await parseAdminResponse<never>(response);
+      return response.blob();
+    },
   };
 }

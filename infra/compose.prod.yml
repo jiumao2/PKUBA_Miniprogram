@@ -67,6 +67,17 @@ services:
       db:
         condition: service_healthy
 
+  scoresheet-worker:
+    image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
+    restart: unless-stopped
+    env_file: ${PKUBA_ENV_FILE:-./.env.production}
+    command: python manage.py process_scoresheets --poll-seconds 2
+    volumes:
+      - private-media:/app/.local/media
+    depends_on:
+      db:
+        condition: service_healthy
+
   db:
     image: postgres:17-alpine
     restart: unless-stopped

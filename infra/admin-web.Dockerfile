@@ -13,13 +13,16 @@ RUN npm ci \
     --workspace @pkuba/admin-web \
     --workspace @pkuba/api-client \
     --workspace @pkuba/design-tokens \
+    --workspace @pkuba/scoresheet-domain \
     --include-workspace-root
 
 COPY apps/admin-web ./apps/admin-web
 COPY packages/api-client ./packages/api-client
 COPY packages/design-tokens ./packages/design-tokens
+COPY packages/scoresheet-domain ./packages/scoresheet-domain
 
 RUN npm --workspace @pkuba/design-tokens run build \
+    && npm --workspace @pkuba/scoresheet-domain run build \
     && npm --workspace @pkuba/api-client run build \
     && npm --workspace @pkuba/admin-web run build
 

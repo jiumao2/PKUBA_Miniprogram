@@ -1,4 +1,4 @@
-from datetime import time, timedelta
+from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -16,6 +16,7 @@ from core.models import (
     Team,
     Venue,
 )
+from core.services.season_management import DEFAULT_CAPACITIES, DEFAULT_PERIODS
 
 
 class Command(BaseCommand):
@@ -54,39 +55,26 @@ class Command(BaseCommand):
             division=division, code="a", defaults={"name": "A 组", "sort_order": 1}
         )
         venues = []
-        for order, code in enumerate(("east-1", "east-2", "east-3"), start=1):
+        for order in range(1, 4):
             venue, _ = Venue.objects.update_or_create(
                 season=season,
-                code=code,
-                defaults={"name": f"五四东{order}", "sort_order": order},
+                name=f"五四东{order}",
+                defaults={"sort_order": order, "active": True},
             )
             venues.append(venue)
-        period_specs = [
-            ("p1", "第一时段", time(12, 10)),
-            ("p2", "第二时段", time(13, 20)),
-            ("p3", "第三时段", time(14, 40)),
-            ("p4", "第四时段", time(18, 10)),
-            ("p5", "第五时段", time(19, 20)),
-            ("p6", "第六时段", time(20, 40)),
-        ]
         periods = []
-        for order, (code, name, starts) in enumerate(period_specs, start=1):
+        for order, (code, name, starts) in enumerate(DEFAULT_PERIODS, start=1):
             period, _ = Period.objects.update_or_create(
                 season=season,
                 code=code,
                 defaults={"name": name, "start_time": starts, "sort_order": order},
             )
             periods.append(period)
-        for weekday in range(7):
-            for order, period in enumerate(periods, start=1):
-                if weekday < 5:
-                    capacity = 1 if order in {1, 6} else 0
-                else:
-                    capacity = 3 if order <= 3 else 2 if order <= 5 else 0
+            for day_type, capacity in DEFAULT_CAPACITIES[code].items():
                 PeriodCapacity.objects.update_or_create(
                     season=season,
-                    weekday=weekday,
                     period=period,
+                    day_type=day_type,
                     defaults={"capacity": capacity},
                 )
         teams = []
@@ -126,7 +114,8 @@ class Command(BaseCommand):
                     "round_number": 1 if game_date == saturday else 2,
                     "date": game_date,
                     "period": periods[period_index],
-                    "venue": venues[venue_index],
+                    "start_time": periods[period_index].start_time,
+                    "venue_name": venues[venue_index].name,
                     "home_slot": home_slot,
                     "away_slot": away_slot,
                     "home_team": home_team,

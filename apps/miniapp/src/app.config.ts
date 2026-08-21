@@ -16,6 +16,12 @@ export default defineAppConfig({
     "pages/admin-games/index",
     "pages/game-media/index",
   ],
+  subPackages: [
+    {
+      root: "scoresheet",
+      pages: ["pages/list/index", "pages/editor/index"],
+    },
+  ],
   window: {
     backgroundTextStyle: "light",
     navigationBarBackgroundColor: "#faf9f6",

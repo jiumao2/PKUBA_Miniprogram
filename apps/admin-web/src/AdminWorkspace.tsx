@@ -5,6 +5,7 @@ import {
   ApiError,
   type AdminAccount,
   type AdminSeason,
+  type CapacityLedgerRow,
   type Game,
   type MobileAdminGame,
   type Season,
@@ -13,31 +14,42 @@ import logoUrl from "@pkuba/design-tokens/pkuba-logo.png";
 
 import { groupGamesByDate } from "./domain";
 import { AdminAccountsPage } from "./AdminAccountsPage";
+import { CapacityCalendar } from "./CapacityCalendar";
+import { DrawMappingPage } from "./DrawMappingPage";
 import { LoginScreen } from "./LoginScreen";
-import { MediaReviewPage } from "./MediaReviewPage";
+import { CompetitionMediaPage } from "./CompetitionMediaPage";
+import { RescheduleManagementPage } from "./RescheduleManagementPage";
 import { ScheduleEditorPage } from "./ScheduleEditorPage";
-import { ScheduleImportWorkspace } from "./ScheduleImportWorkspace";
+import { SchedulePlannerWorkspace } from "./SchedulePlannerWorkspace";
 import { ScheduleOverview } from "./ScheduleOverview";
 import { SeasonManagementPage } from "./SeasonManagementPage";
+import { TeamRosterPage } from "./TeamRosterPage";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 const client = createPkubaClient(baseUrl);
-const adminClient = createAdminClient(baseUrl);
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 const navigation = [
   { id: "overview", label: "总览", available: true },
   { id: "season", label: "赛季与组别", available: true },
-  { id: "teams", label: "球队与名单", available: false },
-  { id: "schedule-import", label: "赛程导入", available: true },
+  { id: "teams", label: "球队与名单", available: true },
+  { id: "schedule-import", label: "赛程编排", available: true },
   { id: "schedule-edit", label: "赛程编辑", available: true },
-  { id: "draw", label: "抽签映射", available: false },
-  { id: "reschedule", label: "调赛处理", available: false },
+  { id: "draw", label: "抽签映射", available: true },
+  { id: "reschedule", label: "调赛处理", available: true },
   { id: "media", label: "比赛资料", available: true },
   { id: "admins", label: "管理员账户", available: true },
 ] as const;
 
 type PageId = (typeof navigation)[number]["id"];
+const superadminPages: PageId[] = [
+  "season",
+  "teams",
+  "schedule-import",
+  "schedule-edit",
+  "draw",
+  "admins",
+];
 
 export function AdminWorkspace() {
   const [account, setAccount] = useState<AdminAccount | null>();
@@ -46,26 +58,34 @@ export function AdminWorkspace() {
   const [adminSeasons, setAdminSeasons] = useState<AdminSeason[]>([]);
   const [selectedAdminSeasonId, setSelectedAdminSeasonId] = useState("");
   const [adminGames, setAdminGames] = useState<MobileAdminGame[]>([]);
+  const [capacityLedger, setCapacityLedger] = useState<CapacityLedgerRow[]>([]);
   const [page, setPage] = useState<PageId>("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
+  const adminClient = useMemo(
+    () => createAdminClient(baseUrl, () => setAccount(null)),
+    [],
+  );
 
   const loadPublicData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [nextSeason, nextGames] = await Promise.all([
-        client.getCurrentSeason(),
+      const nextSeason = await client.getCurrentSeason();
+      const [nextGames, nextLedger] = await Promise.all([
         client.getGames(),
+        adminClient.getCapacityLedger(nextSeason.id),
       ]);
       setSeason(nextSeason);
       setGames(nextGames);
+      setCapacityLedger(nextLedger);
     } catch (reason: unknown) {
       if (reason instanceof ApiError && reason.code === "NO_PUBLIC_SEASON") {
         setSeason(null);
         setGames([]);
+        setCapacityLedger([]);
       } else {
         setError(reason instanceof Error ? reason.message : "无法读取赛事数据");
       }
@@ -92,16 +112,19 @@ export function AdminWorkspace() {
 
   const refreshPublicData = useCallback(async () => {
     try {
-      const [nextSeason, nextGames] = await Promise.all([
-        client.getCurrentSeason(),
+      const nextSeason = await client.getCurrentSeason();
+      const [nextGames, nextLedger] = await Promise.all([
         client.getGames(),
+        adminClient.getCapacityLedger(nextSeason.id),
       ]);
       setSeason(nextSeason);
       setGames(nextGames);
+      setCapacityLedger(nextLedger);
     } catch (reason: unknown) {
       if (reason instanceof ApiError && reason.code === "NO_PUBLIC_SEASON") {
         setSeason(null);
         setGames([]);
+        setCapacityLedger([]);
       } else {
         setError(reason instanceof Error ? reason.message : "无法刷新赛事数据");
       }
@@ -144,7 +167,7 @@ export function AdminWorkspace() {
     if (
       account &&
       account.role !== "SUPERADMIN" &&
-      (["season", "schedule-import", "schedule-edit", "admins"] as PageId[]).includes(page)
+      superadminPages.includes(page)
     ) {
       setPage("overview");
     }
@@ -176,7 +199,7 @@ export function AdminWorkspace() {
   const locked = games.filter((game) => !game.leader_adjustable).length;
   const canOpenPage = (pageId: PageId, available: boolean) =>
     available &&
-    (!(["season", "schedule-import", "schedule-edit", "admins"] as PageId[]).includes(pageId) ||
+    (!superadminPages.includes(pageId) ||
       account.role === "SUPERADMIN");
 
   const handleLogout = async () => {
@@ -199,7 +222,7 @@ export function AdminWorkspace() {
             >
               <span>{item.label}</span>
               {!item.available && <small>待接入</small>}
-              {(["season", "schedule-import", "schedule-edit", "admins"] as PageId[]).includes(item.id) &&
+              {superadminPages.includes(item.id) &&
                 account.role !== "SUPERADMIN" && (
                 <small>需超级管理员</small>
               )}
@@ -215,19 +238,25 @@ export function AdminWorkspace() {
         </div>
       </aside>
 
-      <main className="workspace">
+      <main className={page === "schedule-import" ? "workspace workspace-schedule-planner" : "workspace"}>
         <header className="topbar">
           <div>
             <p className="eyebrow">PKUBA 赛事工作台</p>
             <h1>
               {page === "schedule-import"
-                ? "赛程导入"
+                ? "赛程编排"
                 : page === "season"
                   ? "赛季与组别"
+                : page === "teams"
+                  ? "球队与名单"
                 : page === "schedule-edit"
                   ? "赛程编辑"
-                  : page === "media"
+                : page === "draw"
+                  ? "抽签映射"
+                : page === "media"
                     ? "比赛资料"
+                : page === "reschedule"
+                  ? "调赛处理"
                 : page === "admins"
                   ? "管理员账户"
                   : season?.name ?? "赛事总览"}
@@ -269,13 +298,14 @@ export function AdminWorkspace() {
           />
         )}
         {!loading && !error && selectedAdminSeason && page === "schedule-import" && (
-          <ScheduleImportWorkspace
+          <SchedulePlannerWorkspace
             account={account}
             client={adminClient}
             seasons={adminSeasons}
             season={selectedAdminSeason}
             onSeasonChange={setSelectedAdminSeasonId}
             onDataChanged={refreshWorkspaceData}
+            onOpenConfiguration={() => setPage("season")}
             onOpenEditor={() => setPage("schedule-edit")}
           />
         )}
@@ -288,6 +318,16 @@ export function AdminWorkspace() {
             onDataChanged={refreshWorkspaceData}
           />
         )}
+        {!loading && !error && selectedAdminSeason && page === "teams" && account.role === "SUPERADMIN" && (
+          <TeamRosterPage
+            client={adminClient}
+            seasons={adminSeasons}
+            seasonId={selectedAdminSeason.id}
+            onSeasonChange={setSelectedAdminSeasonId}
+            onDataChanged={refreshWorkspaceData}
+            onOpenConfiguration={() => setPage("season")}
+          />
+        )}
         {!loading && !error && selectedAdminSeason && page === "schedule-edit" && (
           <ScheduleEditorPage
             client={adminClient}
@@ -298,8 +338,26 @@ export function AdminWorkspace() {
             onUpdated={refreshWorkspaceData}
           />
         )}
+        {!loading && !error && selectedAdminSeason && page === "draw" && account.role === "SUPERADMIN" && (
+          <DrawMappingPage
+            client={adminClient}
+            seasons={adminSeasons}
+            seasonId={selectedAdminSeason.id}
+            onSeasonChange={setSelectedAdminSeasonId}
+            onDataChanged={() => refreshWorkspaceData(selectedAdminSeason.id)}
+            onOpenTeams={() => setPage("teams")}
+            onOpenConfiguration={() => setPage("season")}
+          />
+        )}
         {!loading && !error && page === "media" && (
-          <MediaReviewPage client={adminClient} />
+          <CompetitionMediaPage
+            accountRole={account.role}
+            client={adminClient}
+            seasonId={selectedAdminSeasonId || season?.id || ""}
+          />
+        )}
+        {!loading && !error && page === "reschedule" && (
+          <RescheduleManagementPage client={adminClient} />
         )}
         {page === "admins" && (
           <AdminAccountsPage account={account} client={adminClient} season={season} />
@@ -315,6 +373,7 @@ export function AdminWorkspace() {
               <Metric label="待抽签占位" value={`${unresolved} 场`} />
               <Metric label="领队不可调" value={`${locked} 场`} />
             </section>
+            <CapacityCalendar ledger={capacityLedger} />
             <ScheduleOverview gameDays={gameDays} />
           </>
         )}

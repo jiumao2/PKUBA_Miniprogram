@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@pkuba/api-client": "0.1.0",
+    "@pkuba/scoresheet-domain": "0.1.0",
     "@tarojs/components": "4.2.1",
     "@tarojs/helper": "4.2.1",
     "@tarojs/plugin-framework-react": "4.2.1",

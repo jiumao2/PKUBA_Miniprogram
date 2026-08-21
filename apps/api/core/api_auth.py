@@ -29,6 +29,7 @@ from core.models import (
     Season,
     SeasonLeaderBinding,
     Team,
+    WebLoginChallenge,
     WeChatIdentity,
 )
 from core.services.wechat import (
@@ -44,6 +45,9 @@ LOGIN_CHALLENGE_SESSION_KEY = "pkuba_admin_login_challenge"
 LOGIN_CHALLENGE_TTL_SECONDS = 5 * 60
 LOGIN_FAILURE_LIMIT = 5
 LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
+ADMIN_WEB_LOGIN_SESSION_KEY = "pkuba_admin_web_login"
+ADMIN_WEB_LOGIN_TTL_SECONDS = 5 * 60
+ADMIN_WEB_LOGIN_SCAN_PREFIX = "PKUBA_ADMIN_WEB_LOGIN:1"
 
 
 class LoginChallengeOut(Schema):
@@ -149,8 +153,78 @@ class AdminPasswordChangeIn(Schema):
     new_password: str
 
 
+class AdminWebLoginChallengeOut(Schema):
+    scan_payload: str
+    browser_token: str
+    verification_code: str
+    expires_at: datetime
+    expires_in: int
+
+
+class AdminWebLoginStatusOut(Schema):
+    status: str
+    expires_at: datetime | None
+    expires_in: int
+    confirmed_username: str | None
+
+
+class AdminWebLoginConfirmIn(Schema):
+    challenge_token: str
+
+
+class AdminWebLoginConfirmOut(Schema):
+    status: str
+    username: str
+    verification_code: str
+    expires_at: datetime
+
+
+class AdminWebLoginConsumeIn(Schema):
+    browser_token: str
+
+
 def _digest(value: str) -> str:
     return hmac.new(settings.SECRET_KEY.encode(), value.encode(), hashlib.sha256).hexdigest()
+
+
+def _admin_web_login_token_digest(token: str) -> str:
+    return _digest(f"admin-web-login-token|{token}")
+
+
+def _admin_web_login_browser_digest(token: str) -> str:
+    return _digest(f"admin-web-login-browser|{token}")
+
+
+def _admin_web_login_verification_code(token: str) -> str:
+    return _digest(f"admin-web-login-verification|{token}")[:6].upper()
+
+
+def _admin_web_login_status(challenge: WebLoginChallenge | None) -> dict[str, object]:
+    if challenge is None:
+        return {
+            "status": "MISSING",
+            "expires_at": None,
+            "expires_in": 0,
+            "confirmed_username": None,
+        }
+    now = timezone.now()
+    expires_in = max(0, int((challenge.expires_at - now).total_seconds()))
+    if challenge.consumed_at is not None:
+        status = "CONSUMED"
+    elif now >= challenge.expires_at:
+        status = "EXPIRED"
+    elif challenge.confirmed_at is not None and challenge.account_id is not None:
+        status = "CONFIRMED"
+    else:
+        status = "PENDING"
+    return {
+        "status": status,
+        "expires_at": challenge.expires_at,
+        "expires_in": expires_in,
+        "confirmed_username": (
+            challenge.account.username if status == "CONFIRMED" and challenge.account else None
+        ),
+    }
 
 
 def _client_key(request: HttpRequest, username: str) -> str:
@@ -213,8 +287,8 @@ def _serialize_personal_game(game: Game | None):
     return {
         "id": game.id,
         "date": game.date,
-        "start_time": game.period.start_time.strftime("%H:%M"),
-        "venue_name": game.venue.name,
+        "start_time": game.start_time.strftime("%H:%M"),
+        "venue_name": game.venue_name,
         "home_name": game.home_display,
         "away_name": game.away_display,
         "division_name": game.division.name,
@@ -237,7 +311,6 @@ def _serialize_miniapp_me(account: Account):
                 Game.objects.select_related(
                     "division",
                     "period",
-                    "venue",
                     "home_team",
                     "away_team",
                     "home_slot",
@@ -490,6 +563,199 @@ def register_admin(request: HttpRequest, payload: AdminRegisterIn):
             },
         )
     return _serialize_miniapp_me(account)
+
+
+@router.post("/admin/web-login/challenge", response=AdminWebLoginChallengeOut)
+def admin_web_login_challenge(request: HttpRequest):
+    challenge_token = secrets.token_urlsafe(32)
+    browser_token = secrets.token_urlsafe(32)
+    expires_at = timezone.now() + timedelta(seconds=ADMIN_WEB_LOGIN_TTL_SECONDS)
+    challenge = WebLoginChallenge.objects.create(
+        token_hash=_admin_web_login_token_digest(challenge_token),
+        expires_at=expires_at,
+    )
+    request.session[ADMIN_WEB_LOGIN_SESSION_KEY] = {
+        "challenge_id": str(challenge.id),
+        "browser_digest": _admin_web_login_browser_digest(browser_token),
+    }
+    verification_code = _admin_web_login_verification_code(challenge_token)
+    return {
+        "scan_payload": (
+            f"{ADMIN_WEB_LOGIN_SCAN_PREFIX}:{verification_code}:{challenge_token}"
+        ),
+        "browser_token": browser_token,
+        "verification_code": verification_code,
+        "expires_at": expires_at,
+        "expires_in": ADMIN_WEB_LOGIN_TTL_SECONDS,
+    }
+
+
+@router.get("/admin/web-login/status", response=AdminWebLoginStatusOut)
+def admin_web_login_status(request: HttpRequest):
+    stored = request.session.get(ADMIN_WEB_LOGIN_SESSION_KEY)
+    if not isinstance(stored, dict):
+        return _admin_web_login_status(None)
+    challenge_id = stored.get("challenge_id")
+    try:
+        challenge = (
+            WebLoginChallenge.objects.select_related("account")
+            .filter(id=challenge_id)
+            .first()
+        )
+    except (TypeError, ValueError, ValidationError):
+        challenge = None
+    return _admin_web_login_status(challenge)
+
+
+@router.post(
+    "/admin/web-login/confirm",
+    auth=miniapp_bearer_auth,
+    response={
+        200: AdminWebLoginConfirmOut,
+        400: AuthErrorOut,
+        403: AuthErrorOut,
+        409: AuthErrorOut,
+    },
+)
+def admin_web_login_confirm(request: HttpRequest, payload: AdminWebLoginConfirmIn):
+    account = request.auth
+    if not account.is_pkuba_admin:
+        return Status(
+            403,
+            {"code": "ADMIN_REQUIRED", "message": "只有管理员可以确认网页登录。"},
+        )
+    token = payload.challenge_token.strip()
+    if not token:
+        return Status(
+            400,
+            {"code": "WEB_LOGIN_CHALLENGE_INVALID", "message": "二维码内容无效。"},
+        )
+    now = timezone.now()
+    with transaction.atomic():
+        challenge = (
+            WebLoginChallenge.objects.select_for_update()
+            .filter(token_hash=_admin_web_login_token_digest(token))
+            .first()
+        )
+        if challenge is None:
+            return Status(
+                400,
+                {"code": "WEB_LOGIN_CHALLENGE_INVALID", "message": "二维码内容无效。"},
+            )
+        if challenge.consumed_at is not None:
+            return Status(
+                409,
+                {"code": "WEB_LOGIN_CHALLENGE_CONSUMED", "message": "该二维码已经使用。"},
+            )
+        if now >= challenge.expires_at:
+            return Status(
+                400,
+                {"code": "WEB_LOGIN_CHALLENGE_EXPIRED", "message": "二维码已过期，请在网页刷新。"},
+            )
+        if challenge.confirmed_at is not None:
+            if challenge.account_id != account.id:
+                return Status(
+                    409,
+                    {
+                        "code": "WEB_LOGIN_CHALLENGE_ALREADY_CONFIRMED",
+                        "message": "该二维码已由另一账号确认。",
+                    },
+                )
+        else:
+            challenge.account = account
+            challenge.confirmed_at = now
+            challenge.save(update_fields=["account", "confirmed_at", "updated_at"])
+            AdminAuditLog.objects.create(
+                actor=account,
+                action="ADMIN_WEB_LOGIN_CONFIRMED",
+                object_type="WebLoginChallenge",
+                object_id=challenge.id,
+            )
+    return {
+        "status": "CONFIRMED",
+        "username": account.username,
+        "verification_code": _admin_web_login_verification_code(token),
+        "expires_at": challenge.expires_at,
+    }
+
+
+@router.post(
+    "/admin/web-login/consume",
+    response={
+        200: AccountOut,
+        400: AuthErrorOut,
+        401: AuthErrorOut,
+        409: AuthErrorOut,
+    },
+)
+def admin_web_login_consume(request: HttpRequest, payload: AdminWebLoginConsumeIn):
+    stored = request.session.get(ADMIN_WEB_LOGIN_SESSION_KEY)
+    if not isinstance(stored, dict):
+        return Status(
+            400,
+            {"code": "WEB_LOGIN_CHALLENGE_MISSING", "message": "登录二维码不存在，请刷新。"},
+        )
+    challenge_id = stored.get("challenge_id")
+    browser_digest = stored.get("browser_digest")
+    if not isinstance(browser_digest, str) or not hmac.compare_digest(
+        browser_digest,
+        _admin_web_login_browser_digest(payload.browser_token),
+    ):
+        return Status(
+            400,
+            {"code": "WEB_LOGIN_BROWSER_INVALID", "message": "浏览器登录凭证无效，请刷新。"},
+        )
+    with transaction.atomic():
+        try:
+            challenge = (
+                WebLoginChallenge.objects.select_for_update()
+                .filter(id=challenge_id)
+                .first()
+            )
+        except (TypeError, ValueError, ValidationError):
+            challenge = None
+        if challenge is None:
+            return Status(
+                400,
+                {"code": "WEB_LOGIN_CHALLENGE_MISSING", "message": "登录二维码不存在，请刷新。"},
+            )
+        if challenge.consumed_at is not None:
+            return Status(
+                409,
+                {"code": "WEB_LOGIN_CHALLENGE_CONSUMED", "message": "该二维码已经使用。"},
+            )
+        if timezone.now() >= challenge.expires_at:
+            return Status(
+                400,
+                {"code": "WEB_LOGIN_CHALLENGE_EXPIRED", "message": "二维码已过期，请刷新。"},
+            )
+        account = challenge.account
+        if challenge.confirmed_at is None or account is None:
+            return Status(
+                409,
+                {"code": "WEB_LOGIN_NOT_CONFIRMED", "message": "请先在小程序中确认登录。"},
+            )
+        if not account.is_pkuba_admin:
+            challenge.consumed_at = timezone.now()
+            challenge.save(update_fields=["consumed_at", "updated_at"])
+            request.session.pop(ADMIN_WEB_LOGIN_SESSION_KEY, None)
+            return Status(
+                401,
+                {"code": "ADMIN_ACCOUNT_INACTIVE", "message": "管理员账号已停用或权限已失效。"},
+            )
+        challenge.consumed_at = timezone.now()
+        challenge.save(update_fields=["consumed_at", "updated_at"])
+
+    request.session.pop(ADMIN_WEB_LOGIN_SESSION_KEY, None)
+    login(request, account)
+    request.session.set_expiry(settings.SESSION_COOKIE_AGE)
+    AdminAuditLog.objects.create(
+        actor=account,
+        action="ADMIN_WEB_LOGIN_SUCCEEDED",
+        object_type="WebLoginChallenge",
+        object_id=challenge.id,
+    )
+    return _serialize_account(account)
 
 
 @router.get("/admin/login-challenge", response=LoginChallengeOut)

@@ -12,7 +12,8 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 interface Assignment {
   date?: string;
   period_code?: string;
-  venue_code?: string;
+  start_time?: string;
+  venue_name?: string;
   cell?: string;
 }
 
@@ -24,7 +25,8 @@ function assignmentsFrom(batch: ScheduleImport | null): Record<string, Assignmen
       {
         date: game.date ?? undefined,
         period_code: game.period_code ?? undefined,
-        venue_code: game.venue_code ?? undefined,
+        start_time: game.start_time ?? undefined,
+        venue_name: game.venue_name ?? undefined,
         cell: game.cell,
       },
     ]),
@@ -134,9 +136,9 @@ export function ScheduleImportPage({
       <section className="panel import-intro">
         <div>
           <p className="eyebrow">步骤 1 · 下载并离线填写</p>
-          <h2>赛季签名模板</h2>
+          <h2>当前赛季模板</h2>
           <p>
-            模板按当前赛季、容量、场地与比赛代码即时生成。只填写场地格；不要修改日期、时段或隐藏元数据。
+            模板按当前赛季、容量、场地与比赛代码生成。标准安排填写“赛程网格”；微调时间或使用其他场地时填写“特殊安排”。
           </p>
         </div>
         <button
@@ -152,8 +154,8 @@ export function ScheduleImportPage({
       <section className="panel upload-panel">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">步骤 2 · 上传到暂存批次</p>
-            <h2>服务器重新校验</h2>
+          <p className="eyebrow">步骤 2 · 上传到暂存批次</p>
+            <h2>上传并校验</h2>
           </div>
           <span className="subtle">最大 10 MB · 仅 XLSX</span>
         </div>
@@ -228,7 +230,7 @@ export function ScheduleImportPage({
                   <div className="policy-row" role="row" key={code}>
                     <strong>{code}</strong>
                     <span>
-                      {assignment.date} · {assignment.period_code} · {assignment.venue_code}
+                      {assignment.date} · {assignment.period_code} · {assignment.start_time} · {assignment.venue_name}
                     </span>
                     <label className="policy-toggle">
                       <input

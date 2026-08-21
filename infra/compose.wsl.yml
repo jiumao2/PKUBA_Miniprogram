@@ -26,11 +26,16 @@ services:
       DJANGO_DEBUG: "0"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,api
+      DJANGO_SECURE_SSL_REDIRECT: "0"
       DJANGO_SECURE_COOKIES: "0"
       CSRF_TRUSTED_ORIGINS: http://localhost:${PKUBA_WEB_PORT:-8088},http://127.0.0.1:${PKUBA_WEB_PORT:-8088}
       WECHAT_APP_ID: ${WECHAT_APP_ID:-}
       WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
       WECHAT_API_BASE_URL: https://api.weixin.qq.com
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen-vl-max-latest}
+      QWEN_TIMEOUT_SECONDS: ${QWEN_TIMEOUT_SECONDS:-120}
       EMAIL_HOST: mailpit
       EMAIL_PORT: "1025"
       LOCAL_MEDIA_ROOT: /app/media
@@ -46,10 +51,31 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"
+        - "import http.client,sys; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=3); c.request('GET','/api/v1/health',headers={'Host':'api','X-Forwarded-Proto':'https'}); r=c.getresponse(); status=r.status; c.close(); sys.exit(0 if status == 200 else 1)"
       interval: 5s
       timeout: 4s
       retries: 30
+
+  scoresheet-worker:
+    build:
+      context: ./apps/api
+      target: production
+    restart: unless-stopped
+    command: python manage.py process_scoresheets --poll-seconds 2
+    environment:
+      DATABASE_URL: postgresql://pkuba:${PKUBA_DB_PASSWORD}@db:5432/pkuba
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen-vl-max-latest}
+      QWEN_TIMEOUT_SECONDS: ${QWEN_TIMEOUT_SECONDS:-120}
+      LOCAL_MEDIA_ROOT: /app/media
+    volumes:
+      - pkuba-wsl-media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
 
   web:
     build:

@@ -6,6 +6,7 @@ node_modules/
 dist/
 coverage/
 output/
+outputs/
 .playwright-cli/
 .pytest_cache/
 .ruff_cache/

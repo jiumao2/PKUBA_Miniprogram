@@ -1,5 +1,5 @@
-# Scoresheet domain（暂停）
+# @pkuba/scoresheet-domain
 
-`ScoresheetReader` 尚未完成。本包只保留未来模块边界，当前不得复制、迁移或重新实现其模型、校验和编辑器逻辑。
-
-恢复条件：用户明确确认该待办可以开始，并重新评审届时的 `ScoresheetReader` 代码与数据契约。
+Shared client-side representation and paper running-score helpers for the PKUBA web and WeChat
+editors. The Django API remains authoritative for validation, leases, publication, and statistics.
+This package deliberately contains no persistence or recognition provider.

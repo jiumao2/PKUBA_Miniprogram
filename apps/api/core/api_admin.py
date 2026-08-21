@@ -19,7 +19,16 @@ from core.services.admin_accounts import (
     promote_admin,
     set_admin_active,
 )
-from core.services.schedule_imports_v2 import (
+from core.services.schedule_capacity import capacity_ledger
+from core.services.schedule_drafts import (
+    export_schedule_draft_xlsx,
+    get_or_create_schedule_draft,
+    import_schedule_draft_xlsx,
+    replace_schedule_draft,
+    serialize_schedule_draft,
+    validate_schedule_draft,
+)
+from core.services.schedule_imports_v3 import (
     MAX_UPLOAD_BYTES,
     ScheduleImportError,
     confirm_schedule_import,
@@ -32,6 +41,7 @@ from core.services.schedule_imports_v2 import (
 from core.services.season_management import (
     SeasonManagementError,
     create_season,
+    preview_season_configuration,
     season_configuration,
     update_season_configuration,
 )
@@ -62,13 +72,18 @@ class ScheduleImportReadinessOut(Schema):
     season_id: UUID
     season_version: int
     ready: bool
+    template_ready: bool
     division_count: int
     team_count: int
     period_count: int
     venue_count: int
-    open_grid_row_count: int
+    slot_family_count: int
+    grid_column_count: int
+    calendar_day_count: int
+    expected_game_count: int
     existing_game_count: int
     blockers: list[ScheduleImportBlockerOut]
+    template_blockers: list[ScheduleImportBlockerOut]
 
 
 class ScheduleImportPrerequisitesOut(Schema):
@@ -76,7 +91,10 @@ class ScheduleImportPrerequisitesOut(Schema):
     team_count: int
     period_count: int
     venue_count: int
-    open_grid_row_count: int
+    slot_family_count: int
+    grid_column_count: int
+    calendar_day_count: int
+    expected_game_count: int
 
 
 class ScheduleImportGroupPreviewOut(Schema):
@@ -114,14 +132,18 @@ class ScheduleImportGamePreviewOut(Schema):
     date: str | None
     period_code: str | None
     period_name: str | None
+    nominal_start_time: str | None = None
     start_time: str | None
-    venue_code: str | None
     venue_name: str | None
+    standard_venue_id: UUID | None = None
+    final_only: bool = False
+    leader_adjustable: bool = True
     cell: str
 
 
 class ScheduleImportSummaryOut(Schema):
     existing_game_count: int
+    covered_game_count: int
     new_group_count: int
     referenced_group_count: int
     new_slot_count: int
@@ -147,12 +169,105 @@ class ScheduleImportOut(Schema):
     status: str
     template_version: str
     file_sha256: str
+    source_kind: str
+    source_draft_version: int | None = None
     summary: ScheduleImportSummaryOut
     issues: list[ImportIssueOut]
 
 
 class ConfirmScheduleImportIn(Schema):
     expected_season_version: int
+
+
+class ScheduleDraftPeriodOut(Schema):
+    id: UUID
+    code: str
+    name: str
+    start_time: str
+
+
+class ScheduleDraftDateOut(Schema):
+    date: date
+    weekday: str
+
+
+class ScheduleDraftColumnOut(Schema):
+    id: UUID
+    period_id: UUID
+    period_code: str
+    period_name: str
+    start_time: str
+    venue_name: str
+    final_only: bool
+    sort_order: int
+
+
+class ScheduleDraftCellOut(Schema):
+    id: UUID
+    column_id: UUID
+    date: date
+    matchup: str
+    leader_adjustable: bool
+
+
+class ScheduleDraftMatchupOut(Schema):
+    key: str
+    matchup: str
+    division_code: str
+    division_name: str
+    gender: str
+    stage: str
+    stage_name: str
+    scheduled: bool
+    already_formal: bool
+
+
+class ScheduleDraftSummaryOut(Schema):
+    expected_game_count: int
+    draft_game_count: int
+    locked_game_count: int
+    column_count: int
+    calendar_day_count: int
+
+
+class ScheduleDraftOut(Schema):
+    id: UUID
+    season_id: UUID
+    season_version: int
+    version: int
+    template_version: str
+    source_name: str
+    updated_at: datetime
+    columns: list[ScheduleDraftColumnOut]
+    cells: list[ScheduleDraftCellOut]
+    dates: list[ScheduleDraftDateOut]
+    periods: list[ScheduleDraftPeriodOut]
+    matchup_pool: list[ScheduleDraftMatchupOut]
+    summary: ScheduleDraftSummaryOut
+
+
+class ScheduleDraftColumnIn(Schema):
+    id: UUID | None = None
+    period_id: UUID
+    venue_name: str
+    final_only: bool = False
+
+
+class ScheduleDraftCellIn(Schema):
+    column_id: UUID
+    date: date
+    matchup: str
+    leader_adjustable: bool = True
+
+
+class UpdateScheduleDraftIn(Schema):
+    expected_version: int
+    columns: list[ScheduleDraftColumnIn]
+    cells: list[ScheduleDraftCellIn]
+
+
+class ValidateScheduleDraftIn(Schema):
+    expected_version: int
 
 
 class ScheduleImportResetPreviewOut(Schema):
@@ -215,7 +330,6 @@ class SeasonDivisionConfigurationOut(Schema):
 
 class SeasonVenueConfigurationOut(Schema):
     id: UUID
-    code: str
     name: str
     sort_order: int
     active: bool
@@ -229,9 +343,51 @@ class SeasonPeriodConfigurationOut(Schema):
     name: str
     start_time: str
     sort_order: int
-    capacities: list[int]
+    default_capacities: dict[str, int]
     game_count: int
     active_reservation_count: int
+
+
+class ScheduleSlotFamilyOut(Schema):
+    id: UUID
+    division_id: UUID
+    division_code: str
+    division_name: str
+    gender: str
+    stage: str
+    stage_name: str
+    prefix: str
+    slot_count: int
+    sort_order: int
+    expected_game_count: int
+
+
+class ScheduleGridColumnOut(Schema):
+    id: UUID
+    period_id: UUID
+    period_code: str
+    period_name: str
+    start_time: str
+    venue_id: UUID
+    venue_name: str
+    final_only: bool
+    sort_order: int
+
+
+class DateCapacityOverrideOut(Schema):
+    id: UUID
+    date: date
+    period_code: str
+    capacity: int
+    note: str
+
+
+class OverCapacityOut(Schema):
+    date: date
+    period_code: str
+    period_name: str
+    capacity: int
+    occupied: int
 
 
 class SeasonConfigurationOut(Schema):
@@ -245,10 +401,43 @@ class SeasonConfigurationOut(Schema):
     timezone: str
     version: int
     editable: bool
+    maintenance_required: bool
     locked_reason: str
     divisions: list[SeasonDivisionConfigurationOut]
     venues: list[SeasonVenueConfigurationOut]
     periods: list[SeasonPeriodConfigurationOut]
+    slot_families: list[ScheduleSlotFamilyOut]
+    grid_columns: list[ScheduleGridColumnOut]
+    date_capacity_overrides: list[DateCapacityOverrideOut]
+    over_capacity: list[OverCapacityOut]
+
+
+class SeasonConfigurationPreviewOut(Schema):
+    season_id: UUID
+    season_version: int
+    maintenance_required: bool
+    changed: bool
+    over_capacity: list[OverCapacityOut]
+    affected_reschedule_request_ids: list[UUID]
+    templates_invalidated: bool
+    impact_hash: str
+
+
+class CapacityLedgerRowOut(Schema):
+    date: date
+    day_type: str
+    period_id: UUID
+    period_code: str
+    period_name: str
+    nominal_start_time: str
+    default_capacity: int
+    override_capacity: int | None
+    effective_capacity: int
+    game_count: int
+    reservation_count: int
+    used_count: int
+    remaining_count: int
+    over_capacity: bool
 
 
 class CreateSeasonIn(Schema):
@@ -270,7 +459,6 @@ class SeasonDivisionConfigurationIn(Schema):
 
 class SeasonVenueConfigurationIn(Schema):
     id: UUID | None = None
-    code: str
     name: str
     sort_order: int
     active: bool
@@ -282,7 +470,31 @@ class SeasonPeriodConfigurationIn(Schema):
     name: str
     start_time: time
     sort_order: int
-    capacities: list[int]
+    default_capacities: dict[str, int]
+
+
+class DateCapacityOverrideIn(Schema):
+    date: date
+    period_code: str
+    capacity: int
+    note: str = ""
+
+
+class ScheduleSlotFamilyIn(Schema):
+    id: UUID | None = None
+    division_id: UUID
+    stage: str
+    prefix: str
+    slot_count: int
+    sort_order: int
+
+
+class ScheduleGridColumnIn(Schema):
+    id: UUID | None = None
+    period_id: UUID
+    venue_id: UUID
+    final_only: bool = False
+    sort_order: int
 
 
 class UpdateSeasonConfigurationIn(Schema):
@@ -295,6 +507,27 @@ class UpdateSeasonConfigurationIn(Schema):
     divisions: list[SeasonDivisionConfigurationIn]
     venues: list[SeasonVenueConfigurationIn]
     periods: list[SeasonPeriodConfigurationIn]
+    slot_families: list[ScheduleSlotFamilyIn] = []
+    grid_columns: list[ScheduleGridColumnIn] = []
+    date_capacity_overrides: list[DateCapacityOverrideIn] = []
+    maintenance_confirmed: bool = False
+    impact_hash: str | None = None
+    cancel_reschedule_request_ids: list[UUID] = []
+
+
+class PreviewSeasonConfigurationIn(Schema):
+    expected_version: int
+    name: str
+    competition_type: str
+    year: int
+    starts_on: date
+    ends_on: date
+    divisions: list[SeasonDivisionConfigurationIn]
+    venues: list[SeasonVenueConfigurationIn]
+    periods: list[SeasonPeriodConfigurationIn]
+    slot_families: list[ScheduleSlotFamilyIn] = []
+    grid_columns: list[ScheduleGridColumnIn] = []
+    date_capacity_overrides: list[DateCapacityOverrideIn] = []
 
 
 class AdminAccountOut(Schema):
@@ -332,6 +565,8 @@ def _serialize_batch(batch: ScheduleImportBatch) -> dict[str, object]:
         "status": batch.status,
         "template_version": batch.template_version,
         "file_sha256": batch.file_sha256,
+        "source_kind": batch.source_kind,
+        "source_draft_version": batch.source_draft_version,
         "summary": batch.summary,
         "issues": [
             {
@@ -373,6 +608,7 @@ def _schedule_error(error: ScheduleImportError):
         status = 403
     elif error.code in {
         "VERSION_CONFLICT",
+        "DRAFT_VERSION_CONFLICT",
         "REVALIDATION_FAILED",
         "CONCURRENT_CONFLICT",
         "RESET_BLOCKED",
@@ -400,6 +636,9 @@ def _season_management_error(error: SeasonManagementError):
         "SEASON_LOCKED",
         "RESOURCE_IN_USE",
         "CAPACITY_BELOW_OCCUPANCY",
+        "MAINTENANCE_CONFIRMATION_REQUIRED",
+        "ACTIVE_RESERVATION_REQUIRES_CANCELLATION",
+        "DATE_RANGE_IN_USE",
     }:
         status = 409
     elif error.code in {"SEASON_NOT_FOUND", "TEMPLATE_NOT_FOUND"}:
@@ -486,7 +725,7 @@ def change_admin_active(
 
 @router.get(
     "/seasons",
-    auth=superadmin_session_auth,
+    auth=admin_session_auth,
     response=list[AdminSeasonOut],
 )
 def list_admin_seasons(request: HttpRequest):
@@ -518,15 +757,67 @@ def create_admin_season(request: HttpRequest, payload: CreateSeasonIn):
 
 @router.get(
     "/seasons/{season_id}/configuration",
-    auth=superadmin_session_auth,
+    auth=admin_session_auth,
     response={200: SeasonConfigurationOut, 404: AdminErrorOut},
 )
 def get_admin_season_configuration(request: HttpRequest, season_id: UUID):
+    season = Season.objects.filter(id=season_id).first()
+    if season is None:
+        return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+    result = season_configuration(season)
+    if not request.auth.is_pkuba_superadmin:
+        result["editable"] = False
+        result["locked_reason"] = "仅超级管理员可以修改赛季基础配置。"
+    return result
+
+
+@router.post(
+    "/seasons/{season_id}/configuration/preview",
+    auth=superadmin_session_auth,
+    response={
+        200: SeasonConfigurationPreviewOut,
+        400: AdminErrorOut,
+        404: AdminErrorOut,
+        409: AdminErrorOut,
+    },
+)
+def preview_admin_season_configuration(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: PreviewSeasonConfigurationIn,
+):
     del request
     season = Season.objects.filter(id=season_id).first()
     if season is None:
         return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
-    return season_configuration(season)
+    values = payload.model_dump()
+    expected_version = values.pop("expected_version")
+    try:
+        return preview_season_configuration(
+            season=season,
+            expected_version=expected_version,
+            payload=values,
+        )
+    except SeasonManagementError as error:
+        return _season_management_error(error)
+
+
+@router.get(
+    "/seasons/{season_id}/capacity-ledger",
+    auth=admin_session_auth,
+    response={200: list[CapacityLedgerRowOut], 404: AdminErrorOut},
+)
+def get_admin_capacity_ledger(
+    request: HttpRequest,
+    season_id: UUID,
+    starts_on: date | None = None,
+    ends_on: date | None = None,
+):
+    del request
+    season = Season.objects.filter(id=season_id).first()
+    if season is None:
+        return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+    return capacity_ledger(season=season, starts_on=starts_on, ends_on=ends_on)
 
 
 @router.put(
@@ -546,12 +837,18 @@ def update_admin_season_configuration(
 ):
     values = payload.model_dump()
     expected_version = values.pop("expected_version")
+    maintenance_confirmed = values.pop("maintenance_confirmed")
+    impact_hash = values.pop("impact_hash")
+    cancel_request_ids = values.pop("cancel_reschedule_request_ids")
     try:
         updated = update_season_configuration(
             actor=request.auth,
             season_id=season_id,
             expected_version=expected_version,
             payload=values,
+            maintenance_confirmed=maintenance_confirmed,
+            impact_hash=impact_hash,
+            cancel_reschedule_request_ids=cancel_request_ids,
         )
     except SeasonManagementError as error:
         return _season_management_error(error)
@@ -639,6 +936,116 @@ def set_season_admin_invite(
 
 
 @router.get(
+    "/seasons/{season_id}/schedule-draft",
+    auth=superadmin_session_auth,
+    response={200: ScheduleDraftOut, 400: AdminErrorOut},
+)
+def get_schedule_draft(request: HttpRequest, season_id: UUID):
+    season = get_object_or_404(Season, id=season_id)
+    try:
+        draft = get_or_create_schedule_draft(actor=request.auth, season=season)
+    except ScheduleImportError as error:
+        return _schedule_error(error)
+    return serialize_schedule_draft(draft)
+
+
+@router.put(
+    "/seasons/{season_id}/schedule-draft",
+    auth=superadmin_session_auth,
+    response={200: ScheduleDraftOut, 400: AdminErrorOut, 409: AdminErrorOut},
+)
+def update_schedule_draft(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: UpdateScheduleDraftIn,
+):
+    season = get_object_or_404(Season, id=season_id)
+    try:
+        draft = replace_schedule_draft(
+            actor=request.auth,
+            season=season,
+            expected_version=payload.expected_version,
+            columns=[item.model_dump() for item in payload.columns],
+            cells=[item.model_dump() for item in payload.cells],
+        )
+    except ScheduleImportError as error:
+        return _schedule_error(error)
+    return serialize_schedule_draft(draft)
+
+
+@router.post(
+    "/seasons/{season_id}/schedule-draft/import-xlsx",
+    auth=superadmin_session_auth,
+    response={200: ScheduleDraftOut, 400: AdminErrorOut, 409: AdminErrorOut},
+)
+def import_schedule_draft(
+    request: HttpRequest,
+    season_id: UUID,
+    expected_version: int,
+    schedule_file: File[UploadedFile],
+):
+    season = get_object_or_404(Season, id=season_id)
+    if schedule_file.size and schedule_file.size > MAX_UPLOAD_BYTES:
+        return Status(400, {"code": "FILE_TOO_LARGE", "message": "上传文件超过 10 MB。"})
+    content = schedule_file.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        draft = import_schedule_draft_xlsx(
+            actor=request.auth,
+            season=season,
+            expected_version=expected_version,
+            content=content,
+            source_name=schedule_file.name,
+        )
+    except ScheduleImportError as error:
+        return _schedule_error(error)
+    return serialize_schedule_draft(draft)
+
+
+@router.get(
+    "/seasons/{season_id}/schedule-draft/export-xlsx",
+    auth=superadmin_session_auth,
+)
+def export_schedule_draft(request: HttpRequest, season_id: UUID):
+    season = get_object_or_404(Season, id=season_id)
+    try:
+        content = export_schedule_draft_xlsx(actor=request.auth, season=season)
+    except ScheduleImportError as error:
+        return _schedule_error(error)
+    filename = f"PKUBA_{season.year}_{season.name}_赛程草稿.xlsx"
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
+    response["Cache-Control"] = "private, no-store"
+    response["Content-Length"] = str(len(content))
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@router.post(
+    "/seasons/{season_id}/schedule-draft/validate",
+    auth=superadmin_session_auth,
+    response={201: ScheduleImportOut, 400: AdminErrorOut, 409: AdminErrorOut},
+)
+def validate_online_schedule_draft(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: ValidateScheduleDraftIn,
+):
+    season = get_object_or_404(Season, id=season_id)
+    try:
+        batch = validate_schedule_draft(
+            actor=request.auth,
+            season=season,
+            expected_version=payload.expected_version,
+        )
+    except ScheduleImportError as error:
+        return _schedule_error(error)
+    return Status(201, _serialize_batch(batch))
+
+
+@router.get(
     "/seasons/{season_id}/schedule-import-readiness",
     auth=superadmin_session_auth,
     response=ScheduleImportReadinessOut,
@@ -663,6 +1070,8 @@ def download_schedule_template(request: HttpRequest, season_id: UUID):
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(filename)}"
+    response["Cache-Control"] = "private, no-store"
+    response["Content-Length"] = str(len(content))
     response["X-Content-Type-Options"] = "nosniff"
     return response
 

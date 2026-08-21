@@ -1,4 +1,4 @@
-import { Button, Image, Text, View } from "@tarojs/components";
+import { Button, Image, ScrollView, Text, View } from "@tarojs/components";
 import Taro, { useDidShow } from "@tarojs/taro";
 import { useState } from "react";
 import type { HomeDashboard, Season } from "@pkuba/api-client";
@@ -49,14 +49,78 @@ export default function HomePage() {
       {loading && <State title="正在加载" />}
       {error && <State title="暂时无法加载" detail={`${error}，请稍后重试。`} />}
       {!loading && !error && dashboard && (
-        <Matchday
-          dashboard={dashboard}
-          onSchedule={() => Taro.switchTab({ url: "/pages/schedule/index" })}
-        />
+        <>
+          <Matchday
+            dashboard={dashboard}
+            onSchedule={() => Taro.switchTab({ url: "/pages/schedule/index" })}
+          />
+          <GameDensity dashboard={dashboard} />
+        </>
       )}
 
     </View>
   );
+}
+
+function GameDensity({ dashboard }: { dashboard: HomeDashboard }) {
+  const days = dashboard.daily_game_counts;
+  if (!days.length) return null;
+
+  const maxGames = Math.max(...days.map((day) => day.game_count));
+  const totalGames = days.reduce((total, day) => total + day.game_count, 0);
+  const focusDate = dashboard.display_date && days.some((day) => day.date === dashboard.display_date)
+    ? dashboard.display_date
+    : days[days.length - 1].date;
+
+  return (
+    <View className="game-density">
+      <View className="game-density-heading">
+        <View>
+          <Text className="section-kicker">赛季节奏</Text>
+          <Text className="game-density-title">每日比赛数量</Text>
+        </View>
+        <Text className="game-density-total">{days.length} 日 · {totalGames} 场</Text>
+      </View>
+      <Text className="game-density-note">仅列有比赛的日期，颜色越深比赛越集中</Text>
+      <ScrollView
+        className="game-density-scroll"
+        scrollX
+        scrollIntoView={`game-density-${focusDate}`}
+        scrollWithAnimation
+        showScrollbar={false}
+      >
+        <View className="game-density-track">
+          {days.map((day) => {
+            const [date, weekday] = densityDate(day.date);
+            return (
+              <View
+                aria-label={`${formatDate(day.date)}，${day.game_count} 场比赛`}
+                className={`game-density-day level-${densityLevel(day.game_count, maxGames)} ${day.date === focusDate ? "is-focus" : ""}`}
+                id={`game-density-${day.date}`}
+                key={day.date}
+              >
+                <Text className="game-density-date">{date}</Text>
+                <Text className="game-density-weekday">{weekday}</Text>
+                <Text className="game-density-count">
+                  {day.game_count}<Text className="game-density-unit">场</Text>
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function densityLevel(value: number, maxValue: number) {
+  return Math.max(1, Math.min(4, Math.ceil(value / maxValue * 4)));
+}
+
+function densityDate(value: string): [string, string] {
+  const [year, month, day] = value.split("-").map(Number);
+  const weekday = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  return [`${month}/${day}`, weekday[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]];
 }
 
 function Matchday({ dashboard, onSchedule }: { dashboard: HomeDashboard; onSchedule: () => void }) {

@@ -131,3 +131,10 @@ WECHAT_APP_ID = os.getenv("WECHAT_APP_ID", "")
 WECHAT_APP_SECRET = os.getenv("WECHAT_APP_SECRET", "")
 WECHAT_API_BASE_URL = os.getenv("WECHAT_API_BASE_URL", "https://api.weixin.qq.com")
 MINIAPP_SESSION_AGE = int(os.getenv("MINIAPP_SESSION_AGE", str(30 * 24 * 60 * 60)))
+
+QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
+QWEN_BASE_URL = os.getenv(
+    "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+)
+QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-vl-max-latest")
+QWEN_TIMEOUT_SECONDS = int(os.getenv("QWEN_TIMEOUT_SECONDS", "120"))

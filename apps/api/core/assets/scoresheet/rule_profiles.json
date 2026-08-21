@@ -1,0 +1,39 @@
+{
+  "fiba_2024": {
+    "label": "FIBA 2024",
+    "effective_from": "2024-10-01",
+    "enabled_in_editor": true,
+    "foul_markings": [
+      { "id": "player.personal", "code": "P", "style": "plain", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "player.technical", "code": "T", "style": "plain", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "player.unsportsmanlike", "code": "U", "style": "plain", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "player.disqualifying", "code": "D", "style": "plain", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "coach.personal_technical", "code": "C", "style": "plain", "subjects": ["head_coach", "assistant_coach"], "editor_groups": ["coach"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "coach.bench_technical", "code": "B", "style": "plain", "subjects": ["head_coach", "assistant_coach"], "editor_groups": ["coach"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "coach.disqualifying", "code": "D", "style": "plain", "subjects": ["head_coach", "assistant_coach"], "editor_groups": ["coach"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "system.post_disqualifying", "code": "D", "style": "plain", "subjects": ["post_foul"], "editor_groups": ["post_foul"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "system.game_disqualification", "code": "GD", "style": "plain", "subjects": ["post_foul"], "editor_groups": ["post_foul"], "allowed_suffixes": [""] },
+      { "id": "system.fighting_remainder", "code": "F", "style": "plain", "subjects": ["player", "head_coach", "assistant_coach", "post_foul"], "editor_groups": ["coach", "post_foul"], "allowed_suffixes": [""] }
+    ]
+  },
+  "fiba_2026": {
+    "label": "FIBA 2026",
+    "effective_from": "2026-10-01",
+    "enabled_in_editor": false,
+    "status": "reserved_for_future_activation",
+    "foul_markings": [
+      { "id": "player.personal", "code": "P", "style": "plain", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "player.technical_category_1", "code": "T", "style": "circled", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "player.technical_category_2", "code": "T", "style": "plain", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "player.disruptive", "code": "DI", "style": "plain", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "player.flagrant", "code": "FL", "style": "circled", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "player.disqualifying", "code": "D", "style": "plain", "subjects": ["player"], "editor_groups": ["player"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "coach.personal_technical_category_1", "code": "C", "style": "circled", "subjects": ["head_coach", "assistant_coach"], "editor_groups": ["coach"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "coach.bench_technical_category_1", "code": "B", "style": "circled", "subjects": ["head_coach", "assistant_coach"], "editor_groups": ["coach"], "allowed_suffixes": ["", "1", "2", "3", "c"] },
+      { "id": "coach.delegation_technical_category_1", "code": "BD", "style": "circled", "subjects": ["head_coach", "assistant_coach"], "editor_groups": ["coach"], "allowed_suffixes": [""] },
+      { "id": "system.delegation_disqualification", "code": "BD", "style": "plain", "subjects": ["post_foul"], "editor_groups": ["post_foul"], "allowed_suffixes": [""] },
+      { "id": "system.game_disqualification", "code": "GD", "style": "plain", "subjects": ["post_foul"], "editor_groups": ["post_foul"], "allowed_suffixes": [""] },
+      { "id": "system.fighting_remainder", "code": "F", "style": "plain", "subjects": ["player", "head_coach", "assistant_coach", "post_foul"], "editor_groups": ["coach", "post_foul"], "allowed_suffixes": [""] }
+    ]
+  }
+}

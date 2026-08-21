@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.db import connections
 
-from core.models import Game, RescheduleRequest, SlotReservation
+from core.models import Game, PeriodCapacity, RescheduleRequest, SlotReservation
 from core.services.rescheduling import (
     RescheduleError,
     admin_decide_cross_week,
@@ -17,6 +17,7 @@ from core.services.rescheduling import (
     submit_reschedule,
     withdraw_request,
 )
+from core.services.schedule_capacity import day_type_for_date
 from core.tests.factories import reschedule_setup
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -60,7 +61,8 @@ def test_submit_atomically_locks_game_and_reserves_first_venue():
     assert game.active_reschedule_request_id == request.id
     assert game.leader_adjustable is True
     assert request.reservation.status == SlotReservation.Status.ACTIVE
-    assert request.target_venue_id == setup["venues"][0].id
+    assert request.reservation.venue_id == setup["venues"][0].id
+    assert request.target_venue_name == setup["venues"][0].name
     assert request.confirmations.count() == 1
 
     with pytest.raises(RescheduleError, match="刷新") as conflict:
@@ -138,13 +140,11 @@ def test_cross_week_vote_holds_resources_until_admin_final():
     setup = reschedule_setup()
     game = setup["games"][0]
     cross_week_target = setup["target_date"] + timedelta(days=2)
-    from core.models import PeriodCapacity
-
-    PeriodCapacity.objects.create(
+    PeriodCapacity.objects.update_or_create(
         season=setup["season"],
-        weekday=cross_week_target.weekday(),
+        day_type=day_type_for_date(cross_week_target),
         period=setup["period"],
-        capacity=3,
+        defaults={"capacity": 3},
     )
     now = valid_submission_time(game.date, cross_week_target)
     request = submit_reschedule(

@@ -134,7 +134,7 @@ def build_standings(season: Season) -> dict[str, object]:
         Game.objects.filter(season=season, group__isnull=False)
         .exclude(status=Game.Status.VOID)
         .select_related("home_team", "away_team")
-        .order_by("date", "period__sort_order", "venue__sort_order")
+        .order_by("date", "start_time", "venue_name")
     )
 
     teams_by_group: dict[Any, list[Team]] = defaultdict(list)

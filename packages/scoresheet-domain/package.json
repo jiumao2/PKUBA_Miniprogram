@@ -1,10 +1,23 @@
 {
   "name": "@pkuba/scoresheet-domain",
-  "version": "0.0.0-paused",
+  "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "node -e \"console.log('scoresheet-domain: paused by product decision')\"",
-    "test": "node -e \"console.log('scoresheet-domain: no implementation yet')\"",
-    "typecheck": "node -e \"console.log('scoresheet-domain: no implementation yet')\""
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
   }
 }

@@ -231,6 +231,13 @@ class ParticipantSlot(UUIDModel):
 class Team(UUIDModel):
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="teams")
     division = models.ForeignKey(Division, on_delete=models.PROTECT, related_name="teams")
+    created_by_roster_import_batch = models.ForeignKey(
+        "RosterImportBatch",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="created_teams",
+    )
     name = models.CharField(max_length=120)
     short_name = models.CharField(max_length=32, blank=True)
     active = models.BooleanField(default=True)
@@ -274,7 +281,15 @@ class DrawAssignment(UUIDModel):
 
 class RosterPlayer(UUIDModel):
     team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="roster")
+    created_by_roster_import_batch = models.ForeignKey(
+        "RosterImportBatch",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="created_players",
+    )
     name = models.CharField(max_length=80)
+    jersey_number = models.CharField(max_length=2, blank=True)
     role = models.CharField(max_length=32, default="PLAYER")
     eligible = models.BooleanField(default=True)
     active = models.BooleanField(default=True)
@@ -313,15 +328,23 @@ class WebLoginChallenge(UUIDModel):
 
 
 class Venue(UUIDModel):
+    """A season-scoped court that can be allocated by the standard workflow.
+
+    The UUID is an implementation detail.  Operators and spreadsheet users only
+    ever see the court name; games retain their own venue text snapshot.
+    """
+
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="venues")
-    code = models.SlugField(max_length=32)
     name = models.CharField(max_length=80)
     sort_order = models.PositiveSmallIntegerField(default=0)
     active = models.BooleanField(default=True)
+    is_standard = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["sort_order", "name"]
-        constraints = [models.UniqueConstraint(fields=["season", "code"], name="uniq_venue_code")]
+        constraints = [
+            models.UniqueConstraint(fields=["season", "name"], name="uniq_venue_name")
+        ]
 
 
 class Period(UUIDModel):
@@ -337,21 +360,54 @@ class Period(UUIDModel):
 
 
 class PeriodCapacity(UUIDModel):
+    class DayType(models.TextChoices):
+        WEEKDAY = "WEEKDAY", "周中"
+        WEEKEND = "WEEKEND", "周末"
+
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="capacities")
-    weekday = models.PositiveSmallIntegerField(help_text="Monday=0, Sunday=6")
+    day_type = models.CharField(max_length=12, choices=DayType.choices)
     period = models.ForeignKey(Period, on_delete=models.PROTECT, related_name="capacities")
     capacity = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
-        ordering = ["weekday", "period__sort_order"]
+        ordering = ["day_type", "period__sort_order"]
         constraints = [
             models.UniqueConstraint(
-                fields=["season", "weekday", "period"], name="uniq_period_capacity"
-            ),
-            models.CheckConstraint(
-                condition=Q(weekday__gte=0, weekday__lte=6), name="weekday_zero_to_six"
-            ),
+                fields=["season", "day_type", "period"], name="uniq_period_capacity"
+            )
         ]
+
+
+class DatePeriodCapacityOverride(UUIDModel):
+    class Origin(models.TextChoices):
+        ADMIN = "ADMIN", "管理员设置"
+        LEGACY_INFERRED = "LEGACY_INFERRED", "旧系统自动推导"
+
+    season = models.ForeignKey(
+        Season, on_delete=models.PROTECT, related_name="date_capacity_overrides"
+    )
+    date = models.DateField()
+    period = models.ForeignKey(
+        Period, on_delete=models.PROTECT, related_name="date_capacity_overrides"
+    )
+    capacity = models.PositiveSmallIntegerField(default=0)
+    note = models.CharField(max_length=160, blank=True)
+    origin = models.CharField(
+        max_length=24, choices=Origin.choices, default=Origin.ADMIN
+    )
+
+    class Meta:
+        ordering = ["date", "period__sort_order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["season", "date", "period"],
+                name="uniq_date_period_capacity_override",
+            )
+        ]
+
+    def clean(self):
+        if self.period_id and self.season_id and self.period.season_id != self.season_id:
+            raise ValidationError("特殊日期容量的时段必须属于同一赛季。")
 
 
 class Game(UUIDModel):
@@ -379,7 +435,8 @@ class Game(UUIDModel):
     round_number = models.PositiveSmallIntegerField(default=1)
     date = models.DateField()
     period = models.ForeignKey(Period, on_delete=models.PROTECT, related_name="games")
-    venue = models.ForeignKey(Venue, on_delete=models.PROTECT, related_name="games")
+    start_time = models.TimeField()
+    venue_name = models.CharField(max_length=120)
     home_team = models.ForeignKey(
         Team, null=True, blank=True, on_delete=models.PROTECT, related_name="home_games"
     )
@@ -413,14 +470,9 @@ class Game(UUIDModel):
     version = models.PositiveIntegerField(default=1)
 
     class Meta:
-        ordering = ["date", "period__sort_order", "venue__sort_order"]
+        ordering = ["date", "start_time", "venue_name", "code"]
         constraints = [
             models.UniqueConstraint(fields=["season", "code"], name="uniq_game_code"),
-            models.UniqueConstraint(
-                fields=["season", "date", "period", "venue"],
-                condition=~Q(status="VOID"),
-                name="uniq_active_game_venue_slot",
-            ),
             models.CheckConstraint(
                 condition=~Q(home_team=models.F("away_team")), name="game_distinct_teams"
             ),
@@ -442,9 +494,11 @@ class Game(UUIDModel):
         ]
 
     def clean(self):
-        related = [self.division, self.period, self.venue]
+        related = [self.division, self.period]
         if any(item.season_id != self.season_id for item in related):
-            raise ValidationError("比赛的组别、时段和场地必须属于同一赛季。")
+            raise ValidationError("比赛的组别和时段必须属于同一赛季。")
+        if not self.venue_name.strip():
+            raise ValidationError("比赛场地不能为空。")
         if self.group_id and self.group.division_id != self.division_id:
             raise ValidationError("比赛小组必须属于当前组别。")
         for team in (self.home_team, self.away_team):
@@ -471,6 +525,158 @@ class Game(UUIDModel):
         return self.away_team.name if self.away_team_id else self.away_slot.label
 
 
+class ScheduleSlotFamily(UUIDModel):
+    season = models.ForeignKey(
+        Season, on_delete=models.PROTECT, related_name="schedule_slot_families"
+    )
+    division = models.ForeignKey(
+        Division, on_delete=models.PROTECT, related_name="schedule_slot_families"
+    )
+    stage = models.CharField(max_length=20, choices=Game.Stage.choices)
+    prefix = models.CharField(max_length=1)
+    slot_count = models.PositiveSmallIntegerField()
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "division__sort_order", "prefix"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["season", "division", "stage", "prefix"],
+                name="uniq_schedule_slot_family",
+            ),
+            models.UniqueConstraint(
+                fields=["season", "sort_order"],
+                name="uniq_schedule_slot_family_order",
+            ),
+            models.CheckConstraint(
+                condition=Q(slot_count__gte=2),
+                name="schedule_slot_family_at_least_two",
+            ),
+        ]
+
+    def clean(self):
+        if self.division_id and self.season_id and self.division.season_id != self.season_id:
+            raise ValidationError("签位方案组别必须属于同一赛季。")
+        if len(self.prefix) != 1 or not self.prefix.isascii() or not self.prefix.isalpha():
+            raise ValidationError("签位前缀必须是一个大小写敏感英文字母。")
+        if self.stage == Game.Stage.SEMIFINAL and self.slot_count != 4:
+            raise ValidationError("半决赛签位数固定为 4。")
+        if self.stage == Game.Stage.FINAL and self.slot_count != 2:
+            raise ValidationError("决赛签位数固定为 2。")
+        if self.stage in {Game.Stage.KNOCKOUT, Game.Stage.RELEGATION} and (
+            self.slot_count < 2 or self.slot_count % 2
+        ):
+            raise ValidationError("淘汰赛和保级赛签位数必须是不少于 2 的偶数。")
+
+
+class ScheduleGridColumn(UUIDModel):
+    season = models.ForeignKey(
+        Season, on_delete=models.PROTECT, related_name="schedule_grid_columns"
+    )
+    period = models.ForeignKey(
+        Period, on_delete=models.PROTECT, related_name="schedule_grid_columns"
+    )
+    venue = models.ForeignKey(
+        Venue, on_delete=models.PROTECT, related_name="schedule_grid_columns"
+    )
+    final_only = models.BooleanField(default=False)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["season", "period", "venue"],
+                name="uniq_schedule_grid_period_venue",
+            ),
+            models.UniqueConstraint(
+                fields=["season", "sort_order"],
+                name="uniq_schedule_grid_column_order",
+            ),
+        ]
+
+    def clean(self):
+        if self.season_id and self.period_id and self.period.season_id != self.season_id:
+            raise ValidationError("赛程网格时段必须属于同一赛季。")
+        if self.season_id and self.venue_id and self.venue.season_id != self.season_id:
+            raise ValidationError("赛程网格场地必须属于同一赛季。")
+
+
+class ScheduleGridDraft(UUIDModel):
+    """赛季初赛程编排的服务器草稿。
+
+    草稿与正式 Game 完全隔离；只有显式校验并确认后才会创建正式赛程。
+    """
+
+    season = models.OneToOneField(
+        Season, on_delete=models.PROTECT, related_name="schedule_grid_draft"
+    )
+    version = models.PositiveIntegerField(default=1)
+    updated_by = models.ForeignKey(
+        Account, on_delete=models.PROTECT, related_name="updated_schedule_grid_drafts"
+    )
+    source_name = models.CharField(max_length=255, blank=True)
+    source_sha256 = models.CharField(max_length=64, blank=True)
+
+
+class ScheduleGridDraftColumn(UUIDModel):
+    draft = models.ForeignKey(
+        ScheduleGridDraft, on_delete=models.CASCADE, related_name="columns"
+    )
+    period = models.ForeignKey(
+        Period, on_delete=models.PROTECT, related_name="schedule_grid_draft_columns"
+    )
+    venue_name = models.CharField(max_length=120)
+    final_only = models.BooleanField(default=False)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["draft", "sort_order"],
+                name="uniq_schedule_grid_draft_column_order",
+            )
+        ]
+
+    def clean(self):
+        if self.draft_id and self.period_id and self.period.season_id != self.draft.season_id:
+            raise ValidationError("草稿列的时段必须属于同一赛季。")
+        if not self.venue_name.strip():
+            raise ValidationError("草稿列的场地名称不能为空。")
+
+
+class ScheduleGridDraftCell(UUIDModel):
+    draft = models.ForeignKey(
+        ScheduleGridDraft, on_delete=models.CASCADE, related_name="cells"
+    )
+    column = models.ForeignKey(
+        ScheduleGridDraftColumn, on_delete=models.CASCADE, related_name="cells"
+    )
+    date = models.DateField()
+    matchup = models.CharField(max_length=64)
+    leader_adjustable = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["date", "column__sort_order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["draft", "date", "column"],
+                name="uniq_schedule_grid_draft_cell",
+            )
+        ]
+
+    def clean(self):
+        if self.column_id and self.draft_id and self.column.draft_id != self.draft_id:
+            raise ValidationError("草稿单元格与列必须属于同一草稿。")
+        if self.draft_id and not (
+            self.draft.season.starts_on <= self.date <= self.draft.season.ends_on
+        ):
+            raise ValidationError("草稿单元格日期必须在赛季范围内。")
+        if not self.matchup.strip():
+            raise ValidationError("草稿比赛内容不能为空。")
+
+
 class ScheduleSlotLock(UUIDModel):
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="slot_locks")
     date = models.DateField()
@@ -493,7 +699,14 @@ class SlotReservation(UUIDModel):
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="reservations")
     date = models.DateField()
     period = models.ForeignKey(Period, on_delete=models.PROTECT, related_name="reservations")
-    venue = models.ForeignKey(Venue, on_delete=models.PROTECT, related_name="reservations")
+    venue = models.ForeignKey(
+        Venue,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reservations",
+    )
+    venue_name = models.CharField(max_length=120)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
     released_at = models.DateTimeField(null=True, blank=True)
     converted_game = models.ForeignKey(
@@ -504,9 +717,13 @@ class SlotReservation(UUIDModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["season", "date", "period", "venue"],
-                condition=Q(status="ACTIVE"),
+                condition=Q(status__in=["ACTIVE", "CONVERTED"]),
                 name="uniq_active_reservation_venue",
-            )
+            ),
+            models.CheckConstraint(
+                condition=Q(status="RELEASED") | Q(venue__isnull=False),
+                name="occupying_reservation_requires_venue",
+            ),
         ]
 
 
@@ -541,9 +758,8 @@ class RescheduleRequest(UUIDModel):
     target_period = models.ForeignKey(
         Period, on_delete=models.PROTECT, related_name="reschedule_requests"
     )
-    target_venue = models.ForeignKey(
-        Venue, on_delete=models.PROTECT, related_name="reschedule_requests"
-    )
+    target_start_time = models.TimeField()
+    target_venue_name = models.CharField(max_length=120)
     reservation = models.OneToOneField(
         SlotReservation, on_delete=models.PROTECT, related_name="request"
     )
@@ -595,6 +811,10 @@ class TeamConfirmation(UUIDModel):
 
 
 class ScheduleImportBatch(UUIDModel):
+    class SourceKind(models.TextChoices):
+        XLSX = "XLSX", "XLSX 上传"
+        ONLINE_DRAFT = "ONLINE_DRAFT", "在线草稿"
+
     class Status(models.TextChoices):
         UPLOADED = "UPLOADED", "已上传"
         VALIDATED = "VALIDATED", "已校验"
@@ -610,6 +830,18 @@ class ScheduleImportBatch(UUIDModel):
     uploaded_by = models.ForeignKey(
         Account, on_delete=models.PROTECT, related_name="schedule_imports"
     )
+    source_kind = models.CharField(
+        max_length=24, choices=SourceKind.choices, default=SourceKind.XLSX
+    )
+    source_draft = models.ForeignKey(
+        ScheduleGridDraft,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="validation_batches",
+    )
+    source_draft_version = models.PositiveIntegerField(null=True, blank=True)
+    source_snapshot = models.JSONField(default=dict)
     summary = models.JSONField(default=dict)
     confirmed_at = models.DateTimeField(null=True, blank=True)
 
@@ -623,6 +855,46 @@ class ImportIssue(UUIDModel):
     severity = models.CharField(max_length=16, choices=Severity.choices)
     code = models.CharField(max_length=64)
     cell = models.CharField(max_length=32, blank=True)
+    message = models.TextField()
+    context = models.JSONField(default=dict)
+
+
+class RosterImportBatch(UUIDModel):
+    class Status(models.TextChoices):
+        UPLOADED = "UPLOADED", "已上传"
+        VALIDATED = "VALIDATED", "已校验"
+        CONFIRMED = "CONFIRMED", "已确认"
+        REJECTED = "REJECTED", "已拒绝"
+
+    season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="roster_imports")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.UPLOADED)
+    template_version = models.CharField(max_length=32)
+    file_key = models.CharField(max_length=512)
+    file_sha256 = models.CharField(max_length=64)
+    base_season_version = models.PositiveIntegerField()
+    uploaded_by = models.ForeignKey(
+        Account, on_delete=models.PROTECT, related_name="roster_imports"
+    )
+    summary = models.JSONField(default=dict)
+    confirmed_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="confirmed_roster_imports",
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+
+class RosterImportIssue(UUIDModel):
+    class Severity(models.TextChoices):
+        ERROR = "ERROR", "错误"
+        WARNING = "WARNING", "警告"
+
+    batch = models.ForeignKey(RosterImportBatch, on_delete=models.CASCADE, related_name="issues")
+    severity = models.CharField(max_length=16, choices=Severity.choices)
+    code = models.CharField(max_length=64)
+    cell = models.CharField(max_length=64, blank=True)
     message = models.TextField()
     context = models.JSONField(default=dict)
 
@@ -682,6 +954,11 @@ class GameMediaAsset(UUIDModel):
         ordering = ["kind", "sort_order", "created_at"]
         constraints = [
             models.UniqueConstraint(
+                fields=["game"],
+                condition=Q(kind="SCORESHEET", deleted_at__isnull=True),
+                name="uniq_active_scoresheet_per_game",
+            ),
+            models.UniqueConstraint(
                 fields=["game", "kind", "file_sha256"],
                 condition=Q(deleted_at__isnull=True),
                 name="uniq_active_game_media_hash",
@@ -694,6 +971,327 @@ class GameMediaAsset(UUIDModel):
                 name="scoresheet_requires_complete_confirmation",
             ),
         ]
+
+
+class GameScoresheet(UUIDModel):
+    """The single authoritative, cross-surface draft for one game."""
+
+    class Status(models.TextChoices):
+        NO_SOURCE = "NO_SOURCE", "缺少原图"
+        RECOGNITION_QUEUED = "RECOGNITION_QUEUED", "等待识别"
+        RECOGNIZING = "RECOGNIZING", "识别中"
+        RETRY_WAIT = "RETRY_WAIT", "等待重试"
+        DRAFT = "DRAFT", "人工核对"
+        RECOGNITION_FAILED = "RECOGNITION_FAILED", "识别失败"
+        READY = "READY", "可以发布"
+        PUBLISHED = "PUBLISHED", "已发布"
+
+    game = models.OneToOneField(Game, on_delete=models.PROTECT, related_name="scoresheet")
+    source_asset = models.ForeignKey(
+        GameMediaAsset,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="scoresheet_sources",
+    )
+    source_version = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.NO_SOURCE)
+    draft = models.JSONField(default=dict)
+    draft_version = models.PositiveIntegerField(default=1)
+    event_sequence = models.PositiveBigIntegerField(default=0)
+    game_prior_snapshot = models.JSONField(default=dict)
+    roster_snapshot = models.JSONField(default=dict)
+    reviewed_regions = models.JSONField(default=dict)
+    validation_report = models.JSONField(default=dict)
+    validation_draft_version = models.PositiveIntegerField(null=True, blank=True)
+    acknowledged_warnings = models.JSONField(default=list)
+    current_publication = models.ForeignKey(
+        "ScoresheetPublication",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="current_for_scoresheets",
+    )
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+
+class ScoresheetRevision(UUIDModel):
+    class Reason(models.TextChoices):
+        SOURCE_REPLACED = "SOURCE_REPLACED", "替换原图"
+        RECOGNITION_APPLIED = "RECOGNITION_APPLIED", "应用识别"
+        EXPLICIT_SAVE = "EXPLICIT_SAVE", "显式保存"
+        VALIDATION_READY = "VALIDATION_READY", "校验就绪"
+        PUBLISHED = "PUBLISHED", "发布"
+
+    scoresheet = models.ForeignKey(
+        GameScoresheet, on_delete=models.PROTECT, related_name="revisions"
+    )
+    draft_version = models.PositiveIntegerField()
+    event_sequence = models.PositiveBigIntegerField()
+    reason = models.CharField(max_length=32, choices=Reason.choices)
+    snapshot = models.JSONField()
+    actor = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="scoresheet_revisions",
+    )
+    client_id = models.CharField(max_length=96, blank=True)
+    surface = models.CharField(max_length=16, blank=True)
+
+    class Meta:
+        ordering = ["scoresheet", "draft_version", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scoresheet", "event_sequence"],
+                name="uniq_scoresheet_revision_event",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and ScoresheetRevision.objects.filter(pk=self.pk).exists():
+            raise ValidationError("记录表版本快照只允许追加，不能修改。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("记录表版本快照不能删除。")
+
+
+class ScoresheetRecognitionRun(UUIDModel):
+    class Status(models.TextChoices):
+        QUEUED = "QUEUED", "等待识别"
+        RUNNING = "RUNNING", "识别中"
+        RETRY_WAIT = "RETRY_WAIT", "等待重试"
+        SUCCEEDED = "SUCCEEDED", "识别成功"
+        FAILED = "FAILED", "识别失败"
+        STOPPED = "STOPPED", "已停止"
+        SUPERSEDED = "SUPERSEDED", "已被新原图替代"
+
+    scoresheet = models.ForeignKey(
+        GameScoresheet, on_delete=models.PROTECT, related_name="recognition_runs"
+    )
+    source_asset = models.ForeignKey(
+        GameMediaAsset, on_delete=models.PROTECT, related_name="recognition_runs"
+    )
+    source_version = models.PositiveIntegerField()
+    # Recognition may finish after an administrator has started manual review.
+    # Keep the draft version captured at enqueue time so a late model result can
+    # never overwrite newer human edits.
+    base_draft_version = models.PositiveIntegerField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=4)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    provider_run_token = models.UUIDField(default=uuid.uuid4, editable=False)
+    provider_result = models.JSONField(default=dict)
+    provider_usage = models.JSONField(default=dict)
+    last_error_code = models.CharField(max_length=64, blank=True)
+    last_error = models.TextField(blank=True)
+    worker_lease_token = models.UUIDField(null=True, blank=True)
+    worker_lease_owner = models.CharField(max_length=96, blank=True)
+    worker_lease_expires_at = models.DateTimeField(null=True, blank=True)
+    stopped_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="stopped_scoresheet_recognitions",
+    )
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scoresheet", "source_version"],
+                name="uniq_scoresheet_recognition_source",
+            ),
+            models.CheckConstraint(
+                condition=Q(max_attempts=4),
+                name="scoresheet_recognition_four_attempts",
+            ),
+            models.CheckConstraint(
+                condition=Q(attempt_count__lte=4),
+                name="scoresheet_recognition_attempt_limit",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at", "created_at"]),
+            models.Index(fields=["worker_lease_expires_at"]),
+        ]
+
+
+class ScoresheetChangeLog(UUIDModel):
+    scoresheet = models.ForeignKey(
+        GameScoresheet, on_delete=models.PROTECT, related_name="change_logs"
+    )
+    event_sequence = models.PositiveBigIntegerField()
+    draft_version = models.PositiveIntegerField()
+    event_type = models.CharField(max_length=48)
+    actor = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="scoresheet_changes",
+    )
+    client_id = models.CharField(max_length=96, blank=True)
+    surface = models.CharField(max_length=16, blank=True)
+    changed_fields = models.JSONField(default=list)
+    payload = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["scoresheet", "event_sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scoresheet", "event_sequence"],
+                name="uniq_scoresheet_change_event",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and ScoresheetChangeLog.objects.filter(pk=self.pk).exists():
+            raise ValidationError("记录表修改日志只允许追加，不能修改。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("记录表修改日志不能删除。")
+
+
+class ScoresheetPublication(UUIDModel):
+    scoresheet = models.ForeignKey(
+        GameScoresheet, on_delete=models.PROTECT, related_name="publications"
+    )
+    publication_number = models.PositiveIntegerField()
+    source_asset = models.ForeignKey(
+        GameMediaAsset, on_delete=models.PROTECT, related_name="scoresheet_publications"
+    )
+    draft_version = models.PositiveIntegerField()
+    snapshot = models.JSONField()
+    validation_report = models.JSONField()
+    supersedes = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="superseded_by",
+    )
+    published_by = models.ForeignKey(
+        Account, on_delete=models.PROTECT, related_name="scoresheet_publications"
+    )
+    published_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["scoresheet", "publication_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scoresheet", "publication_number"],
+                name="uniq_scoresheet_publication_number",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and ScoresheetPublication.objects.filter(pk=self.pk).exists():
+            raise ValidationError("已发布记录表不可修改。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("已发布记录表不可删除。")
+
+
+class GameTeamStat(UUIDModel):
+    publication = models.ForeignKey(
+        ScoresheetPublication, on_delete=models.PROTECT, related_name="team_stats"
+    )
+    team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="game_stats")
+    side = models.CharField(max_length=1)
+    period_scores = models.JSONField(default=list)
+    total_score = models.PositiveSmallIntegerField()
+    won = models.BooleanField(default=False)
+    timeouts = models.JSONField(default=dict)
+    team_fouls = models.JSONField(default=dict)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["publication", "team"], name="uniq_publication_team_stat"
+            ),
+            models.CheckConstraint(condition=Q(side__in=["A", "B"]), name="team_stat_side"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and GameTeamStat.objects.filter(pk=self.pk).exists():
+            raise ValidationError("已发布球队统计不可修改。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("已发布球队统计不可删除。")
+
+
+class GamePlayerStat(UUIDModel):
+    publication = models.ForeignKey(
+        ScoresheetPublication, on_delete=models.PROTECT, related_name="player_stats"
+    )
+    team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="player_game_stats")
+    roster_player = models.ForeignKey(
+        RosterPlayer,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="game_stats",
+    )
+    player_name = models.CharField(max_length=80)
+    jersey_number = models.CharField(max_length=2, blank=True)
+    appeared = models.BooleanField(default=False)
+    starter = models.BooleanField(default=False)
+    points = models.PositiveSmallIntegerField(default=0)
+    one_point_events = models.PositiveSmallIntegerField(default=0)
+    two_point_events = models.PositiveSmallIntegerField(default=0)
+    three_point_events = models.PositiveSmallIntegerField(default=0)
+    personal_fouls = models.PositiveSmallIntegerField(default=0)
+    foul_types = models.JSONField(default=list)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["publication", "team", "roster_player"],
+                condition=Q(roster_player__isnull=False),
+                name="uniq_publication_roster_player_stat",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and GamePlayerStat.objects.filter(pk=self.pk).exists():
+            raise ValidationError("已发布球员统计不可修改。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("已发布球员统计不可删除。")
+
+
+class ScoresheetEditLease(UUIDModel):
+    class Surface(models.TextChoices):
+        WEB = "WEB", "网页"
+        MINIAPP = "MINIAPP", "小程序"
+
+    scoresheet = models.OneToOneField(
+        GameScoresheet, on_delete=models.CASCADE, related_name="edit_lease"
+    )
+    account = models.ForeignKey(
+        Account, on_delete=models.CASCADE, related_name="scoresheet_edit_leases"
+    )
+    token_hash = models.CharField(max_length=64, unique=True)
+    client_id = models.CharField(max_length=96)
+    surface = models.CharField(max_length=16, choices=Surface.choices)
+    last_heartbeat_at = models.DateTimeField()
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [models.Index(fields=["expires_at"])]
 
 
 class InboxItem(UUIDModel):

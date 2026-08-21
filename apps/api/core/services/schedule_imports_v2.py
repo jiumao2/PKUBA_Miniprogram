@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import PurePath
 from zipfile import BadZipFile, ZipFile
@@ -36,7 +36,6 @@ from core.models import (
     ImportIssue,
     ParticipantSlot,
     Period,
-    PeriodCapacity,
     RescheduleRequest,
     ScheduleImportBatch,
     ScheduleSlotLock,
@@ -45,17 +44,19 @@ from core.models import (
     Team,
     Venue,
 )
+from core.services.schedule_capacity import effective_capacity, effective_capacity_map
 
-TEMPLATE_VERSION = "2.0.0"
-EXPECTED_SHEETS = ["填写说明", "赛制定义", "比赛清单", "赛程网格"]
+TEMPLATE_VERSION = "2.1.0"
+EXPECTED_SHEETS = ["填写说明", "赛制定义", "比赛清单", "赛程网格", "特殊安排"]
 STRUCTURE_HEADER_ROW = 5
 STRUCTURE_START_ROW = 6
 GAME_HEADER_ROW = 5
 GAME_START_ROW = 6
-GRID_VENUE_CODE_ROW = 5
 GRID_HEADER_ROW = 6
 GRID_START_ROW = 7
 VENUE_START_COLUMN = 5
+SPECIAL_HEADER_ROW = 5
+SPECIAL_START_ROW = 6
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 MAX_ZIP_MEMBERS = 2_000
@@ -80,6 +81,7 @@ GAME_HEADERS = [
     "客方签位代码",
 ]
 GRID_HEADERS = ["日期", "星期", "时段代码", "时段名称"]
+SPECIAL_HEADERS = ["比赛编号", "日期", "时段代码", "实际开赛时间", "场地"]
 STAGE_BY_LABEL = {label: value for value, label in Game.Stage.choices}
 STAGE_BY_LABEL.update({value: value for value, _label in Game.Stage.choices})
 STAGE_LABEL_BY_VALUE = dict(Game.Stage.choices)
@@ -152,7 +154,9 @@ class Placement:
     code: str
     date: date
     period_code: str
-    venue_code: str
+    start_time: time
+    venue_name: str
+    standard_venue_id: str | None
     cell: str
 
 
@@ -180,21 +184,22 @@ def _periods(season: Season) -> list[Period]:
 
 def _grid_rows(season: Season) -> list[GridRow]:
     periods = _periods(season)
-    capacities = {
-        (item.weekday, str(item.period_id)): item.capacity
-        for item in PeriodCapacity.objects.filter(season=season).select_related("period")
-    }
+    dates = [
+        season.starts_on + timedelta(days=offset)
+        for offset in range((season.ends_on - season.starts_on).days + 1)
+    ]
+    capacities = effective_capacity_map(season=season, dates=dates, periods=periods)
     rows: list[GridRow] = []
     current = season.starts_on
     while current <= season.ends_on:
         for period in periods:
-            capacity = capacities.get((current.weekday(), str(period.id)), 0)
+            capacity = capacities.get((current, period.id), 0)
             if capacity > 0:
                 rows.append(
                     GridRow(
                         date=current,
                         period_id=str(period.id),
-                        period_code=period.code,
+                        period_code=period.code.upper(),
                         period_name=period.name,
                         capacity=capacity,
                     )
@@ -227,15 +232,6 @@ def schedule_import_readiness(season: Season) -> dict[str, object]:
     ):
         if count == 0:
             blockers.append({"code": code, "message": message, "count": 1})
-    excessive = sum(row.capacity > venue_count for row in rows) if venue_count else 0
-    if excessive:
-        blockers.append(
-            {
-                "code": "CAPACITY_EXCEEDS_VENUES",
-                "message": "部分时段容量大于当前可用场地数量。",
-                "count": excessive,
-            }
-        )
     return {
         "season_id": str(season.id),
         "season_version": season.version,
@@ -292,6 +288,7 @@ def generate_schedule_template(season: Season) -> bytes:
     structure = workbook.create_sheet("赛制定义")
     games = workbook.create_sheet("比赛清单")
     schedule = workbook.create_sheet("赛程网格")
+    special = workbook.create_sheet("特殊安排")
     for sheet in workbook.worksheets:
         sheet.sheet_view.showGridLines = False
 
@@ -305,6 +302,10 @@ def generate_schedule_template(season: Season) -> bytes:
         (
             "系统预填",
             "组别、已有签位、日期、星期、时段和场地由系统预填；容量只在赛季设置中配置一次。",
+        ),
+        (
+            "特殊安排",
+            "比赛时间微调或使用非标准场地时，不放入主网格，改在“特殊安排”中填写；每场仍只能出现一次。",
         ),
         ("比赛编号", "推荐使用人可读编号，如“男甲·A1vsA2”；同一对阵重复时再追加日期或短序号。"),
         ("新增规则", "本文件只新增比赛；已有比赛编号会阻止确认，未列出的旧比赛保持不变。"),
@@ -363,7 +364,6 @@ def generate_schedule_template(season: Season) -> bytes:
         schedule.cell(GRID_HEADER_ROW, column, header)
     for offset, venue in enumerate(venues):
         column = VENUE_START_COLUMN + offset
-        schedule.cell(GRID_VENUE_CODE_ROW, column, venue.code)
         schedule.cell(GRID_HEADER_ROW, column, venue.name)
     for row_index, row in enumerate(rows, start=GRID_START_ROW):
         schedule.cell(row_index, 1, row.date)
@@ -398,14 +398,26 @@ def generate_schedule_template(season: Season) -> bytes:
     schedule.freeze_panes = "E7"
     _style_title(schedule, "赛程网格 · 将比赛编号放入场地格", grid_end_column)
     _style_headers(schedule, GRID_HEADER_ROW, grid_end_column)
-    for column in range(VENUE_START_COLUMN, grid_end_column + 1):
-        schedule.cell(GRID_VENUE_CODE_ROW, column).font = Font(color="66766F", italic=True)
-        schedule.cell(GRID_VENUE_CODE_ROW, column).alignment = Alignment(horizontal="center")
+    for column, header in enumerate(SPECIAL_HEADERS, start=1):
+        special.cell(SPECIAL_HEADER_ROW, column, header)
+    special.freeze_panes = "A6"
+    _style_title(special, "特殊安排 · 实际时间与自由场地", len(SPECIAL_HEADERS))
+    _style_headers(special, SPECIAL_HEADER_ROW, len(SPECIAL_HEADERS))
+    special_game_validation = DataValidation(
+        type="list",
+        formula1=f"'比赛清单'!$A${GAME_START_ROW}:$A${GAME_START_ROW + MAX_DATA_ROWS - 1}",
+        allow_blank=True,
+    )
+    special.add_data_validation(special_game_validation)
+    special_game_validation.add(
+        f"A{SPECIAL_START_ROW}:A{SPECIAL_START_ROW + MAX_DATA_ROWS - 1}"
+    )
 
     hints = (
         (structure, "已有小组和签位会预填；没有新增赛制时无需修改本表。", len(STRUCTURE_HEADERS)),
         (games, "按旧模板习惯使用人可读对阵编号；每场只需在清单定义一次。", len(GAME_HEADERS)),
         (schedule, "日期、时段和场地已预填；通过下拉或粘贴把每个对阵放入一个格。", grid_end_column),
+        (special, "只填写不适合主网格的比赛；时段仍必须选择 P1 至 P6。", len(SPECIAL_HEADERS)),
     )
     for sheet, hint, end_column in hints:
         sheet.merge_cells(start_row=3, start_column=1, end_row=3, end_column=end_column)
@@ -415,11 +427,16 @@ def generate_schedule_template(season: Season) -> bytes:
         for cell in sheet[3][:end_column]:
             cell.fill = PatternFill("solid", fgColor="F2F5F3")
 
-    for sheet in (structure, games):
+    for sheet in (structure, games, special):
         for column in range(1, sheet.max_column + 1):
             sheet.column_dimensions[get_column_letter(column)].width = 18
     structure.column_dimensions["F"].width = 28
     games.column_dimensions["A"].width = 20
+    special.column_dimensions["A"].width = 22
+    special.column_dimensions["B"].width = 14
+    special.column_dimensions["C"].width = 14
+    special.column_dimensions["D"].width = 18
+    special.column_dimensions["E"].width = 28
     schedule.column_dimensions["A"].width = 13
     schedule.column_dimensions["B"].width = 9
     schedule.column_dimensions["C"].width = 14
@@ -489,6 +506,23 @@ def _cell_date(cell: Cell) -> date | None:
     if isinstance(value, str):
         try:
             return date.fromisoformat(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _cell_time(cell: Cell) -> time | None:
+    value = cell.value
+    if isinstance(value, datetime):
+        return value.time().replace(second=0, microsecond=0)
+    if isinstance(value, time):
+        return value.replace(second=0, microsecond=0)
+    if isinstance(value, (int, float)) and 0 <= value < 1:
+        total_minutes = round(float(value) * 24 * 60) % (24 * 60)
+        return time(total_minutes // 60, total_minutes % 60)
+    if isinstance(value, str):
+        try:
+            return time.fromisoformat(value.strip()).replace(second=0, microsecond=0)
         except ValueError:
             return None
     return None
@@ -926,63 +960,51 @@ def _parse_games(
 def _parse_grid(
     season: Season,
     sheet,
+    special_sheet,
     games: dict[str, ParsedGame],
     issues: list[ParsedIssue],
 ) -> dict[str, Placement]:
     _validate_headers(sheet, GRID_HEADER_ROW, GRID_HEADERS)
-    periods = {item.code: item for item in _periods(season)}
-    venues = {item.code: item for item in _venues(season)}
-    capacity_by_weekday_period = {
-        (item.weekday, item.period.code): item.capacity
-        for item in PeriodCapacity.objects.filter(season=season).select_related("period")
-    }
+    _validate_headers(special_sheet, SPECIAL_HEADER_ROW, SPECIAL_HEADERS)
+    periods = {item.code.lower(): item for item in _periods(season)}
+    venues = {item.name: item for item in _venues(season)}
     venue_columns: dict[int, Venue] = {}
     last_column = max(
         [
             column
             for column in range(VENUE_START_COLUMN, sheet.max_column + 1)
-            if sheet.cell(GRID_VENUE_CODE_ROW, column).value not in (None, "")
-            or sheet.cell(GRID_HEADER_ROW, column).value not in (None, "")
+            if sheet.cell(GRID_HEADER_ROW, column).value not in (None, "")
         ],
         default=VENUE_START_COLUMN - 1,
     )
     if last_column < VENUE_START_COLUMN:
         issues.append(_issue("NO_VENUE_COLUMNS", "赛程网格没有场地列。"))
-    seen_venue_codes: set[str] = set()
+    seen_venue_names: set[str] = set()
     for column in range(VENUE_START_COLUMN, last_column + 1):
-        code_cell = sheet.cell(GRID_VENUE_CODE_ROW, column)
         name_cell = sheet.cell(GRID_HEADER_ROW, column)
-        code = _read_text(code_cell, "场地代码", issues)
-        if not code:
+        name = _read_text(name_cell, "场地名称", issues)
+        if not name:
             continue
-        if code in seen_venue_codes:
+        if name in seen_venue_names:
             issues.append(
                 _issue(
                     "DUPLICATE_VENUE_COLUMN",
-                    f"场地代码 {code} 重复。",
-                    cell=code_cell.coordinate,
+                    f"场地名称 {name} 重复。",
+                    cell=name_cell.coordinate,
                 )
             )
             continue
-        seen_venue_codes.add(code)
-        venue = venues.get(code)
+        seen_venue_names.add(name)
+        venue = venues.get(name)
         if venue is None:
             issues.append(
                 _issue(
                     "UNKNOWN_VENUE",
-                    f"数据库中不存在可用场地 {code}。",
-                    cell=code_cell.coordinate,
-                )
-            )
-            continue
-        if name_cell.value != venue.name:
-            issues.append(
-                _issue(
-                    "VENUE_NAME_MISMATCH",
-                    f"场地代码 {code} 应对应名称“{venue.name}”。",
+                    f"数据库中不存在可用场地“{name}”。",
                     cell=name_cell.coordinate,
                 )
             )
+            continue
         venue_columns[column] = venue
 
     occurrences: dict[str, list[Placement]] = defaultdict(list)
@@ -998,7 +1020,8 @@ def _parse_grid(
         if not relevant:
             continue
         target_date = _cell_date(sheet.cell(row, 1))
-        period_code = _read_text(sheet.cell(row, 3), "时段代码", issues)
+        raw_period_code = _read_text(sheet.cell(row, 3), "时段代码", issues)
+        period_code = raw_period_code.lower() if raw_period_code else None
         if target_date is None:
             issues.append(
                 _issue(
@@ -1035,7 +1058,11 @@ def _parse_grid(
                     )
                 )
             seen_rows.add(key)
-            capacity = capacity_by_weekday_period.get((target_date.weekday(), period.code), 0)
+            capacity = effective_capacity(
+                season_id=season.id,
+                target_date=target_date,
+                period_id=period.id,
+            )
             if capacity <= 0:
                 issues.append(
                     _issue(
@@ -1071,8 +1098,104 @@ def _parse_grid(
                     code=code,
                     date=target_date,
                     period_code=period.code,
-                    venue_code=venue.code,
+                    start_time=period.start_time,
+                    venue_name=venue.name,
+                    standard_venue_id=str(venue.id),
                     cell=cell.coordinate,
+                )
+            )
+
+    special_last_row = min(
+        special_sheet.max_row, SPECIAL_START_ROW + MAX_DATA_ROWS - 1
+    )
+    if special_sheet.max_row - SPECIAL_START_ROW + 1 > MAX_DATA_ROWS:
+        issues.append(_issue("TOO_MANY_ROWS", "特殊安排超过 5000 行。"))
+    for row in range(SPECIAL_START_ROW, special_last_row + 1):
+        if not any(
+            special_sheet.cell(row, column).value not in (None, "")
+            for column in range(1, len(SPECIAL_HEADERS) + 1)
+        ):
+            continue
+        code = _read_text(special_sheet.cell(row, 1), "比赛编号", issues)
+        target_date = _cell_date(special_sheet.cell(row, 2))
+        raw_period_code = _read_text(special_sheet.cell(row, 3), "时段代码", issues)
+        period_code = raw_period_code.lower() if raw_period_code else None
+        actual_time = _cell_time(special_sheet.cell(row, 4))
+        venue_name = _read_text(special_sheet.cell(row, 5), "实际场地", issues)
+        if code and code not in games:
+            issues.append(
+                _issue(
+                    "UNKNOWN_GAME_CODE",
+                    f"特殊安排中的比赛编号 {code} 不在比赛清单中。",
+                    cell=special_sheet.cell(row, 1).coordinate,
+                )
+            )
+        if target_date is None:
+            issues.append(
+                _issue(
+                    "INVALID_DATE",
+                    "日期必须是 Excel 日期或 YYYY-MM-DD。",
+                    cell=special_sheet.cell(row, 2).coordinate,
+                )
+            )
+        elif not season.starts_on <= target_date <= season.ends_on:
+            issues.append(
+                _issue(
+                    "DATE_OUTSIDE_SEASON",
+                    "比赛日期超出赛季起止日期。",
+                    cell=special_sheet.cell(row, 2).coordinate,
+                )
+            )
+        period = periods.get(period_code or "")
+        if period is None and period_code:
+            issues.append(
+                _issue(
+                    "UNKNOWN_PERIOD",
+                    f"数据库中不存在时段 {raw_period_code}。",
+                    cell=special_sheet.cell(row, 3).coordinate,
+                )
+            )
+        if actual_time is None:
+            issues.append(
+                _issue(
+                    "INVALID_START_TIME",
+                    "实际开赛时间必须填写为 HH:MM。",
+                    cell=special_sheet.cell(row, 4).coordinate,
+                )
+            )
+        if target_date and period:
+            capacity = effective_capacity(
+                season_id=season.id,
+                target_date=target_date,
+                period_id=period.id,
+            )
+            if capacity <= 0:
+                issues.append(
+                    _issue(
+                        "PERIOD_CLOSED",
+                        f"{target_date.isoformat()} / {period.name} 未开放容量。",
+                        cell=special_sheet.cell(row, 3).coordinate,
+                    )
+                )
+        if (
+            code in games
+            and target_date is not None
+            and period is not None
+            and actual_time is not None
+            and venue_name
+        ):
+            standard_venue = venues.get(venue_name)
+            occurrences[code].append(
+                Placement(
+                    code=code,
+                    date=target_date,
+                    period_code=period.code,
+                    start_time=actual_time,
+                    venue_name=venue_name,
+                    standard_venue_id=(
+                        str(standard_venue.id) if standard_venue is not None else None
+                    ),
+                    cell=special_sheet.cell(row, 1).coordinate,
                 )
             )
     placements: dict[str, Placement] = {}
@@ -1090,7 +1213,7 @@ def _parse_grid(
             issues.append(
                 _issue(
                     "DUPLICATE_GAME_PLACEMENT",
-                    f"比赛 {code} 在赛程网格中出现 {len(found)} 次。",
+            f"比赛 {code} 在赛程网格和特殊安排中共出现 {len(found)} 次。",
                     cell=found[0].cell,
                     context={"game_code": code, "count": len(found)},
                 )
@@ -1113,7 +1236,7 @@ def _validate_schedule_conflicts(
     existing_games = list(
         Game.objects.filter(season=season)
         .exclude(status=Game.Status.VOID)
-        .select_related("division", "period", "venue", "home_slot", "away_slot")
+        .select_related("division", "period", "home_slot", "away_slot")
     )
     reservations = list(
         SlotReservation.objects.filter(season=season, status=SlotReservation.Status.ACTIVE)
@@ -1160,14 +1283,14 @@ def _validate_schedule_conflicts(
     for game in existing_games:
         key = (game.date, game.period.code)
         counts[key] += 1
-        occupancy[(game.date, game.period.code, game.venue.code)].append(
+        occupancy[(game.date, game.period.code, game.venue_name)].append(
             ("existing", game.code, "")
         )
         add_existing_participants(game, key, game.code)
     for reservation in reservations:
         key = (reservation.date, reservation.period.code)
         counts[key] += 1
-        occupancy[(reservation.date, reservation.period.code, reservation.venue.code)].append(
+        occupancy[(reservation.date, reservation.period.code, reservation.venue_name)].append(
             ("reservation", str(reservation.id), "")
         )
         request = getattr(reservation, "request", None)
@@ -1179,7 +1302,7 @@ def _validate_schedule_conflicts(
         key = (placement.date, placement.period_code)
         keys_with_new_games.add(key)
         counts[key] += 1
-        occupancy[(placement.date, placement.period_code, placement.venue_code)].append(
+        occupancy[(placement.date, placement.period_code, placement.venue_name)].append(
             ("new", code, placement.cell)
         )
         for slot_code in (game.home_slot_code, game.away_slot_code):
@@ -1203,16 +1326,13 @@ def _validate_schedule_conflicts(
             )
         )
 
-    period_codes = {item.id: item.code for item in _periods(season)}
-    capacity_map = {
-        (weekday, period_codes[period_id]): capacity
-        for weekday, period_id, capacity in PeriodCapacity.objects.filter(
-            season=season
-        ).values_list("weekday", "period_id", "capacity")
-        if period_id in period_codes
-    }
+    periods_by_code = {item.code: item for item in _periods(season)}
     for key in keys_with_new_games:
-        capacity = capacity_map.get((key[0].weekday(), key[1]), 0)
+        capacity = effective_capacity(
+            season_id=season.id,
+            target_date=key[0],
+            period_id=periods_by_code[key[1]].id,
+        )
         if counts[key] > capacity:
             issues.append(
                 _issue(
@@ -1262,7 +1382,6 @@ def _build_summary(
         )
     }
     period_by_code = {item.code: item for item in _periods(season)}
-    venue_by_code = {item.code: item for item in _venues(season)}
     group_rows = [
         {
             "action": group_actions.get(key, "CREATE"),
@@ -1299,7 +1418,6 @@ def _build_summary(
             (item.division_code, item.away_slot_code)
         )
         period = period_by_code.get(placement.period_code) if placement else None
-        venue = venue_by_code.get(placement.venue_code) if placement else None
         game_rows.append(
             {
                 "action": "CONFLICT" if code in existing_codes else "CREATE",
@@ -1319,9 +1437,16 @@ def _build_summary(
                 "date": placement.date.isoformat() if placement else None,
                 "period_code": placement.period_code if placement else None,
                 "period_name": period.name if period else None,
-                "start_time": period.start_time.isoformat(timespec="minutes") if period else None,
-                "venue_code": placement.venue_code if placement else None,
-                "venue_name": venue.name if venue else None,
+                "nominal_start_time": (
+                    period.start_time.isoformat(timespec="minutes") if period else None
+                ),
+                "start_time": (
+                    placement.start_time.isoformat(timespec="minutes") if placement else None
+                ),
+                "venue_name": placement.venue_name if placement else None,
+                "standard_venue_id": (
+                    placement.standard_venue_id if placement else None
+                ),
                 "cell": placement.cell if placement else "",
             }
         )
@@ -1360,7 +1485,7 @@ def _analyze_workbook(
     if workbook.sheetnames != EXPECTED_SHEETS:
         raise ScheduleImportError("工作表名称、数量或顺序不正确。", "SHEET_STRUCTURE_CHANGED")
     if any(workbook[name].sheet_state != "visible" for name in EXPECTED_SHEETS):
-        raise ScheduleImportError("四个工作表必须全部可见。", "SHEET_VISIBILITY_INVALID")
+        raise ScheduleImportError("五个工作表必须全部可见。", "SHEET_VISIBILITY_INVALID")
     if str(workbook["填写说明"]["B4"].value or "").strip() != TEMPLATE_VERSION:
         raise ScheduleImportError(
             f"不支持当前格式版本，请使用 {TEMPLATE_VERSION}。",
@@ -1376,7 +1501,13 @@ def _analyze_workbook(
         season, workbook["赛制定义"], issues
     )
     games = _parse_games(season, workbook["比赛清单"], groups, slots, issues)
-    placements = _parse_grid(season, workbook["赛程网格"], games, issues)
+    placements = _parse_grid(
+        season,
+        workbook["赛程网格"],
+        workbook["特殊安排"],
+        games,
+        issues,
+    )
     _validate_schedule_conflicts(season, games, placements, issues)
     summary = _build_summary(
         season,
@@ -1468,8 +1599,8 @@ def _lock_schedule_slots(season: Season, placements: dict[str, Placement]) -> No
         )
 
 
-def _slot_start(target_date: date, period: Period, timezone_name: str) -> datetime:
-    return datetime.combine(target_date, period.start_time, tzinfo=ZoneInfo(timezone_name))
+def _game_start(game: Game, timezone_name: str) -> datetime:
+    return datetime.combine(game.date, game.start_time, tzinfo=ZoneInfo(timezone_name))
 
 
 def _confirm_schedule_import(
@@ -1581,7 +1712,6 @@ def _confirm_schedule_import(
             created_slots.append(slot)
 
         periods = {item.code: item for item in _periods(season)}
-        venues = {item.code: item for item in _venues(season)}
         created_games: list[Game] = []
         for code, item in sorted(analysis.games.items()):
             placement = analysis.placements[code]
@@ -1598,7 +1728,8 @@ def _confirm_schedule_import(
                 round_number=item.round_number,
                 date=placement.date,
                 period=periods[placement.period_code],
-                venue=venues[placement.venue_code],
+                start_time=placement.start_time,
+                venue_name=placement.venue_name,
                 home_slot=slot_objects[(item.division_code, item.home_slot_code)],
                 away_slot=slot_objects[(item.division_code, item.away_slot_code)],
                 leader_adjustable=True,
@@ -1695,8 +1826,8 @@ def _reset_preview(season: Season, *, now: datetime) -> dict[str, object]:
     if draw_count:
         blockers.append(_blocker("DRAW_ASSIGNMENTS_EXIST", "赛季已有抽签映射。", draw_count))
     started_count = sum(
-        _slot_start(game.date, game.period, season.timezone) <= now
-        for game in games.select_related("period")
+        _game_start(game, season.timezone) <= now
+        for game in games
     )
     if started_count:
         blockers.append(

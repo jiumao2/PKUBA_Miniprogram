@@ -11,7 +11,7 @@ from ninja import File, Form, Router, Schema, Status
 from ninja.files import UploadedFile
 
 from core.api_security import admin_session_auth, miniapp_bearer_auth
-from core.models import Game, GameMediaAsset
+from core.models import Game, GameMediaAsset, GameScoresheet
 from core.services.game_media import (
     GameMediaError,
     asset_from_ticket,
@@ -71,11 +71,15 @@ class DeleteGameMediaIn(Schema):
 
 
 def _error_response(error: GameMediaError):
-    if error.code in {"MEDIA_UPLOAD_FORBIDDEN", "ADMIN_REQUIRED"}:
+    if error.code in {"MEDIA_UPLOAD_FORBIDDEN", "ADMIN_REQUIRED", "SUPERADMIN_REQUIRED"}:
         status = 403
     elif error.code in {"MEDIA_NOT_FOUND"}:
         status = 404
-    elif error.code in {"DUPLICATE_MEDIA", "VERSION_CONFLICT"}:
+    elif error.code in {
+        "DUPLICATE_MEDIA",
+        "SCORESHEET_SOURCE_EXISTS",
+        "VERSION_CONFLICT",
+    }:
         status = 409
     elif error.code == "FILE_TOO_LARGE":
         status = 413
@@ -95,8 +99,8 @@ def _game_queryset():
     )
 
 
-def _asset_queryset():
-    return GameMediaAsset.objects.filter(deleted_at__isnull=True).select_related(
+def _asset_queryset(*, include_deleted: bool = False):
+    assets = GameMediaAsset.objects.select_related(
         "game",
         "game__division",
         "game__home_team",
@@ -105,6 +109,7 @@ def _asset_queryset():
         "game__away_slot",
         "uploaded_by",
     )
+    return assets if include_deleted else assets.filter(deleted_at__isnull=True)
 
 
 def _serialize_asset(asset: GameMediaAsset) -> dict[str, object]:
@@ -147,9 +152,20 @@ def list_game_media(request: HttpRequest, game_id: UUID):
     if not permissions.can_view:
         return Status(
             403,
-            {"code": "MEDIA_VIEW_FORBIDDEN", "message": "仅当季领队和管理员可查看比赛资料。"},
+            {"code": "MEDIA_VIEW_FORBIDDEN", "message": "仅本场参赛领队和管理员可查看比赛资料。"},
         )
     assets = _asset_queryset().filter(game=game)
+    if not request.auth.is_pkuba_admin:
+        published_source_id = (
+            GameScoresheet.objects.filter(game=game)
+            .values_list("current_publication__source_asset_id", flat=True)
+            .first()
+        )
+        assets = (
+            _asset_queryset(include_deleted=True).filter(id=published_source_id)
+            if published_source_id
+            else assets.none()
+        )
     return {
         "game_id": game.id,
         "can_upload": permissions.can_upload,
@@ -248,6 +264,40 @@ def replace_miniapp_game_media(
     return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
 
 
+@admin_router.post(
+    "/games/{game_id}",
+    response={
+        201: GameMediaAssetOut,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+        413: GameMediaErrorOut,
+    },
+)
+def create_admin_game_media(
+    request: HttpRequest,
+    game_id: UUID,
+    kind: Form[str],
+    scoresheet_complete_confirmed: Form[bool],
+    image: File[UploadedFile],
+):
+    game = _game_queryset().filter(id=game_id).first()
+    if game is None:
+        return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
+    try:
+        asset = upload_game_media(
+            actor=request.auth,
+            game=game,
+            kind=kind,
+            scoresheet_complete_confirmed=scoresheet_complete_confirmed,
+            uploaded_file=image,
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
+
+
 @admin_router.get("/", response=list[GameMediaAssetOut])
 def list_admin_game_media(
     request: HttpRequest,
@@ -322,7 +372,13 @@ def review_admin_game_media(request: HttpRequest, asset_id: UUID, payload: Revie
 
 @admin_router.delete(
     "/{asset_id}",
-    response={204: None, 400: GameMediaErrorOut, 404: GameMediaErrorOut, 409: GameMediaErrorOut},
+    response={
+        204: None,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+    },
 )
 def delete_admin_game_media(request: HttpRequest, asset_id: UUID, payload: DeleteGameMediaIn):
     try:

@@ -47,10 +47,10 @@ def web_schedule_options(request: HttpRequest, season_id: UUID | None = None):
             )
         ],
         "venues": [
-            {"id": venue.id, "code": venue.code, "name": venue.name}
-            for venue in Venue.objects.filter(season=season, active=True).order_by(
-                "sort_order", "name"
-            )
+            {"id": venue.id, "name": venue.name}
+            for venue in Venue.objects.filter(
+                season=season, active=True, is_standard=True
+            ).order_by("sort_order", "name")
         ],
         "teams": [
             {
@@ -76,7 +76,7 @@ def web_admin_games(request: HttpRequest, season_id: UUID):
     if not Season.objects.filter(id=season_id).exists():
         return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
     games = _game_queryset().filter(season_id=season_id).order_by(
-        "date", "period__sort_order", "venue__sort_order"
+        "date", "start_time", "venue_name"
     )
     return [_game_out(game) for game in games]
 
