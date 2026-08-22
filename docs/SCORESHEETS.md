@@ -38,7 +38,7 @@
 
 网络错误、超时、HTTP 429/5xx、服务商无效 JSON 和结果 Schema 错误可重试。服务商 `Retry-After` 更长时采用更长时间。来源缺失/替换、名单缺失、图片不合法和凭据缺失不会重复调用。
 
-发送给 Qwen 的内容严格限定为：安全解码、EXIF 纠正、约 6.3 MP 上限并以 JPEG 95、4:4:4 重新编码后的完整记录表，以及双方球队名称和球员姓名。不会发送账号、OpenID、UUID、球衣号码、赛季、日期、场地或其他比赛先验。默认使用 `qwen3.8-max`、`xhigh`、高分辨率视觉与 thinking、`seed=1234`、原版动态名单枚举 Schema 和严格结构校验。每个任务记录真实模型、提示词版本、处理后图像 SHA-256、token、来源版本和入队草稿版本；来源被替换时结果标记为 `SUPERSEDED`，人工已修改草稿后成功结果只进入差异面板，不自动覆盖人工输入。
+发送给 Qwen 的内容严格限定为：安全解码、EXIF 纠正、10 MP 上限并以 JPEG 95、4:4:4 重新编码后的完整记录表，以及双方球队名称和球员姓名。不会发送账号、OpenID、UUID、球衣号码、赛季、日期、场地或其他比赛先验。默认使用 `qwen3.8-max`、`xhigh`、高分辨率视觉与 thinking、`seed=1234`、原版动态名单枚举 Schema 和严格结构校验。单次模型调用不设置客户端超时，允许执行超过十分钟；Worker 每分钟续期 PostgreSQL 任务租约，进程异常退出后仍由五分钟租约负责恢复。每个任务记录真实模型、提示词版本、处理后图像 SHA-256、token、来源版本和入队草稿版本；来源被替换时结果标记为 `SUPERSEDED`，人工已修改草稿后成功结果只进入差异面板，不自动覆盖人工输入。
 
 本地与生产环境变量：
 
@@ -47,8 +47,7 @@ QWEN_API_KEY=
 QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 QWEN_MODEL=qwen3.8-max
 QWEN_REASONING_EFFORT=xhigh
-QWEN_TIMEOUT_SECONDS=180
-SCORESHEET_RECOGNITION_MAX_PIXELS=6291456
+SCORESHEET_RECOGNITION_MAX_PIXELS=10000000
 ```
 
 未配置 `QWEN_API_KEY` 时，worker 会把任务一次性标记为不可重试失败，页面仍可进入人工录入。生产 worker：

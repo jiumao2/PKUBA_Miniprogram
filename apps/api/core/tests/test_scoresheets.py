@@ -27,9 +27,11 @@ from core.models import (
     ScoresheetPublication,
     ScoresheetRecognitionRun,
 )
+from core.scoresheet_v2.recognition import prepare_image
 from core.services.game_media import replace_game_media, upload_game_media
 from core.services.scoresheet_recognition import (
     RecognitionAttemptError,
+    _renew_worker_lease,
     claim_next_run,
     execute_claim,
     run_once,
@@ -511,6 +513,21 @@ def test_retryable_recognition_uses_initial_call_plus_three_retries(tmp_path, mo
                 assert run.status == ScoresheetRecognitionRun.Status.FAILED
         scoresheet.refresh_from_db()
         assert scoresheet.status == GameScoresheet.Status.RECOGNITION_FAILED
+
+
+def test_running_recognition_worker_lease_renews_during_long_provider_calls(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path, QWEN_API_KEY="test-key"):
+        _, _, _, _, scoresheet = create_scoresheet()
+        claim = claim_next_run("long-call-worker")
+        assert claim is not None
+        run = ScoresheetRecognitionRun.objects.get(scoresheet=scoresheet)
+        run.worker_lease_expires_at = timezone.now() + timedelta(seconds=1)
+        run.save(update_fields=["worker_lease_expires_at"])
+
+        assert _renew_worker_lease(claim) is True
+
+        run.refresh_from_db()
+        assert run.worker_lease_expires_at >= timezone.now() + timedelta(minutes=4)
 
 
 def test_qwen_prior_contains_only_team_and_player_names(tmp_path):
@@ -1195,7 +1212,7 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
         QWEN_API_KEY="private-test-key",
         QWEN_MODEL="qwen3.8-max",
         QWEN_REASONING_EFFORT="xhigh",
-        SCORESHEET_RECOGNITION_MAX_PIXELS=6_291_456,
+        SCORESHEET_RECOGNITION_MAX_PIXELS=10_000_000,
     ):
         _, _, _, _, scoresheet = create_scoresheet()
         run = ScoresheetRecognitionRun.objects.get(scoresheet=scoresheet)
@@ -1207,6 +1224,7 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
         "ad8bd0f20d5b0d18496187555d3ad7d7559b734cac08cca1612a56e9e50b8586"
     )
     assert captured["model"] == "qwen3.8-max"
+    assert captured["client"]["timeout"] is None
     assert captured["seed"] == 1234
     assert captured["stream"] is True
     assert captured["stream_options"] == {"include_usage": True}
@@ -1242,6 +1260,17 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
     assert run.model_name == "qwen3.8-max"
     assert run.prompt_version == PROMPT_VERSION
     assert run.image_sha256 == hashlib.sha256(processed_image).hexdigest()
+
+
+def test_image_preprocessing_caps_output_at_ten_megapixels():
+    source = io.BytesIO()
+    Image.new("RGB", (4000, 3000), color=(246, 244, 239)).save(source, format="JPEG")
+
+    processed, _, _ = prepare_image(source.getvalue(), 10_000_000)
+
+    with Image.open(io.BytesIO(processed)) as image:
+        assert image.width * image.height <= 10_000_000
+        assert image.width * image.height >= 9_900_000
 
 
 def test_admin_pdf_uses_current_correction_draft_not_old_publication(tmp_path, monkeypatch):

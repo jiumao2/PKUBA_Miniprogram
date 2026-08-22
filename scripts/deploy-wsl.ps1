@@ -78,8 +78,7 @@ $qwenApiKey = if ($projectEnv.QWEN_API_KEY) { $projectEnv.QWEN_API_KEY } else { 
 $qwenBaseUrl = if ($projectEnv.QWEN_BASE_URL) { $projectEnv.QWEN_BASE_URL } else { 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
 $qwenModel = if ($projectEnv.QWEN_MODEL) { $projectEnv.QWEN_MODEL } else { 'qwen3.8-max' }
 $qwenReasoningEffort = if ($projectEnv.QWEN_REASONING_EFFORT) { $projectEnv.QWEN_REASONING_EFFORT } else { 'xhigh' }
-$qwenTimeout = if ($projectEnv.QWEN_TIMEOUT_SECONDS) { $projectEnv.QWEN_TIMEOUT_SECONDS } else { '180' }
-$scoresheetRecognitionMaxPixels = if ($projectEnv.SCORESHEET_RECOGNITION_MAX_PIXELS) { $projectEnv.SCORESHEET_RECOGNITION_MAX_PIXELS } else { '6291456' }
+$scoresheetRecognitionMaxPixels = if ($projectEnv.SCORESHEET_RECOGNITION_MAX_PIXELS) { $projectEnv.SCORESHEET_RECOGNITION_MAX_PIXELS } else { '10000000' }
 
 $envLines = @(
     "PKUBA_DB_PASSWORD=$dbPassword"
@@ -90,7 +89,6 @@ $envLines = @(
     "QWEN_BASE_URL=$qwenBaseUrl"
     "QWEN_MODEL=$qwenModel"
     "QWEN_REASONING_EFFORT=$qwenReasoningEffort"
-    "QWEN_TIMEOUT_SECONDS=$qwenTimeout"
     "SCORESHEET_RECOGNITION_MAX_PIXELS=$scoresheetRecognitionMaxPixels"
     "PKUBA_LOCAL_ADMIN_USERNAME=$AdminUsername"
     "PKUBA_LOCAL_ADMIN_PASSWORD=$AdminPassword"

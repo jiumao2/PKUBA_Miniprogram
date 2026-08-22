@@ -626,7 +626,10 @@ def prepare_image(raw: bytes, max_pixels: int) -> tuple[bytes, str, str]:
             target_scale = math.sqrt(max_pixels / pixel_count)
             scale = min(target_scale, 2.0) if target_scale > 1 else target_scale
             image = image.resize(
-                (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+                (
+                    max(1, math.floor(image.width * scale)),
+                    max(1, math.floor(image.height * scale)),
+                ),
                 Image.Resampling.LANCZOS,
             )
         output = io.BytesIO()

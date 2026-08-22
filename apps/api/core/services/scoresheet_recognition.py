@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from email.utils import parsedate_to_datetime
+from threading import Event, Thread
 
 from django.conf import settings
 from django.core.files.storage import default_storage
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.db.models import Q
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
@@ -32,6 +36,8 @@ from core.services.scoresheets import _event_locked, _revision_locked
 
 RETRY_DELAYS = (30, 30, 30)
 WORKER_LEASE_SECONDS = 5 * 60
+WORKER_LEASE_REFRESH_SECONDS = 60
+logger = logging.getLogger(__name__)
 
 
 class RecognitionAttemptError(RuntimeError):
@@ -130,6 +136,48 @@ def claim_next_run(worker_name: str) -> ClaimedRun | None:
             },
         )
         return ClaimedRun(run_id=run.id, worker_token=token)
+
+
+def _renew_worker_lease(claim: ClaimedRun) -> bool:
+    updated = ScoresheetRecognitionRun.objects.filter(
+        id=claim.run_id,
+        status=ScoresheetRecognitionRun.Status.RUNNING,
+        worker_lease_token=claim.worker_token,
+    ).update(
+        worker_lease_expires_at=timezone.now() + timedelta(seconds=WORKER_LEASE_SECONDS)
+    )
+    return updated == 1
+
+
+def _worker_lease_heartbeat(claim: ClaimedRun, stop: Event) -> None:
+    close_old_connections()
+    try:
+        while not stop.wait(WORKER_LEASE_REFRESH_SECONDS):
+            try:
+                if not _renew_worker_lease(claim):
+                    return
+            except Exception:  # noqa: BLE001 - keep renewing after transient database failures.
+                logger.exception("Failed to renew scoresheet recognition worker lease")
+                close_old_connections()
+    finally:
+        close_old_connections()
+
+
+@contextmanager
+def _maintain_worker_lease(claim: ClaimedRun) -> Iterator[None]:
+    stop = Event()
+    heartbeat = Thread(
+        target=_worker_lease_heartbeat,
+        args=(claim, stop),
+        name=f"scoresheet-lease-{claim.run_id}",
+        daemon=True,
+    )
+    heartbeat.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        heartbeat.join(timeout=5)
 
 
 def _source_image_bytes(run: ScoresheetRecognitionRun) -> bytes:
@@ -263,7 +311,7 @@ def call_qwen(run: ScoresheetRecognitionRun) -> tuple[dict[str, object], dict[st
         client = OpenAI(
             api_key=api_key,
             base_url=settings.QWEN_BASE_URL,
-            timeout=settings.QWEN_TIMEOUT_SECONDS,
+            timeout=None,
             max_retries=0,
         )
         response = client.chat.completions.create(
@@ -588,15 +636,17 @@ def execute_claim(claim: ClaimedRun) -> str:
     run = ScoresheetRecognitionRun.objects.select_related("scoresheet", "source_asset").get(
         id=claim.run_id
     )
-    try:
-        result, usage = call_qwen(run)
-    except RecognitionAttemptError as failure:
-        return _complete_failure(claim, failure)
-    except Exception as exc:  # Persist unexpected provider/decoder failures for operator review.
-        return _complete_failure(
-            claim,
-            RecognitionAttemptError("UNEXPECTED_RECOGNITION_ERROR", str(exc), retryable=True),
-        )
+    with _maintain_worker_lease(claim):
+        try:
+            result, usage = call_qwen(run)
+        except RecognitionAttemptError as failure:
+            return _complete_failure(claim, failure)
+        # Persist unexpected provider/decoder failures for operator review.
+        except Exception as exc:
+            return _complete_failure(
+                claim,
+                RecognitionAttemptError("UNEXPECTED_RECOGNITION_ERROR", str(exc), retryable=True),
+            )
     return _complete_success(claim, result, usage)
 
 
