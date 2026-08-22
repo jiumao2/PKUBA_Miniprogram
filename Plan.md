@@ -91,7 +91,7 @@
 
 #### P0：冻结当前已验证主干
 
-1. 2026-08-22 已将记录表、任务箱、公开榜单、数据页、迁移、OpenAPI/TypeScript 和文档的主干快照提交为 `b6f3138`（`feat: complete scoresheets, inbox, and public leaderboards`），并将无限客户端超时、10 MP 图像上限及长调用租约续期提交为 `2dc3e51`（`fix: harden long-running scoresheet recognition`）。最终统一检查为 Django/PostgreSQL 156 passed、29 skipped，管理站 128 passed、共享记录表领域 4 passed、小程序 6 passed，并通过全仓类型检查和双端生产构建。这些提交与本状态记录均仅保存在本地 `main`，尚未推送；推送后需等待 GitHub Actions 全绿。
+1. 2026-08-22 已将记录表、任务箱、公开榜单、数据页、迁移、OpenAPI/TypeScript 和文档的主干快照提交为 `b6f3138`（`feat: complete scoresheets, inbox, and public leaderboards`），将无限客户端超时、10 MP 图像上限及长调用租约续期提交为 `2dc3e51`（`fix: harden long-running scoresheet recognition`），并将关键命令 HTTP 幂等保护与列表分页提交为 `5dd864e`（`feat: add idempotent commands and paginated APIs`）。最新统一检查为 Django/PostgreSQL 164 passed、29 skipped，管理站 128 passed、共享记录表领域 4 passed、小程序 8 passed，并通过 Ruff、迁移漂移、OpenAPI/TypeScript 同步、全仓类型检查和双端生产构建。本地 Ubuntu 已应用 `0021_api_idempotency_record`，8088 健康，公开赛程实测为 146 条且按 `page_size=2` 仅返回 2 条，七个关键命令的部署后 OpenAPI 均公开 `Idempotency-Key`。这些提交与本状态记录均仅保存在本地 `main`，尚未推送；推送后需等待 GitHub Actions 全绿。
 2. 用户完成本轮视觉检查后，删除 `visual-demo:` 前缀的 10 条任务。它们只存在于本地数据库，当前为 7 条待处理、3 条已完成，未产生邮件。
 3. 当前公开开发赛季含 57 队、684 名合成球员、146 场比赛、138 份 publication、140 份媒体和一条不可变的合成数据审计。正式上线不在这套数据库内物理清理不可变 publication/审计，而是建立全新生产数据库与私有媒体存储，仅导入正式当前赛季数据；`check_no_synthetic_public_data` 必须在新环境通过。
 
