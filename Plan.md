@@ -90,7 +90,7 @@
 
 #### P0：冻结当前已验证主干
 
-1. 当前 `main` 相对 `origin/main` 仍有 51 个已跟踪文件变化和 63 个未跟踪文件；下一项功能开始前先逐项核对共享改动，按“记录表与榜单”“任务箱与权限”“文档与生成接口”拆成可回滚提交，推送 `main` 并等待 GitHub Actions 全绿。不得清理或覆盖其他已完成任务的共享文件。
+1. 2026-08-22 已将记录表、任务箱、公开榜单、数据页、迁移、OpenAPI/TypeScript 和文档的主干快照提交为 `b6f3138`（`feat: complete scoresheets, inbox, and public leaderboards`），并将无限客户端超时、10 MP 图像上限及长调用租约续期提交为 `2dc3e51`（`fix: harden long-running scoresheet recognition`）。最终统一检查为 Django/PostgreSQL 156 passed、29 skipped，管理站 128 passed、共享记录表领域 4 passed、小程序 6 passed，并通过全仓类型检查和双端生产构建。这些提交与本状态记录均仅保存在本地 `main`，尚未推送；推送后需等待 GitHub Actions 全绿。
 2. 用户完成本轮视觉检查后，删除 `visual-demo:` 前缀的 10 条任务。它们只存在于本地数据库，当前为 7 条待处理、3 条已完成，未产生邮件。
 3. 当前公开开发赛季含 57 队、684 名合成球员、146 场比赛、138 份 publication、140 份媒体和一条不可变的合成数据审计。正式上线不在这套数据库内物理清理不可变 publication/审计，而是建立全新生产数据库与私有媒体存储，仅导入正式当前赛季数据；`check_no_synthetic_public_data` 必须在新环境通过。
 
