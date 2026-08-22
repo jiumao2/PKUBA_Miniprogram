@@ -1491,6 +1491,32 @@ class EmailOutbox(UUIDModel):
         ]
 
 
+class ApiIdempotencyRecord(UUIDModel):
+    actor = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="api_idempotency_records",
+    )
+    operation = models.CharField(max_length=120)
+    key_digest = models.CharField(max_length=64)
+    request_digest = models.CharField(max_length=64)
+    response_status = models.PositiveSmallIntegerField()
+    response_body = models.JSONField()
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["actor", "operation", "key_digest"],
+                name="uniq_api_idempotency_command",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["expires_at"], name="api_idempotency_expiry_idx")
+        ]
+
+
 class AdminAuditLog(UUIDModel):
     actor = models.ForeignKey(Account, null=True, blank=True, on_delete=models.PROTECT)
     action = models.CharField(max_length=96)

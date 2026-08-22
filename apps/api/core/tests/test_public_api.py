@@ -24,13 +24,14 @@ def test_pre_draw_schedule_exposes_placeholders():
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload[0]["id"] == str(game.id)
-    assert payload[0]["home_name"] == "A 组 1 号签"
-    assert payload[0]["away_name"] == "A 组 2 号签"
-    assert payload[0]["participants_resolved"] is False
-    assert payload[0]["division_gender"] == Division.Gender.MEN
-    assert payload[0]["home_score"] is None
-    assert payload[0]["away_score"] is None
+    assert payload["total"] == 1
+    assert payload["items"][0]["id"] == str(game.id)
+    assert payload["items"][0]["home_name"] == "A 组 1 号签"
+    assert payload["items"][0]["away_name"] == "A 组 2 号签"
+    assert payload["items"][0]["participants_resolved"] is False
+    assert payload["items"][0]["division_gender"] == Division.Gender.MEN
+    assert payload["items"][0]["home_score"] is None
+    assert payload["items"][0]["away_score"] is None
 
     dashboard = Client().get("/api/v1/public/home")
     assert dashboard.status_code == 200
@@ -90,7 +91,34 @@ def test_archived_schedule_is_not_public():
     placeholder_game(archived)
     response = Client().get("/api/v1/public/games")
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json() == {"items": [], "total": 0, "page": 1, "page_size": 100}
+
+
+def test_public_schedule_is_paginated_without_losing_filters():
+    target_season = season()
+    game = placeholder_game(target_season)
+    for index in range(2, 5):
+        Game.objects.create(
+            season=target_season,
+            division=game.division,
+            code=f"TEST-G{index:03}",
+            date=game.date + timedelta(days=index),
+            period=game.period,
+            start_time=game.start_time,
+            venue_name=f"五四东{index}",
+            home_slot=game.home_slot,
+            away_slot=game.away_slot,
+        )
+
+    payload = Client().get(
+        "/api/v1/public/games",
+        {"division_id": game.division_id, "page": 2, "page_size": 2},
+    ).json()
+
+    assert payload["total"] == 4
+    assert payload["page"] == 2
+    assert payload["page_size"] == 2
+    assert [row["code"] for row in payload["items"]] == ["TEST-G003", "TEST-G004"]
 
 
 def test_home_dashboard_reports_finished_when_no_current_or_future_games():

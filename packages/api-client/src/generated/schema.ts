@@ -2280,6 +2280,17 @@ export interface components {
             /** Daily Game Counts */
             daily_game_counts: components["schemas"]["DailyGameCountOut"][];
         };
+        /** GamePageOut */
+        GamePageOut: {
+            /** Items */
+            items: components["schemas"]["GameOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
         /** DivisionStandingsOut */
         DivisionStandingsOut: {
             /**
@@ -5463,6 +5474,17 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** GameMediaPageOut */
+        GameMediaPageOut: {
+            /** Items */
+            items: components["schemas"]["GameMediaAssetOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
         /** ReviewGameMediaIn */
         ReviewGameMediaIn: {
             /** Expected Version */
@@ -5562,6 +5584,17 @@ export interface components {
             created_at: string;
             /** Decided At */
             decided_at: string | null;
+        };
+        /** RescheduleRequestPageOut */
+        RescheduleRequestPageOut: {
+            /** Items */
+            items: components["schemas"]["RescheduleRequestOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
         };
         /** CreateRescheduleIn */
         CreateRescheduleIn: {
@@ -5773,6 +5806,17 @@ export interface components {
             next_attempt_at: string | null;
             /** Publication Number */
             publication_number: number | null;
+        };
+        /** ScoresheetQueuePageOut */
+        ScoresheetQueuePageOut: {
+            /** Items */
+            items: components["schemas"]["ScoresheetQueueItemOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
         };
         /** ScoresheetDetailOut */
         ScoresheetDetailOut: {
@@ -6191,6 +6235,8 @@ export interface operations {
                 team_id?: string | null;
                 date_from?: string | null;
                 date_to?: string | null;
+                page?: number;
+                page_size?: number;
             };
             header?: never;
             path?: never;
@@ -6204,7 +6250,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GameOut"][];
+                    "application/json": components["schemas"]["GamePageOut"];
                 };
             };
         };
@@ -7720,7 +7766,9 @@ export interface operations {
     core_api_admin_confirm_schedule: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 batch_id: string;
             };
@@ -7861,7 +7909,9 @@ export interface operations {
     core_api_admin_draw_update_draw_assignments: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 season_id: string;
             };
@@ -8020,7 +8070,9 @@ export interface operations {
     core_api_admin_lifecycle_apply_lifecycle: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 season_id: string;
             };
@@ -9341,7 +9393,9 @@ export interface operations {
     core_api_game_media_create_admin_game_media: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 game_id: string;
             };
@@ -9424,6 +9478,8 @@ export interface operations {
             query?: {
                 review_status?: string | null;
                 kind?: string | null;
+                page?: number;
+                page_size?: number;
             };
             header?: never;
             path?: never;
@@ -9437,7 +9493,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GameMediaAssetOut"][];
+                    "application/json": components["schemas"]["GameMediaPageOut"];
                 };
             };
         };
@@ -9640,6 +9696,8 @@ export interface operations {
         parameters: {
             query?: {
                 active_only?: boolean;
+                page?: number;
+                page_size?: number;
             };
             header?: never;
             path?: never;
@@ -9653,7 +9711,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RescheduleRequestOut"][];
+                    "application/json": components["schemas"]["RescheduleRequestPageOut"];
                 };
             };
         };
@@ -9661,7 +9719,9 @@ export interface operations {
     core_api_reschedule_create_request: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10170,7 +10230,9 @@ export interface operations {
     core_api_game_media_create_game_media: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 game_id: string;
             };
@@ -10625,6 +10687,8 @@ export interface operations {
         parameters: {
             query?: {
                 season_id?: string | null;
+                page?: number;
+                page_size?: number;
             };
             header?: never;
             path?: never;
@@ -10638,7 +10702,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScoresheetQueueItemOut"][];
+                    "application/json": components["schemas"]["ScoresheetQueuePageOut"];
                 };
             };
             /** @description Bad Request */
@@ -11296,7 +11360,9 @@ export interface operations {
     core_api_scoresheets_publish_scoresheet_endpoint: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 scoresheet_id: string;
             };

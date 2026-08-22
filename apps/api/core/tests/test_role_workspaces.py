@@ -12,12 +12,21 @@ from core.tests.factories import reschedule_setup
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def post_json(client: Client, path: str, payload: dict[str, object], token: str):
+def post_json(
+    client: Client,
+    path: str,
+    payload: dict[str, object],
+    token: str,
+    *,
+    idempotency_key: str = "",
+):
+    extra = {"HTTP_IDEMPOTENCY_KEY": idempotency_key} if idempotency_key else {}
     return client.post(
         path,
         data=json.dumps(payload),
         content_type="application/json",
         HTTP_AUTHORIZATION=f"Bearer {token}",
+        **extra,
     )
 
 
@@ -50,20 +59,41 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
         if item["date"] == setup["target_date"].isoformat()
         and item["period_id"] == str(setup["period"].id)
     )
+    create_payload = {
+        "game_id": str(setup["games"][0].id),
+        "expected_game_version": setup["games"][0].version,
+        "target_date": target["date"],
+        "target_period_id": target["period_id"],
+    }
     created = post_json(
         client,
         "/api/v1/reschedule-requests/",
-        {
-            "game_id": str(setup["games"][0].id),
-            "expected_game_version": setup["games"][0].version,
-            "target_date": target["date"],
-            "target_period_id": target["period_id"],
-        },
+        create_payload,
         leader_token,
+        idempotency_key="reschedule-create-test",
+    )
+    replayed = post_json(
+        client,
+        "/api/v1/reschedule-requests/",
+        create_payload,
+        leader_token,
+        idempotency_key="reschedule-create-test",
+    )
+    conflicting_reuse = post_json(
+        client,
+        "/api/v1/reschedule-requests/",
+        {**create_payload, "expected_game_version": 999},
+        leader_token,
+        idempotency_key="reschedule-create-test",
     )
 
     assert eligible.status_code == 200
     assert created.status_code == 201
+    assert replayed.status_code == 201
+    assert replayed.json() == created.json()
+    assert conflicting_reuse.status_code == 409
+    assert conflicting_reuse.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert RescheduleRequest.objects.count() == 1
     request_payload = created.json()
     assert "WITHDRAW" in request_payload["actions"]
 
@@ -71,7 +101,7 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
         "/api/v1/reschedule-requests/",
         HTTP_AUTHORIZATION=f"Bearer {opponent_token}",
     )
-    assert "RESPOND_OPPONENT" in opponent_list.json()[0]["actions"]
+    assert "RESPOND_OPPONENT" in opponent_list.json()["items"][0]["actions"]
     accepted = post_json(
         client,
         f"/api/v1/reschedule-requests/{request_payload['id']}/opponent-response",

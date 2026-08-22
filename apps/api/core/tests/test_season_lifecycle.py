@@ -377,6 +377,21 @@ def test_lifecycle_api_requires_preview_hash_and_superadmin():
             }
         ),
         content_type="application/json",
+        HTTP_IDEMPOTENCY_KEY="lifecycle-apply-test",
     )
     assert applied.status_code == 200, applied.content
     assert applied.json()["after_season_status"] == Season.Status.PRE_DRAW_PUBLIC
+    replayed = client.post(
+        f"/api/v1/admin/seasons/{setup['season'].id}/lifecycle/apply",
+        data=json.dumps(
+            {
+                "expected_season_version": setup["season"].version,
+                "target_status": Division.OperationStatus.PRE_DRAW_PUBLIC,
+                "impact_hash": preview.json()["impact_hash"],
+            }
+        ),
+        content_type="application/json",
+        HTTP_IDEMPOTENCY_KEY="lifecycle-apply-test",
+    )
+    assert replayed.status_code == 200
+    assert replayed.json() == applied.json()

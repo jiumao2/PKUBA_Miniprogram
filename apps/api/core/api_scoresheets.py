@@ -9,7 +9,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
-from ninja import Router, Schema, Status
+from ninja import Header, Router, Schema, Status
 
 from core.api_security import admin_session_auth, miniapp_bearer_auth
 from core.models import (
@@ -24,6 +24,7 @@ from core.scoresheet_schema_v2 import ensure_v2_document
 from core.scoresheet_v2.recognition import PROMPT_VERSION
 from core.scoresheet_v2.template import load_template_definition
 from core.services.game_media import issue_media_ticket
+from core.services.idempotency import IdempotencyError, execute_idempotent
 from core.services.scoresheet_recognition import RETRY_DELAYS
 from core.services.scoresheet_renderer import render_scoresheet_pdf
 from core.services.scoresheets import (
@@ -74,6 +75,13 @@ class ScoresheetQueueItemOut(Schema):
     recognition_max_attempts: int
     next_attempt_at: datetime | None
     publication_number: int | None
+
+
+class ScoresheetQueuePageOut(Schema):
+    items: list[ScoresheetQueueItemOut]
+    total: int
+    page: int
+    page_size: int
 
 
 class ScoresheetDetailOut(Schema):
@@ -422,8 +430,13 @@ def get_scoresheet_recognition_capabilities(request: HttpRequest):
         return _error(error)
 
 
-@router.get("/", response={200: list[ScoresheetQueueItemOut], **ERROR_RESPONSES})
-def list_scoresheets(request: HttpRequest, season_id: UUID | None = None):
+@router.get("/", response={200: ScoresheetQueuePageOut, **ERROR_RESPONSES})
+def list_scoresheets(
+    request: HttpRequest,
+    season_id: UUID | None = None,
+    page: int = 1,
+    page_size: int = 100,
+):
     try:
         _require_admin(request)
         games = (
@@ -437,8 +450,12 @@ def list_scoresheets(request: HttpRequest, season_id: UUID | None = None):
             games = games.filter(season_id=season_id)
         else:
             games = games.filter(Q(season__is_public=True) | Q(scoresheet__isnull=False))
+        page = max(page, 1)
+        page_size = min(max(page_size, 1), 100)
+        total = games.count()
+        start = (page - 1) * page_size
         rows: list[dict[str, Any]] = []
-        for game in games:
+        for game in games[start : start + page_size]:
             try:
                 scoresheet = game.scoresheet
             except GameScoresheet.DoesNotExist:
@@ -472,7 +489,7 @@ def list_scoresheets(request: HttpRequest, season_id: UUID | None = None):
                     ),
                 }
             )
-        return rows
+        return {"items": rows, "total": total, "page": page, "page_size": page_size}
     except ScoresheetError as error:
         return _error(error)
 
@@ -738,19 +755,38 @@ def acknowledge_scoresheet_warnings(
 
 @router.post("/{scoresheet_id}/publish", response={200: ScoresheetDetailOut, **ERROR_RESPONSES})
 def publish_scoresheet_endpoint(
-    request: HttpRequest, scoresheet_id: UUID, payload: MutationContextIn
+    request: HttpRequest,
+    scoresheet_id: UUID,
+    payload: MutationContextIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     try:
         _require_admin(request)
-        publish_scoresheet(
-            scoresheet_id=scoresheet_id,
+        def command():
+            publish_scoresheet(
+                scoresheet_id=scoresheet_id,
+                actor=request.auth,
+                expected_version=payload.expected_version,
+                lease_token=payload.lease_token,
+                client_id=payload.client_id,
+                surface=payload.surface,
+            )
+            return 200, {"scoresheet_id": scoresheet_id}
+
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            expected_version=payload.expected_version,
-            lease_token=payload.lease_token,
-            client_id=payload.client_id,
-            surface=payload.surface,
+            operation="scoresheet.publish",
+            fingerprint={
+                "scoresheet_id": scoresheet_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=command,
         )
-        return _detail(_get_scoresheet(scoresheet_id))
+        return Status(status, _detail(_get_scoresheet(UUID(str(body["scoresheet_id"])))))
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)

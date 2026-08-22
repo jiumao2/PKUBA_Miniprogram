@@ -9,7 +9,7 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import File, Router, Schema, Status
+from ninja import File, Header, Router, Schema, Status
 from ninja.files import UploadedFile
 
 from core.api_security import admin_session_auth, superadmin_session_auth
@@ -19,6 +19,7 @@ from core.services.admin_accounts import (
     promote_admin,
     set_admin_active,
 )
+from core.services.idempotency import IdempotencyError, execute_idempotent
 from core.services.schedule_capacity import capacity_ledger
 from core.services.schedule_drafts import (
     export_schedule_draft_xlsx,
@@ -1140,19 +1141,36 @@ def confirm_schedule(
     request: HttpRequest,
     batch_id: UUID,
     payload: ConfirmScheduleImportIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     try:
-        batch = confirm_schedule_import(
+        def command():
+            batch = confirm_schedule_import(
+                actor=request.auth,
+                batch_id=batch_id,
+                expected_season_version=payload.expected_season_version,
+            )
+            batch = ScheduleImportBatch.objects.prefetch_related("issues").get(id=batch.id)
+            return 200, _serialize_batch(batch)
+
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            batch_id=batch_id,
-            expected_season_version=payload.expected_season_version,
+            operation="schedule.confirm",
+            fingerprint={
+                "batch_id": batch_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=command,
         )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except ScheduleImportBatch.DoesNotExist:
         return Status(400, {"code": "BATCH_NOT_FOUND", "message": "导入批次不存在。"})
     except ScheduleImportError as error:
         return _schedule_error(error)
-    batch = ScheduleImportBatch.objects.prefetch_related("issues").get(id=batch.id)
-    return _serialize_batch(batch)
+    return Status(status, body)
 
 
 @router.get(

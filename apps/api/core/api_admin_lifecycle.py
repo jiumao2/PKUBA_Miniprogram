@@ -3,10 +3,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from django.http import HttpRequest
-from ninja import Router, Schema, Status
+from ninja import Header, Router, Schema, Status
 
 from core.api_security import superadmin_session_auth
 from core.models import Season
+from core.services.idempotency import IdempotencyError, execute_idempotent
 from core.services.season_lifecycle import (
     SeasonLifecycleError,
     apply_season_lifecycle,
@@ -120,16 +121,33 @@ def apply_lifecycle(
     request: HttpRequest,
     season_id: UUID,
     payload: LifecycleApplyIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     try:
-        return apply_season_lifecycle(
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            season_id=season_id,
-            expected_season_version=payload.expected_season_version,
-            target_status=payload.target_status,
-            division_id=payload.division_id,
-            expected_division_version=payload.expected_division_version,
-            impact_hash=payload.impact_hash,
+            operation="season.lifecycle.apply",
+            fingerprint={
+                "season_id": season_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=lambda: (
+                200,
+                apply_season_lifecycle(
+                    actor=request.auth,
+                    season_id=season_id,
+                    expected_season_version=payload.expected_season_version,
+                    target_status=payload.target_status,
+                    division_id=payload.division_id,
+                    expected_division_version=payload.expected_division_version,
+                    impact_hash=payload.impact_hash,
+                ),
+            ),
         )
+        return Status(status, body)
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except SeasonLifecycleError as error:
         return _error(error)

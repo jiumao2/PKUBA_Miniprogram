@@ -272,6 +272,13 @@ export interface PublishedGamePage {
   items: PublishedGameSummary[];
 }
 
+export interface PagedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface InboxSummary {
   open_count: number;
   display_count: string;
@@ -386,6 +393,13 @@ export interface RequestAdapter {
   <T>(url: string, options?: RequestOptions): Promise<{ status: number; data: T }>;
 }
 
+export function createIdempotencyKey(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 async function browserRequest<T>(
   url: string,
   options: RequestOptions = {},
@@ -408,24 +422,47 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
     }
     return response.data;
   };
-  const json = (method: "POST" | "PUT", payload: object, token?: string): RequestOptions => ({
+  const json = (
+    method: "POST" | "PUT",
+    payload: object,
+    token?: string,
+    idempotencyKey?: string,
+  ): RequestOptions => ({
     method,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
     },
     body: JSON.stringify(payload),
   });
   const bearer = (token: string): RequestOptions => ({
     headers: { Authorization: `Bearer ${token}` },
   });
+  const collectPages = async <T>(
+    path: string,
+    query = "",
+    options: RequestOptions = {},
+  ): Promise<T[]> => {
+    const params = new URLSearchParams(query.replace(/^\?/, ""));
+    const pageSize = 100;
+    const items: T[] = [];
+    for (let page = 1; page <= 1000; page += 1) {
+      params.set("page", String(page));
+      params.set("page_size", String(pageSize));
+      const result = await send<PagedResponse<T>>(`${path}?${params.toString()}`, options);
+      items.push(...result.items);
+      if (items.length >= result.total || result.items.length === 0) return items;
+    }
+    throw new ApiError("分页数据超过客户端安全上限", 500, "PAGINATION_LIMIT_EXCEEDED");
+  };
 
   return {
     getCurrentSeason: () => send<Season>("/api/v1/public/season"),
     getHomeDashboard: () => send<HomeDashboard>("/api/v1/public/home"),
     getStandings: () => send<Standings>("/api/v1/public/standings"),
     getBrackets: () => send<Brackets>("/api/v1/public/brackets"),
-    getGames: (query = "") => send<Game[]>(`/api/v1/public/games${query}`),
+    getGames: (query = "") => collectPages<Game>("/api/v1/public/games", query),
     getGame: (gameId: string) => send<Game>(`/api/v1/public/games/${gameId}`),
     getPublicScoresheetStats: (gameId?: string) =>
       send<PublicScoresheetStat[]>(
@@ -444,8 +481,9 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
     getGameMedia: (gameId: string, token: string) =>
       send<GameMediaCollection>(`/api/v1/game-media/games/${gameId}`, bearer(token)),
     listScoresheets: (token: string, seasonId?: string) =>
-      send<ScoresheetQueueItem[]>(
-        `/api/v1/scoresheets/${seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : ""}`,
+      collectPages<ScoresheetQueueItem>(
+        "/api/v1/scoresheets/",
+        seasonId ? `season_id=${encodeURIComponent(seasonId)}` : "",
         bearer(token),
       ),
     getScoresheet: (scoresheetId: string, token: string) =>
@@ -565,10 +603,11 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       scoresheetId: string,
       context: ScoresheetMutationContext,
       token: string,
+      idempotencyKey = createIdempotencyKey(),
     ) =>
       send<ScoresheetDetail>(
         `/api/v1/scoresheets/${scoresheetId}/publish`,
-        json("POST", context, token),
+        json("POST", context, token, idempotencyKey),
       ),
     retryScoresheetRecognition: (
       scoresheetId: string,
@@ -631,8 +670,9 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
         json("POST", { challenge_token: challengeToken }, token),
       ),
     listRescheduleRequests: (token: string, activeOnly = false) =>
-      send<RescheduleRequest[]>(
-        `/api/v1/reschedule-requests/${activeOnly ? "?active_only=true" : ""}`,
+      collectPages<RescheduleRequest>(
+        "/api/v1/reschedule-requests/",
+        activeOnly ? "active_only=true" : "",
         bearer(token),
       ),
     getEligibleRescheduleGames: (token: string) =>
@@ -645,7 +685,11 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
     createRescheduleRequest: (
       payload: components["schemas"]["CreateRescheduleIn"],
       token: string,
-    ) => send<RescheduleRequest>("/api/v1/reschedule-requests/", json("POST", payload, token)),
+      idempotencyKey = createIdempotencyKey(),
+    ) => send<RescheduleRequest>(
+      "/api/v1/reschedule-requests/",
+      json("POST", payload, token, idempotencyKey),
+    ),
     respondToRescheduleOpponent: (
       requestId: string,
       payload: components["schemas"]["VersionedResponseIn"],
@@ -743,6 +787,23 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
     return response;
   };
   const csrfHeaders = () => ({ "X-CSRFToken": csrfToken() });
+  const collectAdminPages = async <T>(
+    path: string,
+    initialParams = new URLSearchParams(),
+  ): Promise<T[]> => {
+    const params = new URLSearchParams(initialParams.toString());
+    const items: T[] = [];
+    for (let page = 1; page <= 1000; page += 1) {
+      params.set("page", String(page));
+      params.set("page_size", "100");
+      const result = await parseAdminResponse<PagedResponse<T>>(
+        await fetchAdmin(`${path}?${params.toString()}`),
+      );
+      items.push(...result.items);
+      if (items.length >= result.total || result.items.length === 0) return items;
+    }
+    throw new ApiError("分页数据超过客户端安全上限", 500, "PAGINATION_LIMIT_EXCEEDED");
+  };
 
   return {
     createWebLoginChallenge: async () =>
@@ -883,11 +944,19 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       parseAdminResponse<ScheduleImport>(
         await fetchAdmin(`/api/v1/admin/schedule-imports/${batchId}`),
       ),
-    confirmScheduleImport: async (batchId: string, payload: ConfirmScheduleImport) =>
+    confirmScheduleImport: async (
+      batchId: string,
+      payload: ConfirmScheduleImport,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
       parseAdminResponse<ScheduleImport>(
         await fetchAdmin(`/api/v1/admin/schedule-imports/${batchId}/confirm`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
           body: JSON.stringify(payload),
         }),
       ),
@@ -1016,11 +1085,16 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
     updateDrawAssignments: async (
       seasonId: string,
       payload: ApplyDrawAssignments,
+      idempotencyKey = createIdempotencyKey(),
     ) =>
       parseAdminResponse<DrawAssignmentDataset>(
         await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/draw-assignments`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
           body: JSON.stringify(payload),
         }),
       ),
@@ -1086,11 +1160,19 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           body: JSON.stringify(payload),
         }),
       ),
-    applySeasonLifecycle: async (seasonId: string, payload: LifecycleApply) =>
+    applySeasonLifecycle: async (
+      seasonId: string,
+      payload: LifecycleApply,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
       parseAdminResponse<LifecyclePreview>(
         await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/lifecycle/apply`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
           body: JSON.stringify(payload),
         }),
       ),
@@ -1306,16 +1388,14 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       const params = new URLSearchParams();
       if (reviewStatus) params.set("review_status", reviewStatus);
       if (kind) params.set("kind", kind);
-      const query = params.toString();
-      return parseAdminResponse<GameMediaAsset[]>(
-        await fetchAdmin(`/api/v1/admin/game-media/${query ? `?${query}` : ""}`),
-      );
+      return collectAdminPages<GameMediaAsset>("/api/v1/admin/game-media/", params);
     },
     uploadAdminGameMedia: async (
       gameId: string,
       kind: "SCORESHEET" | "GROUP_PHOTO" | "GAME_PHOTO",
       scoresheetCompleteConfirmed: boolean,
       file: File,
+      idempotencyKey = createIdempotencyKey(),
     ) => {
       const form = new FormData();
       form.append("kind", kind);
@@ -1327,7 +1407,7 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       return parseAdminResponse<GameMediaAsset>(
         await fetchAdmin(`/api/v1/admin/game-media/games/${gameId}`, {
           method: "POST",
-          headers: csrfHeaders(),
+          headers: { "Idempotency-Key": idempotencyKey, ...csrfHeaders() },
           body: form,
         }),
       );
@@ -1372,12 +1452,11 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           body: JSON.stringify({ expected_version: expectedVersion }),
         }),
       ),
-    listScoresheets: async (seasonId?: string) =>
-      parseAdminResponse<ScoresheetQueueItem[]>(
-        await fetchAdmin(
-          `/api/v1/scoresheets/${seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : ""}`,
-        ),
-      ),
+    listScoresheets: async (seasonId?: string) => {
+      const params = new URLSearchParams();
+      if (seasonId) params.set("season_id", seasonId);
+      return collectAdminPages<ScoresheetQueueItem>("/api/v1/scoresheets/", params);
+    },
     getScoresheet: async (scoresheetId: string) =>
       parseAdminResponse<ScoresheetDetail>(
         await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}`),
@@ -1512,11 +1591,16 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
     publishScoresheet: async (
       scoresheetId: string,
       context: ScoresheetMutationContext,
+      idempotencyKey = createIdempotencyKey(),
     ) =>
       parseAdminResponse<ScoresheetDetail>(
         await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/publish`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
           body: JSON.stringify(context),
         }),
       ),

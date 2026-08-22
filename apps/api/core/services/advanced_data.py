@@ -109,6 +109,12 @@ MODEL_SPECS = (
     ModelSpec("scoresheet-edit-leases", core_models.ScoresheetEditLease, "记录表编辑租约"),
     ModelSpec("inbox-items", core_models.InboxItem, "任务箱项目"),
     ModelSpec("email-outbox", core_models.EmailOutbox, "邮件发件箱"),
+    ModelSpec(
+        "api-idempotency-records",
+        core_models.ApiIdempotencyRecord,
+        "接口幂等记录",
+        immutable=True,
+    ),
     ModelSpec("admin-audit-logs", core_models.AdminAuditLog, "管理员审计日志", immutable=True),
 )
 

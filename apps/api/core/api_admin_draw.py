@@ -4,7 +4,7 @@ from datetime import date
 from uuid import UUID
 
 from django.http import HttpRequest
-from ninja import Router, Schema, Status
+from ninja import Header, Router, Schema, Status
 
 from core.api_security import superadmin_session_auth
 from core.models import Season
@@ -14,6 +14,7 @@ from core.services.draw_assignments import (
     preview_draw_assignments,
     serialize_draw_dataset,
 )
+from core.services.idempotency import IdempotencyError, execute_idempotent
 
 router = Router(tags=["admin-draw"], auth=superadmin_session_auth)
 
@@ -201,15 +202,32 @@ def update_draw_assignments(
     request: HttpRequest,
     season_id: UUID,
     payload: DrawApplyIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     try:
-        return apply_draw_assignments(
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            season_id=season_id,
-            expected_version=payload.expected_season_version,
-            division_id=payload.division_id,
-            assignment_rows=[item.model_dump() for item in payload.assignments],
-            impact_hash=payload.impact_hash,
+            operation="draw.apply",
+            fingerprint={
+                "season_id": season_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=lambda: (
+                200,
+                apply_draw_assignments(
+                    actor=request.auth,
+                    season_id=season_id,
+                    expected_version=payload.expected_season_version,
+                    division_id=payload.division_id,
+                    assignment_rows=[item.model_dump() for item in payload.assignments],
+                    impact_hash=payload.impact_hash,
+                ),
+            ),
         )
+        return Status(status, body)
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except DrawAssignmentError as error:
         return _error_response(error)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Literal
 from urllib.parse import quote
@@ -7,7 +8,7 @@ from uuid import UUID
 
 from django.core.files.storage import default_storage
 from django.http import FileResponse, HttpRequest
-from ninja import File, Form, Router, Schema, Status
+from ninja import File, Form, Header, Router, Schema, Status
 from ninja.files import UploadedFile
 
 from core.api_security import admin_session_auth, miniapp_bearer_auth
@@ -22,6 +23,7 @@ from core.services.game_media import (
     review_game_media,
     upload_game_media,
 )
+from core.services.idempotency import IdempotencyError, execute_idempotent
 
 router = Router(tags=["game-media"])
 admin_router = Router(tags=["admin-game-media"], auth=admin_session_auth)
@@ -58,6 +60,13 @@ class GameMediaCollectionOut(Schema):
     can_upload: bool
     can_review: bool
     assets: list[GameMediaAssetOut]
+
+
+class GameMediaPageOut(Schema):
+    items: list[GameMediaAssetOut]
+    total: int
+    page: int
+    page_size: int
 
 
 class ReviewGameMediaIn(Schema):
@@ -139,6 +148,20 @@ def _serialize_asset(asset: GameMediaAsset) -> dict[str, object]:
     }
 
 
+def _upload_fingerprint(uploaded_file: UploadedFile) -> dict[str, object]:
+    digest = hashlib.sha256()
+    uploaded_file.seek(0)
+    for chunk in uploaded_file.chunks():
+        digest.update(chunk)
+    uploaded_file.seek(0)
+    return {
+        "name": uploaded_file.name,
+        "content_type": uploaded_file.content_type,
+        "size": uploaded_file.size,
+        "sha256": digest.hexdigest(),
+    }
+
+
 @router.get(
     "/games/{game_id}",
     auth=miniapp_bearer_auth,
@@ -192,21 +215,41 @@ def create_game_media(
     kind: Form[str],
     scoresheet_complete_confirmed: Form[bool],
     image: File[UploadedFile],
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     game = _game_queryset().filter(id=game_id, season__is_public=True).first()
     if game is None:
         return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
     try:
-        asset = upload_game_media(
+        def command():
+            asset = upload_game_media(
+                actor=request.auth,
+                game=game,
+                kind=kind,
+                scoresheet_complete_confirmed=scoresheet_complete_confirmed,
+                uploaded_file=image,
+            )
+            return 201, {"asset_id": asset.id}
+
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            game=game,
-            kind=kind,
-            scoresheet_complete_confirmed=scoresheet_complete_confirmed,
-            uploaded_file=image,
+            operation="game-media.upload",
+            fingerprint={
+                "game_id": game_id,
+                "kind": kind,
+                "scoresheet_complete_confirmed": scoresheet_complete_confirmed,
+                "image": _upload_fingerprint(image),
+            },
+            command=command,
         )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except GameMediaError as error:
         return _error_response(error)
-    return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
+    asset = _asset_queryset().get(id=UUID(str(body["asset_id"])))
+    return Status(status, _serialize_asset(asset))
 
 
 @router.get(
@@ -281,28 +324,50 @@ def create_admin_game_media(
     kind: Form[str],
     scoresheet_complete_confirmed: Form[bool],
     image: File[UploadedFile],
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     game = _game_queryset().filter(id=game_id).first()
     if game is None:
         return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
     try:
-        asset = upload_game_media(
+        def command():
+            asset = upload_game_media(
+                actor=request.auth,
+                game=game,
+                kind=kind,
+                scoresheet_complete_confirmed=scoresheet_complete_confirmed,
+                uploaded_file=image,
+            )
+            return 201, {"asset_id": asset.id}
+
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            game=game,
-            kind=kind,
-            scoresheet_complete_confirmed=scoresheet_complete_confirmed,
-            uploaded_file=image,
+            operation="game-media.upload",
+            fingerprint={
+                "game_id": game_id,
+                "kind": kind,
+                "scoresheet_complete_confirmed": scoresheet_complete_confirmed,
+                "image": _upload_fingerprint(image),
+            },
+            command=command,
         )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except GameMediaError as error:
         return _error_response(error)
-    return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
+    asset = _asset_queryset().get(id=UUID(str(body["asset_id"])))
+    return Status(status, _serialize_asset(asset))
 
 
-@admin_router.get("/", response=list[GameMediaAssetOut])
+@admin_router.get("/", response=GameMediaPageOut)
 def list_admin_game_media(
     request: HttpRequest,
     review_status: str | None = None,
     kind: str | None = None,
+    page: int = 1,
+    page_size: int = 100,
 ):
     del request
     assets = _asset_queryset().filter(game__season__is_public=True).order_by(
@@ -313,7 +378,16 @@ def list_admin_game_media(
         assets = assets.filter(review_status=review_status)
     if kind:
         assets = assets.filter(kind=kind)
-    return [_serialize_asset(asset) for asset in assets]
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+    total = assets.count()
+    start = (page - 1) * page_size
+    return {
+        "items": [_serialize_asset(asset) for asset in assets[start : start + page_size]],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 @admin_router.post(

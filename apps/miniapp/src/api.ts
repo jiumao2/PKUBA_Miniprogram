@@ -1,5 +1,6 @@
 import {
   ApiError,
+  createIdempotencyKey,
   createPkubaClient,
   type GameMediaAsset,
   type RequestAdapter,
@@ -40,13 +41,17 @@ export function uploadGameMedia(
   scoresheetCompleteConfirmed: boolean,
   token: string,
   onProgress?: (progress: number) => void,
+  idempotencyKey = createIdempotencyKey(),
 ): Promise<GameMediaAsset> {
   return new Promise((resolve, reject) => {
     const task = Taro.uploadFile({
       url: `${PKUBA_API_BASE_URL.replace(/\/$/, "")}/api/v1/game-media/games/${gameId}`,
       filePath,
       name: "image",
-      header: { Authorization: `Bearer ${token}` },
+      header: {
+        Authorization: `Bearer ${token}`,
+        "Idempotency-Key": idempotencyKey,
+      },
       formData: {
         kind,
         scoresheet_complete_confirmed: scoresheetCompleteConfirmed ? "true" : "false",

@@ -438,9 +438,19 @@ def test_superadmin_draw_api_is_csrf_versioned_and_normal_admin_is_forbidden():
         data=json.dumps({**payload, "impact_hash": preview.json()["impact_hash"]}),
         content_type="application/json",
         HTTP_X_CSRFTOKEN=csrf,
+        HTTP_IDEMPOTENCY_KEY="draw-apply-test",
     )
     assert saved.status_code == 200
     assert saved.json()["divisions"][0]["complete"] is True
+    replayed = client.put(
+        path,
+        data=json.dumps({**payload, "impact_hash": preview.json()["impact_hash"]}),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+        HTTP_IDEMPOTENCY_KEY="draw-apply-test",
+    )
+    assert replayed.status_code == 200
+    assert replayed.json() == saved.json()
 
     stale = client.post(
         f"{path}/preview",

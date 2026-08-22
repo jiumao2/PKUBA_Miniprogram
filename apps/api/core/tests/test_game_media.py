@@ -9,7 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
 from PIL import Image
 
-from core.models import Account, AdminAuditLog, GameMediaAsset
+from core.models import Account, AdminAuditLog, ApiIdempotencyRecord, GameMediaAsset
 from core.services.wechat import issue_session
 from core.tests.factories import reschedule_setup
 
@@ -30,7 +30,9 @@ def upload(
     kind: str,
     confirmed: bool,
     file: SimpleUploadedFile,
+    idempotency_key: str = "",
 ):
+    extra = {"HTTP_IDEMPOTENCY_KEY": idempotency_key} if idempotency_key else {}
     return client.post(
         f"/api/v1/game-media/games/{game_id}",
         data={
@@ -39,7 +41,53 @@ def upload(
             "image": file,
         },
         HTTP_AUTHORIZATION=f"Bearer {token}",
+        **extra,
     )
+
+
+def test_media_upload_replays_same_key_and_rejects_different_file(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["superadmin"])
+    client = Client()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        first = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("same.jpg", (900, 700)),
+            idempotency_key="media-upload-test",
+        )
+        replayed = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("same.jpg", (900, 700)),
+            idempotency_key="media-upload-test",
+        )
+        conflicting = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("different.jpg", (901, 700)),
+            idempotency_key="media-upload-test",
+        )
+
+    assert first.status_code == 201
+    assert replayed.status_code == 201
+    assert replayed.json()["id"] == first.json()["id"]
+    assert conflicting.status_code == 409
+    assert conflicting.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert GameMediaAsset.objects.filter(game=game).count() == 1
+    record = ApiIdempotencyRecord.objects.get(operation="game-media.upload")
+    assert record.key_digest != "media-upload-test"
 
 
 def test_scoresheet_upload_is_admin_only_and_requires_confirmation(tmp_path):
@@ -178,7 +226,7 @@ def test_admin_can_replace_wrong_upload_and_new_asset_requires_review(tmp_path):
     assert replacement.status_code == 201
     assert replacement.json()["id"] != old_id
     assert replacement.json()["review_status"] == GameMediaAsset.ReviewStatus.PENDING
-    assert [asset["id"] for asset in listed.json()] == [replacement.json()["id"]]
+    assert [asset["id"] for asset in listed.json()["items"]] == [replacement.json()["id"]]
     assert old_content.status_code == 400
     old_asset = GameMediaAsset.objects.get(id=old_id)
     assert old_asset.deleted_at is not None
@@ -254,7 +302,7 @@ def test_group_photo_is_separate_from_other_photos_and_can_be_filtered(tmp_path)
     assert other_photo.status_code == 201
     assert other_photo.json()["kind"] == GameMediaAsset.Kind.GAME_PHOTO
     assert filtered.status_code == 200
-    assert [asset["id"] for asset in filtered.json()] == [group_photo.json()["id"]]
+    assert [asset["id"] for asset in filtered.json()["items"]] == [group_photo.json()["id"]]
 
 
 def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):

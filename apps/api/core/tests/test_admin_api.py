@@ -320,14 +320,26 @@ def test_superadmin_can_download_validate_and_confirm_schedule(tmp_path):
         batch = upload.json()
         assert batch["summary"]["error_count"] == 0
         assert batch["summary"]["new_game_count"] == 7
+        confirm_path = f"/api/v1/admin/schedule-imports/{batch['id']}/confirm"
+        confirm_payload = {"expected_season_version": setup["season"].version}
         confirm = client.post(
-            f"/api/v1/admin/schedule-imports/{batch['id']}/confirm",
-            data=json.dumps({"expected_season_version": setup["season"].version}),
+            confirm_path,
+            data=json.dumps(confirm_payload),
             content_type="application/json",
             HTTP_X_CSRFTOKEN=csrf_token,
+            HTTP_IDEMPOTENCY_KEY="schedule-confirm-test",
+        )
+        replayed_confirm = client.post(
+            confirm_path,
+            data=json.dumps(confirm_payload),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf_token,
+            HTTP_IDEMPOTENCY_KEY="schedule-confirm-test",
         )
 
     assert confirm.status_code == 200
+    assert replayed_confirm.status_code == 200
+    assert replayed_confirm.json() == confirm.json()
     assert confirm.json()["status"] == "CONFIRMED"
     assert Game.objects.filter(season=setup["season"]).count() == 7
     assert not Game.objects.filter(

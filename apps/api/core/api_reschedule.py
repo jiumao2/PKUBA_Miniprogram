@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
-from ninja import Router, Schema, Status
+from ninja import Header, Router, Schema, Status
 
 from core.api_security import miniapp_bearer_auth
 from core.models import (
@@ -20,6 +20,7 @@ from core.models import (
     Team,
     TeamConfirmation,
 )
+from core.services.idempotency import IdempotencyError, execute_idempotent
 from core.services.rescheduling import (
     RescheduleError,
     admin_cancel_request,
@@ -106,6 +107,13 @@ class RescheduleRequestOut(Schema):
     version: int
     created_at: datetime
     decided_at: datetime | None
+
+
+class RescheduleRequestPageOut(Schema):
+    items: list[RescheduleRequestOut]
+    total: int
+    page: int
+    page_size: int
 
 
 class CreateRescheduleIn(Schema):
@@ -307,15 +315,27 @@ def _visible_requests(actor: Account) -> QuerySet[RescheduleRequest]:
     ).distinct()
 
 
-@router.get("/", response=list[RescheduleRequestOut])
-def list_requests(request: HttpRequest, active_only: bool = False):
+@router.get("/", response=RescheduleRequestPageOut)
+def list_requests(
+    request: HttpRequest,
+    active_only: bool = False,
+    page: int = 1,
+    page_size: int = 50,
+):
     requests = _visible_requests(request.auth)
     if active_only:
         requests = requests.exclude(status__in=RescheduleRequest.TERMINAL_STATUSES)
-    return [
-        _request_out(item, request.auth)
-        for item in requests.order_by("-created_at", "-id")
-    ]
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+    total = requests.count()
+    start = (page - 1) * page_size
+    rows = requests.order_by("-created_at", "-id")[start : start + page_size]
+    return {
+        "items": [_request_out(item, request.auth) for item in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 @router.get("/eligible-games", response=list[RescheduleGameOut])
@@ -375,19 +395,36 @@ def available_targets(request: HttpRequest, game_id: UUID):
         409: RescheduleErrorOut,
     },
 )
-def create_request(request: HttpRequest, payload: CreateRescheduleIn):
+def create_request(
+    request: HttpRequest,
+    payload: CreateRescheduleIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
     try:
-        created = submit_reschedule(
+        def command():
+            created = submit_reschedule(
+                actor=request.auth,
+                game_id=payload.game_id,
+                expected_game_version=payload.expected_game_version,
+                target_date=payload.target_date,
+                target_period_id=payload.target_period_id,
+            )
+            created = _request_queryset().get(id=created.id)
+            return 201, _request_out(created, request.auth)
+
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            game_id=payload.game_id,
-            expected_game_version=payload.expected_game_version,
-            target_date=payload.target_date,
-            target_period_id=payload.target_period_id,
+            operation="reschedule.create",
+            fingerprint=payload.model_dump(mode="json"),
+            command=command,
         )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except RescheduleError as error:
         return _error(error)
-    created = _request_queryset().get(id=created.id)
-    return Status(201, _request_out(created, request.auth))
+    return Status(status, body)
 
 
 def _updated_request(request_id: UUID) -> RescheduleRequest:

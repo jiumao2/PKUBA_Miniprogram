@@ -164,6 +164,26 @@
               "title": "Date To"
             },
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -172,11 +192,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/GameOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/GamePageOut"
                 }
               }
             }
@@ -2450,6 +2466,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -2668,6 +2700,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -2902,6 +2950,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -5000,6 +5064,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -5141,6 +5221,26 @@
               "title": "Kind"
             },
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -5149,11 +5249,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/GameMediaAssetOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/GameMediaPageOut"
                 }
               }
             }
@@ -5461,6 +5557,26 @@
               "type": "boolean"
             },
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 50,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -5469,11 +5585,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/RescheduleRequestOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/RescheduleRequestPageOut"
                 }
               }
             }
@@ -5491,7 +5603,24 @@
       "post": {
         "operationId": "core_api_reschedule_create_request",
         "summary": "Create Request",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
         "responses": {
           "201": {
             "description": "Created",
@@ -6247,6 +6376,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -6902,6 +7047,26 @@
               "title": "Season Id"
             },
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -6910,11 +7075,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ScoresheetQueueItemOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/ScoresheetQueuePageOut"
                 }
               }
             }
@@ -7899,6 +8060,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -9222,6 +9399,37 @@
           "daily_game_counts"
         ],
         "title": "HomeDashboardOut",
+        "type": "object"
+      },
+      "GamePageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GameOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "GamePageOut",
         "type": "object"
       },
       "DivisionStandingsOut": {
@@ -17009,6 +17217,37 @@
         "title": "GameMediaErrorOut",
         "type": "object"
       },
+      "GameMediaPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GameMediaAssetOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "GameMediaPageOut",
+        "type": "object"
+      },
       "ReviewGameMediaIn": {
         "properties": {
           "expected_version": {
@@ -17208,6 +17447,37 @@
           "decided_at"
         ],
         "title": "RescheduleRequestOut",
+        "type": "object"
+      },
+      "RescheduleRequestPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RescheduleRequestOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "RescheduleRequestPageOut",
         "type": "object"
       },
       "CreateRescheduleIn": {
@@ -17753,6 +18023,37 @@
           "publication_number"
         ],
         "title": "ScoresheetQueueItemOut",
+        "type": "object"
+      },
+      "ScoresheetQueuePageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScoresheetQueueItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "ScoresheetQueuePageOut",
         "type": "object"
       },
       "ScoresheetDetailOut": {

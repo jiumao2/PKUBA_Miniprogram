@@ -97,6 +97,13 @@ class GameOut(Schema):
     version: int
 
 
+class GamePageOut(Schema):
+    items: list[GameOut]
+    total: int
+    page: int
+    page_size: int
+
+
 class DailyGameCountOut(Schema):
     date: date
     game_count: int
@@ -383,13 +390,15 @@ def home_dashboard(request: HttpRequest):
     }
 
 
-@public.get("/games", response=list[GameOut])
+@public.get("/games", response=GamePageOut)
 def list_games(
     request: HttpRequest,
     division_id: UUID | None = None,
     team_id: UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    page: int = 1,
+    page_size: int = 100,
 ):
     del request
     games = public_games()
@@ -401,7 +410,16 @@ def list_games(
         games = games.filter(date__gte=date_from)
     if date_to:
         games = games.filter(date__lte=date_to)
-    return [serialize_game(game) for game in games]
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+    total = games.count()
+    start = (page - 1) * page_size
+    return {
+        "items": [serialize_game(game) for game in games[start : start + page_size]],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 @public.get("/standings", response={200: StandingsOut, 404: ErrorOut})

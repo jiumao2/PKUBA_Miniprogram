@@ -17,6 +17,7 @@ from pypdf import PdfReader
 from core.models import (
     Account,
     AdminAuditLog,
+    ApiIdempotencyRecord,
     Game,
     GameMediaAsset,
     GamePlayerStat,
@@ -403,6 +404,49 @@ def test_publish_does_not_require_region_reviews_and_keeps_field_change_log(tmp_
         surface=ScoresheetEditLease.Surface.WEB,
     )
     assert publication.publication_number == 1
+
+
+def test_publish_endpoint_replays_same_idempotency_key(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    lease_token = obtain_lease(scoresheet, setup["admin"])
+    scoresheet = make_ready(scoresheet, setup["admin"], lease_token)
+    payload = {
+        "expected_version": scoresheet.draft_version,
+        "lease_token": lease_token,
+        "client_id": "web-1",
+        "surface": ScoresheetEditLease.Surface.WEB,
+    }
+    client = Client()
+    client.force_login(setup["admin"])
+    path = f"/api/v1/scoresheets/{scoresheet.id}/publish"
+
+    first = client.post(
+        path,
+        data=json.dumps(payload),
+        content_type="application/json",
+        HTTP_IDEMPOTENCY_KEY="scoresheet-publish-test",
+    )
+    replayed = client.post(
+        path,
+        data=json.dumps(payload),
+        content_type="application/json",
+        HTTP_IDEMPOTENCY_KEY="scoresheet-publish-test",
+    )
+    conflicting = client.post(
+        path,
+        data=json.dumps({**payload, "expected_version": payload["expected_version"] + 1}),
+        content_type="application/json",
+        HTTP_IDEMPOTENCY_KEY="scoresheet-publish-test",
+    )
+
+    assert first.status_code == 200, first.content
+    assert replayed.status_code == 200
+    assert replayed.json()["publication"] == first.json()["publication"]
+    assert conflicting.status_code == 409
+    assert conflicting.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert ScoresheetPublication.objects.filter(scoresheet=scoresheet).count() == 1
+    assert ApiIdempotencyRecord.objects.filter(operation="scoresheet.publish").count() == 1
 
 
 def test_web_edit_is_returned_by_miniapp_sync_endpoint(tmp_path):

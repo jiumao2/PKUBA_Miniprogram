@@ -102,6 +102,10 @@ def test_scoresheet_demo_is_isolated_visible_and_idempotent(tmp_path):
     assert ScoresheetRecognitionRun.objects.filter(id=first_ids["run"]).count() == 1
     assert AdminAuditLog.objects.filter(action="SCORESHEET_DEMO_SEEDED").count() == 1
     assert queue_response.status_code == 200
-    row = next(item for item in queue_response.json() if item["game_id"] == str(scoresheet.game_id))
+    row = next(
+        item
+        for item in queue_response.json()["items"]
+        if item["game_id"] == str(scoresheet.game_id)
+    )
     assert row["start_time"] == "12:50"
     assert row["status"] == GameScoresheet.Status.DRAFT
