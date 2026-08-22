@@ -1,10 +1,12 @@
 from datetime import timedelta
 
 import pytest
+from django.core.management import call_command
 from django.test import Client, override_settings
 from django.utils import timezone
 
-from core.models import InboxItem, RescheduleRequest, ScoresheetRecognitionRun
+from core.models import EmailOutbox, InboxItem, RescheduleRequest, ScoresheetRecognitionRun
+from core.services.email_outbox import PUBLIC_MAILBOX
 from core.services.inbox_tasks import (
     close_scoresheet_tasks,
     sync_reschedule_tasks,
@@ -43,9 +45,17 @@ def test_submit_creates_one_idempotent_opponent_task():
     assert task.route == InboxItem.Route.RESCHEDULE_REQUEST
     assert task.route_params == {"request_id": str(request.id)}
     assert task.due_at == request.confirmation_deadline
+    message = EmailOutbox.objects.get(object_id=request.id)
+    assert message.recipient == PUBLIC_MAILBOX
+    assert message.event_key == f"reschedule:{request.id}:status:WAITING_OPPONENT"
+    assert "协商中" in message.subject
+    assert f"申请方：{request.requester_team.name}" in message.body
+    assert "原比赛：" in message.body
+    assert "调整后比赛：" in message.body
 
     sync_reschedule_tasks(request)
     assert InboxItem.objects.filter(account=setup["accounts"][1]).count() == 1
+    assert EmailOutbox.objects.filter(object_id=request.id).count() == 1
 
 
 def test_viewing_task_does_not_reduce_badge_until_business_closes():
@@ -123,6 +133,19 @@ def test_cross_week_review_task_targets_superadmin_only():
         object_id=request.id,
         status=InboxItem.Status.OPEN,
     ).exists()
+    messages = EmailOutbox.objects.filter(object_id=request.id).order_by("created_at")
+    assert messages.count() == 2
+    assert "对手已同意，待审核" in messages.last().subject
+
+
+def test_reconcile_tasks_does_not_backfill_historical_email():
+    setup = reschedule_setup()
+    request = _submit(setup)
+    EmailOutbox.objects.filter(object_id=request.id).delete()
+
+    call_command("reconcile_inbox_tasks", apply=True)
+
+    assert not EmailOutbox.objects.filter(object_id=request.id).exists()
 
 
 def test_inbox_is_account_scoped_and_rejects_invalid_cursor():
@@ -187,6 +210,7 @@ def test_ai_final_failure_targets_superadmin_not_ordinary_admin(tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path):
         setup, _, _, _, scoresheet = create_scoresheet()
     run = scoresheet.recognition_runs.get(source_version=scoresheet.source_version)
+    EmailOutbox.objects.filter(object_id=scoresheet.id).delete()
     ScoresheetRecognitionRun.objects.filter(id=run.id).update(
         status=ScoresheetRecognitionRun.Status.FAILED,
         finished_at=timezone.now(),
@@ -207,3 +231,7 @@ def test_ai_final_failure_targets_superadmin_not_ordinary_admin(tmp_path):
         object_id=scoresheet.id,
         status=InboxItem.Status.OPEN,
     ).exists()
+    message = EmailOutbox.objects.get(object_id=scoresheet.id)
+    assert message.recipient == PUBLIC_MAILBOX
+    assert "记录表识别异常" in message.subject
+    assert "识别服务返回了无效结构" in message.body

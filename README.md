@@ -85,7 +85,7 @@ docker compose exec api python manage.py reconcile_inbox_tasks
 docker compose exec api python manage.py reconcile_inbox_tasks --apply
 ```
 
-所有邮件现在和未来都只允许发到协会公邮 `pkubaoutward@163.com`，不配置协会成员或领队邮箱。开发环境 SMTP 指向 Mailpit；生产示例使用 `smtp.163.com:465` 和 SSL，但 `outbox` profile、业务邮件正文与真实外发默认禁用。启用前必须在 163 邮箱轮换旧项目已经暴露的授权码，只把新授权码写入服务器 `.env.production` 的 `EMAIL_HOST_PASSWORD`，不得复制旧凭据或提交到 Git。
+所有邮件现在和未来都只允许发到协会公邮 `pkubaoutward@163.com`，不配置协会成员或领队邮箱。调赛每个权威状态、缺少领队等调赛异常及记录表识别最终失败会在业务事务内写入去重 `EmailOutbox`；正文沿用旧小程序中的原比赛、目标比赛、申请时间、申请方、类型和组别等业务字段，但不复制旧云函数或凭据。SMTP 发送由独立进程异步重试，失败不会回滚业务。开发环境 SMTP 指向 Mailpit；生产示例使用 `smtp.163.com:465` 和 SSL，实际 `outbox` 发送进程仍默认不启动。启用真实外发前必须在 163 邮箱轮换旧项目已经暴露的授权码，只把新授权码写入服务器 `.env.production` 的 `EMAIL_HOST_PASSWORD`，不得复制旧凭据或提交到 Git。`reconcile_inbox_tasks --apply` 只重建任务，不会补发历史邮件。
 
 登录入口只在小程序“我的”页。首次进入点击“微信登录”并设置昵称；之后使用仍有效的本地会话，令牌过期时会重新通过 `wx.login` 识别已有 OpenID。点击“退出当前账号”会同时撤销服务端会话。开发者工具中的成功登录必须使用刚生成的 code，不能复用旧 code。
 

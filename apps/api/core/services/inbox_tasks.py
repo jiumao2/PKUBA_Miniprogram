@@ -15,6 +15,7 @@ from core.models import (
     SeasonLeaderBinding,
     TeamConfirmation,
 )
+from core.services.email_outbox import enqueue_public_mail
 
 
 def _active_superadmins():
@@ -142,7 +143,13 @@ def _reschedule_summary(item: RescheduleRequest) -> tuple[str, str]:
     return title, body
 
 
-def _reschedule_anomaly(item: RescheduleRequest, *, code: str, message: str) -> str:
+def _reschedule_anomaly(
+    item: RescheduleRequest,
+    *,
+    code: str,
+    message: str,
+    notify_staff: bool,
+) -> str:
     title, _ = _reschedule_summary(item)
     key = f"reschedule:{item.id}:anomaly:{code}"
     _create_tasks(
@@ -157,7 +164,67 @@ def _reschedule_anomaly(item: RescheduleRequest, *, code: str, message: str) -> 
         route_params={"request_id": str(item.id)},
         season_id=item.game.season_id,
     )
+    if notify_staff:
+        enqueue_public_mail(
+            event_key=key,
+            subject=f"[PKUBA] 调赛异常 · {title}",
+            body=f"{message}\n\n{_reschedule_email_body(item)}",
+            object_type="RescheduleRequest",
+            object_id=item.id,
+        )
     return key
+
+
+def _reschedule_email_body(item: RescheduleRequest) -> str:
+    original = item.original_game_snapshot or {}
+    requested_at = timezone.localtime(item.created_at).strftime("%Y-%m-%d %H:%M")
+    return "\n".join(
+        [
+            (
+                f"原比赛：{original.get('date', '')} "
+                f"{original.get('start_time', '')} "
+                f"{item.game.home_display} vs {item.game.away_display} "
+                f"{original.get('venue_name', '')}"
+            ).strip(),
+            (
+                f"调整后比赛：{item.target_date.isoformat()} "
+                f"{item.target_start_time.strftime('%H:%M')} "
+                f"{item.game.home_display} vs {item.game.away_display} "
+                f"{item.target_venue_name}"
+            ).strip(),
+            f"申请日期：{requested_at}",
+            f"申请方：{item.requester_team.name}",
+            f"申请类型：{item.get_request_type_display()}",
+            f"组别：{item.game.division.name}",
+            f"当前状态：{item.get_status_display()}",
+            f"申请编号：{item.id}",
+        ]
+    )
+
+
+def _enqueue_reschedule_status_email(item: RescheduleRequest) -> None:
+    state_labels = {
+        RescheduleRequest.Status.WAITING_OPPONENT: "协商中",
+        RescheduleRequest.Status.WAITING_ADMIN_DECISION: "对手已同意，待审核",
+        RescheduleRequest.Status.WAITING_SELECTED_TEAMS: "等待指定球队投票",
+        RescheduleRequest.Status.WAITING_ADMIN_FINAL: "投票完成，待终审",
+        RescheduleRequest.Status.APPROVED: "已通过",
+        RescheduleRequest.Status.REJECTED: "已拒绝",
+        RescheduleRequest.Status.WITHDRAWN: "已撤回",
+        RescheduleRequest.Status.EXPIRED: "已过期",
+        RescheduleRequest.Status.ADMIN_CANCELLED: "管理员已取消",
+    }
+    title, _ = _reschedule_summary(item)
+    enqueue_public_mail(
+        event_key=f"reschedule:{item.id}:status:{item.status}",
+        subject=(
+            f"[PKUBA] {item.get_request_type_display()}调赛申请"
+            f"（{state_labels[item.status]}）{title}"
+        ),
+        body=_reschedule_email_body(item),
+        object_type="RescheduleRequest",
+        object_id=item.id,
+    )
 
 
 def _leader_for_team(item: RescheduleRequest, team_id):
@@ -174,7 +241,11 @@ def _leader_for_team(item: RescheduleRequest, team_id):
     return binding.account if binding else None
 
 
-def sync_reschedule_tasks(item: RescheduleRequest) -> list[str]:
+def sync_reschedule_tasks(
+    item: RescheduleRequest,
+    *,
+    notify_staff: bool = True,
+) -> list[str]:
     """Synchronize actionable tasks for the request's current authoritative state."""
 
     item = (
@@ -220,6 +291,7 @@ def sync_reschedule_tasks(item: RescheduleRequest) -> list[str]:
                     item,
                     code="OPPONENT_LEADER_MISSING",
                     message="对手球队没有有效领队，无法投递确认任务，请超级管理员处理。",
+                    notify_staff=notify_staff,
                 )
             )
 
@@ -271,6 +343,7 @@ def sync_reschedule_tasks(item: RescheduleRequest) -> list[str]:
                             f"指定投票球队 {confirmation.team.name} 没有有效领队，"
                             "无法投递投票任务，请超级管理员处理。"
                         ),
+                        notify_staff=notify_staff,
                     )
                 )
 
@@ -297,12 +370,16 @@ def sync_reschedule_tasks(item: RescheduleRequest) -> list[str]:
         reason=item.status,
         exclude_dedupe_keys=keep,
     )
+    if notify_staff:
+        _enqueue_reschedule_status_email(item)
     return anomalies
 
 
 def sync_scoresheet_recognition_tasks(
     scoresheet: GameScoresheet,
     run: ScoresheetRecognitionRun,
+    *,
+    notify_staff: bool = True,
 ) -> str | None:
     scoresheet = GameScoresheet.objects.select_related(
         "game__season",
@@ -361,6 +438,20 @@ def sync_scoresheet_recognition_tasks(
             route_params={"scoresheet_id": str(scoresheet.id)},
             season_id=scoresheet.game.season_id,
         )
+        if notify_staff:
+            enqueue_public_mail(
+                event_key=anomaly_key,
+                subject=f"[PKUBA] 记录表识别异常 · {game_label}",
+                body=(
+                    f"{scoresheet.game.division.name} · "
+                    f"{scoresheet.game.date.isoformat()} "
+                    f"{scoresheet.game.start_time.strftime('%H:%M')}\n"
+                    f"{run.last_error or '记录表 AI 识别达到最终失败状态。'}\n"
+                    f"记录表编号：{scoresheet.id}"
+                ),
+                object_type="GameScoresheet",
+                object_id=scoresheet.id,
+            )
 
     close_tasks(
         object_type="GameScoresheet",

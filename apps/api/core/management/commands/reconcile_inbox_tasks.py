@@ -36,7 +36,7 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             for item in requests:
-                sync_reschedule_tasks(item)
+                sync_reschedule_tasks(item, notify_staff=False)
             for scoresheet in scoresheets:
                 run = (
                     ScoresheetRecognitionRun.objects.filter(
@@ -50,7 +50,11 @@ class Command(BaseCommand):
                     ScoresheetRecognitionRun.Status.SUCCEEDED,
                     ScoresheetRecognitionRun.Status.FAILED,
                 }:
-                    sync_scoresheet_recognition_tasks(scoresheet, run)
+                    sync_scoresheet_recognition_tasks(
+                        scoresheet,
+                        run,
+                        notify_staff=False,
+                    )
                 else:
                     close_scoresheet_tasks(
                         scoresheet.id,
