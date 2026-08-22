@@ -1,0 +1,156 @@
+.inbox-page {
+  padding-bottom: 56rpx;
+}
+
+.inbox-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.inbox-count {
+  color: #6f6b65;
+  font-size: 26rpx;
+}
+
+.inbox-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 28rpx;
+  border-bottom: 1rpx solid #d8d3cb;
+  background: #f2f0eb;
+}
+
+.inbox-tab {
+  position: relative;
+  padding: 22rpx 0 20rpx;
+  color: #716c65;
+  font-size: 29rpx;
+  font-weight: 750;
+  text-align: center;
+}
+
+.inbox-tab.is-active {
+  color: #171614;
+}
+
+.inbox-tab.is-active::after {
+  position: absolute;
+  right: 28%;
+  bottom: -1rpx;
+  left: 28%;
+  height: 5rpx;
+  background: #c91f26;
+  content: "";
+}
+
+.task-list {
+  background: #faf9f6;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  min-height: 148rpx;
+  padding: 25rpx 8rpx 25rpx 22rpx;
+  border-bottom: 1rpx solid #ded9d1;
+}
+
+.task-row.is-viewed {
+  color: #57534e;
+}
+
+.task-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.task-title-line {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.task-new-dot {
+  width: 12rpx;
+  height: 12rpx;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #c91f26;
+}
+
+.task-title {
+  min-width: 0;
+  font-size: 30rpx;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.task-body {
+  display: block;
+  margin-top: 10rpx;
+  color: #67625c;
+  font-size: 26rpx;
+  line-height: 1.52;
+  white-space: pre-line;
+}
+
+.task-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-top: 12rpx;
+  color: #827c74;
+  font-size: 24rpx;
+}
+
+.task-due {
+  color: #a9292f;
+  font-weight: 700;
+}
+
+.task-closed {
+  color: #3f684f;
+  font-weight: 700;
+}
+
+.task-arrow {
+  margin-left: 18rpx;
+  color: #8c867f;
+  font-size: 46rpx;
+  line-height: 1;
+}
+
+.task-state {
+  padding: 84rpx 20rpx;
+  color: #716c65;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+.load-more {
+  margin: 26rpx 0 0;
+  border: 1rpx solid #938d85;
+  border-radius: 8rpx;
+  background: transparent;
+  color: #2b2825;
+  font-size: 27rpx;
+}
+
+.load-more::after {
+  border: 0;
+}
+
+.inbox-error {
+  margin-top: 24rpx;
+  padding: 20rpx 22rpx;
+  border-left: 5rpx solid #c91f26;
+  background: #f8e9e9;
+  color: #7f2227;
+  font-size: 26rpx;
+  line-height: 1.5;
+}

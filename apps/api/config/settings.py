@@ -126,6 +126,11 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_HSTS_INCLUDE_SUBDOMAINS", Fals
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = os.getenv("EMAIL_HOST", "127.0.0.1")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "1025"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", False)
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", False)
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "15"))
 DEFAULT_FROM_EMAIL = os.getenv("EMAIL_FROM", "PKUBA <no-reply@localhost>")
 WECHAT_APP_ID = os.getenv("WECHAT_APP_ID", "")
 WECHAT_APP_SECRET = os.getenv("WECHAT_APP_SECRET", "")
@@ -136,5 +141,9 @@ QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
 QWEN_BASE_URL = os.getenv(
     "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
 )
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-vl-max-latest")
-QWEN_TIMEOUT_SECONDS = int(os.getenv("QWEN_TIMEOUT_SECONDS", "120"))
+QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen3.8-max")
+QWEN_REASONING_EFFORT = os.getenv("QWEN_REASONING_EFFORT", "xhigh")
+QWEN_TIMEOUT_SECONDS = int(os.getenv("QWEN_TIMEOUT_SECONDS", "180"))
+SCORESHEET_RECOGNITION_MAX_PIXELS = int(
+    os.getenv("SCORESHEET_RECOGNITION_MAX_PIXELS", "6291456")
+)

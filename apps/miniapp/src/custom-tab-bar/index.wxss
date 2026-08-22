@@ -39,6 +39,24 @@
   line-height: 1;
 }
 
+.tabbar-badge {
+  position: absolute;
+  top: 14rpx;
+  left: calc(50% + 32rpx);
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 7rpx;
+  border: 3rpx solid #faf9f6;
+  border-radius: 18rpx;
+  box-sizing: border-box;
+  background: #c91f26;
+  color: #fff;
+  font-size: 19rpx;
+  font-weight: 800;
+  line-height: 25rpx;
+  text-align: center;
+}
+
 .tabbar-item.is-selected {
   color: #c91f26;
 }

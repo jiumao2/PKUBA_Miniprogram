@@ -12,6 +12,9 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfgen import canvas
 
+from core.scoresheet_v2.models import ScoresheetDocument
+from core.scoresheet_v2.renderer import render_pdf as render_v2_pdf
+
 ASSET_DIR = Path(settings.BASE_DIR) / "core" / "assets" / "scoresheet"
 DEFAULT_TEMPLATE = ASSET_DIR / "scoresheet_template.pdf"
 DEFAULT_DEFINITION = ASSET_DIR / "template_definition.json"
@@ -338,6 +341,8 @@ def _summary_and_officials(
 
 
 def render_scoresheet_pdf(document: dict[str, Any], template_path: Path | None = None) -> bytes:
+    if isinstance(document.get("schema_version"), str):
+        return render_v2_pdf(ScoresheetDocument.model_validate(document), template_path)
     definition = _definition()
     path = template_path or Path(os.getenv("SCORESHEET_TEMPLATE_PATH", DEFAULT_TEMPLATE))
     if not path.exists():

@@ -194,6 +194,11 @@ def reschedule_setup(*, capacity: int = 3):
         password="test-password",
         role=Account.Role.ADMIN,
     )
+    superadmin = Account.objects.create_user(
+        username="test-superadmin",
+        password="test-password",
+        role=Account.Role.SUPERADMIN,
+    )
     return {
         "season": target_season,
         "division": division,
@@ -204,5 +209,6 @@ def reschedule_setup(*, capacity: int = 3):
         "accounts": accounts,
         "games": games,
         "admin": admin,
+        "superadmin": superadmin,
         "target_date": target_date,
     }

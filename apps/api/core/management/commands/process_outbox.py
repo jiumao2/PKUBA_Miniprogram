@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.models import EmailOutbox
+from core.services.inbox_tasks import create_email_failure_tasks
 
 
 class Command(BaseCommand):
@@ -28,8 +29,17 @@ class Command(BaseCommand):
                 time.sleep(max(options["interval"], 5))
 
     @transaction.atomic
-    def process_one(self) -> bool:
+    def claim_one(self):
         now = timezone.now()
+        EmailOutbox.objects.filter(
+            status=EmailOutbox.Status.SENDING,
+            updated_at__lt=now - timedelta(minutes=15),
+        ).update(
+            status=EmailOutbox.Status.PENDING,
+            next_attempt_at=now,
+            last_error="发送进程中断，已自动恢复等待重试。",
+            updated_at=now,
+        )
         message = (
             EmailOutbox.objects.select_for_update(skip_locked=True)
             .filter(status=EmailOutbox.Status.PENDING)
@@ -38,10 +48,20 @@ class Command(BaseCommand):
             .first()
         )
         if message is None:
-            return False
+            return None
         message.status = EmailOutbox.Status.SENDING
         message.attempts += 1
-        message.save(update_fields=["status", "attempts", "updated_at"])
+        message.last_attempt_at = now
+        message.save(
+            update_fields=["status", "attempts", "last_attempt_at", "updated_at"]
+        )
+        return message.id
+
+    def process_one(self) -> bool:
+        message_id = self.claim_one()
+        if message_id is None:
+            return False
+        message = EmailOutbox.objects.get(id=message_id)
         try:
             send_mail(
                 subject=message.subject,
@@ -51,13 +71,55 @@ class Command(BaseCommand):
                 fail_silently=False,
             )
         except Exception as exc:  # noqa: BLE001 - errors are persisted for retry.
-            message.status = EmailOutbox.Status.PENDING
-            message.last_error = str(exc)[:2000]
-            message.next_attempt_at = now + timedelta(minutes=min(2**message.attempts, 60))
-            message.save(update_fields=["status", "last_error", "next_attempt_at", "updated_at"])
+            self.record_failure(message_id, str(exc))
             return False
+        self.record_success(message_id)
+        return True
+
+    @transaction.atomic
+    def record_failure(self, message_id, error: str) -> None:
+        now = timezone.now()
+        message = EmailOutbox.objects.select_for_update().get(id=message_id)
+        message.last_error = error[:2000]
+        if message.attempts >= message.max_attempts:
+            message.status = EmailOutbox.Status.FAILED
+            message.failed_at = now
+            message.next_attempt_at = None
+            message.save(
+                update_fields=[
+                    "status",
+                    "failed_at",
+                    "last_error",
+                    "next_attempt_at",
+                    "updated_at",
+                ]
+            )
+            create_email_failure_tasks(
+                outbox_id=message.id,
+                subject=message.subject,
+                attempts=message.attempts,
+            )
+            return
+        message.status = EmailOutbox.Status.PENDING
+        message.next_attempt_at = now + timedelta(minutes=min(2**message.attempts, 60))
+        message.save(
+            update_fields=["status", "last_error", "next_attempt_at", "updated_at"]
+        )
+
+    @transaction.atomic
+    def record_success(self, message_id) -> None:
+        now = timezone.now()
+        message = EmailOutbox.objects.select_for_update().get(id=message_id)
         message.status = EmailOutbox.Status.SENT
         message.sent_at = now
+        message.next_attempt_at = None
         message.last_error = ""
-        message.save(update_fields=["status", "sent_at", "last_error", "updated_at"])
-        return True
+        message.save(
+            update_fields=[
+                "status",
+                "sent_at",
+                "next_attempt_at",
+                "last_error",
+                "updated_at",
+            ]
+        )

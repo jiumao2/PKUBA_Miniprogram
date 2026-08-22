@@ -1,6 +1,6 @@
 import { Button, Checkbox, CheckboxGroup, Label, Text, View } from "@tarojs/components";
-import Taro, { useDidShow } from "@tarojs/taro";
-import { useState } from "react";
+import Taro, { useDidShow, useRouter } from "@tarojs/taro";
+import { useEffect, useState } from "react";
 import type { RescheduleRequest, RescheduleVoterTeam } from "@pkuba/api-client";
 
 import { api } from "../../api";
@@ -10,6 +10,8 @@ import "../../role-workspace.css";
 import "./index.css";
 
 export default function RescheduleRequestsPage() {
+  const router = useRouter();
+  const focusedRequestId = router.params.request_id ?? "";
   const [items, setItems] = useState<RescheduleRequest[]>([]);
   const [view, setView] = useState<"active" | "history">("active");
   const [loading, setLoading] = useState(true);
@@ -37,7 +39,18 @@ export default function RescheduleRequestsPage() {
   };
 
   useDidShow(() => { void load(); });
-  const shown = items.filter((item) => view === "active" ? !item.is_terminal : item.is_terminal);
+  useEffect(() => {
+    if (!focusedRequestId || !items.length) return;
+    const focused = items.find((item) => item.id === focusedRequestId);
+    if (!focused) return;
+    setView(focused.is_terminal ? "history" : "active");
+    setTimeout(() => {
+      void Taro.pageScrollTo({ selector: `#request-${focusedRequestId}`, duration: 260 });
+    }, 80);
+  }, [focusedRequestId, items]);
+  const shown = items
+    .filter((item) => view === "active" ? !item.is_terminal : item.is_terminal)
+    .sort((left, right) => Number(right.id === focusedRequestId) - Number(left.id === focusedRequestId));
 
   const confirmAction = async (
     item: RescheduleRequest,
@@ -122,6 +135,7 @@ export default function RescheduleRequestsPage() {
         {shown.map((item) => (
           <RequestCard
             item={item}
+            focused={item.id === focusedRequestId}
             busy={busyId === item.id}
             voting={voteRequestId === item.id}
             candidates={candidates}
@@ -156,10 +170,11 @@ type ActionKind =
   | "FINAL_APPROVE" | "FINAL_REJECT" | "ADMIN_CANCEL";
 
 function RequestCard({
-  item, busy, voting, candidates, selectedVoters, setSelectedVoters,
+  item, focused, busy, voting, candidates, selectedVoters, setSelectedVoters,
   onOpenVote, onSubmitVote, onAction,
 }: {
   item: RescheduleRequest;
+  focused: boolean;
   busy: boolean;
   voting: boolean;
   candidates: RescheduleVoterTeam[];
@@ -171,7 +186,10 @@ function RequestCard({
 }) {
   const has = (action: string) => item.actions.includes(action);
   return (
-    <View className={`request-card ${item.game.division_gender === "WOMEN" ? "is-women" : ""}`}>
+    <View
+      id={`request-${item.id}`}
+      className={`request-card ${item.game.division_gender === "WOMEN" ? "is-women" : ""} ${focused ? "is-focused" : ""}`}
+    >
       <View className="request-heading">
         <View>
           <Text className="request-division">{item.game.division_name} · {item.request_type_label}</Text>

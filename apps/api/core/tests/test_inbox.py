@@ -1,0 +1,209 @@
+from datetime import timedelta
+
+import pytest
+from django.test import Client, override_settings
+from django.utils import timezone
+
+from core.models import InboxItem, RescheduleRequest, ScoresheetRecognitionRun
+from core.services.inbox_tasks import (
+    close_scoresheet_tasks,
+    sync_reschedule_tasks,
+    sync_scoresheet_recognition_tasks,
+)
+from core.services.rescheduling import respond_to_opponent, submit_reschedule
+from core.services.wechat import issue_session
+from core.tests.factories import reschedule_setup
+from core.tests.test_rescheduling import valid_submission_time
+from core.tests.test_scoresheets import create_scoresheet
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def _submit(setup, *, target_date=None):
+    game = setup["games"][0]
+    target = target_date or setup["target_date"]
+    return submit_reschedule(
+        actor=setup["accounts"][0],
+        game_id=game.id,
+        expected_game_version=game.version,
+        target_date=target,
+        target_period_id=setup["period"].id,
+        now=valid_submission_time(game.date, target),
+    )
+
+
+def test_submit_creates_one_idempotent_opponent_task():
+    setup = reschedule_setup()
+    request = _submit(setup)
+
+    task = InboxItem.objects.get(account=setup["accounts"][1])
+    assert task.kind == "RESCHEDULE_OPPONENT_CONFIRMATION"
+    assert task.status == InboxItem.Status.OPEN
+    assert task.object_id == request.id
+    assert task.route == InboxItem.Route.RESCHEDULE_REQUEST
+    assert task.route_params == {"request_id": str(request.id)}
+    assert task.due_at == request.confirmation_deadline
+
+    sync_reschedule_tasks(request)
+    assert InboxItem.objects.filter(account=setup["accounts"][1]).count() == 1
+
+
+def test_viewing_task_does_not_reduce_badge_until_business_closes():
+    setup = reschedule_setup()
+    request = _submit(setup)
+    token = issue_session(setup["accounts"][1])
+    client = Client(enforce_csrf_checks=True)
+
+    summary = client.get(
+        "/api/v1/inbox/summary",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    listed = client.get(
+        "/api/v1/inbox/?status=OPEN",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    task_id = listed.json()["items"][0]["id"]
+    viewed = client.post(
+        f"/api/v1/inbox/{task_id}/viewed",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    summary_after_view = client.get(
+        "/api/v1/inbox/summary",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+
+    assert summary.status_code == 200
+    assert summary.json() == {"open_count": 1, "display_count": "1"}
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["target_url"].endswith(str(request.id))
+    assert viewed.status_code == 200
+    assert viewed.json()["read_at"] is not None
+    assert viewed.json()["status"] == InboxItem.Status.OPEN
+    assert summary_after_view.json()["open_count"] == 1
+
+    closed = respond_to_opponent(
+        actor=setup["accounts"][1],
+        request_id=request.id,
+        expected_version=request.version,
+        accept=False,
+        now=valid_submission_time(request.game.date, request.target_date) + timedelta(hours=1),
+    )
+    assert closed.status == RescheduleRequest.Status.REJECTED
+    task = InboxItem.objects.get(id=task_id)
+    assert task.status == InboxItem.Status.CLOSED
+    assert task.closed_at is not None
+
+    final_summary = client.get(
+        "/api/v1/inbox/summary",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert final_summary.json() == {"open_count": 0, "display_count": "0"}
+
+
+def test_cross_week_review_task_targets_superadmin_only():
+    setup = reschedule_setup()
+    target = setup["target_date"] + timedelta(days=2)
+    request = _submit(setup, target_date=target)
+    request = respond_to_opponent(
+        actor=setup["accounts"][1],
+        request_id=request.id,
+        expected_version=request.version,
+        accept=True,
+        now=valid_submission_time(request.game.date, target) + timedelta(hours=1),
+    )
+
+    assert request.status == RescheduleRequest.Status.WAITING_ADMIN_DECISION
+    assert InboxItem.objects.filter(
+        account=setup["superadmin"],
+        kind="RESCHEDULE_ADMIN_DECISION",
+        status=InboxItem.Status.OPEN,
+    ).exists()
+    assert not InboxItem.objects.filter(
+        account=setup["admin"],
+        object_id=request.id,
+        status=InboxItem.Status.OPEN,
+    ).exists()
+
+
+def test_inbox_is_account_scoped_and_rejects_invalid_cursor():
+    setup = reschedule_setup()
+    _submit(setup)
+    owner_token = issue_session(setup["accounts"][1])
+    outsider_token = issue_session(setup["accounts"][2])
+    client = Client()
+
+    owner_page = client.get(
+        "/api/v1/inbox/",
+        HTTP_AUTHORIZATION=f"Bearer {owner_token}",
+    )
+    owner_task = owner_page.json()["items"][0]
+    outsider_page = client.get(
+        "/api/v1/inbox/",
+        HTTP_AUTHORIZATION=f"Bearer {outsider_token}",
+    )
+    outsider_view = client.post(
+        f"/api/v1/inbox/{owner_task['id']}/viewed",
+        HTTP_AUTHORIZATION=f"Bearer {outsider_token}",
+    )
+    invalid_cursor = client.get(
+        f"/api/v1/inbox/?cursor={owner_task['id']}",
+        HTTP_AUTHORIZATION=f"Bearer {outsider_token}",
+    )
+
+    assert owner_page.status_code == 200
+    assert outsider_page.json()["items"] == []
+    assert outsider_view.status_code == 404
+    assert invalid_cursor.status_code == 400
+
+
+def test_ai_success_creates_review_tasks_and_business_close_is_idempotent(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    run = scoresheet.recognition_runs.get(source_version=scoresheet.source_version)
+    ScoresheetRecognitionRun.objects.filter(id=run.id).update(
+        status=ScoresheetRecognitionRun.Status.SUCCEEDED,
+        finished_at=timezone.now(),
+    )
+    run.refresh_from_db()
+
+    sync_scoresheet_recognition_tasks(scoresheet, run)
+    sync_scoresheet_recognition_tasks(scoresheet, run)
+
+    reviewers = InboxItem.objects.filter(
+        object_id=scoresheet.id,
+        kind="SCORESHEET_REVIEW",
+        status=InboxItem.Status.OPEN,
+    )
+    assert set(reviewers.values_list("account_id", flat=True)) == {
+        setup["ordinary_admin"].id,
+        setup["superadmin"].id,
+    }
+    assert reviewers.count() == 2
+    assert close_scoresheet_tasks(scoresheet.id, reason="PUBLISHED") == 2
+    assert close_scoresheet_tasks(scoresheet.id, reason="PUBLISHED") == 0
+
+
+def test_ai_final_failure_targets_superadmin_not_ordinary_admin(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    run = scoresheet.recognition_runs.get(source_version=scoresheet.source_version)
+    ScoresheetRecognitionRun.objects.filter(id=run.id).update(
+        status=ScoresheetRecognitionRun.Status.FAILED,
+        finished_at=timezone.now(),
+        last_error="识别服务返回了无效结构",
+    )
+    run.refresh_from_db()
+
+    sync_scoresheet_recognition_tasks(scoresheet, run)
+
+    assert InboxItem.objects.filter(
+        account=setup["superadmin"],
+        object_id=scoresheet.id,
+        kind="SCORESHEET_RECOGNITION_FAILED",
+        status=InboxItem.Status.OPEN,
+    ).exists()
+    assert not InboxItem.objects.filter(
+        account=setup["ordinary_admin"],
+        object_id=scoresheet.id,
+        status=InboxItem.Status.OPEN,
+    ).exists()

@@ -10,6 +10,7 @@
     >
       <cover-view class="tabbar-indicator"></cover-view>
       <cover-view class="tabbar-label">{{item.text}}</cover-view>
+      <cover-view wx:if="{{index === 4 && inboxCount}}" class="tabbar-badge">{{inboxCount}}</cover-view>
     </cover-view>
   </cover-view>
 </cover-view>

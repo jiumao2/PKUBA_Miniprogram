@@ -5,9 +5,11 @@ import csv
 import hashlib
 import io
 import secrets
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -27,15 +29,21 @@ from core.models import (
     ScoresheetRecognitionRun,
     ScoresheetRevision,
 )
-from core.scoresheet_schema import (
+from core.scoresheet_schema_v2 import (
     REGIONS,
     apply_changes,
     document_digest,
     game_prior_snapshot,
+    merge_recognition_result,
     new_document,
     region_digest,
     roster_prior_snapshot,
     validate_document,
+)
+from core.scoresheet_v2.recognition import PROMPT_VERSION
+from core.services.inbox_tasks import (
+    close_scoresheet_tasks,
+    sync_scoresheet_recognition_tasks,
 )
 
 LEASE_SECONDS = 60
@@ -104,8 +112,10 @@ def _revision_locked(
 
 def _active_lease_locked(scoresheet: GameScoresheet) -> ScoresheetEditLease | None:
     try:
-        lease = ScoresheetEditLease.objects.select_for_update().select_related("account").get(
-            scoresheet=scoresheet
+        lease = (
+            ScoresheetEditLease.objects.select_for_update()
+            .select_related("account")
+            .get(scoresheet=scoresheet)
         )
     except ScoresheetEditLease.DoesNotExist:
         return None
@@ -135,10 +145,7 @@ def _assert_version(scoresheet: GameScoresheet, expected_version: int) -> None:
 def _assert_scoresheet_operable(scoresheet: GameScoresheet) -> None:
     if scoresheet.game.season.status == scoresheet.game.season.Status.ARCHIVED:
         raise ScoresheetError("SEASON_ARCHIVED", "已归档赛季只读。", status=409)
-    if (
-        scoresheet.game.division.operation_status
-        != scoresheet.game.division.OperationStatus.ACTIVE
-    ):
+    if scoresheet.game.division.operation_status != scoresheet.game.division.OperationStatus.ACTIVE:
         raise ScoresheetError(
             "DIVISION_NOT_ACTIVE",
             "当前组别尚未正式上线，不能维护记录表或赛果。",
@@ -155,6 +162,152 @@ def _assert_correction_permission(scoresheet: GameScoresheet, actor: Account) ->
         )
 
 
+ACTIVE_RECOGNITION_STATUSES = {
+    ScoresheetRecognitionRun.Status.QUEUED,
+    ScoresheetRecognitionRun.Status.RUNNING,
+    ScoresheetRecognitionRun.Status.RETRY_WAIT,
+}
+SOURCE_PREREQUISITE_ERRORS = {"ROSTER_MISSING", "IMAGE_INVALID", "SOURCE_MISSING"}
+HUMAN_CHANGE_TYPES = {
+    "FIELD_EDIT",
+    "UNDO",
+    "REDO",
+    "RECOGNITION_MERGE",
+}
+
+
+def _keyed(items: list[dict[str, Any]], *keys: str) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(items):
+        identity = "-".join(str(item.get(key, "")) for key in keys) or str(index + 1)
+        result[identity] = item
+    return result
+
+
+def _normalize_fouls(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return _keyed(entries, "slot")
+
+
+def _normalize_player(player: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(player)
+    normalized["fouls"] = _normalize_fouls(list(player.get("fouls") or []))
+    normalized["post_foul_markers"] = _normalize_fouls(
+        list(player.get("post_foul_markers") or [])
+    )
+    return normalized
+
+
+def _normalize_team(team: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(team)
+    normalized.pop("side", None)
+    normalized["players"] = {
+        str(player.get("row", index + 1)): _normalize_player(player)
+        for index, player in enumerate(team.get("players") or [])
+    }
+    normalized["timeouts"] = _keyed(list(team.get("timeouts") or []), "scope", "slot")
+    normalized["team_fouls"] = _keyed(list(team.get("team_fouls") or []), "period")
+    normalized["coach_fouls"] = _normalize_fouls(list(team.get("coach_fouls") or []))
+    normalized["coach_post_foul_markers"] = _normalize_fouls(
+        list(team.get("coach_post_foul_markers") or [])
+    )
+    normalized["assistant_coach_fouls"] = _normalize_fouls(
+        list(team.get("assistant_coach_fouls") or [])
+    )
+    normalized["assistant_coach_post_foul_markers"] = _normalize_fouls(
+        list(team.get("assistant_coach_post_foul_markers") or [])
+    )
+    return normalized
+
+
+def _semantic_document(document: dict[str, Any]) -> dict[str, Any]:
+    """Return editable scoresheet content with ScoresheetReader's stable domain keys."""
+
+    recognition = document.get("recognition") or {}
+    return {
+        "header": document.get("header") or {},
+        "teams": {
+            str(team.get("side")): _normalize_team(team)
+            for team in document.get("teams") or []
+            if isinstance(team, dict) and team.get("side") in {"A", "B"}
+        },
+        "score_events": _keyed(list(document.get("score_events") or []), "sequence"),
+        "stated_period_scores": _keyed(
+            list(document.get("stated_period_scores") or []), "period"
+        ),
+        "final_score": document.get("final_score") or {},
+        "officials": _keyed(list(document.get("officials") or []), "role"),
+        "table_personnel": list(recognition.get("table_personnel") or []),
+    }
+
+
+def _escape_path(value: str) -> str:
+    return value.replace("~", "~0").replace("/", "~1")
+
+
+def _semantic_diff(
+    before: Any,
+    after: Any,
+    path: str,
+    output: list[dict[str, Any]],
+) -> None:
+    if before == after:
+        return
+    if isinstance(before, Mapping) and isinstance(after, Mapping):
+        for key in sorted(set(before) | set(after), key=str):
+            _semantic_diff(
+                before.get(key),
+                after.get(key),
+                f"{path}/{_escape_path(str(key))}",
+                output,
+            )
+        return
+    if isinstance(before, list) and isinstance(after, list):
+        for index in range(max(len(before), len(after))):
+            _semantic_diff(
+                before[index] if index < len(before) else None,
+                after[index] if index < len(after) else None,
+                f"{path}/{index}",
+                output,
+            )
+        return
+    output.append({"path": path or "/", "before": before, "after": after})
+
+
+def _document_changes(
+    before: dict[str, Any], after: dict[str, Any]
+) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+    _semantic_diff(_semantic_document(before), _semantic_document(after), "", changes)
+    return changes
+
+
+def _latest_recognition(scoresheet: GameScoresheet) -> ScoresheetRecognitionRun | None:
+    return (
+        ScoresheetRecognitionRun.objects.filter(
+            scoresheet=scoresheet,
+            source_version=scoresheet.source_version,
+        )
+        .order_by("-cycle", "-created_at")
+        .first()
+    )
+
+
+def _assert_recognition_inactive(
+    scoresheet: GameScoresheet,
+    *,
+    actor: Account,
+) -> None:
+    if actor.is_pkuba_superadmin:
+        return
+    latest = _latest_recognition(scoresheet)
+    if latest and latest.status in ACTIVE_RECOGNITION_STATUSES:
+        raise ScoresheetError(
+            "RECOGNITION_ACTIVE",
+            "自动识别正在执行或等待重试，完成前记录表保持只读。",
+            status=409,
+        )
+
+
 def _assert_lease_locked(
     scoresheet: GameScoresheet,
     *,
@@ -163,6 +316,8 @@ def _assert_lease_locked(
     client_id: str,
     surface: str,
 ) -> ScoresheetEditLease:
+    _assert_correction_permission(scoresheet, actor)
+    _assert_recognition_inactive(scoresheet, actor=actor)
     lease = _active_lease_locked(scoresheet)
     if lease is None:
         raise ScoresheetError("LEASE_REQUIRED", "编辑租约已失效，请重新取得编辑权。", status=409)
@@ -187,7 +342,11 @@ def register_scoresheet_source(
     """Freeze priors, reset the sole draft and enqueue a new recognition source version."""
 
     if not actor.is_pkuba_admin:
-        raise ScoresheetError("ADMIN_REQUIRED", "只有管理员可以上传记录表。", status=403)
+        raise ScoresheetError(
+            "ADMIN_REQUIRED",
+            "记录表原图上传和首次发布前重传仅限管理员。",
+            status=403,
+        )
     if asset.kind != GameMediaAsset.Kind.SCORESHEET or asset.game_id != game.id:
         raise ScoresheetError("SOURCE_INVALID", "记录表原图与比赛不匹配。")
     with transaction.atomic():
@@ -198,10 +357,7 @@ def register_scoresheet_source(
         )
         if locked_game.season.status == locked_game.season.Status.ARCHIVED:
             raise ScoresheetError("SEASON_ARCHIVED", "已归档赛季只读。", status=409)
-        if (
-            locked_game.division.operation_status
-            != locked_game.division.OperationStatus.ACTIVE
-        ):
+        if locked_game.division.operation_status != locked_game.division.OperationStatus.ACTIVE:
             raise ScoresheetError(
                 "DIVISION_NOT_ACTIVE",
                 "当前组别尚未正式上线，不能上传记录表。",
@@ -212,8 +368,11 @@ def register_scoresheet_source(
         scoresheet = GameScoresheet.objects.select_for_update().filter(game=locked_game).first()
         if scoresheet is None:
             scoresheet = GameScoresheet.objects.create(game=locked_game)
+            recognition_trigger = ScoresheetRecognitionRun.Trigger.UPLOAD
         else:
+            recognition_trigger = ScoresheetRecognitionRun.Trigger.REUPLOAD
             _assert_correction_permission(scoresheet, actor)
+            close_scoresheet_tasks(scoresheet.id, reason="SOURCE_REPLACED")
             ScoresheetRecognitionRun.objects.filter(
                 scoresheet=scoresheet,
                 status__in=[
@@ -232,16 +391,30 @@ def register_scoresheet_source(
         scoresheet.source_version += 1
         scoresheet.game_prior_snapshot = prior
         scoresheet.roster_snapshot = roster
-        scoresheet.draft = new_document(prior, roster)
         scoresheet.draft_version += 1
+        scoresheet.draft = new_document(
+            prior,
+            roster,
+            document_id=str(scoresheet.id),
+            source={
+                "original_filename": asset.original_filename,
+                "version": scoresheet.source_version,
+                "content_sha256": asset.file_sha256,
+                "width": asset.width,
+                "height": asset.height,
+            },
+        )
+        scoresheet.draft["revision"] = scoresheet.draft_version
         scoresheet.reviewed_regions = {}
         scoresheet.validation_report = {}
         scoresheet.validation_draft_version = None
         scoresheet.acknowledged_warnings = []
         roster_ready = bool(roster.get("A")) and bool(roster.get("B"))
+        qwen_ready = bool(settings.QWEN_API_KEY.strip())
+        recognition_ready = roster_ready and qwen_ready
         scoresheet.status = (
             GameScoresheet.Status.RECOGNITION_QUEUED
-            if roster_ready
+            if recognition_ready
             else GameScoresheet.Status.RECOGNITION_FAILED
         )
         scoresheet.save(
@@ -265,15 +438,32 @@ def register_scoresheet_source(
             source_asset=asset,
             source_version=scoresheet.source_version,
             base_draft_version=scoresheet.draft_version,
+            cycle=1,
+            trigger=recognition_trigger,
+            model_name=settings.QWEN_MODEL,
+            prompt_version=PROMPT_VERSION,
             status=(
                 ScoresheetRecognitionRun.Status.QUEUED
-                if roster_ready
+                if recognition_ready
                 else ScoresheetRecognitionRun.Status.FAILED
             ),
-            last_error_code="" if roster_ready else "ROSTER_MISSING",
-            last_error="" if roster_ready else "上传时双方球员名单不完整，未调用识别服务。",
-            finished_at=None if roster_ready else timezone.now(),
+            last_error_code=(
+                ""
+                if recognition_ready
+                else "ROSTER_MISSING"
+                if not roster_ready
+                else "CREDENTIALS_MISSING"
+            ),
+            last_error=(
+                ""
+                if recognition_ready
+                else "上传时双方球员名单不完整，未调用识别服务。"
+                if not roster_ready
+                else "服务端未配置 QWEN_API_KEY，未调用识别服务；可直接完整手工录入。"
+            ),
+            finished_at=None if recognition_ready else timezone.now(),
         )
+        ScoresheetEditLease.objects.filter(scoresheet=scoresheet).delete()
         _event_locked(
             scoresheet,
             "SOURCE_REPLACED",
@@ -299,14 +489,14 @@ def register_scoresheet_source(
                 "recognition_run_id": str(run.id),
             },
         )
+        if run.status == ScoresheetRecognitionRun.Status.FAILED:
+            sync_scoresheet_recognition_tasks(scoresheet, run)
     return scoresheet
 
 
 def mark_source_deleted(*, actor: Account, asset: GameMediaAsset) -> None:
     with transaction.atomic():
-        scoresheet = (
-            GameScoresheet.objects.select_for_update().filter(source_asset=asset).first()
-        )
+        scoresheet = GameScoresheet.objects.select_for_update().filter(source_asset=asset).first()
         if scoresheet is None:
             return
         ScoresheetRecognitionRun.objects.filter(
@@ -339,11 +529,17 @@ def mark_source_deleted(*, actor: Account, asset: GameMediaAsset) -> None:
             actor=actor,
             payload={"asset_id": str(asset.id)},
         )
+        close_scoresheet_tasks(scoresheet.id, reason="SOURCE_DELETED")
 
 
 def acquire_edit_lease(
-    *, scoresheet_id, actor: Account, client_id: str, surface: str
-) -> tuple[ScoresheetEditLease, str | None, bool]:
+    *,
+    scoresheet_id,
+    actor: Account,
+    client_id: str,
+    surface: str,
+    resume_token: str = "",
+) -> tuple[ScoresheetEditLease | None, str | None, bool, str]:
     if not actor.is_pkuba_admin:
         raise ScoresheetError("ADMIN_REQUIRED", "该操作仅限管理员。", status=403)
     if surface not in ScoresheetEditLease.Surface.values or not client_id.strip():
@@ -353,50 +549,73 @@ def acquire_edit_lease(
             scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
         except GameScoresheet.DoesNotExist as error:
             raise ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404) from error
-        _assert_scoresheet_operable(scoresheet)
-        _assert_correction_permission(scoresheet, actor)
+        try:
+            _assert_scoresheet_operable(scoresheet)
+        except ScoresheetError as error:
+            return None, None, True, str(error)
+        if scoresheet.current_publication_id and not actor.is_pkuba_superadmin:
+            return None, None, True, "记录表已发布；普通管理员只能只读查看，纠错仅限超级管理员。"
+        latest = _latest_recognition(scoresheet)
+        if latest and latest.status in ACTIVE_RECOGNITION_STATUSES:
+            return (
+                None,
+                None,
+                True,
+                "自动识别正在进行"
+                f"（第 {max(1, latest.attempt_count)}/{latest.max_attempts} 次），"
+                "完成前只读。",
+            )
+        if latest and latest.status == ScoresheetRecognitionRun.Status.FAILED:
+            if latest.last_error_code in SOURCE_PREREQUISITE_ERRORS:
+                return None, None, True, "当前原图或冻结名单不满足识别前置条件，请修复来源后重传。"
         lease = _active_lease_locked(scoresheet)
         if lease and (
-            lease.account_id != actor.id
-            or lease.client_id != client_id
-            or lease.surface != surface
+            lease.account_id != actor.id or lease.client_id != client_id or lease.surface != surface
         ):
-            return lease, None, True
-        token = secrets.token_urlsafe(36)
-        now = timezone.now()
-        if lease is None:
-            lease = ScoresheetEditLease.objects.create(
-                scoresheet=scoresheet,
-                account=actor,
-                token_hash=_token_digest(token),
-                client_id=client_id[:96],
-                surface=surface,
-                last_heartbeat_at=now,
-                expires_at=now + timedelta(seconds=LEASE_SECONDS),
+            return (
+                lease,
+                None,
+                True,
+                f"{lease.account.username} 正在通过"
+                f"{'网页' if lease.surface == 'WEB' else '小程序'}编辑。",
             )
-            event = "LEASE_ACQUIRED"
-        else:
-            lease.token_hash = _token_digest(token)
+        now = timezone.now()
+        if lease is not None:
+            valid_resume = bool(resume_token) and secrets.compare_digest(
+                lease.token_hash,
+                _token_digest(resume_token),
+            )
+            if not valid_resume:
+                return lease, None, True, "本标签页的编辑凭据已失效，请等待当前租约释放。"
             lease.last_heartbeat_at = now
             lease.expires_at = now + timedelta(seconds=LEASE_SECONDS)
             lease.save(
                 update_fields=[
-                    "token_hash",
                     "last_heartbeat_at",
                     "expires_at",
                     "updated_at",
                 ]
             )
-            event = "LEASE_RESUMED"
+            return lease, resume_token, False, ""
+        token = secrets.token_urlsafe(36)
+        lease = ScoresheetEditLease.objects.create(
+            scoresheet=scoresheet,
+            account=actor,
+            token_hash=_token_digest(token),
+            client_id=client_id[:96],
+            surface=surface,
+            last_heartbeat_at=now,
+            expires_at=now + timedelta(seconds=LEASE_SECONDS),
+        )
         _event_locked(
             scoresheet,
-            event,
+            "LEASE_ACQUIRED",
             actor=actor,
             client_id=client_id,
             surface=surface,
             payload={"expires_at": lease.expires_at.isoformat()},
         )
-        return lease, token, False
+        return lease, token, False, ""
 
 
 def heartbeat_edit_lease(
@@ -434,13 +653,17 @@ def release_edit_lease(
 ) -> None:
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
-        lease = _assert_lease_locked(
-            scoresheet,
-            actor=actor,
-            lease_token=lease_token,
-            client_id=client_id,
-            surface=surface,
-        )
+        lease = _active_lease_locked(scoresheet)
+        if lease is None:
+            return
+        valid = secrets.compare_digest(lease.token_hash, _token_digest(lease_token))
+        if (
+            not valid
+            or lease.account_id != actor.id
+            or lease.client_id != client_id
+            or lease.surface != surface
+        ):
+            return
         lease.delete()
         _event_locked(
             scoresheet,
@@ -461,6 +684,8 @@ def force_takeover_edit_lease(
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
         _assert_scoresheet_operable(scoresheet)
+        _assert_correction_permission(scoresheet, actor)
+        _assert_recognition_inactive(scoresheet, actor=actor)
         previous = _active_lease_locked(scoresheet)
         before = {}
         if previous:
@@ -526,11 +751,19 @@ def save_draft_changes(
             client_id=client_id,
             surface=surface,
         )
+        before_document = copy.deepcopy(scoresheet.draft)
         updated, changed_regions, normalized = apply_changes(scoresheet.draft, changes)
         if not normalized:
             return scoresheet
-        scoresheet.draft = updated
+        semantic_changes = _document_changes(before_document, updated)
+        if not semantic_changes:
+            return scoresheet
         scoresheet.draft_version += 1
+        updated["revision"] = scoresheet.draft_version
+        updated["updated_at"] = timezone.now().isoformat()
+        updated["status"] = "needs_review" if updated.get("recognition") else "draft"
+        updated["acknowledged_warnings"] = []
+        scoresheet.draft = updated
         reviewed = dict(scoresheet.reviewed_regions or {})
         invalidated = set(REGIONS) if "ALL" in changed_regions else set(changed_regions)
         for region in REGIONS:
@@ -564,7 +797,7 @@ def save_draft_changes(
             actor=actor,
             client_id=client_id,
             surface=surface,
-            changed_fields=normalized,
+            changed_fields=semantic_changes,
             payload={
                 "invalidated_regions": (
                     list(REGIONS) if "ALL" in changed_regions else changed_regions
@@ -663,15 +896,8 @@ def validate_scoresheet(
         report["generated_at"] = timezone.now().isoformat()
         scoresheet.validation_report = report
         scoresheet.validation_draft_version = scoresheet.draft_version
-        all_reviewed = all(
-            (scoresheet.reviewed_regions or {}).get(region, {}).get("draft_version")
-            == scoresheet.draft_version
-            for region in REGIONS
-        )
         scoresheet.status = (
-            GameScoresheet.Status.READY
-            if not report["errors"] and all_reviewed
-            else GameScoresheet.Status.DRAFT
+            GameScoresheet.Status.READY if not report["errors"] else GameScoresheet.Status.DRAFT
         )
         scoresheet.save(
             update_fields=[
@@ -690,7 +916,7 @@ def validate_scoresheet(
             payload={
                 "error_count": len(report["errors"]),
                 "warning_count": len(report["warnings"]),
-                "all_regions_reviewed": all_reviewed,
+                "all_regions_reviewed": None,
             },
         )
         if not report["errors"]:
@@ -752,14 +978,25 @@ def _build_stats(
 ) -> tuple[list[GameTeamStat], list[GamePlayerStat]]:
     document = publication.snapshot
     report = publication.validation_report
-    teams = document["teams"]
-    summary = document["summary"]
+    teams = {
+        row.get("side"): row
+        for row in document.get("teams", [])
+        if isinstance(row, dict) and row.get("side") in {"A", "B"}
+    }
     computed_players = report.get("computed", {}).get("player_points", {})
     game = scoresheet.game
     team_rows: list[GameTeamStat] = []
     player_rows: list[GamePlayerStat] = []
-    final = summary["final_score"]
+    final = document["final_score"]
+    written_periods = {
+        int(row.get("period")): row
+        for row in document.get("stated_period_scores", [])
+        if isinstance(row, dict) and isinstance(row.get("period"), int)
+    }
     for side, team_id in (("A", game.home_team_id), ("B", game.away_team_id)):
+        team = teams[side]
+        final_key = "team_a" if side == "A" else "team_b"
+        other_key = "team_b" if side == "A" else "team_a"
         team_rows.append(
             GameTeamStat(
                 publication=publication,
@@ -767,21 +1004,34 @@ def _build_stats(
                 side=side,
                 period_scores=[
                     {
-                        "period": period,
-                        "score": summary.get("period_scores", {}).get(period, {}).get(side),
+                        "period": str(period) if period <= 4 else "OT",
+                        "score": written_periods.get(period, {}).get(final_key),
                     }
-                    for period in ("1", "2", "3", "4", "OT")
+                    for period in (1, 2, 3, 4, 5)
                 ],
-                total_score=int(final[side]),
-                won=int(final[side]) > int(final["B" if side == "A" else "A"]),
-                timeouts=teams[side].get("timeouts", {}),
-                team_fouls=teams[side].get("team_fouls", {}),
+                total_score=int(final[final_key]),
+                won=int(final[final_key]) > int(final[other_key]),
+                timeouts=team.get("timeouts", []),
+                team_fouls=team.get("team_fouls", []),
             )
         )
-        for player in teams[side].get("players", []):
-            player_id = str(player.get("player_id") or "")
-            point_row = computed_players.get(player_id, {})
+        roster_rows = scoresheet.roster_snapshot.get(side, [])
+        for player in team.get("players", []):
+            roster = next(
+                (
+                    row
+                    for row in roster_rows
+                    if str(row.get("jersey_number") or "") == str(player.get("jersey_number") or "")
+                    and str(row.get("display_name") or "") == str(player.get("name") or "")
+                ),
+                None,
+            )
+            player_id = str(roster.get("player_id") or "") if roster else ""
+            point_row = computed_players.get(
+                player_id or f"{side}:{player.get('jersey_number') or ''}", {}
+            )
             fouls = player.get("fouls") if isinstance(player.get("fouls"), list) else []
+            participation = str(player.get("participation") or "none")
             player_rows.append(
                 GamePlayerStat(
                     publication=publication,
@@ -789,8 +1039,8 @@ def _build_stats(
                     roster_player_id=player_id or None,
                     player_name=str(player.get("name") or "")[:80],
                     jersey_number=str(player.get("jersey_number") or "")[:2],
-                    appeared=bool(player.get("appeared")),
-                    starter=bool(player.get("starter")),
+                    appeared=participation != "none",
+                    starter=participation == "starter",
                     points=int(point_row.get("points", 0)),
                     one_point_events=int(point_row.get("one_point_events", 0)),
                     two_point_events=int(point_row.get("two_point_events", 0)),
@@ -860,28 +1110,16 @@ def publish_scoresheet(
                 )
         if report.get("errors"):
             raise ScoresheetError("VALIDATION_ERRORS", "仍有校验错误，不能发布。", status=409)
-        missing_regions = [
-            region
-            for region in REGIONS
-            if (
-                (scoresheet.reviewed_regions or {}).get(region, {}).get("draft_version")
-                != scoresheet.draft_version
-                or (scoresheet.reviewed_regions or {}).get(region, {}).get("digest")
-                != region_digest(scoresheet.draft, region)
-            )
-        ]
-        if missing_regions:
-            raise ScoresheetError("REGIONS_UNREVIEWED", "六个区域尚未全部人工核对。", status=409)
         warning_ids = {row["id"] for row in report.get("warnings", [])}
         if warning_ids - set(scoresheet.acknowledged_warnings or []):
             raise ScoresheetError(
                 "WARNINGS_UNACKNOWLEDGED",
-                "仍有 warning 未逐项确认。",
+                "当前校验仍有 warning 未在发布前一次确认。",
                 status=409,
             )
-        final = scoresheet.draft.get("summary", {}).get("final_score", {})
-        home_score = final.get("A")
-        away_score = final.get("B")
+        final = scoresheet.draft.get("final_score", {})
+        home_score = final.get("team_a")
+        away_score = final.get("team_b")
         if (
             not isinstance(home_score, int)
             or not isinstance(away_score, int)
@@ -931,7 +1169,7 @@ def publish_scoresheet(
 
         source = scoresheet.source_asset
         source.review_status = GameMediaAsset.ReviewStatus.APPROVED
-        source.review_note = "记录表已完成全区域人工核对并发布。"
+        source.review_note = "记录表已完成人工检查和服务端校验并发布。"
         source.reviewed_by = actor
         source.reviewed_at = timezone.now()
         source.version += 1
@@ -1006,60 +1244,223 @@ def publish_scoresheet(
             },
             metadata={"game_id": str(game.id)},
         )
+        close_scoresheet_tasks(scoresheet.id, reason="PUBLISHED")
         return publication
 
 
-def stop_recognition(*, scoresheet_id, actor: Account) -> ScoresheetRecognitionRun:
+def retry_recognition(
+    *,
+    scoresheet_id,
+    actor: Account,
+    expected_version: int,
+    lease_token: str,
+    client_id: str,
+    surface: str,
+) -> ScoresheetRecognitionRun:
     if not actor.is_pkuba_admin:
-        raise ScoresheetError("ADMIN_REQUIRED", "该操作仅限管理员。", status=403)
+        raise ScoresheetError("ADMIN_REQUIRED", "重新识别仅限管理员。", status=403)
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
         _assert_correction_permission(scoresheet, actor)
-        run = (
-            ScoresheetRecognitionRun.objects.select_for_update()
-            .filter(scoresheet=scoresheet, source_version=scoresheet.source_version)
+        _assert_version(scoresheet, expected_version)
+        _assert_lease_locked(
+            scoresheet,
+            actor=actor,
+            lease_token=lease_token,
+            client_id=client_id,
+            surface=surface,
+        )
+        if scoresheet.source_asset_id is None:
+            raise ScoresheetError("SOURCE_MISSING", "没有可供重试的当前记录表原图。", status=409)
+        latest = _latest_recognition(scoresheet)
+        if latest is None:
+            raise ScoresheetError("RECOGNITION_NOT_FOUND", "识别任务不存在。", status=404)
+        if latest.status in ACTIVE_RECOGNITION_STATUSES:
+            raise ScoresheetError("RECOGNITION_ACTIVE", "当前识别任务仍在执行。", status=409)
+        if latest.status != ScoresheetRecognitionRun.Status.FAILED:
+            raise ScoresheetError(
+                "RECOGNITION_RETRY_NOT_ALLOWED",
+                "只有当前识别周期失败后才能重新识别。",
+                status=409,
+            )
+        if latest.last_error_code in SOURCE_PREREQUISITE_ERRORS:
+            raise ScoresheetError(
+                latest.last_error_code,
+                "当前原图或冻结名单不满足识别前置条件，请修复来源后重传。",
+                status=409,
+            )
+        if not settings.QWEN_API_KEY.strip():
+            raise ScoresheetError(
+                "CREDENTIALS_MISSING",
+                "服务端尚未配置 QWEN_API_KEY；当前可继续完整手工录入。",
+                status=409,
+            )
+        source_event = (
+            scoresheet.change_logs.filter(event_type="SOURCE_REPLACED")
+            .order_by("-event_sequence")
             .first()
         )
-        if run is None:
-            raise ScoresheetError("RECOGNITION_NOT_FOUND", "识别任务不存在。", status=404)
-        if run.status in {
-            ScoresheetRecognitionRun.Status.SUCCEEDED,
-            ScoresheetRecognitionRun.Status.FAILED,
-            ScoresheetRecognitionRun.Status.STOPPED,
-            ScoresheetRecognitionRun.Status.SUPERSEDED,
-        }:
-            return run
-        run.status = ScoresheetRecognitionRun.Status.STOPPED
-        run.stopped_by = actor
-        run.stopped_at = timezone.now()
-        run.finished_at = timezone.now()
-        run.worker_lease_expires_at = timezone.now()
-        run.save(
-            update_fields=[
-                "status",
-                "stopped_by",
-                "stopped_at",
-                "finished_at",
-                "worker_lease_expires_at",
-                "updated_at",
-            ]
+        has_human_changes = scoresheet.change_logs.filter(
+            event_type__in=HUMAN_CHANGE_TYPES,
+            event_sequence__gt=source_event.event_sequence if source_event else 0,
+        ).exists()
+        cycle = (
+            scoresheet.recognition_runs.filter(source_version=scoresheet.source_version).aggregate(
+                maximum=Max("cycle")
+            )["maximum"]
+            or 0
+        ) + 1
+        run = ScoresheetRecognitionRun.objects.create(
+            scoresheet=scoresheet,
+            source_asset=scoresheet.source_asset,
+            source_version=scoresheet.source_version,
+            base_draft_version=scoresheet.draft_version,
+            cycle=cycle,
+            trigger=ScoresheetRecognitionRun.Trigger.MANUAL_RETRY,
+            model_name=settings.QWEN_MODEL,
+            prompt_version=PROMPT_VERSION,
+            auto_apply_allowed=not has_human_changes,
+            status=ScoresheetRecognitionRun.Status.QUEUED,
         )
-        scoresheet.status = GameScoresheet.Status.DRAFT
+        scoresheet.status = GameScoresheet.Status.RECOGNITION_QUEUED
         scoresheet.save(update_fields=["status", "updated_at"])
         _event_locked(
             scoresheet,
-            "RECOGNITION_STOPPED",
+            "RECOGNITION_MANUAL_RETRY_QUEUED",
             actor=actor,
-            payload={"run_id": str(run.id), "attempt_count": run.attempt_count},
+            client_id=client_id,
+            surface=surface,
+            payload={"run_id": str(run.id), "cycle": cycle, "max_attempts": 4},
         )
+        ScoresheetEditLease.objects.filter(scoresheet=scoresheet).delete()
+        close_scoresheet_tasks(scoresheet.id, reason="RECOGNITION_RETRY_QUEUED")
         return run
+
+
+def recognition_diff(
+    scoresheet: GameScoresheet, run: ScoresheetRecognitionRun
+) -> list[dict[str, Any]]:
+    if run.scoresheet_id != scoresheet.id or run.source_version != scoresheet.source_version:
+        raise ScoresheetError("RECOGNITION_SUPERSEDED", "识别结果不属于当前原图。", status=409)
+    if run.status != ScoresheetRecognitionRun.Status.SUCCEEDED or not run.provider_result:
+        raise ScoresheetError("RECOGNITION_NOT_READY", "识别结果尚未就绪。", status=409)
+    candidate = merge_recognition_result(
+        scoresheet.draft,
+        run.provider_result,
+        scoresheet.roster_snapshot,
+        run_id=str(run.id),
+    )
+    regions = {
+        "SOURCE_GAME": (scoresheet.draft.get("header"), candidate.get("header")),
+        "TEAM_A": (scoresheet.draft.get("teams", [{}, {}])[0], candidate.get("teams", [{}, {}])[0]),
+        "TEAM_B": (scoresheet.draft.get("teams", [{}, {}])[1], candidate.get("teams", [{}, {}])[1]),
+        "RUNNING_SCORE": (scoresheet.draft.get("score_events"), candidate.get("score_events")),
+        "SUMMARY": (
+            {
+                "stated_period_scores": scoresheet.draft.get("stated_period_scores"),
+                "final_score": scoresheet.draft.get("final_score"),
+            },
+            {
+                "stated_period_scores": candidate.get("stated_period_scores"),
+                "final_score": candidate.get("final_score"),
+            },
+        ),
+        "OFFICIALS": (
+            {
+                "officials": scoresheet.draft.get("officials"),
+                "table_personnel": (scoresheet.draft.get("recognition") or {}).get(
+                    "table_personnel"
+                ),
+            },
+            {
+                "officials": candidate.get("officials"),
+                "table_personnel": (candidate.get("recognition") or {}).get("table_personnel"),
+            },
+        ),
+    }
+    return [
+        {
+            "region": region,
+            "label": {
+                "SOURCE_GAME": "表头与比赛信息",
+                "TEAM_A": "A 队登记区",
+                "TEAM_B": "B 队登记区",
+                "RUNNING_SCORE": "逐次得分",
+                "SUMMARY": "节比分与比赛结果",
+                "OFFICIALS": "记录台与裁判",
+            }[region],
+            "changed": before != after,
+            "current": before,
+            "recognized": after,
+        }
+        for region, (before, after) in regions.items()
+    ]
+
+
+def apply_recognition_regions(
+    *,
+    scoresheet_id,
+    run_id,
+    actor: Account,
+    expected_version: int,
+    lease_token: str,
+    client_id: str,
+    surface: str,
+    regions: list[str],
+) -> GameScoresheet:
+    try:
+        run = ScoresheetRecognitionRun.objects.get(id=run_id, scoresheet_id=scoresheet_id)
+        scoresheet = GameScoresheet.objects.get(id=scoresheet_id)
+    except (ScoresheetRecognitionRun.DoesNotExist, GameScoresheet.DoesNotExist) as error:
+        raise ScoresheetError("RECOGNITION_NOT_FOUND", "识别结果不存在。", status=404) from error
+    allowed = set(REGIONS)
+    selected = set(regions)
+    if not selected or not selected.issubset(allowed):
+        raise ScoresheetError("RECOGNITION_REGIONS_INVALID", "请选择合法的识别区域。")
+    candidate = merge_recognition_result(
+        scoresheet.draft,
+        run.provider_result,
+        scoresheet.roster_snapshot,
+        run_id=str(run.id),
+    )
+    merged = copy.deepcopy(scoresheet.draft)
+    if "SOURCE_GAME" in selected:
+        merged["header"] = candidate["header"]
+    if "TEAM_A" in selected:
+        merged["teams"][0] = candidate["teams"][0]
+    if "TEAM_B" in selected:
+        merged["teams"][1] = candidate["teams"][1]
+    if "RUNNING_SCORE" in selected:
+        merged["score_events"] = candidate["score_events"]
+    if "SUMMARY" in selected:
+        merged["stated_period_scores"] = candidate["stated_period_scores"]
+        merged["final_score"] = candidate["final_score"]
+    if "OFFICIALS" in selected:
+        merged["officials"] = candidate["officials"]
+    merged["recognition"] = candidate["recognition"]
+    saved = save_draft_changes(
+        scoresheet_id=scoresheet_id,
+        actor=actor,
+        expected_version=expected_version,
+        lease_token=lease_token,
+        client_id=client_id,
+        surface=surface,
+        changes=[{"path": "/", "operation": "SET", "value": merged}],
+        change_type="RECOGNITION_MERGE",
+        explicit_save=True,
+    )
+    run.applied_draft_version = saved.draft_version
+    run.save(update_fields=["applied_draft_version", "updated_at"])
+    return saved
 
 
 def sync_scoresheet(scoresheet: GameScoresheet, after_event: int) -> list[ScoresheetChangeLog]:
     if after_event < 0:
         after_event = 0
     return list(
-        scoresheet.change_logs.filter(event_sequence__gt=after_event).order_by("event_sequence")[:500]
+        scoresheet.change_logs.filter(event_sequence__gt=after_event).order_by("event_sequence")[
+            :500
+        ]
     )
 
 
@@ -1067,12 +1468,18 @@ def _publication_labels(
     publication: ScoresheetPublication,
 ) -> tuple[str, dict[str, str]]:
     snapshot = publication.snapshot if isinstance(publication.snapshot, dict) else {}
-    game = snapshot.get("game") if isinstance(snapshot.get("game"), dict) else {}
-    teams = snapshot.get("teams") if isinstance(snapshot.get("teams"), dict) else {}
+    game = snapshot.get("header") if isinstance(snapshot.get("header"), dict) else {}
+    teams = {
+        row.get("side"): row
+        for row in snapshot.get("teams", [])
+        if isinstance(row, dict) and row.get("side") in {"A", "B"}
+    }
+    prior = snapshot.get("game_prior") if isinstance(snapshot.get("game_prior"), dict) else {}
     labels: dict[str, str] = {}
     for side in ("A", "B"):
-        team = teams.get(side) if isinstance(teams.get(side), dict) else {}
-        team_id = str(team.get("team_id") or "")
+        team = teams.get(side, {})
+        prior_team = prior.get("team_a" if side == "A" else "team_b", {})
+        team_id = str(prior_team.get("team_id") or "")
         name = str(team.get("name") or "")
         if team_id and name:
             labels[team_id] = name

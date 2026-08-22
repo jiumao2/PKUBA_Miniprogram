@@ -34,8 +34,10 @@ services:
       WECHAT_API_BASE_URL: https://api.weixin.qq.com
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
-      QWEN_MODEL: ${QWEN_MODEL:-qwen-vl-max-latest}
-      QWEN_TIMEOUT_SECONDS: ${QWEN_TIMEOUT_SECONDS:-120}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3.8-max}
+      QWEN_REASONING_EFFORT: ${QWEN_REASONING_EFFORT:-xhigh}
+      QWEN_TIMEOUT_SECONDS: ${QWEN_TIMEOUT_SECONDS:-180}
+      SCORESHEET_RECOGNITION_MAX_PIXELS: ${SCORESHEET_RECOGNITION_MAX_PIXELS:-6291456}
       EMAIL_HOST: mailpit
       EMAIL_PORT: "1025"
       LOCAL_MEDIA_ROOT: /app/media
@@ -68,8 +70,10 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
-      QWEN_MODEL: ${QWEN_MODEL:-qwen-vl-max-latest}
-      QWEN_TIMEOUT_SECONDS: ${QWEN_TIMEOUT_SECONDS:-120}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen3.8-max}
+      QWEN_REASONING_EFFORT: ${QWEN_REASONING_EFFORT:-xhigh}
+      QWEN_TIMEOUT_SECONDS: ${QWEN_TIMEOUT_SECONDS:-180}
+      SCORESHEET_RECOGNITION_MAX_PIXELS: ${SCORESHEET_RECOGNITION_MAX_PIXELS:-6291456}
       LOCAL_MEDIA_ROOT: /app/media
     volumes:
       - pkuba-wsl-media:/app/media

@@ -39,6 +39,57 @@
   border-bottom: 1rpx solid #d9d4cc;
 }
 
+.inbox-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 112rpx;
+  padding: 18rpx 8rpx;
+  border-bottom: 1rpx solid #d9d4cc;
+}
+
+.inbox-entry-title,
+.inbox-entry-detail {
+  display: block;
+}
+
+.inbox-entry-title {
+  font-size: 30rpx;
+  font-weight: 850;
+}
+
+.inbox-entry-detail {
+  margin-top: 7rpx;
+  color: #6f6b65;
+  font-size: 26rpx;
+}
+
+.inbox-entry-tail {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.inbox-entry-badge {
+  min-width: 38rpx;
+  height: 38rpx;
+  padding: 0 9rpx;
+  border-radius: 22rpx;
+  box-sizing: border-box;
+  background: #c91f26;
+  color: #fff;
+  font-size: 23rpx;
+  font-weight: 800;
+  line-height: 38rpx;
+  text-align: center;
+}
+
+.inbox-entry-arrow {
+  color: #8c867f;
+  font-size: 46rpx;
+  line-height: 1;
+}
+
 .account-section .section-title {
   margin: 0;
 }

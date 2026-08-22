@@ -9,7 +9,7 @@ import {
   exchangeCurrentWeChat,
   getMiniAppSession,
 } from "../../auth";
-import { syncTabBar } from "../../tabbar";
+import { refreshInboxBadge, syncTabBar } from "../../tabbar";
 import "./index.css";
 
 export default function MinePage() {
@@ -17,7 +17,17 @@ export default function MinePage() {
   const [loading, setLoading] = useState(true);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [webLoginBusy, setWebLoginBusy] = useState(false);
+  const [inboxCount, setInboxCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  const loadInboxCount = async (token: string) => {
+    try {
+      const summary = await api.getInboxSummary(token);
+      setInboxCount(summary.open_count);
+    } catch {
+      setInboxCount(0);
+    }
+  };
 
   const identify = async () => {
     setLoading(true);
@@ -27,14 +37,19 @@ export default function MinePage() {
       if (!savedToken) {
         const exchanged = await exchangeCurrentWeChat();
         setMe(exchanged.requires_profile ? null : exchanged.me);
+        const token = getMiniAppSession();
+        if (token && !exchanged.requires_profile) await loadInboxCount(token);
         return;
       }
       try {
         setMe(await api.getMiniAppMe(savedToken));
+        await loadInboxCount(savedToken);
       } catch {
         clearMiniAppSession();
         const exchanged = await exchangeCurrentWeChat();
         setMe(exchanged.requires_profile ? null : exchanged.me);
+        const token = getMiniAppSession();
+        if (token && !exchanged.requires_profile) await loadInboxCount(token);
       }
     } catch (reason: unknown) {
       clearMiniAppSession();
@@ -62,7 +77,9 @@ export default function MinePage() {
     } finally {
       clearMiniAppSession();
       setMe(null);
+      setInboxCount(0);
       setLogoutBusy(false);
+      void refreshInboxBadge();
     }
   };
 
@@ -120,6 +137,19 @@ export default function MinePage() {
             <View>
               <Text className="summary-label">当前账号</Text>
               <Text className="summary-name">{me.account.username}</Text>
+            </View>
+          </View>
+
+          <View className="inbox-entry" onClick={() => Taro.navigateTo({ url: "/pages/inbox/index" })}>
+            <View>
+              <Text className="inbox-entry-title">任务箱</Text>
+              <Text className="inbox-entry-detail">
+                {inboxCount > 0 ? `${inboxCount > 99 ? "99+" : inboxCount} 项待处理` : "暂无待处理任务"}
+              </Text>
+            </View>
+            <View className="inbox-entry-tail">
+              {inboxCount > 0 && <Text className="inbox-entry-badge">{inboxCount > 99 ? "99+" : inboxCount}</Text>}
+              <Text className="inbox-entry-arrow">›</Text>
             </View>
           </View>
 

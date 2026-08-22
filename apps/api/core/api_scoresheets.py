@@ -5,6 +5,7 @@ from typing import Any, Literal
 from urllib.parse import quote
 from uuid import UUID
 
+from django.conf import settings
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
@@ -16,23 +17,30 @@ from core.models import (
     GameScoresheet,
     ScoresheetEditLease,
     ScoresheetPublication,
+    ScoresheetRecognitionRun,
     Season,
 )
+from core.scoresheet_schema_v2 import ensure_v2_document
+from core.scoresheet_v2.recognition import PROMPT_VERSION
+from core.scoresheet_v2.template import load_template_definition
 from core.services.game_media import issue_media_ticket
+from core.services.scoresheet_recognition import RETRY_DELAYS
 from core.services.scoresheet_renderer import render_scoresheet_pdf
 from core.services.scoresheets import (
     ScoresheetError,
     acknowledge_warnings,
     acquire_edit_lease,
+    apply_recognition_regions,
     force_takeover_edit_lease,
     heartbeat_edit_lease,
     publication_csv,
     publish_scoresheet,
+    recognition_diff,
     release_edit_lease,
+    retry_recognition,
     review_region,
     save_draft_changes,
     season_stats_xlsx,
-    stop_recognition,
     sync_scoresheet,
     validate_scoresheet,
 )
@@ -50,6 +58,11 @@ class ScoresheetQueueItemOut(Schema):
     game_id: UUID
     game_code: str
     game_label: str
+    competition: str
+    division_name: str
+    venue: str
+    home_name: str
+    away_name: str
     date: str
     start_time: str
     scoresheet_id: UUID | None
@@ -110,6 +123,7 @@ class ScoresheetSyncOut(Schema):
 class LeaseAcquireIn(Schema):
     client_id: str
     surface: Literal["WEB", "MINIAPP"]
+    lease_token: str = ""
 
 
 class LeaseCommandIn(LeaseAcquireIn):
@@ -122,8 +136,18 @@ class LeaseForceIn(LeaseAcquireIn):
 
 class LeaseOut(Schema):
     read_only: bool
+    read_only_reason: str
     lease_token: str | None
-    holder: dict[str, Any]
+    holder: dict[str, Any] | None
+
+
+class ScoresheetRecognitionCapabilityOut(Schema):
+    configured: bool
+    provider: str
+    model: str
+    prompt_version: str
+    max_attempts: int
+    retry_delays_seconds: list[int]
 
 
 class MutationContextIn(Schema):
@@ -151,6 +175,10 @@ class ReviewRegionIn(MutationContextIn):
 
 class AcknowledgeWarningsIn(MutationContextIn):
     warning_ids: list[str]
+
+
+class ApplyRecognitionIn(MutationContextIn):
+    regions: list[str]
 
 
 class PublicScoresheetStatOut(Schema):
@@ -187,6 +215,35 @@ def _require_admin(request: HttpRequest):
         raise ScoresheetError("ADMIN_REQUIRED", "该操作仅限管理员。", status=403)
 
 
+def _recognition_run(run: ScoresheetRecognitionRun) -> dict[str, Any]:
+    return {
+        "id": str(run.id),
+        "document_id": str(run.scoresheet_id),
+        "base_revision": run.base_draft_version,
+        "source_version": run.source_version,
+        "cycle": run.cycle,
+        "trigger": run.trigger,
+        "model": run.model_name,
+        "prompt_version": run.prompt_version,
+        "image_sha256": run.image_sha256,
+        "auto_apply_allowed": run.auto_apply_allowed,
+        "status": run.status,
+        "attempt_count": run.attempt_count,
+        "max_attempts": run.max_attempts,
+        "next_attempt_at": run.next_attempt_at,
+        "last_error_code": run.last_error_code,
+        "last_error": run.last_error,
+        "recognition_notes": run.recognition_notes,
+        "provider_usage": run.provider_usage,
+        "provider_result": run.provider_result,
+        "applied_draft_version": run.applied_draft_version,
+        "stopped_at": run.stopped_at,
+        "finished_at": run.finished_at,
+        "created_at": run.created_at,
+        "updated_at": run.updated_at,
+    }
+
+
 def _recognition(scoresheet: GameScoresheet) -> dict[str, Any] | None:
     run = (
         scoresheet.recognition_runs.filter(source_version=scoresheet.source_version)
@@ -195,17 +252,7 @@ def _recognition(scoresheet: GameScoresheet) -> dict[str, Any] | None:
     )
     if run is None:
         return None
-    return {
-        "id": str(run.id),
-        "status": run.status,
-        "attempt_count": run.attempt_count,
-        "max_attempts": run.max_attempts,
-        "next_attempt_at": run.next_attempt_at,
-        "last_error_code": run.last_error_code,
-        "last_error": run.last_error,
-        "stopped_at": run.stopped_at,
-        "finished_at": run.finished_at,
-    }
+    return _recognition_run(run)
 
 
 def _lease(scoresheet: GameScoresheet) -> dict[str, Any] | None:
@@ -257,6 +304,32 @@ def _detail(scoresheet: GameScoresheet) -> dict[str, Any]:
             "review_status": asset.review_status,
             "version": asset.version,
         }
+    draft = ensure_v2_document(
+        scoresheet.draft,
+        scoresheet.game_prior_snapshot,
+        scoresheet.roster_snapshot,
+        document_id=str(scoresheet.id),
+    )
+    draft["revision"] = scoresheet.draft_version
+    draft["acknowledged_warnings"] = list(scoresheet.acknowledged_warnings or [])
+    if scoresheet.status == GameScoresheet.Status.PUBLISHED:
+        draft["status"] = "confirmed"
+    elif scoresheet.status == GameScoresheet.Status.READY:
+        draft["status"] = "validated"
+    else:
+        draft["status"] = "needs_review" if draft.get("recognition") else "draft"
+    if source:
+        draft["source"].update(
+            {
+                "original_filename": source["filename"],
+                "original_url": source["url"],
+                "aligned_url": "",
+                "version": scoresheet.source_version,
+                "content_sha256": scoresheet.source_asset.file_sha256,
+                "width": source["width"],
+                "height": source["height"],
+            }
+        )
     return {
         "id": scoresheet.id,
         "game": {
@@ -274,7 +347,7 @@ def _detail(scoresheet: GameScoresheet) -> dict[str, Any]:
         "source": source,
         "source_version": scoresheet.source_version,
         "status": scoresheet.status,
-        "draft": scoresheet.draft,
+        "draft": draft,
         "draft_version": scoresheet.draft_version,
         "event_sequence": scoresheet.event_sequence,
         "reviewed_regions": scoresheet.reviewed_regions,
@@ -306,21 +379,64 @@ def _get_scoresheet(scoresheet_id: UUID) -> GameScoresheet:
         raise ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404) from error
 
 
+@router.get("/template/definition", response={200: dict[str, Any], **ERROR_RESPONSES})
+def get_scoresheet_template_definition(request: HttpRequest):
+    try:
+        _require_admin(request)
+        return load_template_definition()
+    except ScoresheetError as error:
+        return _error(error)
+
+
+@router.get("/template/pdf", response={200: None, **ERROR_RESPONSES})
+def get_scoresheet_template_pdf(request: HttpRequest):
+    try:
+        _require_admin(request)
+        from core.scoresheet_v2.renderer import DEFAULT_TEMPLATE
+
+        if not DEFAULT_TEMPLATE.exists():
+            raise ScoresheetError("TEMPLATE_MISSING", "记录表 PDF 模板不存在。", status=404)
+        response = HttpResponse(DEFAULT_TEMPLATE.read_bytes(), content_type="application/pdf")
+        response["Cache-Control"] = "private, max-age=3600"
+        return response
+    except ScoresheetError as error:
+        return _error(error)
+
+
+@router.get(
+    "/recognition/capabilities",
+    response={200: ScoresheetRecognitionCapabilityOut, **ERROR_RESPONSES},
+)
+def get_scoresheet_recognition_capabilities(request: HttpRequest):
+    try:
+        _require_admin(request)
+        return {
+            "configured": bool(settings.QWEN_API_KEY.strip()),
+            "provider": "QWEN",
+            "model": settings.QWEN_MODEL,
+            "prompt_version": PROMPT_VERSION,
+            "max_attempts": 4,
+            "retry_delays_seconds": list(RETRY_DELAYS),
+        }
+    except ScoresheetError as error:
+        return _error(error)
+
+
 @router.get("/", response={200: list[ScoresheetQueueItemOut], **ERROR_RESPONSES})
 def list_scoresheets(request: HttpRequest, season_id: UUID | None = None):
     try:
         _require_admin(request)
         games = (
-            Game.objects.select_related("division", "home_team", "away_team", "scoresheet")
+            Game.objects.select_related(
+                "season", "division", "home_team", "away_team", "scoresheet"
+            )
             .exclude(status=Game.Status.VOID)
             .order_by("-date", "start_time", "venue_name")
         )
         if season_id:
             games = games.filter(season_id=season_id)
         else:
-            games = games.filter(
-                Q(season__is_public=True) | Q(scoresheet__isnull=False)
-            )
+            games = games.filter(Q(season__is_public=True) | Q(scoresheet__isnull=False))
         rows: list[dict[str, Any]] = []
         for game in games:
             try:
@@ -336,6 +452,11 @@ def list_scoresheets(request: HttpRequest, season_id: UUID | None = None):
                     "game_label": (
                         f"{game.division.name} · {game.home_display} vs {game.away_display}"
                     ),
+                    "competition": game.season.name,
+                    "division_name": game.division.name,
+                    "venue": game.venue_name,
+                    "home_name": game.home_display,
+                    "away_name": game.away_display,
                     "date": game.date.isoformat(),
                     "start_time": game.start_time.strftime("%H:%M"),
                     "scoresheet_id": scoresheet.id if scoresheet else None,
@@ -416,22 +537,28 @@ def get_scoresheet_sync(
 def acquire_scoresheet_lease(request: HttpRequest, scoresheet_id: UUID, payload: LeaseAcquireIn):
     try:
         _require_admin(request)
-        lease, token, read_only = acquire_edit_lease(
+        lease, token, read_only, read_only_reason = acquire_edit_lease(
             scoresheet_id=scoresheet_id,
             actor=request.auth,
             client_id=payload.client_id,
             surface=payload.surface,
+            resume_token=payload.lease_token,
         )
         return {
             "read_only": read_only,
+            "read_only_reason": read_only_reason,
             "lease_token": token,
-            "holder": {
-                "account_id": str(lease.account_id),
-                "username": lease.account.username,
-                "client_id": lease.client_id,
-                "surface": lease.surface,
-                "expires_at": lease.expires_at,
-            },
+            "holder": (
+                {
+                    "account_id": str(lease.account_id),
+                    "username": lease.account.username,
+                    "client_id": lease.client_id,
+                    "surface": lease.surface,
+                    "expires_at": lease.expires_at,
+                }
+                if lease
+                else None
+            ),
         }
     except ScoresheetError as error:
         return _error(error)
@@ -450,6 +577,7 @@ def heartbeat_scoresheet_lease(request: HttpRequest, scoresheet_id: UUID, payloa
         )
         return {
             "read_only": False,
+            "read_only_reason": "",
             "lease_token": payload.lease_token,
             "holder": {
                 "account_id": str(lease.account_id),
@@ -496,6 +624,7 @@ def force_scoresheet_lease(request: HttpRequest, scoresheet_id: UUID, payload: L
         )
         return {
             "read_only": False,
+            "read_only_reason": "",
             "lease_token": token,
             "holder": {
                 "account_id": str(lease.account_id),
@@ -629,17 +758,196 @@ def publish_scoresheet_endpoint(
 
 
 @router.post(
-    "/{scoresheet_id}/recognition/stop",
-    response={200: ScoresheetDetailOut, **ERROR_RESPONSES},
+    "/{scoresheet_id}/recognition/retry",
+    response={200: dict[str, Any], **ERROR_RESPONSES},
 )
-def stop_scoresheet_recognition(request: HttpRequest, scoresheet_id: UUID):
+def retry_scoresheet_recognition(
+    request: HttpRequest, scoresheet_id: UUID, payload: MutationContextIn
+):
     try:
         _require_admin(request)
-        stop_recognition(scoresheet_id=scoresheet_id, actor=request.auth)
+        run = retry_recognition(
+            scoresheet_id=scoresheet_id,
+            actor=request.auth,
+            expected_version=payload.expected_version,
+            lease_token=payload.lease_token,
+            client_id=payload.client_id,
+            surface=payload.surface,
+        )
+        return _recognition_run(run)
+    except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
+        if isinstance(error, GameScoresheet.DoesNotExist):
+            error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
+        return _error(error)
+
+
+@router.get(
+    "/{scoresheet_id}/recognition/latest",
+    response={200: dict[str, Any] | None, **ERROR_RESPONSES},
+)
+def get_latest_scoresheet_recognition(request: HttpRequest, scoresheet_id: UUID):
+    try:
+        _require_admin(request)
+        scoresheet = _get_scoresheet(scoresheet_id)
+        run = scoresheet.recognition_runs.order_by("-created_at").first()
+        return _recognition_run(run) if run else None
+    except ScoresheetError as error:
+        return _error(error)
+
+
+@router.get(
+    "/{scoresheet_id}/recognition/{run_id}",
+    response={200: dict[str, Any], **ERROR_RESPONSES},
+)
+def get_scoresheet_recognition(request: HttpRequest, scoresheet_id: UUID, run_id: UUID):
+    try:
+        _require_admin(request)
+        run = ScoresheetRecognitionRun.objects.get(id=run_id, scoresheet_id=scoresheet_id)
+        return _recognition_run(run)
+    except ScoresheetRecognitionRun.DoesNotExist:
+        return _error(ScoresheetError("RECOGNITION_NOT_FOUND", "识别结果不存在。", status=404))
+    except ScoresheetError as error:
+        return _error(error)
+
+
+@router.get(
+    "/{scoresheet_id}/recognition/{run_id}/diff",
+    response={200: dict[str, Any], **ERROR_RESPONSES},
+)
+def get_scoresheet_recognition_diff(request: HttpRequest, scoresheet_id: UUID, run_id: UUID):
+    try:
+        _require_admin(request)
+        scoresheet = _get_scoresheet(scoresheet_id)
+        run = ScoresheetRecognitionRun.objects.get(id=run_id, scoresheet=scoresheet)
+        return {
+            "run_id": str(run.id),
+            "document_id": str(scoresheet.id),
+            "base_revision": run.base_draft_version,
+            "current_revision": scoresheet.draft_version,
+            "regions": recognition_diff(scoresheet, run),
+        }
+    except ScoresheetRecognitionRun.DoesNotExist:
+        return _error(ScoresheetError("RECOGNITION_NOT_FOUND", "识别结果不存在。", status=404))
+    except ScoresheetError as error:
+        return _error(error)
+
+
+@router.post(
+    "/{scoresheet_id}/recognition/{run_id}/apply",
+    response={200: ScoresheetDetailOut, **ERROR_RESPONSES},
+)
+def apply_scoresheet_recognition(
+    request: HttpRequest,
+    scoresheet_id: UUID,
+    run_id: UUID,
+    payload: ApplyRecognitionIn,
+):
+    try:
+        _require_admin(request)
+        apply_recognition_regions(
+            scoresheet_id=scoresheet_id,
+            run_id=run_id,
+            actor=request.auth,
+            expected_version=payload.expected_version,
+            lease_token=payload.lease_token,
+            client_id=payload.client_id,
+            surface=payload.surface,
+            regions=payload.regions,
+        )
         return _detail(_get_scoresheet(scoresheet_id))
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
+        return _error(error)
+
+
+@router.get(
+    "/{scoresheet_id}/changes",
+    response={200: dict[str, Any], **ERROR_RESPONSES},
+)
+def list_scoresheet_changes(
+    request: HttpRequest,
+    scoresheet_id: UUID,
+    limit: int = 50,
+    before_event: int | None = None,
+):
+    try:
+        _require_admin(request)
+        scoresheet = _get_scoresheet(scoresheet_id)
+        visible_types = [
+            "FIELD_EDIT",
+            "UNDO",
+            "REDO",
+            "RECOGNITION_MERGE",
+            "SOURCE_REPLACED",
+            "PUBLISHED",
+        ]
+        query = (
+            scoresheet.change_logs.select_related("actor")
+            .filter(event_type__in=visible_types)
+            .order_by("-event_sequence")
+        )
+        if before_event is not None:
+            query = query.filter(event_sequence__lt=before_event)
+        page_size = max(1, min(limit, 100))
+        candidates = list(query[: page_size + 16])
+        rows = []
+        for row in candidates:
+            if row.event_type == "SOURCE_REPLACED" and int(
+                row.payload.get("source_version") or 0
+            ) <= 1:
+                continue
+            if row.event_type in {"FIELD_EDIT", "UNDO", "REDO", "RECOGNITION_MERGE"}:
+                if not row.changed_fields:
+                    continue
+            rows.append(row)
+            if len(rows) == page_size:
+                break
+        action_map = {
+            "FIELD_EDIT": "human_edit",
+            "UNDO": "undo",
+            "REDO": "redo",
+            "RECOGNITION_MERGE": "recognition_merge",
+            "SOURCE_REPLACED": "reupload",
+            "PUBLISHED": "confirm",
+        }
+        summary_map = {
+            "FIELD_EDIT": "人工编辑",
+            "UNDO": "撤销修改",
+            "REDO": "重做修改",
+            "RECOGNITION_MERGE": "应用识别差异",
+            "SOURCE_REPLACED": "重新上传记录表并重置草稿",
+            "PUBLISHED": "提交记录表",
+        }
+        return {
+            "items": [
+                {
+                    "id": row.event_sequence,
+                    "document_id": str(scoresheet.id),
+                    "action": action_map[row.event_type],
+                    "summary": (
+                        f"{summary_map[row.event_type]} · {len(row.changed_fields)} 项"
+                        if row.event_type
+                        in {"FIELD_EDIT", "UNDO", "REDO", "RECOGNITION_MERGE"}
+                        else summary_map[row.event_type]
+                    ),
+                    "changes": [
+                        {
+                            "path": change.get("path", "/"),
+                            "before": change.get("before"),
+                            "after": change.get("after", change.get("value")),
+                        }
+                        for change in row.changed_fields
+                    ],
+                    "created_at": row.created_at,
+                    "actor_name": row.actor.username if row.actor else None,
+                    "surface": row.surface,
+                }
+                for row in rows
+            ],
+            "next_before_id": rows[-1].event_sequence if len(rows) == page_size else None,
+        }
+    except ScoresheetError as error:
         return _error(error)
 
 
@@ -648,12 +956,7 @@ def download_scoresheet_pdf(request: HttpRequest, scoresheet_id: UUID):
     try:
         _require_admin(request)
         scoresheet = _get_scoresheet(scoresheet_id)
-        document = (
-            scoresheet.current_publication.snapshot
-            if scoresheet.current_publication
-            else scoresheet.draft
-        )
-        content = render_scoresheet_pdf(document)
+        content = render_scoresheet_pdf(scoresheet.draft)
         response = HttpResponse(content, content_type="application/pdf")
         response["Content-Disposition"] = (
             f"attachment; filename*=UTF-8''{quote(scoresheet.game.code + '-scoresheet.pdf')}"
@@ -703,33 +1006,27 @@ def download_season_scoresheet_xlsx(request: HttpRequest, season_id: UUID):
 def _public_stat(publication: ScoresheetPublication) -> dict[str, Any]:
     game = publication.scoresheet.game
     snapshot = publication.snapshot if isinstance(publication.snapshot, dict) else {}
-    published_game = (
-        snapshot.get("game") if isinstance(snapshot.get("game"), dict) else {}
-    )
-    published_teams = (
-        snapshot.get("teams") if isinstance(snapshot.get("teams"), dict) else {}
-    )
-    published_summary = (
-        snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
-    )
+    published_game = snapshot.get("header") if isinstance(snapshot.get("header"), dict) else {}
+    published_teams = {
+        row.get("side"): row
+        for row in snapshot.get("teams", [])
+        if isinstance(row, dict) and row.get("side") in {"A", "B"}
+    }
     final_score = (
-        published_summary.get("final_score")
-        if isinstance(published_summary.get("final_score"), dict)
-        else {}
+        snapshot.get("final_score") if isinstance(snapshot.get("final_score"), dict) else {}
     )
     team_names_by_id: dict[str, str] = {}
     for side in ("A", "B"):
-        team = (
-            published_teams.get(side)
-            if isinstance(published_teams.get(side), dict)
-            else {}
+        team = published_teams.get(side, {})
+        prior_team = (snapshot.get("game_prior") or {}).get(
+            "team_a" if side == "A" else "team_b", {}
         )
-        team_id = str(team.get("team_id") or "")
+        team_id = str(prior_team.get("team_id") or "")
         team_name = str(team.get("name") or "")
         if team_id and team_name:
             team_names_by_id[team_id] = team_name
-    home = published_teams.get("A") if isinstance(published_teams.get("A"), dict) else {}
-    away = published_teams.get("B") if isinstance(published_teams.get("B"), dict) else {}
+    home = published_teams.get("A", {})
+    away = published_teams.get("B", {})
     return {
         "publication_id": publication.id,
         "publication_number": publication.publication_number,
@@ -737,14 +1034,15 @@ def _public_stat(publication: ScoresheetPublication) -> dict[str, Any]:
         "game_code": str(published_game.get("game_number") or game.code),
         "date": str(published_game.get("date") or game.date.isoformat()),
         "start_time": str(
-            published_game.get("scheduled_time")
-            or game.start_time.strftime("%H:%M")
+            published_game.get("scheduled_time") or game.start_time.strftime("%H:%M")
         ),
-        "division_name": str(published_game.get("division") or game.division.name),
+        "division_name": str(
+            (snapshot.get("game_prior") or {}).get("division") or game.division.name
+        ),
         "home_name": str(home.get("name") or game.home_display),
         "away_name": str(away.get("name") or game.away_display),
-        "home_score": int(final_score.get("A")),
-        "away_score": int(final_score.get("B")),
+        "home_score": int(final_score.get("team_a")),
+        "away_score": int(final_score.get("team_b")),
         "team_stats": [
             {
                 "team_id": str(row.team_id),

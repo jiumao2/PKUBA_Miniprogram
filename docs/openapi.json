@@ -294,6 +294,286 @@
         ]
       }
     },
+    "/api/v1/public/leaderboards/teams": {
+      "get": {
+        "operationId": "core_api_public_stats_team_leaderboard",
+        "summary": "Team Leaderboard",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "division_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Division Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "default": "points_per_game",
+              "title": "Sort",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "default": "desc",
+              "title": "Order",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 50,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamLeaderboardOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDataErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDataErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public-data"
+        ]
+      }
+    },
+    "/api/v1/public/leaderboards/players": {
+      "get": {
+        "operationId": "core_api_public_stats_player_leaderboard",
+        "summary": "Player Leaderboard",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "division_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Division Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "default": "points_per_game",
+              "title": "Sort",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "default": "desc",
+              "title": "Order",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 50,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerLeaderboardOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDataErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDataErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public-data"
+        ]
+      }
+    },
+    "/api/v1/public/scoresheet-games": {
+      "get": {
+        "operationId": "core_api_public_stats_published_games",
+        "summary": "Published Games",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "division_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Division Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 30,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedGamePageOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDataErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicDataErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public-data"
+        ]
+      }
+    },
     "/api/v1/auth/wechat/exchange": {
       "post": {
         "operationId": "core_api_auth_wechat_exchange",
@@ -3619,6 +3899,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not Found",
             "content": {
@@ -6236,6 +6526,361 @@
         ]
       }
     },
+    "/api/v1/inbox/summary": {
+      "get": {
+        "operationId": "core_api_inbox_inbox_summary",
+        "summary": "Inbox Summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxSummaryOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "inbox"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/": {
+      "get": {
+        "operationId": "core_api_inbox_list_inbox",
+        "summary": "List Inbox",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "default": "OPEN",
+              "title": "Status",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 30,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxPageOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "inbox"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbox/{task_id}/viewed": {
+      "post": {
+        "operationId": "core_api_inbox_view_inbox_task",
+        "summary": "View Inbox Task",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Task Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxTaskOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "inbox"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scoresheets/template/definition": {
+      "get": {
+        "operationId": "core_api_scoresheets_get_scoresheet_template_definition",
+        "summary": "Get Scoresheet Template Definition",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scoresheets/template/pdf": {
+      "get": {
+        "operationId": "core_api_scoresheets_get_scoresheet_template_pdf",
+        "summary": "Get Scoresheet Template Pdf",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scoresheets/recognition/capabilities": {
+      "get": {
+        "operationId": "core_api_scoresheets_get_scoresheet_recognition_capabilities",
+        "summary": "Get Scoresheet Recognition Capabilities",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetRecognitionCapabilityOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/scoresheets/": {
       "get": {
         "operationId": "core_api_scoresheets_list_scoresheets",
@@ -7331,10 +7976,10 @@
         ]
       }
     },
-    "/api/v1/scoresheets/{scoresheet_id}/recognition/stop": {
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/retry": {
       "post": {
-        "operationId": "core_api_scoresheets_stop_scoresheet_recognition",
-        "summary": "Stop Scoresheet Recognition",
+        "operationId": "core_api_scoresheets_retry_scoresheet_recognition",
+        "summary": "Retry Scoresheet Recognition",
         "parameters": [
           {
             "in": "path",
@@ -7353,7 +7998,505 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MutationContextIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/latest": {
+      "get": {
+        "operationId": "core_api_scoresheets_get_latest_scoresheet_recognition",
+        "summary": "Get Latest Scoresheet Recognition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scoresheet_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Scoresheet Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/{run_id}": {
+      "get": {
+        "operationId": "core_api_scoresheets_get_scoresheet_recognition",
+        "summary": "Get Scoresheet Recognition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scoresheet_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Scoresheet Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/{run_id}/diff": {
+      "get": {
+        "operationId": "core_api_scoresheets_get_scoresheet_recognition_diff",
+        "summary": "Get Scoresheet Recognition Diff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scoresheet_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Scoresheet Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/{run_id}/apply": {
+      "post": {
+        "operationId": "core_api_scoresheets_apply_scoresheet_recognition",
+        "summary": "Apply Scoresheet Recognition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scoresheet_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Scoresheet Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
                   "$ref": "#/components/schemas/ScoresheetDetailOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRecognitionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/scoresheets/{scoresheet_id}/changes": {
+      "get": {
+        "operationId": "core_api_scoresheets_list_scoresheet_changes",
+        "summary": "List Scoresheet Changes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scoresheet_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Scoresheet Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "before_event",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Event"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response",
+                  "type": "object"
                 }
               }
             }
@@ -8580,6 +9723,483 @@
           "champion_name"
         ],
         "title": "DivisionBracketOut",
+        "type": "object"
+      },
+      "TeamLeaderboardItemOut": {
+        "properties": {
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          },
+          "games_played": {
+            "title": "Games Played",
+            "type": "integer"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          },
+          "losses": {
+            "title": "Losses",
+            "type": "integer"
+          },
+          "win_percentage": {
+            "title": "Win Percentage",
+            "type": "number"
+          },
+          "points_for": {
+            "title": "Points For",
+            "type": "integer"
+          },
+          "points_against": {
+            "title": "Points Against",
+            "type": "integer"
+          },
+          "point_difference": {
+            "title": "Point Difference",
+            "type": "integer"
+          },
+          "points_per_game": {
+            "title": "Points Per Game",
+            "type": "number"
+          },
+          "points_against_per_game": {
+            "title": "Points Against Per Game",
+            "type": "number"
+          },
+          "point_difference_per_game": {
+            "title": "Point Difference Per Game",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rank",
+          "team_id",
+          "team_name",
+          "division_id",
+          "division_name",
+          "division_gender",
+          "games_played",
+          "wins",
+          "losses",
+          "win_percentage",
+          "points_for",
+          "points_against",
+          "point_difference",
+          "points_per_game",
+          "points_against_per_game",
+          "point_difference_per_game"
+        ],
+        "title": "TeamLeaderboardItemOut",
+        "type": "object"
+      },
+      "TeamLeaderboardOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "division_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division Id"
+          },
+          "sort": {
+            "title": "Sort",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "string"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TeamLeaderboardItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "division_id",
+          "sort",
+          "order",
+          "page",
+          "page_size",
+          "total",
+          "items"
+        ],
+        "title": "TeamLeaderboardOut",
+        "type": "object"
+      },
+      "PublicDataErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "PublicDataErrorOut",
+        "type": "object"
+      },
+      "PlayerLeaderboardItemOut": {
+        "properties": {
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "player_id": {
+            "format": "uuid",
+            "title": "Player Id",
+            "type": "string"
+          },
+          "player_name": {
+            "title": "Player Name",
+            "type": "string"
+          },
+          "jersey_number": {
+            "title": "Jersey Number",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          },
+          "games_played": {
+            "title": "Games Played",
+            "type": "integer"
+          },
+          "starts": {
+            "title": "Starts",
+            "type": "integer"
+          },
+          "total_points": {
+            "title": "Total Points",
+            "type": "integer"
+          },
+          "points_per_game": {
+            "title": "Points Per Game",
+            "type": "number"
+          },
+          "one_point_events": {
+            "title": "One Point Events",
+            "type": "integer"
+          },
+          "two_point_events": {
+            "title": "Two Point Events",
+            "type": "integer"
+          },
+          "three_point_events": {
+            "title": "Three Point Events",
+            "type": "integer"
+          },
+          "personal_fouls": {
+            "title": "Personal Fouls",
+            "type": "integer"
+          },
+          "fouls_per_game": {
+            "title": "Fouls Per Game",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rank",
+          "player_id",
+          "player_name",
+          "jersey_number",
+          "team_id",
+          "team_name",
+          "division_id",
+          "division_name",
+          "division_gender",
+          "games_played",
+          "starts",
+          "total_points",
+          "points_per_game",
+          "one_point_events",
+          "two_point_events",
+          "three_point_events",
+          "personal_fouls",
+          "fouls_per_game"
+        ],
+        "title": "PlayerLeaderboardItemOut",
+        "type": "object"
+      },
+      "PlayerLeaderboardOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "division_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division Id"
+          },
+          "sort": {
+            "title": "Sort",
+            "type": "string"
+          },
+          "order": {
+            "title": "Order",
+            "type": "string"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerLeaderboardItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "division_id",
+          "sort",
+          "order",
+          "page",
+          "page_size",
+          "total",
+          "items"
+        ],
+        "title": "PlayerLeaderboardOut",
+        "type": "object"
+      },
+      "PublishedGamePageOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "division_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Division Id"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublishedGameSummaryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "division_id",
+          "page",
+          "page_size",
+          "total",
+          "items"
+        ],
+        "title": "PublishedGamePageOut",
+        "type": "object"
+      },
+      "PublishedGameSummaryOut": {
+        "properties": {
+          "publication_id": {
+            "format": "uuid",
+            "title": "Publication Id",
+            "type": "string"
+          },
+          "publication_number": {
+            "title": "Publication Number",
+            "type": "integer"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "game_code": {
+            "title": "Game Code",
+            "type": "string"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "home_score": {
+            "title": "Home Score",
+            "type": "integer"
+          },
+          "away_score": {
+            "title": "Away Score",
+            "type": "integer"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "publication_id",
+          "publication_number",
+          "game_id",
+          "game_code",
+          "date",
+          "start_time",
+          "division_id",
+          "division_name",
+          "division_gender",
+          "home_name",
+          "away_name",
+          "home_score",
+          "away_score",
+          "published_at"
+        ],
+        "title": "PublishedGameSummaryOut",
         "type": "object"
       },
       "AccountOut": {
@@ -15767,6 +17387,225 @@
         "title": "GameMediaCollectionOut",
         "type": "object"
       },
+      "InboxSummaryOut": {
+        "properties": {
+          "open_count": {
+            "title": "Open Count",
+            "type": "integer"
+          },
+          "display_count": {
+            "title": "Display Count",
+            "type": "string"
+          }
+        },
+        "required": [
+          "open_count",
+          "display_count"
+        ],
+        "title": "InboxSummaryOut",
+        "type": "object"
+      },
+      "InboxPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InboxTaskOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "InboxPageOut",
+        "type": "object"
+      },
+      "InboxTaskOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "close_reason": {
+            "title": "Close Reason",
+            "type": "string"
+          },
+          "target_url": {
+            "title": "Target Url",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "body",
+          "status",
+          "due_at",
+          "read_at",
+          "closed_at",
+          "close_reason",
+          "target_url",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InboxTaskOut",
+        "type": "object"
+      },
+      "InboxErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "InboxErrorOut",
+        "type": "object"
+      },
+      "ScoresheetErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ScoresheetErrorOut",
+        "type": "object"
+      },
+      "ScoresheetRecognitionCapabilityOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "max_attempts": {
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "retry_delays_seconds": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Retry Delays Seconds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "configured",
+          "provider",
+          "model",
+          "prompt_version",
+          "max_attempts",
+          "retry_delays_seconds"
+        ],
+        "title": "ScoresheetRecognitionCapabilityOut",
+        "type": "object"
+      },
       "ScoresheetQueueItemOut": {
         "properties": {
           "game_id": {
@@ -15780,6 +17619,26 @@
           },
           "game_label": {
             "title": "Game Label",
+            "type": "string"
+          },
+          "competition": {
+            "title": "Competition",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
             "type": "string"
           },
           "date": {
@@ -15876,6 +17735,11 @@
           "game_id",
           "game_code",
           "game_label",
+          "competition",
+          "division_name",
+          "venue",
+          "home_name",
+          "away_name",
           "date",
           "start_time",
           "scoresheet_id",
@@ -15889,24 +17753,6 @@
           "publication_number"
         ],
         "title": "ScoresheetQueueItemOut",
-        "type": "object"
-      },
-      "ScoresheetErrorOut": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "message"
-        ],
-        "title": "ScoresheetErrorOut",
         "type": "object"
       },
       "ScoresheetDetailOut": {
@@ -16204,6 +18050,10 @@
             "title": "Read Only",
             "type": "boolean"
           },
+          "read_only_reason": {
+            "title": "Read Only Reason",
+            "type": "string"
+          },
           "lease_token": {
             "anyOf": [
               {
@@ -16216,13 +18066,21 @@
             "title": "Lease Token"
           },
           "holder": {
-            "additionalProperties": true,
-            "title": "Holder",
-            "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           }
         },
         "required": [
           "read_only",
+          "read_only_reason",
           "lease_token",
           "holder"
         ],
@@ -16241,6 +18099,11 @@
               "MINIAPP"
             ],
             "title": "Surface",
+            "type": "string"
+          },
+          "lease_token": {
+            "default": "",
+            "title": "Lease Token",
             "type": "string"
           }
         },
@@ -16290,6 +18153,11 @@
               "MINIAPP"
             ],
             "title": "Surface",
+            "type": "string"
+          },
+          "lease_token": {
+            "default": "",
+            "title": "Lease Token",
             "type": "string"
           },
           "confirmed": {
@@ -16487,6 +18355,46 @@
           "warning_ids"
         ],
         "title": "AcknowledgeWarningsIn",
+        "type": "object"
+      },
+      "ApplyRecognitionIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "lease_token": {
+            "title": "Lease Token",
+            "type": "string"
+          },
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "surface": {
+            "enum": [
+              "WEB",
+              "MINIAPP"
+            ],
+            "title": "Surface",
+            "type": "string"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Regions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version",
+          "lease_token",
+          "client_id",
+          "surface",
+          "regions"
+        ],
+        "title": "ApplyRecognitionIn",
         "type": "object"
       },
       "PublicScoresheetStatOut": {

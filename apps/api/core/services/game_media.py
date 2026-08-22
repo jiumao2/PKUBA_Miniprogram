@@ -72,7 +72,7 @@ def _register_scoresheet_source(
 ) -> None:
     """Bridge scoresheet domain failures into the stable media error contract."""
 
-    from core.scoresheet_schema import ScoresheetDocumentError
+    from core.scoresheet_schema_v2 import ScoresheetDocumentError
     from core.services.scoresheets import ScoresheetError, register_scoresheet_source
 
     try:
@@ -84,12 +84,18 @@ def _register_scoresheet_source(
 
 
 def media_permissions(account: Account, game: Game) -> MediaPermissions:
-    if account.is_pkuba_admin:
+    if account.is_pkuba_superadmin:
         mutable = (
             game.season.status != game.season.Status.ARCHIVED
             and game.division.operation_status == game.division.OperationStatus.ACTIVE
         )
         return MediaPermissions(can_view=True, can_upload=mutable, can_review=mutable)
+    if account.is_pkuba_admin:
+        mutable = (
+            game.season.status != game.season.Status.ARCHIVED
+            and game.division.operation_status == game.division.OperationStatus.ACTIVE
+        )
+        return MediaPermissions(can_view=True, can_upload=mutable, can_review=False)
     binding = (
         SeasonLeaderBinding.objects.filter(
             season=game.season,
@@ -147,7 +153,9 @@ def upload_game_media(
         raise GameMediaError("MEDIA_KIND_INVALID", "图片类型不合法。")
     permissions = media_permissions(actor, game)
     if not permissions.can_upload:
-        raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "只有管理员可以上传比赛资料。")
+        raise GameMediaError(
+            "MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。"
+        )
     if kind == GameMediaAsset.Kind.SCORESHEET and not scoresheet_complete_confirmed:
         raise GameMediaError(
             "SCORESHEET_CONFIRMATION_REQUIRED",
@@ -240,8 +248,8 @@ def review_game_media(
     approve: bool,
     note: str,
 ) -> GameMediaAsset:
-    if not actor.is_pkuba_admin:
-        raise GameMediaError("ADMIN_REQUIRED", "该操作仅限管理员。")
+    if not actor.is_pkuba_superadmin:
+        raise GameMediaError("SUPERADMIN_REQUIRED", "比赛资料审核仅限超级管理员。")
     normalized_note = note.strip()[:300]
     if not approve and not normalized_note:
         raise GameMediaError("REVIEW_NOTE_REQUIRED", "未通过时必须填写原因。")
@@ -259,7 +267,7 @@ def review_game_media(
         if asset.kind == GameMediaAsset.Kind.SCORESHEET:
             raise GameMediaError(
                 "SCORESHEET_REVIEW_IN_EDITOR",
-                "记录表必须在全区域人工核对并通过校验后一次发布，不能在图片审核处直接通过。",
+                "记录表必须在专用编辑器中完成人工检查并通过服务端校验后一次发布，不能在图片审核处直接通过。",
             )
         before = {
             "review_status": asset.review_status,
@@ -309,8 +317,6 @@ def replace_game_media(
     scoresheet_complete_confirmed: bool,
     uploaded_file,
 ) -> GameMediaAsset:
-    if not actor.is_pkuba_admin:
-        raise GameMediaError("ADMIN_REQUIRED", "只有管理员可以替换已上传图片。")
     current = (
         GameMediaAsset.objects.select_related("game")
         .filter(id=asset_id, deleted_at__isnull=True)
@@ -319,6 +325,8 @@ def replace_game_media(
     if current is None:
         raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。")
     _assert_media_mutable(current.game)
+    if not media_permissions(actor, current.game).can_upload:
+        raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料替换仅限管理员。")
     if (
         current.kind == GameMediaAsset.Kind.SCORESHEET
         and GameScoresheet.objects.filter(
@@ -359,6 +367,17 @@ def replace_game_media(
                 raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
             if replaced.kind != current.kind or replaced.game_id != current.game_id:
                 raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
+            if (
+                replaced.kind == GameMediaAsset.Kind.SCORESHEET
+                and GameScoresheet.objects.filter(
+                    current_publication__source_asset_id=replaced.id
+                ).exists()
+                and not actor.is_pkuba_superadmin
+            ):
+                raise GameMediaError(
+                    "SUPERADMIN_REQUIRED",
+                    "已发布记录表的重传和纠错仅限超级管理员。",
+                )
 
             replaced.deleted_by = actor
             replaced.deleted_at = timezone.now()
@@ -425,8 +444,8 @@ def replace_game_media(
 def delete_game_media(
     *, actor: Account, asset_id, expected_version: int
 ) -> GameMediaAsset:
-    if not actor.is_pkuba_admin:
-        raise GameMediaError("ADMIN_REQUIRED", "该操作仅限管理员。")
+    if not actor.is_pkuba_superadmin:
+        raise GameMediaError("SUPERADMIN_REQUIRED", "比赛资料删除仅限超级管理员。")
     with transaction.atomic():
         try:
             asset = GameMediaAsset.objects.select_for_update().get(

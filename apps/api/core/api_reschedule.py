@@ -148,6 +148,7 @@ def _error(error: RescheduleError):
         "SELECTED_LEADER_REQUIRED",
         "TEAM_NOT_SELECTED",
         "ADMIN_REQUIRED",
+        "SUPERADMIN_REQUIRED",
     }:
         status = 403
     elif error.code in {
@@ -236,7 +237,7 @@ def _actions(request_item: RescheduleRequest, actor: Account) -> list[str]:
                 and request_item.status == RescheduleRequest.Status.WAITING_SELECTED_TEAMS
             ):
                 actions.append("RESPOND_SELECTED_TEAM")
-    if actor.is_pkuba_admin:
+    if actor.is_pkuba_superadmin:
         if request_item.status == RescheduleRequest.Status.WAITING_ADMIN_DECISION:
             actions.extend(["ADMIN_APPROVE", "ADMIN_REJECT", "ADMIN_START_VOTE"])
         if request_item.status == RescheduleRequest.Status.WAITING_ADMIN_FINAL:

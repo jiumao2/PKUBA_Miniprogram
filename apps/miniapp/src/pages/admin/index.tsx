@@ -68,13 +68,15 @@ export default function AdminWorkspacePage() {
               记录表核对
               <Text className="workspace-count">跨端同步 · 识别发布</Text>
             </Button>
-            <Button
-              className="workspace-action"
-              onClick={() => Taro.navigateTo({ url: "/pages/reschedule-requests/index" })}
-            >
-              调赛处理
-              <Text className="workspace-count">{waitingAdmin.length} 项待处理</Text>
-            </Button>
+            {adminRole === "SUPERADMIN" && (
+              <Button
+                className="workspace-action"
+                onClick={() => Taro.navigateTo({ url: "/pages/reschedule-requests/index" })}
+              >
+                调赛处理
+                <Text className="workspace-count">{waitingAdmin.length} 项待处理</Text>
+              </Button>
+            )}
             <Button
               className="workspace-action"
               onClick={() => Taro.navigateTo({ url: "/pages/admin-games/index" })}

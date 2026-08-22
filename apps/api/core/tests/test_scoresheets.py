@@ -27,7 +27,6 @@ from core.models import (
     ScoresheetPublication,
     ScoresheetRecognitionRun,
 )
-from core.scoresheet_schema import REGIONS
 from core.services.game_media import replace_game_media, upload_game_media
 from core.services.scoresheet_recognition import (
     RecognitionAttemptError,
@@ -42,6 +41,8 @@ from core.services.scoresheets import (
     acquire_edit_lease,
     force_takeover_edit_lease,
     publish_scoresheet,
+    release_edit_lease,
+    retry_recognition,
     review_region,
     save_draft_changes,
     sync_scoresheet,
@@ -63,81 +64,91 @@ def image_file(name: str = "scoresheet.jpg") -> SimpleUploadedFile:
 
 def create_scoresheet():
     setup = reschedule_setup()
+    setup["ordinary_admin"] = setup["admin"]
+    setup["admin"] = setup["superadmin"]
     game = setup["games"][0]
-    players = {
-        "A": RosterPlayer.objects.create(
-            team=game.home_team, name="甲队一号", jersey_number="4"
-        ),
-        "B": RosterPlayer.objects.create(
-            team=game.away_team, name="乙队一号", jersey_number="5"
-        ),
-    }
+    player_rows = {}
+    for side, team, prefix in (
+        ("A", game.home_team, "甲队"),
+        ("B", game.away_team, "乙队"),
+    ):
+        created = [
+            RosterPlayer.objects.create(
+                team=team,
+                name=f"{prefix}{index}号",
+                jersey_number=str(index + 3),
+            )
+            for index in range(1, 6)
+        ]
+        player_rows[side] = created[0]
     asset = upload_game_media(
-        actor=setup["admin"],
+        actor=setup["superadmin"],
         game=game,
         kind=GameMediaAsset.Kind.SCORESHEET,
         scoresheet_complete_confirmed=True,
         uploaded_file=image_file(),
     )
-    return setup, game, players, asset, GameScoresheet.objects.get(game=game)
+    return setup, game, player_rows, asset, GameScoresheet.objects.get(game=game)
 
 
 def valid_document(scoresheet: GameScoresheet) -> dict[str, object]:
     document = copy.deepcopy(scoresheet.draft)
-    player_a = document["teams"]["A"]["players"][0]
-    player_b = document["teams"]["B"]["players"][0]
-    player_a.update({"appeared": True, "starter": True})
-    player_b.update({"appeared": True, "starter": True})
-    document["running_score"] = [
+    player_a = document["teams"][0]["players"][0]
+    player_b = document["teams"][1]["players"][0]
+    for player in document["teams"][0]["players"][:5]:
+        player["participation"] = "starter"
+    for player in document["teams"][1]["players"][:5]:
+        player["participation"] = "starter"
+    document["score_events"] = [
         {
-            "id": "score-a-1",
             "sequence": 1,
             "team": "A",
-            "player_id": player_a["player_id"],
-            "player_name": player_a["name"],
-            "player_number": player_a["jersey_number"],
-            "value": 2,
-            "period": "1",
-            "cumulative": 2,
+            "period": 1,
+            "points": 2,
+            "cumulative_score": 2,
+            "scorer_jersey": player_a["jersey_number"],
+            "mark": "diagonal",
+            "scorer_circled": False,
             "boundary": "none",
+            "ink_role": "q1_q3",
         },
         {
-            "id": "score-b-1",
             "sequence": 2,
             "team": "B",
-            "player_id": player_b["player_id"],
-            "player_name": player_b["name"],
-            "player_number": player_b["jersey_number"],
-            "value": 1,
-            "period": "1",
-            "cumulative": 1,
-            "boundary": "game",
+            "period": 1,
+            "points": 1,
+            "cumulative_score": 1,
+            "scorer_jersey": player_b["jersey_number"],
+            "mark": "filled_dot",
+            "scorer_circled": False,
+            "boundary": "game_end",
+            "ink_role": "q1_q3",
         },
     ]
-    document["summary"] = {
-        "period_scores": {
-            "1": {"A": 2, "B": 1},
-            "2": {"A": 0, "B": 0},
-            "3": {"A": 0, "B": 0},
-            "4": {"A": 0, "B": 0},
-            "OT": {"A": 0, "B": 0},
-        },
-        "final_score": {"A": 2, "B": 1},
-        "winner_side": "A",
+    document["stated_period_scores"] = [
+        {"period": 1, "team_a": 2, "team_b": 1},
+        {"period": 2, "team_a": 0, "team_b": 0},
+        {"period": 3, "team_a": 0, "team_b": 0},
+        {"period": 4, "team_a": 0, "team_b": 0},
+    ]
+    document["final_score"] = {
+        "team_a": 2,
+        "team_b": 1,
+        "winner_name": document["teams"][0]["name"],
         "ended_at": "14:20",
     }
-    document["officials"].update(
-        {
-            "scorer": "记录员",
-            "timer": "计时员",
-            "crew_chief_signature": True,
-        }
-    )
+    for official in document["officials"]:
+        if official["role"] == "scorer":
+            official.update({"name": "记录员", "signature": "present"})
+        elif official["role"] == "timer":
+            official.update({"name": "计时员", "signature": "present"})
+        elif official["role"] == "crew_chief":
+            official["signature"] = "present"
     return document
 
 
 def obtain_lease(scoresheet: GameScoresheet, actor: Account, client_id: str = "web-1") -> str:
-    _, token, read_only = acquire_edit_lease(
+    _, token, read_only, _reason = acquire_edit_lease(
         scoresheet_id=scoresheet.id,
         actor=actor,
         client_id=client_id,
@@ -166,17 +177,6 @@ def make_ready(
         explicit_save=True,
     )
     scoresheet.refresh_from_db()
-    for region in REGIONS:
-        review_region(
-            scoresheet_id=scoresheet.id,
-            actor=actor,
-            expected_version=scoresheet.draft_version,
-            lease_token=token,
-            client_id=client_id,
-            surface=ScoresheetEditLease.Surface.WEB,
-            region=region,
-            reviewed=True,
-        )
     validate_scoresheet(
         scoresheet_id=scoresheet.id,
         actor=actor,
@@ -206,14 +206,14 @@ def test_single_editor_lease_expiry_and_superadmin_takeover(tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path):
         setup, _, _, _, scoresheet = create_scoresheet()
     second_admin = Account.objects.create_user(
-        username="scoresheet-admin-2", password="password", role=Account.Role.ADMIN
+        username="scoresheet-admin-2", password="password", role=Account.Role.SUPERADMIN
     )
     superadmin = Account.objects.create_user(
         username="scoresheet-root", password="password", role=Account.Role.SUPERADMIN
     )
 
     old_token = obtain_lease(scoresheet, setup["admin"], "web-owner")
-    holder, other_token, read_only = acquire_edit_lease(
+    holder, other_token, read_only, reason = acquire_edit_lease(
         scoresheet_id=scoresheet.id,
         actor=second_admin,
         client_id="mini-reader",
@@ -221,6 +221,8 @@ def test_single_editor_lease_expiry_and_superadmin_takeover(tmp_path):
     )
     assert read_only is True
     assert other_token is None
+    assert reason
+    assert holder is not None
     assert holder.account_id == setup["admin"].id
 
     with pytest.raises(ScoresheetError, match="二次确认"):
@@ -247,14 +249,14 @@ def test_single_editor_lease_expiry_and_superadmin_takeover(tmp_path):
             lease_token=old_token,
             client_id="web-owner",
             surface=ScoresheetEditLease.Surface.WEB,
-            changes=[{"path": "/game/venue", "value": "失效客户端"}],
+            changes=[{"path": "/header/game_number", "value": "失效客户端"}],
         )
     assert lost.value.code == "LEASE_LOST"
 
     lease = ScoresheetEditLease.objects.get(scoresheet=scoresheet)
     lease.expires_at = timezone.now() - timedelta(seconds=1)
     lease.save(update_fields=["expires_at"])
-    new_holder, new_token, read_only = acquire_edit_lease(
+    new_holder, new_token, read_only, _reason = acquire_edit_lease(
         scoresheet_id=scoresheet.id,
         actor=second_admin,
         client_id="mini-reader",
@@ -264,6 +266,42 @@ def test_single_editor_lease_expiry_and_superadmin_takeover(tmp_path):
     assert new_token
     assert new_holder.account_id == second_admin.id
     assert AdminAuditLog.objects.filter(action="SCORESHEET_LEASE_FORCE_TAKEN").exists()
+
+
+def test_ordinary_admin_is_read_only_during_ai_then_can_edit_after_failure(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path, QWEN_API_KEY="test-key"):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    ordinary = setup["ordinary_admin"]
+
+    holder, token, read_only, reason = acquire_edit_lease(
+        scoresheet_id=scoresheet.id,
+        actor=ordinary,
+        client_id="ordinary-before-ai",
+        surface=ScoresheetEditLease.Surface.WEB,
+    )
+    assert holder is None
+    assert token is None
+    assert read_only is True
+    assert "识别" in reason
+
+    ScoresheetRecognitionRun.objects.filter(
+        scoresheet=scoresheet,
+        source_version=scoresheet.source_version,
+    ).update(
+        status=ScoresheetRecognitionRun.Status.FAILED,
+        last_error_code="CREDENTIALS_MISSING",
+        finished_at=timezone.now(),
+    )
+    holder, token, read_only, _reason = acquire_edit_lease(
+        scoresheet_id=scoresheet.id,
+        actor=ordinary,
+        client_id="ordinary-after-ai",
+        surface=ScoresheetEditLease.Surface.WEB,
+    )
+
+    assert read_only is False
+    assert token
+    assert holder.account_id == ordinary.id
 
 
 def test_field_change_invalidates_region_and_is_available_to_sync(tmp_path):
@@ -290,14 +328,14 @@ def test_field_change_invalidates_region_and_is_available_to_sync(tmp_path):
         lease_token=token,
         client_id="web-1",
         surface=ScoresheetEditLease.Surface.WEB,
-        changes=[{"path": "/game/venue", "value": "五四西场"}],
+        changes=[{"path": "/header/game_number", "value": "TEST-UPDATED"}],
     )
     scoresheet.refresh_from_db()
     assert scoresheet.draft_version == old_version + 1
     assert "SOURCE_GAME" not in scoresheet.reviewed_regions
     events = sync_scoresheet(scoresheet, after_event)
     assert [event.event_type for event in events] == ["FIELD_EDIT"]
-    assert events[0].changed_fields[0]["path"] == "/game/venue"
+    assert events[0].changed_fields[0]["path"] == "/header/game_number"
     with pytest.raises(ScoresheetError) as stale:
         save_draft_changes(
             scoresheet_id=scoresheet.id,
@@ -306,19 +344,19 @@ def test_field_change_invalidates_region_and_is_available_to_sync(tmp_path):
             lease_token=token,
             client_id="web-1",
             surface=ScoresheetEditLease.Surface.WEB,
-            changes=[{"path": "/game/venue", "value": "旧值覆盖"}],
+            changes=[{"path": "/header/game_number", "value": "旧值覆盖"}],
         )
     assert stale.value.code == "VERSION_CONFLICT"
 
 
-def test_unrelated_region_reviews_survive_a_field_change(tmp_path):
+def test_publish_does_not_require_region_reviews_and_keeps_field_change_log(tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path):
         setup, _, _, _, scoresheet = create_scoresheet()
     token = obtain_lease(scoresheet, setup["admin"])
     scoresheet = make_ready(scoresheet, setup["admin"], token)
 
     updated = copy.deepcopy(scoresheet.draft)
-    updated["game"]["venue"] = "只重核比赛信息"
+    updated["header"]["game_number"] = "只重核比赛信息"
     save_draft_changes(
         scoresheet_id=scoresheet.id,
         actor=setup["admin"],
@@ -329,27 +367,11 @@ def test_unrelated_region_reviews_survive_a_field_change(tmp_path):
         changes=[{"path": "/", "operation": "SET", "value": updated}],
     )
     scoresheet.refresh_from_db()
-    assert "SOURCE_GAME" not in scoresheet.reviewed_regions
-    assert all(
-        scoresheet.reviewed_regions[region]["draft_version"]
-        == scoresheet.draft_version
-        for region in REGIONS
-        if region != "SOURCE_GAME"
-    )
+    assert scoresheet.reviewed_regions == {}
     latest_change = scoresheet.change_logs.order_by("-event_sequence").first()
     assert latest_change is not None
-    assert [row["path"] for row in latest_change.changed_fields] == ["/game/venue"]
+    assert [row["path"] for row in latest_change.changed_fields] == ["/header/game_number"]
 
-    review_region(
-        scoresheet_id=scoresheet.id,
-        actor=setup["admin"],
-        expected_version=scoresheet.draft_version,
-        lease_token=token,
-        client_id="web-1",
-        surface=ScoresheetEditLease.Surface.WEB,
-        region="SOURCE_GAME",
-        reviewed=True,
-    )
     validate_scoresheet(
         scoresheet_id=scoresheet.id,
         actor=setup["admin"],
@@ -405,7 +427,7 @@ def test_web_edit_is_returned_by_miniapp_sync_endpoint(tmp_path):
                 "lease_token": lease_token,
                 "client_id": "web-sync",
                 "surface": "WEB",
-                "changes": [{"path": "/game/venue", "value": "跨端同步场地"}],
+                "changes": [{"path": "/header/game_number", "value": "跨端同步编号"}],
             }
         ),
         content_type="application/json",
@@ -420,7 +442,7 @@ def test_web_edit_is_returned_by_miniapp_sync_endpoint(tmp_path):
     )
     assert synced.status_code == 200
     assert synced.json()["current_version"] == scoresheet.draft_version + 1
-    assert synced.json()["events"][-1]["changed_fields"][0]["value"] == "跨端同步场地"
+    assert synced.json()["events"][-1]["changed_fields"][0]["after"] == "跨端同步编号"
     assert synced.json()["lease"]["surface"] == "WEB"
 
 
@@ -448,7 +470,7 @@ def test_miniapp_bearer_can_write_without_csrf_cookie(tmp_path):
                 "lease_token": lease_token,
                 "client_id": "mini-csrf",
                 "surface": "MINIAPP",
-                "changes": [{"path": "/game/venue", "value": "小程序无 CSRF 保存"}],
+                "changes": [{"path": "/header/game_number", "value": "MINI-NO-CSRF"}],
             }
         ),
         content_type="application/json",
@@ -456,13 +478,13 @@ def test_miniapp_bearer_can_write_without_csrf_cookie(tmp_path):
     )
 
     assert saved.status_code == 200
-    assert saved.json()["draft"]["game"]["venue"] == "小程序无 CSRF 保存"
+    assert saved.json()["draft"]["header"]["game_number"] == "MINI-NO-CSRF"
 
 
 def test_retryable_recognition_uses_initial_call_plus_three_retries(tmp_path, monkeypatch):
     from core.services import scoresheet_recognition as recognition
 
-    with override_settings(MEDIA_ROOT=tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path, QWEN_API_KEY="test-key"):
         _, _, _, _, scoresheet = create_scoresheet()
 
         def fail(_run):
@@ -471,7 +493,7 @@ def test_retryable_recognition_uses_initial_call_plus_three_retries(tmp_path, mo
             )
 
         monkeypatch.setattr(recognition, "call_qwen", fail)
-        expected_delays = [30, 120, 600]
+        expected_delays = [30, 30, 30]
         for attempt in range(4):
             before = timezone.now()
             outcome = run_once("test-worker")
@@ -505,7 +527,7 @@ def test_qwen_prior_contains_only_team_and_player_names(tmp_path):
     assert str(scoresheet.id) not in serialized
     assert scoresheet.game_prior_snapshot["date"] not in serialized
     assert scoresheet.game_prior_snapshot["venue"] not in serialized
-    assert "甲队一号" in prompt and "乙队一号" in prompt
+    assert "甲队1号" in prompt and "乙队1号" in prompt
 
 
 def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, monkeypatch):
@@ -513,8 +535,6 @@ def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, mon
 
     with override_settings(MEDIA_ROOT=tmp_path):
         setup, _, _, _, scoresheet = create_scoresheet()
-        claim = claim_next_run("race-worker")
-        assert claim is not None
         token = obtain_lease(scoresheet, setup["admin"])
         save_draft_changes(
             scoresheet_id=scoresheet.id,
@@ -523,8 +543,20 @@ def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, mon
             lease_token=token,
             client_id="web-1",
             surface=ScoresheetEditLease.Surface.WEB,
-            changes=[{"path": "/game/venue", "value": "人工确认场地"}],
+            changes=[{"path": "/header/game_number", "value": "人工确认编号"}],
         )
+        scoresheet.refresh_from_db()
+        with override_settings(QWEN_API_KEY="test-key"):
+            retry_recognition(
+                scoresheet_id=scoresheet.id,
+                actor=setup["admin"],
+                expected_version=scoresheet.draft_version,
+                lease_token=token,
+                client_id="web-1",
+                surface=ScoresheetEditLease.Surface.WEB,
+            )
+            claim = claim_next_run("race-worker")
+        assert claim is not None
         monkeypatch.setattr(
             recognition,
             "call_qwen",
@@ -532,8 +564,13 @@ def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, mon
         )
         assert execute_claim(claim) == "stored_not_applied"
     scoresheet.refresh_from_db()
-    run = ScoresheetRecognitionRun.objects.get(scoresheet=scoresheet)
-    assert scoresheet.draft["game"]["venue"] == "人工确认场地"
+    run = (
+        ScoresheetRecognitionRun.objects.filter(scoresheet=scoresheet)
+        .order_by("-cycle")
+        .first()
+    )
+    assert run is not None
+    assert scoresheet.draft["header"]["game_number"] == "人工确认编号"
     assert run.status == ScoresheetRecognitionRun.Status.SUCCEEDED
     assert run.provider_result["game"]["venue"] == "模型错误场地"
     assert scoresheet.change_logs.filter(
@@ -544,7 +581,7 @@ def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, mon
 def test_reupload_supersedes_old_claim_and_resets_attempt_budget(tmp_path, monkeypatch):
     from core.services import scoresheet_recognition as recognition
 
-    with override_settings(MEDIA_ROOT=tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path, QWEN_API_KEY="test-key"):
         setup, _, _, old_asset, scoresheet = create_scoresheet()
         old_claim = claim_next_run("old-worker")
         assert old_claim is not None
@@ -567,7 +604,7 @@ def test_reupload_supersedes_old_claim_and_resets_attempt_budget(tmp_path, monke
     assert runs[0].status == ScoresheetRecognitionRun.Status.SUPERSEDED
     assert runs[1].status == ScoresheetRecognitionRun.Status.QUEUED
     assert runs[1].attempt_count == 0
-    assert scoresheet.draft["game"]["venue"] != "迟到结果"
+    assert scoresheet.draft["header"]["venue"] != "迟到结果"
 
 
 def test_publish_is_atomic_generates_stats_and_limits_leader_view(tmp_path, monkeypatch):
@@ -617,7 +654,7 @@ def test_publish_is_atomic_generates_stats_and_limits_leader_view(tmp_path, monk
     assert asset.review_status == GameMediaAsset.ReviewStatus.APPROVED
     assert scoresheet.current_publication_id == publication.id
     assert GameTeamStat.objects.filter(publication=publication).count() == 2
-    assert GamePlayerStat.objects.filter(publication=publication).count() == 2
+    assert GamePlayerStat.objects.filter(publication=publication).count() == 10
     assert sum(
         GamePlayerStat.objects.filter(publication=publication).values_list("points", flat=True)
     ) == 3
@@ -671,7 +708,7 @@ def test_published_source_correction_is_superadmin_only_and_old_publication_stay
         asset.refresh_from_db()
 
         admin_client = Client()
-        admin_client.force_login(setup["admin"])
+        admin_client.force_login(setup["ordinary_admin"])
         blocked_replace = admin_client.post(
             f"/api/v1/admin/game-media/{asset.id}/replace",
             data={
@@ -712,7 +749,8 @@ def test_published_source_correction_is_superadmin_only_and_old_publication_stay
         assert scoresheet.current_publication_id == publication.id
         assert scoresheet.recognition_runs.filter(
             source_version=scoresheet.source_version,
-            status=ScoresheetRecognitionRun.Status.QUEUED,
+            status=ScoresheetRecognitionRun.Status.FAILED,
+            last_error_code="CREDENTIALS_MISSING",
         ).exists()
         assert asset.deleted_at is not None
 
@@ -731,14 +769,15 @@ def test_published_source_correction_is_superadmin_only_and_old_publication_stay
         assert public.json()[0]["publication_number"] == 1
         assert [public.json()[0]["home_score"], public.json()[0]["away_score"]] == [2, 1]
 
-        admin_client.force_login(setup["admin"])
+        admin_client.force_login(setup["ordinary_admin"])
         blocked_lease = admin_client.post(
             f"/api/v1/scoresheets/{scoresheet.id}/lease",
             data=json.dumps({"client_id": "normal-admin", "surface": "WEB"}),
             content_type="application/json",
         )
-        assert blocked_lease.status_code == 403
-        assert blocked_lease.json()["code"] == "SUPERADMIN_REQUIRED"
+        assert blocked_lease.status_code == 200
+        assert blocked_lease.json()["read_only"] is True
+        assert "普通管理员" in blocked_lease.json()["read_only_reason"]
 
 
 def test_publish_rejects_tampered_validation_and_stale_game_prior(tmp_path):
@@ -845,7 +884,7 @@ def test_published_scoresheet_export_endpoints(tmp_path):
     assert csv_response.status_code == 200
     assert csv_response["Content-Type"].startswith("text/csv")
     csv_text = csv_response.content.decode("utf-8-sig")
-    assert "甲队一号" in csv_text and "乙队一号" in csv_text
+    assert "甲队1号" in csv_text and "乙队1号" in csv_text
 
     assert xlsx_response.status_code == 200
     assert xlsx_response["Content-Type"].startswith(
@@ -854,7 +893,7 @@ def test_published_scoresheet_export_endpoints(tmp_path):
     workbook = load_workbook(io.BytesIO(xlsx_response.content), read_only=True)
     assert workbook.sheetnames == ["球队单场统计", "球员单场统计"]
     assert workbook["球队单场统计"].max_row == 3
-    assert workbook["球员单场统计"].max_row == 3
+    assert workbook["球员单场统计"].max_row == 11
 
 
 def test_superadmin_can_correct_and_republish_the_same_source(tmp_path):
@@ -888,25 +927,10 @@ def test_superadmin_can_correct_and_republish_the_same_source(tmp_path):
             lease_token=root_token,
             client_id="root-web",
             surface=ScoresheetEditLease.Surface.WEB,
-            changes=[{"path": "/officials/scorer", "value": "纠错记录员"}],
+            changes=[{"path": "/officials/0/name", "value": "纠错记录员"}],
         )
         scoresheet.refresh_from_db()
-        assert "OFFICIALS" not in scoresheet.reviewed_regions
-        assert all(
-            region in scoresheet.reviewed_regions
-            for region in REGIONS
-            if region != "OFFICIALS"
-        )
-        review_region(
-            scoresheet_id=scoresheet.id,
-            actor=superadmin,
-            expected_version=scoresheet.draft_version,
-            lease_token=root_token,
-            client_id="root-web",
-            surface=ScoresheetEditLease.Surface.WEB,
-            region="OFFICIALS",
-            reviewed=True,
-        )
+        assert scoresheet.reviewed_regions == {}
         validate_scoresheet(
             scoresheet_id=scoresheet.id,
             actor=superadmin,
@@ -1014,3 +1038,248 @@ def test_public_stats_and_exports_use_the_immutable_publication_snapshot(tmp_pat
         }
         assert published_home_name in team_names
         assert "后来修改的队名" not in team_names
+
+
+def test_same_tab_resumes_exact_lease_token_without_log_noise(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    actor = setup["admin"]
+    lease, token, read_only, reason = acquire_edit_lease(
+        scoresheet_id=scoresheet.id,
+        actor=actor,
+        client_id="tab-a",
+        surface=ScoresheetEditLease.Surface.WEB,
+    )
+    assert lease and token and read_only is False and reason == ""
+
+    same_holder, missing_token, read_only, reason = acquire_edit_lease(
+        scoresheet_id=scoresheet.id,
+        actor=actor,
+        client_id="tab-a",
+        surface=ScoresheetEditLease.Surface.WEB,
+    )
+    assert same_holder and missing_token is None and read_only is True
+    assert "凭据" in reason
+
+    resumed, resumed_token, read_only, reason = acquire_edit_lease(
+        scoresheet_id=scoresheet.id,
+        actor=actor,
+        client_id="tab-a",
+        surface=ScoresheetEditLease.Surface.WEB,
+        resume_token=token,
+    )
+    assert resumed and resumed.id == lease.id
+    assert resumed_token == token
+    assert read_only is False and reason == ""
+    assert scoresheet.change_logs.filter(event_type="LEASE_ACQUIRED").count() == 1
+    assert not scoresheet.change_logs.filter(event_type="LEASE_RESUMED").exists()
+
+    for _ in range(2):
+        release_edit_lease(
+            scoresheet_id=scoresheet.id,
+            actor=actor,
+            lease_token=token,
+            client_id="tab-a",
+            surface=ScoresheetEditLease.Surface.WEB,
+        )
+    assert not ScoresheetEditLease.objects.filter(scoresheet=scoresheet).exists()
+
+
+def test_changes_endpoint_only_returns_chinese_human_events_with_true_values(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    before = scoresheet.draft["header"]["game_number"]
+    token = obtain_lease(scoresheet, setup["admin"], "human-log-tab")
+    save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=scoresheet.draft_version,
+        lease_token=token,
+        client_id="human-log-tab",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/header/game_number", "value": "人工日志-42"}],
+    )
+    release_edit_lease(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        lease_token=token,
+        client_id="human-log-tab",
+        surface=ScoresheetEditLease.Surface.WEB,
+    )
+
+    client = Client()
+    client.force_login(setup["admin"])
+    response = client.get(f"/api/v1/scoresheets/{scoresheet.id}/changes")
+
+    assert response.status_code == 200
+    assert [row["action"] for row in response.json()["items"]] == ["human_edit"]
+    entry = response.json()["items"][0]
+    assert entry["summary"] == "人工编辑 · 1 项"
+    assert entry["changes"] == [
+        {
+            "path": "/header/game_number",
+            "before": before,
+            "after": "人工日志-42",
+        }
+    ]
+
+
+def test_recognition_capability_and_removed_stop_endpoint(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path, QWEN_API_KEY=""):
+        setup, _, _, _, scoresheet = create_scoresheet()
+        client = Client()
+        client.force_login(setup["admin"])
+        capability = client.get("/api/v1/scoresheets/recognition/capabilities")
+        stopped = client.post(f"/api/v1/scoresheets/{scoresheet.id}/recognition/stop")
+
+    assert capability.status_code == 200
+    assert capability.json() == {
+        "configured": False,
+        "provider": "QWEN",
+        "model": "qwen3.8-max",
+        "prompt_version": "scoresheet-2026-08-20-v24-cn",
+        "max_attempts": 4,
+        "retry_delays_seconds": [30, 30, 30],
+    }
+    # No POST handler exists. Ninja's adjacent read-only dynamic route may
+    # surface this as 405 instead of 404, but the mutation endpoint is gone.
+    assert stopped.status_code in {404, 405}
+
+
+def test_provider_retry_after_longer_than_default_is_honored(tmp_path, monkeypatch):
+    from core.services import scoresheet_recognition as recognition
+
+    with override_settings(MEDIA_ROOT=tmp_path, QWEN_API_KEY="test-key"):
+        _, _, _, _, scoresheet = create_scoresheet()
+
+        def fail(_run):
+            raise RecognitionAttemptError(
+                "QWEN_HTTP_429",
+                "rate limited",
+                retryable=True,
+                retry_after_seconds=75,
+            )
+
+        monkeypatch.setattr(recognition, "call_qwen", fail)
+        before = timezone.now()
+        assert run_once("retry-after-worker") == "retry_wait"
+        run = ScoresheetRecognitionRun.objects.get(scoresheet=scoresheet)
+        remaining = (run.next_attempt_at - before).total_seconds()
+        assert 73 <= remaining <= 77
+
+
+def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, monkeypatch):
+    import base64
+    import hashlib
+    import sys
+    from types import SimpleNamespace
+
+    from core.scoresheet_v2.recognition import PROMPT_VERSION, SYSTEM_PROMPT
+    from core.services.scoresheet_recognition import call_qwen
+
+    captured: dict[str, object] = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return []
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+    with override_settings(
+        MEDIA_ROOT=tmp_path,
+        QWEN_API_KEY="private-test-key",
+        QWEN_MODEL="qwen3.8-max",
+        QWEN_REASONING_EFFORT="xhigh",
+        SCORESHEET_RECOGNITION_MAX_PIXELS=6_291_456,
+    ):
+        _, _, _, _, scoresheet = create_scoresheet()
+        run = ScoresheetRecognitionRun.objects.get(scoresheet=scoresheet)
+        with pytest.raises(RecognitionAttemptError) as failure:
+            call_qwen(run)
+
+    assert failure.value.code == "PROVIDER_SCHEMA_INVALID"
+    assert hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest() == (
+        "ad8bd0f20d5b0d18496187555d3ad7d7559b734cac08cca1612a56e9e50b8586"
+    )
+    assert captured["model"] == "qwen3.8-max"
+    assert captured["seed"] == 1234
+    assert captured["stream"] is True
+    assert captured["stream_options"] == {"include_usage": True}
+    assert captured["extra_body"] == {
+        "enable_thinking": True,
+        "reasoning_effort": "xhigh",
+        "vl_high_resolution_images": True,
+        "preserve_thinking": False,
+    }
+    response_format = captured["response_format"]
+    assert response_format["json_schema"]["strict"] is True
+    schema_text = json.dumps(response_format["json_schema"]["schema"], ensure_ascii=False)
+    messages = captured["messages"]
+    user_content = messages[1]["content"]
+    user_text = next(item["text"] for item in user_content if item["type"] == "text")
+    image_url = next(
+        item["image_url"]["url"] for item in user_content if item["type"] == "image_url"
+    )
+    assert scoresheet.draft["teams"][0]["players"][0]["name"] in schema_text
+    assert scoresheet.draft["teams"][1]["players"][0]["name"] in schema_text
+    assert scoresheet.draft["teams"][0]["name"] in user_text
+    assert scoresheet.draft["teams"][1]["name"] in user_text
+    forbidden_values = {
+        str(scoresheet.id),
+        str(scoresheet.game_id),
+        scoresheet.game_prior_snapshot["competition"],
+        scoresheet.game_prior_snapshot["date"],
+        scoresheet.game_prior_snapshot["venue"],
+    }
+    assert all(value not in user_text + schema_text for value in forbidden_values if value)
+    processed_image = base64.b64decode(image_url.split(",", 1)[1])
+    run.refresh_from_db()
+    assert run.model_name == "qwen3.8-max"
+    assert run.prompt_version == PROMPT_VERSION
+    assert run.image_sha256 == hashlib.sha256(processed_image).hexdigest()
+
+
+def test_admin_pdf_uses_current_correction_draft_not_old_publication(tmp_path, monkeypatch):
+    from core import api_scoresheets
+
+    captured: dict[str, object] = {}
+
+    def fake_render(document):
+        captured["document"] = copy.deepcopy(document)
+        return b"%PDF-1.4\n%%EOF\n"
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+        token = obtain_lease(scoresheet, setup["admin"])
+        scoresheet = make_ready(scoresheet, setup["admin"], token)
+        publish_scoresheet(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=token,
+            client_id="web-1",
+            surface=ScoresheetEditLease.Surface.WEB,
+        )
+        scoresheet.refresh_from_db()
+        correction_token = obtain_lease(scoresheet, setup["admin"], "correction-tab")
+        save_draft_changes(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=correction_token,
+            client_id="correction-tab",
+            surface=ScoresheetEditLease.Surface.WEB,
+            changes=[{"path": "/officials/0/name", "value": "纠错后的记录员"}],
+        )
+        monkeypatch.setattr(api_scoresheets, "render_scoresheet_pdf", fake_render)
+        client = Client()
+        client.force_login(setup["admin"])
+        response = client.get(f"/api/v1/scoresheets/{scoresheet.id}/exports/pdf")
+
+    assert response.status_code == 200
+    assert captured["document"]["officials"][0]["name"] == "纠错后的记录员"

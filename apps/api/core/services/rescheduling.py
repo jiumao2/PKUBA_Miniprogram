@@ -24,6 +24,7 @@ from core.models import (
     TeamConfirmation,
     Venue,
 )
+from core.services.inbox_tasks import sync_reschedule_tasks
 from core.services.schedule_capacity import effective_capacity
 
 
@@ -452,6 +453,7 @@ def submit_reschedule(
     game.active_reschedule_request = request
     game.version += 1
     game.save(update_fields=["active_reschedule_request", "version", "updated_at"])
+    sync_reschedule_tasks(request)
     return request
 
 
@@ -471,8 +473,8 @@ def _require_version(request: RescheduleRequest, expected_version: int) -> None:
 
 
 def _require_admin(actor: Account) -> None:
-    if not actor.is_pkuba_admin:
-        _raise("ADMIN_REQUIRED", "该操作仅限管理员。")
+    if not actor.is_pkuba_superadmin:
+        _raise("SUPERADMIN_REQUIRED", "调赛审核和取消仅限超级管理员。")
 
 
 def _release_request(
@@ -498,6 +500,7 @@ def _release_request(
         request.decided_at = decided_at
         request.version += 1
         request.save(update_fields=["status", "decided_at", "version", "updated_at"])
+    sync_reschedule_tasks(request)
     return request
 
 
@@ -567,6 +570,7 @@ def _approve_request(
     request.decided_at = decided_at
     request.version += 1
     request.save(update_fields=["status", "decided_at", "version", "updated_at"])
+    sync_reschedule_tasks(request)
     return request
 
 
@@ -626,6 +630,7 @@ def respond_to_opponent(
     request.status = RescheduleRequest.Status.WAITING_ADMIN_DECISION
     request.version += 1
     request.save(update_fields=["status", "version", "updated_at"])
+    sync_reschedule_tasks(request)
     return request
 
 
@@ -778,6 +783,7 @@ def admin_decide_cross_week(
         action=f"reschedule.admin_{action}",
         metadata={"selected_team_ids": [str(item) for item in selected_team_ids]},
     )
+    sync_reschedule_tasks(request)
     return request
 
 
@@ -845,6 +851,7 @@ def respond_as_selected_team(
         request.status = RescheduleRequest.Status.WAITING_ADMIN_FINAL
         request.version += 1
         request.save(update_fields=["status", "version", "updated_at"])
+    sync_reschedule_tasks(request)
     return request
 
 

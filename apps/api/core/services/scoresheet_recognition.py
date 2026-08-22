@@ -1,30 +1,36 @@
 from __future__ import annotations
 
-import base64
-import io
 import json
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 from email.utils import parsedate_to_datetime
-from urllib import error, request
 
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
+from pydantic import ValidationError
 
 from core.models import (
     GameScoresheet,
     ScoresheetRecognitionRun,
     ScoresheetRevision,
 )
-from core.scoresheet_schema import merge_recognition_result
+from core.scoresheet_schema_v2 import merge_recognition_result
+from core.scoresheet_v2.models import ScoresheetDocument
+from core.scoresheet_v2.recognition import (
+    PROMPT_VERSION,
+    build_context,
+    map_payload_to_document,
+    validate_provider_payload,
+)
+from core.services.inbox_tasks import sync_scoresheet_recognition_tasks
 from core.services.scoresheets import _event_locked, _revision_locked
 
-RETRY_DELAYS = (30, 120, 600)
+RETRY_DELAYS = (30, 30, 30)
 WORKER_LEASE_SECONDS = 5 * 60
 
 
@@ -126,7 +132,7 @@ def claim_next_run(worker_name: str) -> ClaimedRun | None:
         return ClaimedRun(run_id=run.id, worker_token=token)
 
 
-def _safe_source_image(run: ScoresheetRecognitionRun) -> bytes:
+def _source_image_bytes(run: ScoresheetRecognitionRun) -> bytes:
     if run.source_asset.deleted_at or not default_storage.exists(run.source_asset.file_key):
         raise RecognitionAttemptError(
             "SOURCE_MISSING", "记录表原图已被替换或删除。", retryable=False
@@ -138,12 +144,7 @@ def _safe_source_image(run: ScoresheetRecognitionRun) -> bytes:
             raise RecognitionAttemptError(
                 "IMAGE_INVALID", "记录表图片为空或超过安全大小。", retryable=False
             )
-        with Image.open(io.BytesIO(raw)) as opened:
-            image = ImageOps.exif_transpose(opened).convert("RGB")
-            image.thumbnail((2600, 2600), Image.Resampling.LANCZOS)
-            output = io.BytesIO()
-            image.save(output, format="JPEG", quality=90, optimize=True)
-            return output.getvalue()
+        return raw
     except RecognitionAttemptError:
         raise
     except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
@@ -156,19 +157,12 @@ def _provider_prior(scoresheet: GameScoresheet) -> dict[str, object]:
     prior = scoresheet.game_prior_snapshot
     roster = scoresheet.roster_snapshot
     if not roster.get("A") or not roster.get("B"):
-        raise RecognitionAttemptError(
-            "ROSTER_MISSING", "双方冻结名单不完整。", retryable=False
-        )
+        raise RecognitionAttemptError("ROSTER_MISSING", "双方冻结名单不完整。", retryable=False)
     return {
         "teams": {
             side: {
-                "name": prior.get("team_a" if side == "A" else "team_b", {}).get(
-                    "display_name"
-                ),
-                "players": [
-                    {"name": row.get("display_name")}
-                    for row in roster.get(side, [])
-                ],
+                "name": prior.get("team_a" if side == "A" else "team_b", {}).get("display_name"),
+                "players": [{"name": row.get("display_name")} for row in roster.get(side, [])],
             }
             for side in ("A", "B")
         },
@@ -176,134 +170,183 @@ def _provider_prior(scoresheet: GameScoresheet) -> dict[str, object]:
 
 
 def _prompt(prior: dict[str, object]) -> str:
+    """Compatibility helper used by security-focused tests and diagnostics."""
+
     return (
-        "你是篮球记录表结构化识别器。读取完整的一页北京大学篮协记录表图片，"
-        "只返回一个 JSON 对象，不要 Markdown。采用 FIBA 2024 记号。不要猜测看不清的内容，"
-        "空白使用空字符串、false、空数组或 null。逐次得分保留纸面累计分，不要用计算值覆盖。\n"
-        "JSON 顶层仅含 game、teams、running_score、summary、officials。"
-        "teams 必含 A/B；球员只返回 name、jersey_number、appeared、starter、captain、fouls。"
-        "running_score 每项包含 team(A/B)、player_name、player_number、value(1/2/3)、"
-        "period(1/2/3/4/OT)、cumulative、mark(dot/slash/circle)、boundary(none/period/game)。"
-        "summary.period_scores 使用 1/2/3/4/OT 键，每项含 A/B；final_score 含 A/B。"
-        "officials 包含 scorer、assistant_scorer、timer、shot_clock_operator 及三个签名布尔值。\n"
-        "已知球队与球员姓名如下；这些是唯一允许使用的人名与队名：\n"
+        "识别请求只包含以下球队与候选球员姓名："
         + json.dumps(prior, ensure_ascii=False, separators=(",", ":"))
     )
 
 
-def _extract_content(payload: dict[str, object]) -> str:
-    try:
-        content = payload["choices"][0]["message"]["content"]  # type: ignore[index]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RecognitionAttemptError(
-            "PROVIDER_SCHEMA_INVALID", "识别服务响应缺少 choices.message.content。", retryable=True
-        ) from exc
-    if isinstance(content, list):
-        content = "".join(
-            str(row.get("text", "")) for row in content if isinstance(row, dict)
-        )
-    if not isinstance(content, str):
-        raise RecognitionAttemptError(
-            "PROVIDER_SCHEMA_INVALID", "识别服务响应内容格式无效。", retryable=True
-        )
-    stripped = content.strip()
-    if stripped.startswith("```"):
-        lines = stripped.splitlines()
-        stripped = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-    return stripped
+def _usage_payload(raw: object) -> dict[str, int]:
+    value = raw.model_dump(mode="json") if hasattr(raw, "model_dump") else {}
+    usage = value.get("usage") or {}
+    input_details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}
+    output_details = (
+        usage.get("output_tokens_details") or usage.get("completion_tokens_details") or {}
+    )
+    input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "image_tokens": int(usage.get("image_tokens") or input_details.get("image_tokens") or 0),
+        "reasoning_tokens": int(output_details.get("reasoning_tokens") or 0),
+        "total_tokens": int(usage.get("total_tokens") or input_tokens + output_tokens),
+    }
 
 
-def _validate_result_shape(result: object) -> dict[str, object]:
-    if not isinstance(result, dict):
-        raise RecognitionAttemptError(
-            "RESULT_SCHEMA_INVALID", "识别结果必须是 JSON 对象。", retryable=True
+def _provider_failure(error: Exception) -> RecognitionAttemptError:
+    status = getattr(error, "status_code", None)
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", {}) or {}
+    retry_after = _retry_after(headers.get("Retry-After"))
+    if isinstance(status, int):
+        return RecognitionAttemptError(
+            f"QWEN_HTTP_{status}",
+            f"Qwen 请求失败（{status}）：{str(error)[:500]}",
+            retryable=status == 429 or 500 <= status <= 599,
+            retry_after_seconds=retry_after,
         )
-    required = {"game", "teams", "running_score", "summary", "officials"}
-    if not required.issubset(result):
-        raise RecognitionAttemptError(
-            "RESULT_SCHEMA_INVALID", "识别结果缺少完整记录表区域。", retryable=True
-        )
-    if not isinstance(result.get("teams"), dict) or not isinstance(
-        result.get("running_score"), list
-    ):
-        raise RecognitionAttemptError(
-            "RESULT_SCHEMA_INVALID", "球队或逐次得分区域格式无效。", retryable=True
-        )
-    for event in result["running_score"]:  # type: ignore[index]
-        if not isinstance(event, dict):
-            raise RecognitionAttemptError(
-                "RESULT_SCHEMA_INVALID", "逐次得分事件格式无效。", retryable=True
-            )
-    return result
+    name = type(error).__name__
+    retryable = name in {
+        "APITimeoutError",
+        "APIConnectionError",
+        "ConnectError",
+        "ReadTimeout",
+        "TimeoutError",
+    }
+    return RecognitionAttemptError(
+        "QWEN_NETWORK_ERROR" if retryable else "QWEN_PROVIDER_ERROR",
+        "Qwen 网络请求超时或连接失败。" if retryable else f"Qwen 请求失败：{str(error)[:500]}",
+        retryable=retryable,
+        retry_after_seconds=retry_after,
+    )
 
 
 def call_qwen(run: ScoresheetRecognitionRun) -> tuple[dict[str, object], dict[str, object]]:
+    raw_image = _source_image_bytes(run)
+    try:
+        document = ScoresheetDocument.model_validate(run.scoresheet.draft)
+        prior = document.game_prior
+        if prior is None or not prior.team_a.player_names or not prior.team_b.player_names:
+            raise RecognitionAttemptError(
+                "ROSTER_MISSING", "双方冻结名单不完整。", retryable=False
+            )
+        rule_path = settings.BASE_DIR / "core" / "assets" / "scoresheet" / "rule_profiles.json"
+        context = build_context(
+            prior,
+            raw_image,
+            rule_path,
+            settings.SCORESHEET_RECOGNITION_MAX_PIXELS,
+        )
+    except RecognitionAttemptError:
+        raise
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
+        raise RecognitionAttemptError(
+            "IMAGE_INVALID", "记录表图片无法安全预处理。", retryable=False
+        ) from exc
+
+    run.model_name = settings.QWEN_MODEL
+    run.prompt_version = PROMPT_VERSION
+    run.image_sha256 = context.image_sha256
+    run.save(update_fields=["model_name", "prompt_version", "image_sha256", "updated_at"])
+
     api_key = settings.QWEN_API_KEY
     if not api_key:
         raise RecognitionAttemptError(
             "CREDENTIALS_MISSING", "服务端未配置 QWEN_API_KEY。", retryable=False
         )
-    image = _safe_source_image(run)
-    prior = _provider_prior(run.scoresheet)
-    body = {
-        "model": settings.QWEN_MODEL,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": "data:image/jpeg;base64,"
-                            + base64.b64encode(image).decode("ascii")
-                        },
-                    },
-                    {"type": "text", "text": _prompt(prior)},
-                ],
-            }
-        ],
-        "temperature": 0,
-        "response_format": {"type": "json_object"},
-    }
-    endpoint = settings.QWEN_BASE_URL.rstrip("/") + "/chat/completions"
-    http_request = request.Request(
-        endpoint,
-        data=json.dumps(body, ensure_ascii=False).encode(),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
     try:
-        with request.urlopen(http_request, timeout=settings.QWEN_TIMEOUT_SECONDS) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        status = exc.code
-        detail = exc.read(2048).decode("utf-8", errors="replace")
-        retryable = status == 429 or 500 <= status <= 599
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=api_key,
+            base_url=settings.QWEN_BASE_URL,
+            timeout=settings.QWEN_TIMEOUT_SECONDS,
+            max_retries=0,
+        )
+        response = client.chat.completions.create(
+            model=settings.QWEN_MODEL,
+            messages=[
+                {"role": "system", "content": context.system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": context.image_data_url}},
+                        {"type": "text", "text": context.user_prompt},
+                    ],
+                },
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "scoresheet_recognition",
+                    "strict": True,
+                    "schema": context.schema,
+                },
+            },
+            seed=1234,
+            stream=True,
+            stream_options={"include_usage": True},
+            extra_body={
+                "enable_thinking": True,
+                "reasoning_effort": settings.QWEN_REASONING_EFFORT,
+                "vl_high_resolution_images": True,
+                "preserve_thinking": False,
+            },
+        )
+        content_parts: list[str] = []
+        usage: dict[str, int] = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "image_tokens": 0,
+            "reasoning_tokens": 0,
+            "total_tokens": 0,
+        }
+        for chunk in response:
+            chunk_usage = _usage_payload(chunk)
+            if chunk_usage["total_tokens"]:
+                usage = chunk_usage
+            if not chunk.choices:
+                continue
+            content = chunk.choices[0].delta.content
+            if isinstance(content, str) and content:
+                content_parts.append(content)
+    except Exception as exc:
+        raise _provider_failure(exc) from exc
+
+    content = "".join(content_parts).strip()
+    if not content:
         raise RecognitionAttemptError(
-            f"QWEN_HTTP_{status}",
-            f"Qwen 请求失败（{status}）：{detail[:500]}",
-            retryable=retryable,
-            retry_after_seconds=_retry_after(exc.headers.get("Retry-After")),
-        ) from exc
-    except (error.URLError, TimeoutError) as exc:
-        raise RecognitionAttemptError(
-            "QWEN_NETWORK_ERROR", "Qwen 网络请求超时或连接失败。", retryable=True
-        ) from exc
-    except json.JSONDecodeError as exc:
-        raise RecognitionAttemptError(
-            "PROVIDER_JSON_INVALID", "识别服务返回了无效 JSON。", retryable=True
-        ) from exc
+            "PROVIDER_SCHEMA_INVALID", "Qwen 未返回可解析的 JSON。", retryable=True
+        )
     try:
-        result = json.loads(_extract_content(payload))
+        provider_payload = json.loads(content)
     except json.JSONDecodeError as exc:
         raise RecognitionAttemptError(
             "RESULT_JSON_INVALID", "模型结果不是有效 JSON。", retryable=True
         ) from exc
-    return _validate_result_shape(result), payload.get("usage", {})
+    try:
+        validated, normalization_issues = validate_provider_payload(
+            context,
+            provider_payload,
+            prior,
+        )
+        mapped = map_payload_to_document(
+            document,
+            validated,
+            str(run.id),
+            rule_path,
+            normalization_issues=normalization_issues,
+        )
+    except (ValidationError, ValueError) as exc:
+        raise RecognitionAttemptError(
+            "RESULT_SCHEMA_INVALID",
+            f"识别结果未通过严格结构校验：{str(exc)[:1000]}",
+            retryable=True,
+        ) from exc
+    return mapped.model_dump(mode="json"), usage
 
 
 def _complete_success(
@@ -327,7 +370,13 @@ def _complete_success(
                 run.finished_at = timezone.now()
                 run.save(update_fields=["status", "finished_at", "updated_at"])
             return "superseded"
-        if scoresheet.draft_version != run.base_draft_version:
+        recognition_state = result.get("recognition")
+        recognition_notes = (
+            str(recognition_state.get("notes") or "")
+            if isinstance(recognition_state, dict)
+            else str(result.get("recognition_notes") or "")
+        )
+        if scoresheet.draft_version != run.base_draft_version or not run.auto_apply_allowed:
             # The provider response is valid and retained for audit, but a human
             # has already changed the shared draft. Applying it would silently
             # destroy newer work, so only publish a sync event and keep the
@@ -335,6 +384,8 @@ def _complete_success(
             run.status = ScoresheetRecognitionRun.Status.SUCCEEDED
             run.provider_result = result
             run.provider_usage = usage
+            run.applied_draft_version = None
+            run.recognition_notes = recognition_notes
             run.last_error_code = ""
             run.last_error = ""
             run.finished_at = timezone.now()
@@ -346,6 +397,8 @@ def _complete_success(
                     "status",
                     "provider_result",
                     "provider_usage",
+                    "applied_draft_version",
+                    "recognition_notes",
                     "last_error_code",
                     "last_error",
                     "finished_at",
@@ -365,15 +418,25 @@ def _complete_success(
                     "attempt": run.attempt_count,
                     "base_draft_version": run.base_draft_version,
                     "current_draft_version": scoresheet.draft_version,
-                    "reason": "DRAFT_CHANGED_DURING_RECOGNITION",
+                    "reason": (
+                        "DRAFT_CHANGED_DURING_RECOGNITION"
+                        if scoresheet.draft_version != run.base_draft_version
+                        else "HUMAN_CHANGES_REQUIRE_DIFF"
+                    ),
                     "usage": usage,
                 },
             )
+            sync_scoresheet_recognition_tasks(scoresheet, run)
             return "stored_not_applied"
         scoresheet.draft = merge_recognition_result(
-            scoresheet.draft, result, scoresheet.roster_snapshot
+            scoresheet.draft,
+            result,
+            scoresheet.roster_snapshot,
+            run_id=str(run.id),
         )
         scoresheet.draft_version += 1
+        scoresheet.draft["revision"] = scoresheet.draft_version
+        scoresheet.draft["updated_at"] = timezone.now().isoformat()
         scoresheet.reviewed_regions = {}
         scoresheet.validation_report = {}
         scoresheet.validation_draft_version = None
@@ -394,6 +457,8 @@ def _complete_success(
         run.status = ScoresheetRecognitionRun.Status.SUCCEEDED
         run.provider_result = result
         run.provider_usage = usage
+        run.applied_draft_version = scoresheet.draft_version
+        run.recognition_notes = recognition_notes
         run.last_error_code = ""
         run.last_error = ""
         run.finished_at = timezone.now()
@@ -405,6 +470,8 @@ def _complete_success(
                 "status",
                 "provider_result",
                 "provider_usage",
+                "applied_draft_version",
+                "recognition_notes",
                 "last_error_code",
                 "last_error",
                 "finished_at",
@@ -425,6 +492,7 @@ def _complete_success(
             },
         )
         _revision_locked(scoresheet, ScoresheetRevision.Reason.RECOGNITION_APPLIED)
+        sync_scoresheet_recognition_tasks(scoresheet, run)
         return "succeeded"
 
 
@@ -512,13 +580,13 @@ def _complete_failure(claim: ClaimedRun, failure: RecognitionAttemptError) -> st
                 "retryable": failure.retryable,
             },
         )
+        sync_scoresheet_recognition_tasks(scoresheet, run)
         return "failed"
 
 
 def execute_claim(claim: ClaimedRun) -> str:
-    run = (
-        ScoresheetRecognitionRun.objects.select_related("scoresheet", "source_asset")
-        .get(id=claim.run_id)
+    run = ScoresheetRecognitionRun.objects.select_related("scoresheet", "source_asset").get(
+        id=claim.run_id
     )
     try:
         result, usage = call_qwen(run)
@@ -527,9 +595,7 @@ def execute_claim(claim: ClaimedRun) -> str:
     except Exception as exc:  # Persist unexpected provider/decoder failures for operator review.
         return _complete_failure(
             claim,
-            RecognitionAttemptError(
-                "UNEXPECTED_RECOGNITION_ERROR", str(exc), retryable=True
-            ),
+            RecognitionAttemptError("UNEXPECTED_RECOGNITION_ERROR", str(exc), retryable=True),
         )
     return _complete_success(claim, result, usage)
 

@@ -65,23 +65,37 @@ def test_admin_session_lists_only_current_season_with_resource_state():
     assert payload["total"] == 1
     item = payload["items"][0]
     assert item["id"] == str(request.id)
-    assert item["actions"] == [
-        "ADMIN_APPROVE",
-        "ADMIN_REJECT",
-        "ADMIN_START_VOTE",
-        "ADMIN_CANCEL",
-    ]
+    assert item["actions"] == []
     assert item["resources"]["game_lock_matches"] is True
     assert item["resources"]["reservation_status"] == SlotReservation.Status.ACTIVE
     assert item["resources"]["active_reservation_count"] == 1
     assert item["resources"]["issues"] == []
 
 
-def test_admin_action_requires_csrf_and_rejects_stale_version():
+def test_ordinary_admin_cannot_mutate_request_from_web():
     setup = reschedule_setup()
     request, _ = _cross_week_request(setup)
     client = Client(enforce_csrf_checks=True)
     csrf = login_admin(client, setup["admin"])
+
+    response = client.post(
+        f"/api/v1/admin/reschedule-requests/{request.id}/actions",
+        data=json.dumps(
+            {"expected_version": request.version, "action": "ADMIN_REJECT"}
+        ),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "SUPERADMIN_REQUIRED"
+
+
+def test_admin_action_requires_csrf_and_rejects_stale_version():
+    setup = reschedule_setup()
+    request, _ = _cross_week_request(setup)
+    client = Client(enforce_csrf_checks=True)
+    csrf = login_admin(client, setup["superadmin"])
     path = f"/api/v1/admin/reschedule-requests/{request.id}/actions"
 
     no_csrf = client.post(
@@ -110,7 +124,7 @@ def test_admin_can_start_vote_and_finish_after_confirmation_deadline():
     setup = reschedule_setup()
     request, now = _cross_week_request(setup)
     client = Client(enforce_csrf_checks=True)
-    csrf = login_admin(client, setup["admin"])
+    csrf = login_admin(client, setup["superadmin"])
     candidates = client.get(
         f"/api/v1/admin/reschedule-requests/{request.id}/voter-candidates"
     )
@@ -168,7 +182,7 @@ def test_admin_cancel_releases_lock_and_reservation_idempotently():
     setup = reschedule_setup()
     request, _ = _cross_week_request(setup)
     client = Client(enforce_csrf_checks=True)
-    csrf = login_admin(client, setup["admin"])
+    csrf = login_admin(client, setup["superadmin"])
     path = f"/api/v1/admin/reschedule-requests/{request.id}/actions"
     payload = json.dumps(
         {"expected_version": request.version, "action": "ADMIN_CANCEL"}

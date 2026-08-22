@@ -62,66 +62,112 @@ def _player_name(side: str, index: int) -> str:
     return f"示例{'甲' if side == 'A' else '乙'}{index:02d}"
 
 
-def _player_fouls(side: str, index: int) -> list[dict[str, str]]:
-    codes = {
-        ("A", 1): ["P"],
-        ("A", 2): ["P2", "T"],
-        ("A", 3): ["U2", "Pc"],
-        ("A", 4): ["D2"],
-        ("A", 5): ["P"],
-        ("B", 1): ["P"],
-        ("B", 2): ["P"],
-        ("B", 3): ["T1"],
-        ("B", 4): ["U"],
+def _foul(
+    slot: int,
+    code: str,
+    period: int,
+    *,
+    free_throws: int | None = None,
+    cancelled: bool = False,
+) -> dict[str, object]:
+    return {
+        "slot": slot,
+        "code": code,
+        "catalog_id": None,
+        "mark_style": "plain",
+        "free_throws": free_throws,
+        "cancelled": cancelled,
+        "period": period,
+    }
+
+
+def _player_fouls(side: str, index: int) -> list[dict[str, object]]:
+    return {
+        ("A", 1): [_foul(1, "P", 1)],
+        ("A", 2): [_foul(1, "P", 1, free_throws=2), _foul(2, "T", 2)],
+        ("A", 3): [_foul(1, "U", 3, free_throws=2), _foul(2, "P", 4, cancelled=True)],
+        ("A", 4): [_foul(1, "D", 3, free_throws=2)],
+        ("A", 5): [_foul(1, "P", 2)],
+        ("B", 1): [_foul(1, "P", 1)],
+        ("B", 2): [_foul(1, "P", 2)],
+        ("B", 3): [_foul(1, "T", 3, free_throws=1)],
+        ("B", 4): [_foul(1, "U", 4)],
     }.get((side, index), [])
-    return [{"code": code} for code in codes]
 
 
 def _recognized_team(side: str) -> dict[str, object]:
     players = [
         {
+            "row": index,
+            "license_number": str(100 + index),
             "name": _player_name(side, index),
             "jersey_number": jersey,
-            "appeared": index <= 10,
-            "starter": index <= 5,
             "captain": index == 4,
+            "participation": (
+                "starter" if index <= 5 else "substitute" if index <= 10 else "none"
+            ),
             "fouls": _player_fouls(side, index),
+            "post_foul_markers": [],
         }
         for index, jersey in enumerate(JERSEYS, start=1)
     ]
     if side == "A":
         return {
+            "side": "A",
             "name": "示例学院甲",
             "players": players,
-            "timeouts": {"H1": [7], "H2": [6, 2], "OT": []},
-            "team_fouls": {
-                "1": [1, 2],
-                "2": [1, 2],
-                "3": [1, 2],
-                "4": [1],
-            },
-            "head_coach": {
-                "name": "示例教练甲",
-                "fouls": [{"code": "C"}, {"code": "B2"}, {"code": "C"}],
-            },
-            "assistant_coach": {
-                "name": "示例助教甲",
-                "fouls": [{"code": "D2"}, {"code": "F"}, {"code": "F"}],
-            },
+            "timeouts": [
+                {"scope": "H1", "slot": 1, "minute": 7},
+                {"scope": "H2", "slot": 1, "minute": 6},
+                {"scope": "H2", "slot": 2, "minute": 2},
+            ],
+            "team_fouls": [
+                {"period": 1, "count": 2},
+                {"period": 2, "count": 2},
+                {"period": 3, "count": 2},
+                {"period": 4, "count": 1},
+            ],
+            "coach_fouls": [
+                _foul(1, "C", 2),
+                _foul(2, "B", 3, free_throws=2),
+                _foul(3, "C", 3),
+            ],
+            "coach_post_foul_markers": [
+                _foul(1, "GD", 3),
+                _foul(2, "F", 3),
+            ],
+            "assistant_coach_fouls": [
+                _foul(1, "D", 3, free_throws=2),
+                _foul(2, "F", 3),
+                _foul(3, "F", 3),
+            ],
+            "assistant_coach_post_foul_markers": [],
+            "head_coach": "示例教练甲",
+            "assistant_coach": "示例助教甲",
         }
     return {
+        "side": "B",
         "name": "示例学院乙",
         "players": players,
-        "timeouts": {"H1": [5], "H2": [], "OT": []},
-        "team_fouls": {"1": [1], "2": [1], "3": [1], "4": [1]},
-        "head_coach": {"name": "示例教练乙", "fouls": []},
-        "assistant_coach": {"name": "示例助教乙", "fouls": []},
+        "timeouts": [{"scope": "H1", "slot": 1, "minute": 5}],
+        "team_fouls": [
+            {"period": 1, "count": 1},
+            {"period": 2, "count": 1},
+            {"period": 3, "count": 1},
+            {"period": 4, "count": 1},
+        ],
+        "coach_fouls": [],
+        "coach_post_foul_markers": [],
+        "assistant_coach_fouls": [],
+        "assistant_coach_post_foul_markers": [],
+        "head_coach": "示例教练乙",
+        "assistant_coach": "示例助教乙",
     }
 
 
 def _recognition_result(scoresheet: GameScoresheet) -> dict[str, object]:
-    # This is the comprehensive public synthetic fixture from ScoresheetReader,
-    # translated to the new service schema and corrected to use one final game boundary.
+    # Port of ScoresheetReader/backend/tests/synthetic_fixture.py using the exact
+    # canonical 1.4 semantics consumed by both editors.
     totals = {"A": 0, "B": 0}
     events = []
     for sequence, (side, period, value, jersey) in enumerate(SCORE_ROWS, start=1):
@@ -131,20 +177,23 @@ def _recognition_result(scoresheet: GameScoresheet) -> dict[str, object]:
             boundary = "game"
         events.append(
             {
-                "id": f"scoresheet-reader-demo-{sequence}",
                 "sequence": sequence,
                 "team": side,
-                "period": period,
-                "value": value,
-                "cumulative": totals[side],
-                "player_name": _player_name(side, JERSEYS.index(jersey) + 1),
-                "player_number": jersey,
-                "mark": {1: "dot", 2: "slash", 3: "circle"}[value],
-                "boundary": boundary,
+                "period": int(period),
+                "points": value,
+                "cumulative_score": totals[side],
+                "scorer_jersey": jersey,
+                "mark": "filled_dot" if value == 1 else "diagonal",
+                "scorer_circled": value == 3,
+                "boundary": {
+                    "period": "period_end",
+                    "game": "game_end",
+                }.get(boundary, "none"),
+                "ink_role": "q1_q3" if period in {"1", "3"} else "q2_q4_ot",
             }
         )
-    game = dict(scoresheet.draft["game"])
-    game.update(
+    header = dict(scoresheet.draft["header"])
+    header.update(
         {
             "crew_chief": "示例主裁",
             "umpire_1": "示例副裁一",
@@ -152,31 +201,43 @@ def _recognition_result(scoresheet: GameScoresheet) -> dict[str, object]:
         }
     )
     return {
-        "game": game,
-        "teams": {"A": _recognized_team("A"), "B": _recognized_team("B")},
-        "running_score": events,
-        "summary": {
-            "period_scores": {
-                "1": {"A": 6, "B": 3},
-                "2": {"A": 4, "B": 5},
-                "3": {"A": 6, "B": 4},
-                "4": {"A": 5, "B": 6},
-                "OT": {"A": 0, "B": 0},
-            },
-            "final_score": {"A": 21, "B": 18},
-            "winner_side": "A",
+        "header": header,
+        "teams": [_recognized_team("A"), _recognized_team("B")],
+        "score_events": events,
+        "stated_period_scores": [
+            {"period": 1, "team_a": 6, "team_b": 3},
+            {"period": 2, "team_a": 4, "team_b": 5},
+            {"period": 3, "team_a": 6, "team_b": 4},
+            {"period": 4, "team_a": 5, "team_b": 6},
+        ],
+        "final_score": {
+            "team_a": 21,
+            "team_b": 18,
+            "winner_name": "示例学院甲",
             "ended_at": "15:28",
         },
-        "officials": {
-            "scorer": "示例记录员",
-            "assistant_scorer": "示例助理记录员",
-            "timer": "示例计时员",
-            "shot_clock_operator": "示例24秒员",
-            "crew_chief_signature": True,
-            "umpire_1_signature": True,
-            "umpire_2_signature": True,
-            "captain_protest_signature": False,
-        },
+        "officials": [
+            {"role": "scorer", "name": "示例记录员", "signature": "present"},
+            {
+                "role": "assistant_scorer",
+                "name": "示例助理记录员",
+                "signature": "present",
+            },
+            {"role": "timer", "name": "示例计时员", "signature": "present"},
+            {
+                "role": "shot_clock_operator",
+                "name": "示例24秒员",
+                "signature": "present",
+            },
+            {"role": "crew_chief", "name": "示例主裁", "signature": "present"},
+            {"role": "umpire_1", "name": "示例副裁一", "signature": "present"},
+            {"role": "umpire_2", "name": "示例副裁二", "signature": "unclear"},
+            {"role": "protest_captain", "name": "", "signature": "absent"},
+        ],
+        "recognition_notes": "ScoresheetReader public synthetic fixture",
+        "table_personnel": ["示例记录员", "示例助理记录员", "示例计时员", "示例24秒员"],
+        "problem_paths": [],
+        "issues": [],
     }
 
 

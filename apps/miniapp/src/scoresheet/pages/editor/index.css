@@ -98,25 +98,18 @@ button::after {
   color: #8b5f23;
 }
 
-.mini-sheet-handoff {
-  height: 58rpx;
-  line-height: 58rpx;
-  border-color: #b52d28;
-  color: #b52d28;
+.mini-sheet-mode {
+  flex: none;
+  padding: 7rpx 13rpx;
+  border-radius: 999rpx;
+  background: #e8f4eb;
+  color: #39724c;
+  font-size: 21rpx;
 }
 
-.mini-sheet-lease-actions {
-  display: flex;
-  gap: 8rpx;
-}
-
-.mini-sheet-force {
-  height: 58rpx;
-  padding: 0 14rpx;
-  line-height: 58rpx;
-  border-color: #8e231f;
-  background: #8e231f;
-  color: #fff;
+.mini-sheet-mode.readonly {
+  background: #f5eadb;
+  color: #8b5f23;
 }
 
 .mini-sheet-steps {

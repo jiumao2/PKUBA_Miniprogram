@@ -317,6 +317,7 @@ def admin_voter_candidates(request: HttpRequest, request_id: UUID):
     response={
         200: AdminRescheduleRequestOut,
         400: RescheduleErrorOut,
+        403: RescheduleErrorOut,
         404: RescheduleErrorOut,
         409: RescheduleErrorOut,
     },

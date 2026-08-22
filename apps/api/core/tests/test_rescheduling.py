@@ -217,7 +217,7 @@ def test_cross_week_vote_holds_resources_until_admin_final():
     assert request.status == RescheduleRequest.Status.WAITING_ADMIN_DECISION
 
     request = admin_decide_cross_week(
-        actor=setup["admin"],
+        actor=setup["superadmin"],
         request_id=request.id,
         expected_version=request.version,
         action="vote",
@@ -246,13 +246,46 @@ def test_cross_week_vote_holds_resources_until_admin_final():
 
     final_time = request.confirmation_deadline + timedelta(hours=1)
     request = admin_final_decision(
-        actor=setup["admin"],
+        actor=setup["superadmin"],
         request_id=request.id,
         expected_version=request.version,
         approve=True,
         now=final_time,
     )
     assert request.status == RescheduleRequest.Status.APPROVED
+
+
+def test_ordinary_admin_cannot_decide_cross_week_request():
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    target = setup["target_date"] + timedelta(days=2)
+    now = valid_submission_time(game.date, target)
+    request = submit_reschedule(
+        actor=setup["accounts"][0],
+        game_id=game.id,
+        expected_game_version=game.version,
+        target_date=target,
+        target_period_id=setup["period"].id,
+        now=now,
+    )
+    request = respond_to_opponent(
+        actor=setup["accounts"][1],
+        request_id=request.id,
+        expected_version=request.version,
+        accept=True,
+        now=now + timedelta(hours=1),
+    )
+
+    with pytest.raises(RescheduleError) as forbidden:
+        admin_decide_cross_week(
+            actor=setup["admin"],
+            request_id=request.id,
+            expected_version=request.version,
+            action="approve",
+            selected_team_ids=[],
+            now=now + timedelta(hours=2),
+        )
+    assert forbidden.value.code == "SUPERADMIN_REQUIRED"
 
 
 def test_two_requests_competing_for_last_capacity_only_create_one():

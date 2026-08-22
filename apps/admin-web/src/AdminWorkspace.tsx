@@ -33,6 +33,7 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 
 const navigation = [
   { id: "overview", label: "总览", available: true },
+  { id: "scoresheets", label: "记录表核对", available: true },
   { id: "season", label: "赛季与组别", available: true },
   { id: "teams", label: "球队与名单", available: true },
   { id: "schedule-import", label: "赛程编排", available: true },
@@ -53,6 +54,8 @@ const superadminPages: PageId[] = [
   "schedule-edit",
   "draw",
   "bracket",
+  "reschedule",
+  "media",
   "admins",
   "advanced",
 ];
@@ -223,7 +226,13 @@ export function AdminWorkspace() {
               className={page === item.id ? "nav-item active" : "nav-item"}
               disabled={!canOpenPage(item.id, item.available)}
               key={item.id}
-              onClick={() => setPage(item.id)}
+              onClick={() => {
+                if (item.id === "scoresheets") {
+                  window.location.assign("/scoresheet.html");
+                  return;
+                }
+                setPage(item.id);
+              }}
               type="button"
             >
               <span>{item.label}</span>

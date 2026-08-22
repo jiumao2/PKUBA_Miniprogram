@@ -15,6 +15,7 @@ export default defineAppConfig({
     "pages/admin/index",
     "pages/admin-games/index",
     "pages/game-media/index",
+    "pages/inbox/index",
   ],
   subPackages: [
     {

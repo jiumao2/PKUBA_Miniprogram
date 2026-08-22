@@ -1,6 +1,7 @@
 Component({
   data: {
     selected: 0,
+    inboxCount: "",
     list: [
       { pagePath: "/pages/home/index", text: "首页" },
       { pagePath: "/pages/schedule/index", text: "对阵" },

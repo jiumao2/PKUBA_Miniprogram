@@ -105,6 +105,7 @@ export type GameMediaCollection = components["schemas"]["GameMediaCollectionOut"
 
 export interface ScoresheetLeaseResponse {
   read_only: boolean;
+  read_only_reason: string;
   lease_token: string | null;
   holder: {
     account_id: string;
@@ -112,7 +113,16 @@ export interface ScoresheetLeaseResponse {
     client_id: string;
     surface: ScoresheetSurface;
     expires_at: string;
-  };
+  } | null;
+}
+
+export interface ScoresheetRecognitionCapability {
+  configured: boolean;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  max_attempts: number;
+  retry_delays_seconds: number[];
 }
 
 export interface ScoresheetMutationContext {
@@ -181,6 +191,110 @@ export interface PublicScoresheetStat {
     foul_types: unknown[];
   }>;
   published_at: string;
+}
+
+export interface TeamLeaderboardItem {
+  rank: number;
+  team_id: string;
+  team_name: string;
+  division_id: string;
+  division_name: string;
+  division_gender: string;
+  games_played: number;
+  wins: number;
+  losses: number;
+  win_percentage: number;
+  points_for: number;
+  points_against: number;
+  point_difference: number;
+  points_per_game: number;
+  points_against_per_game: number;
+  point_difference_per_game: number;
+}
+
+export interface PlayerLeaderboardItem {
+  rank: number;
+  player_id: string;
+  player_name: string;
+  jersey_number: string;
+  team_id: string;
+  team_name: string;
+  division_id: string;
+  division_name: string;
+  division_gender: string;
+  games_played: number;
+  starts: number;
+  total_points: number;
+  points_per_game: number;
+  one_point_events: number;
+  two_point_events: number;
+  three_point_events: number;
+  personal_fouls: number;
+  fouls_per_game: number;
+}
+
+export interface LeaderboardPage<T> {
+  season_id: string;
+  season_name: string;
+  division_id: string | null;
+  sort: string;
+  order: string;
+  page: number;
+  page_size: number;
+  total: number;
+  items: T[];
+}
+
+export interface PublishedGameSummary {
+  publication_id: string;
+  publication_number: number;
+  game_id: string;
+  game_code: string;
+  date: string;
+  start_time: string;
+  division_id: string;
+  division_name: string;
+  division_gender: string;
+  home_name: string;
+  away_name: string;
+  home_score: number;
+  away_score: number;
+  published_at: string;
+}
+
+export interface PublishedGamePage {
+  season_id: string;
+  season_name: string;
+  division_id: string | null;
+  page: number;
+  page_size: number;
+  total: number;
+  items: PublishedGameSummary[];
+}
+
+export interface InboxSummary {
+  open_count: number;
+  display_count: string;
+}
+
+export interface InboxTask {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  status: "OPEN" | "CLOSED";
+  due_at: string | null;
+  read_at: string | null;
+  closed_at: string | null;
+  close_reason: string;
+  target_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InboxPage {
+  items: InboxTask[];
+  next_cursor: string | null;
 }
 
 export interface ScheduleDraftColumn {
@@ -317,6 +431,16 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       send<PublicScoresheetStat[]>(
         `/api/v1/public/scoresheet-stats${gameId ? `?game_id=${encodeURIComponent(gameId)}` : ""}`,
       ),
+    getTeamLeaderboard: (query = "") =>
+      send<LeaderboardPage<TeamLeaderboardItem>>(
+        `/api/v1/public/leaderboards/teams${query}`,
+      ),
+    getPlayerLeaderboard: (query = "") =>
+      send<LeaderboardPage<PlayerLeaderboardItem>>(
+        `/api/v1/public/leaderboards/players${query}`,
+      ),
+    getPublishedGameSummaries: (query = "") =>
+      send<PublishedGamePage>(`/api/v1/public/scoresheet-games${query}`),
     getGameMedia: (gameId: string, token: string) =>
       send<GameMediaCollection>(`/api/v1/game-media/games/${gameId}`, bearer(token)),
     listScoresheets: (token: string, seasonId?: string) =>
@@ -341,10 +465,11 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       clientId: string,
       surface: ScoresheetSurface,
       token: string,
+      leaseToken = "",
     ) =>
       send<ScoresheetLeaseResponse>(
         `/api/v1/scoresheets/${scoresheetId}/lease`,
-        json("POST", { client_id: clientId, surface }, token),
+        json("POST", { client_id: clientId, surface, lease_token: leaseToken }, token),
       ),
     heartbeatScoresheetLease: (
       scoresheetId: string,
@@ -445,10 +570,19 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
         `/api/v1/scoresheets/${scoresheetId}/publish`,
         json("POST", context, token),
       ),
-    stopScoresheetRecognition: (scoresheetId: string, token: string) =>
-      send<ScoresheetDetail>(
-        `/api/v1/scoresheets/${scoresheetId}/recognition/stop`,
-        { method: "POST", ...bearer(token) },
+    retryScoresheetRecognition: (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      token: string,
+    ) =>
+      send<Record<string, unknown>>(
+        `/api/v1/scoresheets/${scoresheetId}/recognition/retry`,
+        json("POST", context, token),
+      ),
+    getScoresheetRecognitionCapabilities: (token: string) =>
+      send<ScoresheetRecognitionCapability>(
+        "/api/v1/scoresheets/recognition/capabilities",
+        bearer(token),
       ),
     exchangeWeChat: (code: string) =>
       send<WeChatExchange>("/api/v1/auth/wechat/exchange", json("POST", { code })),
@@ -459,6 +593,23 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       ),
     getMiniAppMe: (token: string) =>
       send<MiniAppMe>("/api/v1/auth/me", bearer(token)),
+    getInboxSummary: (token: string) =>
+      send<InboxSummary>("/api/v1/inbox/summary", bearer(token)),
+    listInbox: (
+      token: string,
+      status: "OPEN" | "CLOSED" = "OPEN",
+      cursor = "",
+      pageSize = 30,
+    ) => {
+      const params = new URLSearchParams({ status, page_size: String(pageSize) });
+      if (cursor) params.set("cursor", cursor);
+      return send<InboxPage>(`/api/v1/inbox/?${params.toString()}`, bearer(token));
+    },
+    viewInboxTask: (taskId: string, token: string) =>
+      send<InboxTask>(
+        `/api/v1/inbox/${encodeURIComponent(taskId)}/viewed`,
+        { method: "POST", ...bearer(token) },
+      ),
     logoutMiniApp: (token: string) =>
       send<void>("/api/v1/auth/logout", { method: "POST", ...bearer(token) }),
     getClaimableTeams: (seasonId: string, token: string) =>
@@ -1245,12 +1396,17 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       scoresheetId: string,
       clientId: string,
       surface: ScoresheetSurface,
+      leaseToken = "",
     ) =>
       parseAdminResponse<ScoresheetLeaseResponse>(
         await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/lease`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...csrfHeaders() },
-          body: JSON.stringify({ client_id: clientId, surface }),
+          body: JSON.stringify({
+            client_id: clientId,
+            surface,
+            lease_token: leaseToken,
+          }),
         }),
       ),
     heartbeatScoresheetLease: async (
@@ -1364,12 +1520,9 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           body: JSON.stringify(context),
         }),
       ),
-    stopScoresheetRecognition: async (scoresheetId: string) =>
-      parseAdminResponse<ScoresheetDetail>(
-        await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/recognition/stop`, {
-          method: "POST",
-          headers: csrfHeaders(),
-        }),
+    getScoresheetRecognitionCapabilities: async () =>
+      parseAdminResponse<ScoresheetRecognitionCapability>(
+        await fetchAdmin("/api/v1/scoresheets/recognition/capabilities"),
       ),
     downloadScoresheetPdf: async (scoresheetId: string) => {
       const response = await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/exports/pdf`);

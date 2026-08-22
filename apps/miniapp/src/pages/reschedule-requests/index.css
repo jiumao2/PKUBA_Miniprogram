@@ -1,6 +1,7 @@
 .request-list { margin-top: 24rpx; }
 .request-card { margin-bottom: 24rpx; padding: 24rpx; border-left: 7rpx solid #272421; background: #faf9f6; }
 .request-card.is-women { border-left-color: #c91f26; background: #fff6f5; }
+.request-card.is-focused { outline: 3rpx solid rgba(201, 31, 38, 0.28); outline-offset: -3rpx; }
 .request-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }
 .request-division, .request-teams, .request-status, .request-slot text, .request-requester { display: block; }
 .request-division { color: #6f6b65; font-size: 26rpx; font-weight: 750; }

@@ -37,6 +37,11 @@ import {
 
 import { absoluteMediaUrl, api, replaceGameMedia } from "../../../api";
 import { getMiniAppSession } from "../../../auth";
+import {
+  type CanonicalScoresheetDocument,
+  mergeMobileDocument,
+  projectScoresheetDetail,
+} from "../../mobileDocument";
 import "./index.css";
 
 type StepKey = "SOURCE" | ScoresheetRegion | "CLOSING" | "PUBLISH";
@@ -52,6 +57,14 @@ const STEPS: Array<{ key: StepKey; label: string }> = [
 ];
 
 const CLIENT_KEY = "pkuba-scoresheet-miniapp-client";
+
+function leaseStorageKey(scoresheetId: string) {
+  return `pkuba-scoresheet-miniapp-lease:${scoresheetId}`;
+}
+
+function clearStoredLease(scoresheetId: string) {
+  if (scoresheetId) Taro.removeStorageSync(leaseStorageKey(scoresheetId));
+}
 
 function getClientId() {
   const current = Taro.getStorageSync<string>(CLIENT_KEY);
@@ -92,7 +105,6 @@ export default function ScoresheetEditorPage() {
   const [sheet, setSheet] = useState<ScoresheetDetail | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [view, setView] = useState<"SOURCE" | "STANDARD">("SOURCE");
-  const [leaseToken, setLeaseToken] = useState("");
   const [readOnly, setReadOnly] = useState(true);
   const [saveState, setSaveState] = useState("正在连接");
   const [error, setError] = useState("");
@@ -101,58 +113,109 @@ export default function ScoresheetEditorPage() {
   const [sourceRotation, setSourceRotation] = useState(0);
   const [history, setHistory] = useState<ScoresheetDocument[]>([]);
   const [future, setFuture] = useState<ScoresheetDocument[]>([]);
-  const [accountRole, setAccountRole] = useState("");
   const [selectedScoreId, setSelectedScoreId] = useState("");
   const clientIdRef = useRef(getClientId());
   const serverRef = useRef<ScoresheetDetail | null>(null);
+  const canonicalRef = useRef<CanonicalScoresheetDocument | null>(null);
   const leaseRef = useRef("");
   const pendingRef = useRef<ScoresheetDocument | null>(null);
   const pendingBaseVersionRef = useRef<number | null>(null);
   const recoveryRef = useRef<{ local: ScoresheetDocument; baseVersion: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
+  const acquireFlightRef = useRef<Promise<void> | null>(null);
+  const syncFlightRef = useRef<Promise<boolean> | null>(null);
+  const heartbeatFlightRef = useRef<Promise<void> | null>(null);
+  const flushRef = useRef<(changeType?: string, explicitSave?: boolean) => Promise<void>>(async () => undefined);
 
-  const applyServer = useCallback((next: ScoresheetDetail, preservePending = false) => {
+  const projectServer = useCallback((raw: ScoresheetDetail) => {
+    const projection = projectScoresheetDetail(raw);
+    if (projection.canonical) canonicalRef.current = projection.canonical;
+    return projection.detail;
+  }, []);
+
+  const applyServer = useCallback((raw: ScoresheetDetail, preservePending = false) => {
+    const next = projectServer(raw);
     serverRef.current = next;
     setSheet({
       ...next,
       draft: preservePending && pendingRef.current ? pendingRef.current : next.draft,
     });
-  }, []);
+    return next;
+  }, [projectServer]);
 
   const load = useCallback(async () => {
     if (!scoresheetId || !token) throw new Error("记录表参数或登录状态无效");
     const next = await api.getScoresheet(scoresheetId, token);
-    applyServer(next, Boolean(pendingRef.current));
-    return next;
+    return applyServer(next, Boolean(pendingRef.current));
   }, [applyServer, scoresheetId, token]);
 
-  const acquire = useCallback(async () => {
-    const result = await api.acquireScoresheetLease(
-      scoresheetId,
-      clientIdRef.current,
-      "MINIAPP",
-      token,
-    );
-    if (result.read_only || !result.lease_token) {
-      leaseRef.current = "";
-      setLeaseToken("");
-      setReadOnly(true);
-      setSaveState(`${result.holder.username} 正在通过${result.holder.surface === "WEB" ? "网页" : "小程序"}编辑`);
-      return;
-    }
-    leaseRef.current = result.lease_token;
-    setLeaseToken(result.lease_token);
-    setReadOnly(false);
-    setSaveState("已保存");
-  }, [scoresheetId, token]);
+  const acquire = useCallback(() => {
+    if (leaseRef.current) return Promise.resolve();
+    if (acquireFlightRef.current) return acquireFlightRef.current;
+    const operation = (async () => {
+      const result = await api.acquireScoresheetLease(
+        scoresheetId,
+        clientIdRef.current,
+        "MINIAPP",
+        token,
+        Taro.getStorageSync<string>(leaseStorageKey(scoresheetId)) || "",
+      );
+      if (result.read_only || !result.lease_token) {
+        leaseRef.current = "";
+        clearStoredLease(scoresheetId);
+        setReadOnly(true);
+        setSaveState(result.read_only_reason || (result.holder
+          ? `${result.holder.username} 正在通过${result.holder.surface === "WEB" ? "网页" : "小程序"}编辑`
+          : "当前记录表暂不可编辑"));
+        return;
+      }
+      leaseRef.current = result.lease_token;
+      Taro.setStorageSync(leaseStorageKey(scoresheetId), result.lease_token);
+      setReadOnly(false);
+      const recovery = recoveryRef.current;
+      if (!recovery) {
+        setSaveState("已保存");
+        return;
+      }
+      const server = projectServer(await api.getScoresheet(scoresheetId, token));
+      recoveryRef.current = null;
+      if (server.draft_version === recovery.baseVersion) {
+        serverRef.current = server;
+        pendingRef.current = recovery.local;
+        pendingBaseVersionRef.current = server.draft_version;
+        setSheet({ ...server, draft: recovery.local });
+        setSaveState("已自动恢复编辑 · 正在保存本地输入");
+        setTimeout(() => void flushRef.current("LEASE_RECOVERY", true), 0);
+        return;
+      }
+      const choice = await Taro.showModal({
+        title: "恢复编辑前服务器再次变化",
+        content: `差异字段：${documentDiffPaths(recovery.local, server.draft).join("、") || "多个字段"}。请选择本次提交使用的值。`,
+        cancelText: "服务器值",
+        confirmText: "本地值",
+      });
+      if (choice.confirm) {
+        serverRef.current = server;
+        pendingRef.current = recovery.local;
+        pendingBaseVersionRef.current = server.draft_version;
+        setSheet({ ...server, draft: recovery.local });
+        setTimeout(() => void flushRef.current("CONFLICT_RESOLVED_LOCAL", true), 0);
+      } else {
+        applyServer(await api.getScoresheet(scoresheetId, token));
+        setSaveState("已采用服务器版本");
+      }
+    })();
+    acquireFlightRef.current = operation;
+    return operation.finally(() => {
+      if (acquireFlightRef.current === operation) acquireFlightRef.current = null;
+    });
+  }, [applyServer, projectServer, scoresheetId, token]);
 
   useDidShow(() => {
     void (async () => {
       try {
         await load();
-        const me = await api.getMiniAppMe(token);
-        setAccountRole(me.account?.role ?? "");
         await acquire();
       } catch (reason) {
         setError(message(reason));
@@ -184,10 +247,11 @@ export default function ScoresheetEditorPage() {
     savingRef.current = true;
     setSaveState("保存中…");
     try {
+      const canonical = mergeMobileDocument(local, canonicalRef.current);
       const result = await api.saveScoresheetDraft(
         scoresheetId,
         mutation,
-        [{ path: "/", operation: "SET", value: local }],
+        [{ path: "/", operation: "SET", value: canonical }],
         token,
         { changeType, explicitSave },
       );
@@ -199,7 +263,7 @@ export default function ScoresheetEditorPage() {
       const unsaved = pendingRef.current ?? local;
       pendingRef.current = null;
       if (reason instanceof ApiError && reason.code === "VERSION_CONFLICT") {
-        const server = await api.getScoresheet(scoresheetId, token);
+        const server = projectServer(await api.getScoresheet(scoresheetId, token));
         const choice = await Taro.showModal({
           title: "发现跨端差异",
           content: "服务器草稿已经变化。取消将采用服务器值；确认会在当前版本上提交本地值。",
@@ -219,15 +283,15 @@ export default function ScoresheetEditorPage() {
         reason instanceof ApiError &&
         ["LEASE_LOST", "LEASE_REQUIRED"].includes(reason.code ?? "")
       ) {
-        const server = await api.getScoresheet(scoresheetId, token);
+        const server = projectServer(await api.getScoresheet(scoresheetId, token));
         leaseRef.current = "";
-        setLeaseToken("");
+        clearStoredLease(scoresheetId);
         setReadOnly(true);
         if (server.draft_version === mutation.expected_version) {
           recoveryRef.current = { local: unsaved, baseVersion: server.draft_version };
           serverRef.current = server;
           setSheet({ ...server, draft: unsaved });
-          setSaveState("编辑权已失效 · 本地输入已保留，接手后恢复");
+          setSaveState("编辑权已失效 · 本地输入已保留，等待自动恢复");
         } else {
           const choice = await Taro.showModal({
             title: "编辑权已失效",
@@ -239,7 +303,7 @@ export default function ScoresheetEditorPage() {
             recoveryRef.current = { local: unsaved, baseVersion: server.draft_version };
             serverRef.current = server;
             setSheet({ ...server, draft: unsaved });
-            setSaveState("本地值已保留 · 请重新接手编辑");
+            setSaveState("本地值已保留 · 等待自动恢复编辑");
           } else {
             applyServer(server);
             setSaveState("已采用服务器版本 · 当前为只读");
@@ -255,7 +319,8 @@ export default function ScoresheetEditorPage() {
       savingRef.current = false;
       if (pendingRef.current && online) setTimeout(() => void flush(), 60);
     }
-  }, [applyServer, context, online, scoresheetId, token]);
+  }, [applyServer, context, online, projectServer, scoresheetId, token]);
+  flushRef.current = flush;
 
   const drainPending = useCallback(async (changeType = "EXPLICIT_SAVE") => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -297,10 +362,12 @@ export default function ScoresheetEditorPage() {
     queueDocument(next, previous, immediate);
   }, [queueDocument, sheet]);
 
-  const sync = useCallback(async () => {
-    const current = serverRef.current;
-    if (!current || !scoresheetId || !token) return;
-    try {
+  const sync = useCallback(() => {
+    if (syncFlightRef.current) return syncFlightRef.current;
+    const operation = (async () => {
+      const current = serverRef.current;
+      if (!current || !scoresheetId || !token) return true;
+      try {
       const update = await api.syncScoresheet(
         scoresheetId,
         current.draft_version,
@@ -308,7 +375,7 @@ export default function ScoresheetEditorPage() {
         token,
       );
       if ((update.events.length || update.requires_full_reload) && !savingRef.current) {
-        const next = await api.getScoresheet(scoresheetId, token);
+        const next = projectServer(await api.getScoresheet(scoresheetId, token));
         if (!pendingRef.current) {
           applyServer(next);
         } else if (pendingBaseVersionRef.current === next.draft_version) {
@@ -346,60 +413,81 @@ export default function ScoresheetEditorPage() {
           pendingBaseVersionRef.current = null;
         }
         leaseRef.current = "";
-        setLeaseToken("");
+        clearStoredLease(scoresheetId);
         setReadOnly(true);
         setSaveState("编辑权已转移 · 本地输入已保留");
       }
-      if (!leaseRef.current && !update.lease && !recoveryRef.current) setSaveState("编辑权已释放 · 可以接手");
-    } catch (reason) {
-      if (online) setError(message(reason));
+      if (!leaseRef.current && !update.lease) {
+        setSaveState("编辑权已释放 · 正在自动取得编辑权");
+        await acquire();
+      }
+        return true;
+      } catch (reason) {
+        if (online) setError(message(reason));
+        return false;
+      }
+    })();
+    syncFlightRef.current = operation;
+    return operation.finally(() => {
+      if (syncFlightRef.current === operation) syncFlightRef.current = null;
+    });
+  }, [acquire, applyServer, online, projectServer, scoresheetId, token]);
+
+  const heartbeat = useCallback(() => {
+    if (heartbeatFlightRef.current || !leaseRef.current) {
+      return heartbeatFlightRef.current ?? Promise.resolve();
     }
-  }, [applyServer, online, scoresheetId, token]);
+    const operation = api
+      .heartbeatScoresheetLease(
+        scoresheetId,
+        leaseRef.current,
+        clientIdRef.current,
+        "MINIAPP",
+        token,
+      )
+      .then(() => undefined)
+      .catch(() => {
+        if (pendingRef.current) {
+          recoveryRef.current = {
+            local: pendingRef.current,
+            baseVersion: pendingBaseVersionRef.current ?? serverRef.current?.draft_version ?? 0,
+          };
+          pendingRef.current = null;
+          pendingBaseVersionRef.current = null;
+        }
+        leaseRef.current = "";
+        clearStoredLease(scoresheetId);
+        setReadOnly(true);
+        setSaveState("编辑权已失效 · 本地输入已保留，等待自动恢复");
+      });
+    heartbeatFlightRef.current = operation;
+    return operation.finally(() => {
+      if (heartbeatFlightRef.current === operation) heartbeatFlightRef.current = null;
+    });
+  }, [scoresheetId, token]);
 
   useEffect(() => {
     const poll = setInterval(() => void sync(), 2000);
-    const heartbeat = setInterval(() => {
-      if (!leaseRef.current) return;
-      void api
-        .heartbeatScoresheetLease(
-          scoresheetId,
-          leaseRef.current,
-          clientIdRef.current,
-          "MINIAPP",
-          token,
-        )
-        .catch(() => {
-          if (pendingRef.current) {
-            recoveryRef.current = {
-              local: pendingRef.current,
-              baseVersion: pendingBaseVersionRef.current ?? serverRef.current?.draft_version ?? 0,
-            };
-            pendingRef.current = null;
-            pendingBaseVersionRef.current = null;
-          }
-          leaseRef.current = "";
-          setLeaseToken("");
-          setReadOnly(true);
-          setSaveState("编辑权已失效 · 本地输入已保留");
-        });
-    }, 15000);
+    const heartbeatTimer = setInterval(() => void heartbeat(), 15000);
     const network = (result: Taro.onNetworkStatusChange.CallbackResult) => {
-      setOnline(result.isConnected);
       if (result.isConnected) {
-        void sync().then(() => {
+        void sync().then((synchronized) => {
+          if (!synchronized) return;
+          setOnline(true);
           if (pendingRef.current && leaseRef.current) void flush("NETWORK_RECOVERY");
         });
       } else {
+        setOnline(false);
         setSaveState("网络中断 · 未保存输入已保留");
       }
     };
     Taro.onNetworkStatusChange(network);
     return () => {
       clearInterval(poll);
-      clearInterval(heartbeat);
+      clearInterval(heartbeatTimer);
       Taro.offNetworkStatusChange(network);
     };
-  }, [flush, scoresheetId, sync, token]);
+  }, [flush, heartbeat, sync]);
 
   useUnload(() => {
     if (leaseRef.current && token && !pendingRef.current && !savingRef.current) {
@@ -410,74 +498,10 @@ export default function ScoresheetEditorPage() {
         "MINIAPP",
         token,
       );
+      leaseRef.current = "";
+      clearStoredLease(scoresheetId);
     }
   });
-
-  const takeOver = async (force = false) => {
-    try {
-      const result = force
-        ? await api.forceScoresheetLease(scoresheetId, clientIdRef.current, "MINIAPP", token)
-        : await api.acquireScoresheetLease(scoresheetId, clientIdRef.current, "MINIAPP", token);
-      if (result.read_only || !result.lease_token) {
-        setSaveState(`${result.holder.username} 仍在编辑`);
-        return;
-      }
-      leaseRef.current = result.lease_token;
-      setLeaseToken(result.lease_token);
-      setReadOnly(false);
-      setSaveState("已取得编辑权");
-      const server = await api.getScoresheet(scoresheetId, token);
-      const recovery = recoveryRef.current;
-      recoveryRef.current = null;
-      if (!recovery) {
-        applyServer(server);
-      } else if (server.draft_version === recovery.baseVersion) {
-        serverRef.current = server;
-        pendingRef.current = recovery.local;
-        pendingBaseVersionRef.current = server.draft_version;
-        setSheet({ ...server, draft: recovery.local });
-        await drainPending("LEASE_RECOVERY");
-      } else {
-        const choice = await Taro.showModal({
-          title: "接手前服务器再次变化",
-          content: `差异字段：${documentDiffPaths(recovery.local, server.draft).join("、") || "多个字段"}。请选择本次提交使用的值。`,
-          cancelText: "服务器值",
-          confirmText: "本地值",
-        });
-        if (choice.confirm) {
-          serverRef.current = server;
-          pendingRef.current = recovery.local;
-          pendingBaseVersionRef.current = server.draft_version;
-          setSheet({ ...server, draft: recovery.local });
-          await drainPending("CONFLICT_RESOLVED_LOCAL");
-        } else {
-          applyServer(server);
-          setSaveState("已采用服务器版本");
-        }
-      }
-    } catch (reason) {
-      setError(message(reason));
-    }
-  };
-
-  const handoff = async () => {
-    if (!(await drainPending())) {
-      setError("仍有未保存输入，暂未释放编辑权。请恢复网络后重试。");
-      return;
-    }
-    if (!leaseRef.current) return;
-    await api.releaseScoresheetLease(
-      scoresheetId,
-      leaseRef.current,
-      clientIdRef.current,
-      "MINIAPP",
-      token,
-    );
-    leaseRef.current = "";
-    setLeaseToken("");
-    setReadOnly(true);
-    setSaveState("已保存并释放 · 可在网页接手");
-  };
 
   const exitEditor = async () => {
     if (!(await drainPending())) {
@@ -493,28 +517,9 @@ export default function ScoresheetEditorPage() {
         token,
       ).catch(() => undefined);
       leaseRef.current = "";
-      setLeaseToken("");
+      clearStoredLease(scoresheetId);
     }
     await Taro.navigateBack();
-  };
-
-  const reviewCurrent = async () => {
-    if (!sheet || !context()) return;
-    if (!(await drainPending())) return;
-    try {
-      let next = serverRef.current!;
-      const keys = stepKey(stepIndex) === "CLOSING"
-        ? (["SUMMARY", "OFFICIALS"] as ScoresheetRegion[])
-        : ([stepKey(stepIndex)] as ScoresheetRegion[]);
-      for (const region of keys) {
-        if (!SCORESHEET_REGIONS.includes(region)) continue;
-        next = await api.reviewScoresheetRegion(scoresheetId, region, context()!, true, token);
-        applyServer(next);
-      }
-      Taro.showToast({ title: "区域已核对", icon: "success" });
-    } catch (reason) {
-      setError(message(reason));
-    }
   };
 
   const validate = async () => {
@@ -527,36 +532,38 @@ export default function ScoresheetEditorPage() {
     }
   };
 
-  const acknowledge = async (warningId: string) => {
-    if (!sheet || !context()) return;
-    if (!(await drainPending())) return;
-    try {
-      applyServer(
-        await api.acknowledgeScoresheetWarnings(
-          scoresheetId,
-          context()!,
-          [warningId],
-          token,
-        ),
-      );
-    } catch (reason) {
-      setError(message(reason));
-    }
-  };
-
   const publish = async () => {
     if (!context()) return;
     if (!(await drainPending())) return;
-    const confirmed = await Taro.showModal({
-      title: "发布正式数据",
-      content: "发布将同时更新正式比分、排名、对阵和球员统计。确认六个区域均已对照原图核对？",
-      confirmText: "确认发布",
-    });
-    if (!confirmed.confirm) return;
     try {
+      const validated = applyServer(await api.validateScoresheet(scoresheetId, context()!, token));
+      const errors = validated.validation_report.errors ?? [];
+      const warnings = validated.validation_report.warnings ?? [];
+      if (errors.length > 0) {
+        await Taro.showModal({
+          title: "校验未通过",
+          content: `仍有 ${errors.length} 个错误，请修正后重新发布。`,
+          showCancel: false,
+        });
+        return;
+      }
+      const confirmed = await Taro.showModal({
+        title: "发布正式数据",
+        content: warnings.length > 0
+          ? `服务端校验通过，仍有 ${warnings.length} 条提醒。继续即一次性确认全部提醒，并更新正式比分、排名、对阵和球员统计。`
+          : "服务端校验通过。发布将同时更新正式比分、排名、对阵和球员统计。",
+        confirmText: "确认发布",
+      });
+      if (!confirmed.confirm) return;
+      const warningIds = warnings.map((warning) => warning.id);
+      if (warningIds.length > 0) {
+        applyServer(
+          await api.acknowledgeScoresheetWarnings(scoresheetId, context()!, warningIds, token),
+        );
+      }
       applyServer(await api.publishScoresheet(scoresheetId, context()!, token));
       leaseRef.current = "";
-      setLeaseToken("");
+      clearStoredLease(scoresheetId);
       setReadOnly(true);
       setSaveState("已发布");
       Taro.showToast({ title: "发布成功", icon: "success" });
@@ -595,9 +602,6 @@ export default function ScoresheetEditorPage() {
       : [];
   const errors = sheet.validation_report.errors ?? [];
   const warnings = sheet.validation_report.warnings ?? [];
-  const reviewed = currentRegions.length > 0 && currentRegions.every(
-    (region) => sheet.reviewed_regions[region]?.draft_version === sheet.draft_version,
-  );
 
   return (
     <View className="mini-sheet-page">
@@ -608,15 +612,7 @@ export default function ScoresheetEditorPage() {
           <Text className="mini-sheet-title">{String(sheet.game.label)}</Text>
           <Text className={`mini-sheet-save ${readOnly ? "readonly" : ""}`}>{saveState}</Text>
         </View>
-        {readOnly ? <View className="mini-sheet-lease-actions">
-          <Button className="mini-sheet-handoff" onClick={() => void takeOver(false)}>接手</Button>
-          {accountRole === "SUPERADMIN" && <Button className="mini-sheet-force" onClick={async () => {
-            const confirmed = await Taro.showModal({ title: "强制接管", content: "旧客户端会立即转为只读，确认继续？", confirmText: "确认接管" });
-            if (confirmed.confirm) await takeOver(true);
-          }}>强制</Button>}
-        </View> : (
-          <Button className="mini-sheet-handoff" onClick={() => void handoff()}>交接</Button>
-        )}
+        <Text className={readOnly ? "mini-sheet-mode readonly" : "mini-sheet-mode"}>{readOnly ? "只读" : "编辑中"}</Text>
       </View>
 
       <ScrollView className="mini-sheet-steps" scrollX enhanced showScrollbar={false}>
@@ -627,13 +623,10 @@ export default function ScoresheetEditorPage() {
               : SCORESHEET_REGIONS.includes(step.key as ScoresheetRegion)
                 ? ([step.key] as ScoresheetRegion[])
                 : [];
-            const done = regions.length > 0 && regions.every(
-              (region) => sheet.reviewed_regions[region]?.draft_version === sheet.draft_version,
-            );
             const issueCount = [...errors, ...warnings].filter((issue) => regions.includes(issue.region)).length;
             return (
               <View className={`mini-sheet-step ${stepIndex === index ? "active" : ""}`} key={step.key} onClick={() => setStepIndex(index)}>
-                <Text className={done ? "step-number done" : "step-number"}>{done ? "✓" : index + 1}</Text>
+                <Text className="step-number">{index + 1}</Text>
                 <Text>{step.label}</Text>
                 {issueCount > 0 && <Text className="step-issue">{issueCount}</Text>}
               </View>
@@ -652,9 +645,17 @@ export default function ScoresheetEditorPage() {
       <ScrollView className="mini-sheet-content" scrollY enhanced showScrollbar={false}>
         {sheet.recognition && (
           <RecognitionBanner
-            onStop={async () => {
+            onRetry={async () => {
               try {
-                applyServer(await api.stopScoresheetRecognition(scoresheetId, token));
+                if (!(await drainPending())) return;
+                const mutation = context();
+                if (!mutation) return;
+                await api.retryScoresheetRecognition(scoresheetId, mutation, token);
+                leaseRef.current = "";
+                clearStoredLease(scoresheetId);
+                setReadOnly(true);
+                setSaveState("自动识别正在进行 · 当前只读");
+                await load();
               } catch (reason) {
                 setError(message(reason));
               }
@@ -678,6 +679,7 @@ export default function ScoresheetEditorPage() {
               await replaceGameMedia(sheet.source.id, sheet.source.version, file.tempFilePath, true, token);
               await load();
             }}
+            onReload={() => void load().catch((reason) => setError(message(reason)))}
             readOnly={readOnly || !online}
             rotation={sourceRotation}
             scale={sourceScale}
@@ -708,24 +710,20 @@ export default function ScoresheetEditorPage() {
 
       <View className="mini-sheet-footer">
         <Button disabled={stepIndex === 0} onClick={() => setStepIndex((value) => Math.max(0, value - 1))}>上一步</Button>
-        {currentRegions.length > 0 ? (
-          <Button className={reviewed ? "reviewed" : "review"} disabled={readOnly || !online} onClick={() => void reviewCurrent()}>{reviewed ? "已核对" : "区域已核对"}</Button>
-        ) : currentKey === "PUBLISH" ? (
+        {currentKey === "PUBLISH" ? (
           <Button className="review" disabled={readOnly || !online} onClick={() => void validate()}>重新校验</Button>
-        ) : <View />}
+        ) : (
+          <Button className="review" disabled={readOnly || !online} onClick={() => void drainPending("EXPLICIT_SAVE")}>保存草稿</Button>
+        )}
         <Button disabled={stepIndex === STEPS.length - 1} onClick={() => setStepIndex((value) => Math.min(STEPS.length - 1, value + 1))}>下一步</Button>
       </View>
 
       {currentKey === "PUBLISH" && view === "STANDARD" && (
         <PublishPanel
-          acknowledge={acknowledge}
-          acknowledgedWarnings={sheet.acknowledged_warnings}
           errors={errors}
           publish={publish}
           readOnly={readOnly || !online}
-          reviewedRegions={sheet.reviewed_regions}
           validationReady={sheet.status === "READY" && sheet.validation_draft_version === sheet.draft_version}
-          version={sheet.draft_version}
           warnings={warnings}
         />
       )}
@@ -737,10 +735,10 @@ function stepKey(index: number): StepKey {
   return STEPS[index]?.key ?? "SOURCE";
 }
 
-function RecognitionBanner({ recognition, readOnly, onStop }: {
+function RecognitionBanner({ recognition, readOnly, onRetry }: {
   recognition: NonNullable<ScoresheetDetail["recognition"]>;
   readOnly: boolean;
-  onStop: () => Promise<void>;
+  onRetry: () => Promise<void>;
 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -751,19 +749,20 @@ function RecognitionBanner({ recognition, readOnly, onStop }: {
   const retrySeconds = recognition.next_attempt_at
     ? Math.max(0, Math.ceil((new Date(recognition.next_attempt_at).getTime() - now) / 1000))
     : null;
-  const active = ["QUEUED", "RUNNING", "RETRY_WAIT"].includes(recognition.status);
   return (
     <View className={`mini-recognition-banner ${recognition.status.toLowerCase()}`}>
       <View>
         <Text>自动识别 · 第 {Math.max(1, recognition.attempt_count || 1)}/{recognition.max_attempts} 次</Text>
         <Text>{recognition.status === "RETRY_WAIT" && retrySeconds !== null ? `${retrySeconds} 秒后自动重试` : recognition.status === "RUNNING" ? "正在读取整表" : recognition.status === "FAILED" ? "识别已耗尽，可完整手工录入或重传" : recognition.status}</Text>
       </View>
-      {active && !readOnly && <Button onClick={() => void onStop()}>停止重试</Button>}
+      {recognition.status === "FAILED" && (
+        <Button disabled={readOnly} onClick={() => void onRetry()}>重新识别</Button>
+      )}
     </View>
   );
 }
 
-function SourceView({ source, scale, rotation, setScale, setRotation, readOnly, onReplace, corners, currentRegion, onCornersChange }: {
+function SourceView({ source, scale, rotation, setScale, setRotation, readOnly, onReplace, onReload, corners, currentRegion, onCornersChange }: {
   source: ScoresheetDetail["source"];
   scale: number;
   rotation: number;
@@ -771,6 +770,7 @@ function SourceView({ source, scale, rotation, setScale, setRotation, readOnly, 
   setRotation: (value: number) => void;
   readOnly: boolean;
   onReplace: () => void;
+  onReload: () => void;
   corners: Array<{ x: number; y: number }>;
   currentRegion: ScoresheetRegion;
   onCornersChange: (corners: Array<{ x: number; y: number }>) => void;
@@ -834,6 +834,7 @@ function SourceView({ source, scale, rotation, setScale, setRotation, readOnly, 
         {!readOnly && source && <Button onClick={beginAlignment}>{corners.length === 4 ? "重新对齐" : "四角对齐"}</Button>}
       </View>
       <Text className="mini-source-hint">四角对齐只用于人工核对；模型始终读取完整的安全预处理图。</Text>
+      {source && <Button className="mini-source-reload" onClick={onReload}>重新载入原图</Button>}
       {!readOnly && source && <Button className="mini-source-replace" onClick={onReplace}>重传新原图</Button>}
     </View>
   );
@@ -1112,10 +1113,8 @@ function MiniScoreQuickBar({ document, onChange }: { document: ScoresheetDocumen
   return <View className="mini-quick-bar"><Picker mode="selector" range={["1", "2", "3", "4", "OT"]} value={["1", "2", "3", "4", "OT"].indexOf(period)} onChange={(event) => setPeriod((["1", "2", "3", "4", "OT"] as ScorePeriod[])[Number(event.detail.value)])}><View className="mini-quick-period">{period} 节</View></Picker><ScrollView scrollX><View className="mini-quick-buttons">{(["A", "B"] as TeamSide[]).flatMap((side) => ([1, 2, 3] as ScoreValue[]).map((value) => <Button disabled={teamTotal(document.running_score, side) + value > 160} key={`${side}-${value}`} onClick={() => add(side, value)}>{side} +{value}</Button>))}</View></ScrollView></View>;
 }
 
-function PublishPanel({ errors, warnings, reviewedRegions, version, validationReady, readOnly, acknowledgedWarnings, acknowledge, publish }: { errors: Array<{ id: string; message: string; region: ScoresheetRegion }>; warnings: Array<{ id: string; message: string; region: ScoresheetRegion }>; reviewedRegions: ScoresheetDetail["reviewed_regions"]; version: number; validationReady: boolean; readOnly: boolean; acknowledgedWarnings: string[]; acknowledge: (warningId: string) => void; publish: () => void }) {
-  const allReviewed = SCORESHEET_REGIONS.every((region) => reviewedRegions[region]?.draft_version === version);
-  const warningsReady = warnings.every((warning) => acknowledgedWarnings.includes(warning.id));
-  return <View className="mini-publish-panel"><View className="mini-publish-summary"><Text>{allReviewed ? "六个区域均已核对" : "仍有区域未核对"}</Text><Text>{validationReady ? `${errors.length} 个错误 · ${warnings.length} 个提醒` : "当前草稿尚未完成服务端校验"}</Text></View>{errors.map((issue) => <View className="mini-publish-issue error" key={issue.id}><Text>{REGION_LABELS[issue.region]}</Text><Text>{issue.message}</Text></View>)}{warnings.map((issue) => <View className="mini-publish-issue" key={issue.id}><Text>{REGION_LABELS[issue.region]}</Text><View><Text>{issue.message}</Text>{acknowledgedWarnings.includes(issue.id) ? <Text className="mini-warning-acknowledged">已确认</Text> : <Button disabled={readOnly} onClick={() => acknowledge(issue.id)}>确认此项</Button>}</View></View>)}<Button className="mini-publish-button" disabled={readOnly || !validationReady || !allReviewed || errors.length > 0 || !warningsReady} onClick={publish}>一次确认发布</Button></View>;
+function PublishPanel({ errors, warnings, validationReady, readOnly, publish }: { errors: Array<{ id: string; message: string; region: ScoresheetRegion }>; warnings: Array<{ id: string; message: string; region: ScoresheetRegion }>; validationReady: boolean; readOnly: boolean; publish: () => void }) {
+  return <View className="mini-publish-panel"><View className="mini-publish-summary"><Text>保存后由服务端完整校验</Text><Text>{validationReady ? `${errors.length} 个错误 · ${warnings.length} 个提醒` : "发布时会自动重新校验当前草稿"}</Text></View>{errors.map((issue) => <View className="mini-publish-issue error" key={issue.id}><Text>{REGION_LABELS[issue.region]}</Text><Text>{issue.message}</Text></View>)}{warnings.map((issue) => <View className="mini-publish-issue" key={issue.id}><Text>{REGION_LABELS[issue.region]}</Text><View><Text>{issue.message}</Text></View></View>)}<Button className="mini-publish-button" disabled={readOnly} onClick={publish}>校验并发布</Button></View>;
 }
 
 function gameLabel(key: string) {

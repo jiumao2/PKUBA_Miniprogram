@@ -105,9 +105,9 @@ class Command(BaseCommand):
             leaders.append(account)
         admin, _ = Account.objects.get_or_create(
             username="demo-reschedule-admin",
-            defaults={"role": Account.Role.ADMIN},
+            defaults={"role": Account.Role.SUPERADMIN},
         )
-        admin.role = Account.Role.ADMIN
+        admin.role = Account.Role.SUPERADMIN
         admin.set_unusable_password()
         admin.save(update_fields=["role", "password"])
 

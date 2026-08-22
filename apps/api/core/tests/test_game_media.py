@@ -109,6 +109,32 @@ def test_scoresheet_upload_is_admin_only_and_requires_confirmation(tmp_path):
         assert (tmp_path / asset.file_key).exists()
 
 
+def test_ordinary_admin_can_upload_media_but_cannot_review(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["admin"])
+    client = Client()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        created = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("ordinary-admin.jpg", (900, 700)),
+        )
+        collection = client.get(
+            f"/api/v1/game-media/games/{game.id}",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+    assert created.status_code == 201
+    assert collection.status_code == 200
+    assert collection.json()["can_upload"] is True
+    assert collection.json()["can_review"] is False
+
+
 def test_admin_can_replace_wrong_upload_and_new_asset_requires_review(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
@@ -196,7 +222,7 @@ def test_admin_can_replace_game_photo_from_miniapp(tmp_path):
 def test_group_photo_is_separate_from_other_photos_and_can_be_filtered(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
-    admin_token = issue_session(setup["admin"])
+    admin_token = issue_session(setup["superadmin"])
     client = Client()
 
     with override_settings(MEDIA_ROOT=tmp_path):
@@ -217,7 +243,7 @@ def test_group_photo_is_separate_from_other_photos_and_can_be_filtered(tmp_path)
             file=image_file("game-moment.jpg", (1000, 700)),
         )
 
-        client.force_login(setup["admin"])
+        client.force_login(setup["superadmin"])
         filtered = client.get(
             "/api/v1/admin/game-media/",
             data={"kind": GameMediaAsset.Kind.GROUP_PHOTO},
@@ -236,7 +262,7 @@ def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):
     game = setup["games"][0]
     participant_token = issue_session(setup["accounts"][0])
     unrelated_token = issue_session(setup["accounts"][2])
-    admin_token = issue_session(setup["admin"])
+    admin_token = issue_session(setup["superadmin"])
     client = Client()
 
     with override_settings(MEDIA_ROOT=tmp_path):
@@ -266,7 +292,7 @@ def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):
         )
         asset_id = created.json()["id"]
 
-        client.force_login(setup["admin"])
+        client.force_login(setup["superadmin"])
         rejected_without_note = client.post(
             f"/api/v1/admin/game-media/{asset_id}/review",
             data=json.dumps({

@@ -128,6 +128,10 @@ export interface ScoresheetDetail {
     attempt_count: number;
     max_attempts: number;
     next_attempt_at: string | null;
+    model: string;
+    prompt_version: string;
+    image_sha256: string;
+    auto_apply_allowed: boolean;
     last_error_code: string;
     last_error: string;
   };

@@ -1153,6 +1153,11 @@ class ScoresheetRecognitionRun(UUIDModel):
         STOPPED = "STOPPED", "已停止"
         SUPERSEDED = "SUPERSEDED", "已被新原图替代"
 
+    class Trigger(models.TextChoices):
+        UPLOAD = "UPLOAD", "上传自动识别"
+        REUPLOAD = "REUPLOAD", "重传自动识别"
+        MANUAL_RETRY = "MANUAL_RETRY", "人工重试"
+
     scoresheet = models.ForeignKey(
         GameScoresheet, on_delete=models.PROTECT, related_name="recognition_runs"
     )
@@ -1160,6 +1165,8 @@ class ScoresheetRecognitionRun(UUIDModel):
         GameMediaAsset, on_delete=models.PROTECT, related_name="recognition_runs"
     )
     source_version = models.PositiveIntegerField()
+    cycle = models.PositiveSmallIntegerField(default=1)
+    trigger = models.CharField(max_length=20, choices=Trigger.choices, default=Trigger.UPLOAD)
     # Recognition may finish after an administrator has started manual review.
     # Keep the draft version captured at enqueue time so a late model result can
     # never overwrite newer human edits.
@@ -1171,6 +1178,12 @@ class ScoresheetRecognitionRun(UUIDModel):
     provider_run_token = models.UUIDField(default=uuid.uuid4, editable=False)
     provider_result = models.JSONField(default=dict)
     provider_usage = models.JSONField(default=dict)
+    model_name = models.CharField(max_length=80, default="legacy")
+    prompt_version = models.CharField(max_length=96, default="legacy")
+    image_sha256 = models.CharField(max_length=64, blank=True)
+    auto_apply_allowed = models.BooleanField(default=True)
+    applied_draft_version = models.PositiveIntegerField(null=True, blank=True)
+    recognition_notes = models.TextField(blank=True)
     last_error_code = models.CharField(max_length=64, blank=True)
     last_error = models.TextField(blank=True)
     worker_lease_token = models.UUIDField(null=True, blank=True)
@@ -1190,8 +1203,8 @@ class ScoresheetRecognitionRun(UUIDModel):
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["scoresheet", "source_version"],
-                name="uniq_scoresheet_recognition_source",
+                fields=["scoresheet", "source_version", "cycle"],
+                name="uniq_scoresheet_recognition_cycle",
             ),
             models.CheckConstraint(
                 condition=Q(max_attempts=4),
@@ -1378,13 +1391,62 @@ class ScoresheetEditLease(UUIDModel):
 
 
 class InboxItem(UUIDModel):
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "待处理"
+        CLOSED = "CLOSED", "已完成"
+
+    class Route(models.TextChoices):
+        RESCHEDULE_REQUEST = "RESCHEDULE_REQUEST", "调赛申请"
+        SCORESHEET = "SCORESHEET", "记录表"
+        ADMIN_WORKSPACE = "ADMIN_WORKSPACE", "管理员工作台"
+
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="inbox_items")
+    season = models.ForeignKey(
+        Season,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="inbox_items",
+    )
     kind = models.CharField(max_length=64)
     title = models.CharField(max_length=160)
     body = models.TextField(blank=True)
     object_type = models.CharField(max_length=64, blank=True)
     object_id = models.UUIDField(null=True, blank=True)
+    route = models.CharField(max_length=32, choices=Route.choices)
+    route_params = models.JSONField(default=dict)
+    dedupe_key = models.CharField(max_length=180)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.OPEN)
+    due_at = models.DateTimeField(null=True, blank=True)
     read_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    close_reason = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "dedupe_key"],
+                name="uniq_inbox_task_per_account",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(status="OPEN", closed_at__isnull=True)
+                    | Q(status="CLOSED", closed_at__isnull=False)
+                ),
+                name="inbox_closed_timestamp_matches_status",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["account", "status", "due_at"],
+                name="inbox_account_status_due",
+            ),
+            models.Index(
+                fields=["object_type", "object_id", "status"],
+                name="inbox_object_status_idx",
+            ),
+        ]
 
 
 class EmailOutbox(UUIDModel):
@@ -1395,13 +1457,38 @@ class EmailOutbox(UUIDModel):
         FAILED = "FAILED", "失败"
 
     recipient = models.EmailField()
+    event_key = models.CharField(max_length=180, unique=True)
+    object_type = models.CharField(max_length=64, blank=True)
+    object_id = models.UUIDField(null=True, blank=True)
     subject = models.CharField(max_length=200)
     body = models.TextField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     attempts = models.PositiveSmallIntegerField(default=0)
+    max_attempts = models.PositiveSmallIntegerField(default=8)
     next_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(recipient="pkubaoutward@163.com"),
+                name="email_outbox_public_mailbox_only",
+            ),
+            models.CheckConstraint(
+                condition=Q(max_attempts__gte=1),
+                name="email_outbox_positive_max_attempts",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["status", "next_attempt_at", "created_at"],
+                name="email_status_due_idx",
+            )
+        ]
 
 
 class AdminAuditLog(UUIDModel):

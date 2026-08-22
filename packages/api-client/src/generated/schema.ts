@@ -123,6 +123,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/leaderboards/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Team Leaderboard */
+        get: operations["core_api_public_stats_team_leaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/leaderboards/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Player Leaderboard */
+        get: operations["core_api_public_stats_player_leaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/scoresheet-games": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Published Games */
+        get: operations["core_api_public_stats_published_games"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/wechat/exchange": {
         parameters: {
             query?: never;
@@ -1595,6 +1646,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inbox/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inbox Summary */
+        get: operations["core_api_inbox_inbox_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Inbox */
+        get: operations["core_api_inbox_list_inbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/{task_id}/viewed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** View Inbox Task */
+        post: operations["core_api_inbox_view_inbox_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scoresheets/template/definition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scoresheet Template Definition */
+        get: operations["core_api_scoresheets_get_scoresheet_template_definition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scoresheets/template/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scoresheet Template Pdf */
+        get: operations["core_api_scoresheets_get_scoresheet_template_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scoresheets/recognition/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scoresheet Recognition Capabilities */
+        get: operations["core_api_scoresheets_get_scoresheet_recognition_capabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scoresheets/": {
         parameters: {
             query?: never;
@@ -1799,7 +1952,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/scoresheets/{scoresheet_id}/recognition/stop": {
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/retry": {
         parameters: {
             query?: never;
             header?: never;
@@ -1808,8 +1961,93 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stop Scoresheet Recognition */
-        post: operations["core_api_scoresheets_stop_scoresheet_recognition"];
+        /** Retry Scoresheet Recognition */
+        post: operations["core_api_scoresheets_retry_scoresheet_recognition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Latest Scoresheet Recognition */
+        get: operations["core_api_scoresheets_get_latest_scoresheet_recognition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scoresheet Recognition */
+        get: operations["core_api_scoresheets_get_scoresheet_recognition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/{run_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scoresheet Recognition Diff */
+        get: operations["core_api_scoresheets_get_scoresheet_recognition_diff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scoresheets/{scoresheet_id}/recognition/{run_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Scoresheet Recognition */
+        post: operations["core_api_scoresheets_apply_scoresheet_recognition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scoresheets/{scoresheet_id}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Scoresheet Changes */
+        get: operations["core_api_scoresheets_list_scoresheet_changes"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2225,6 +2463,216 @@ export interface components {
             placement_games: components["schemas"]["BracketGameOut"][];
             /** Champion Name */
             champion_name: string | null;
+        };
+        /** TeamLeaderboardItemOut */
+        TeamLeaderboardItemOut: {
+            /** Rank */
+            rank: number;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /**
+             * Division Id
+             * Format: uuid
+             */
+            division_id: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+            /** Games Played */
+            games_played: number;
+            /** Wins */
+            wins: number;
+            /** Losses */
+            losses: number;
+            /** Win Percentage */
+            win_percentage: number;
+            /** Points For */
+            points_for: number;
+            /** Points Against */
+            points_against: number;
+            /** Point Difference */
+            point_difference: number;
+            /** Points Per Game */
+            points_per_game: number;
+            /** Points Against Per Game */
+            points_against_per_game: number;
+            /** Point Difference Per Game */
+            point_difference_per_game: number;
+        };
+        /** TeamLeaderboardOut */
+        TeamLeaderboardOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Division Id */
+            division_id: string | null;
+            /** Sort */
+            sort: string;
+            /** Order */
+            order: string;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["TeamLeaderboardItemOut"][];
+        };
+        /** PublicDataErrorOut */
+        PublicDataErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** PlayerLeaderboardItemOut */
+        PlayerLeaderboardItemOut: {
+            /** Rank */
+            rank: number;
+            /**
+             * Player Id
+             * Format: uuid
+             */
+            player_id: string;
+            /** Player Name */
+            player_name: string;
+            /** Jersey Number */
+            jersey_number: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /**
+             * Division Id
+             * Format: uuid
+             */
+            division_id: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+            /** Games Played */
+            games_played: number;
+            /** Starts */
+            starts: number;
+            /** Total Points */
+            total_points: number;
+            /** Points Per Game */
+            points_per_game: number;
+            /** One Point Events */
+            one_point_events: number;
+            /** Two Point Events */
+            two_point_events: number;
+            /** Three Point Events */
+            three_point_events: number;
+            /** Personal Fouls */
+            personal_fouls: number;
+            /** Fouls Per Game */
+            fouls_per_game: number;
+        };
+        /** PlayerLeaderboardOut */
+        PlayerLeaderboardOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Division Id */
+            division_id: string | null;
+            /** Sort */
+            sort: string;
+            /** Order */
+            order: string;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["PlayerLeaderboardItemOut"][];
+        };
+        /** PublishedGamePageOut */
+        PublishedGamePageOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Division Id */
+            division_id: string | null;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["PublishedGameSummaryOut"][];
+        };
+        /** PublishedGameSummaryOut */
+        PublishedGameSummaryOut: {
+            /**
+             * Publication Id
+             * Format: uuid
+             */
+            publication_id: string;
+            /** Publication Number */
+            publication_number: number;
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Game Code */
+            game_code: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Start Time */
+            start_time: string;
+            /**
+             * Division Id
+             * Format: uuid
+             */
+            division_id: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+            /** Home Name */
+            home_name: string;
+            /** Away Name */
+            away_name: string;
+            /** Home Score */
+            home_score: number;
+            /** Away Score */
+            away_score: number;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
         };
         /** AccountOut */
         AccountOut: {
@@ -5203,6 +5651,85 @@ export interface components {
             /** Assets */
             assets: components["schemas"]["GameMediaAssetOut"][];
         };
+        /** InboxSummaryOut */
+        InboxSummaryOut: {
+            /** Open Count */
+            open_count: number;
+            /** Display Count */
+            display_count: string;
+        };
+        /** InboxPageOut */
+        InboxPageOut: {
+            /** Items */
+            items: components["schemas"]["InboxTaskOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** InboxTaskOut */
+        InboxTaskOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Status */
+            status: string;
+            /** Due At */
+            due_at: string | null;
+            /** Read At */
+            read_at: string | null;
+            /** Closed At */
+            closed_at: string | null;
+            /** Close Reason */
+            close_reason: string;
+            /** Target Url */
+            target_url: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** InboxErrorOut */
+        InboxErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** ScoresheetErrorOut */
+        ScoresheetErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** ScoresheetRecognitionCapabilityOut */
+        ScoresheetRecognitionCapabilityOut: {
+            /** Configured */
+            configured: boolean;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Max Attempts */
+            max_attempts: number;
+            /** Retry Delays Seconds */
+            retry_delays_seconds: number[];
+        };
         /** ScoresheetQueueItemOut */
         ScoresheetQueueItemOut: {
             /**
@@ -5214,6 +5741,16 @@ export interface components {
             game_code: string;
             /** Game Label */
             game_label: string;
+            /** Competition */
+            competition: string;
+            /** Division Name */
+            division_name: string;
+            /** Venue */
+            venue: string;
+            /** Home Name */
+            home_name: string;
+            /** Away Name */
+            away_name: string;
             /** Date */
             date: string;
             /** Start Time */
@@ -5236,13 +5773,6 @@ export interface components {
             next_attempt_at: string | null;
             /** Publication Number */
             publication_number: number | null;
-        };
-        /** ScoresheetErrorOut */
-        ScoresheetErrorOut: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
         };
         /** ScoresheetDetailOut */
         ScoresheetDetailOut: {
@@ -5366,12 +5896,14 @@ export interface components {
         LeaseOut: {
             /** Read Only */
             read_only: boolean;
+            /** Read Only Reason */
+            read_only_reason: string;
             /** Lease Token */
             lease_token: string | null;
             /** Holder */
             holder: {
                 [key: string]: unknown;
-            };
+            } | null;
         };
         /** LeaseAcquireIn */
         LeaseAcquireIn: {
@@ -5382,6 +5914,11 @@ export interface components {
              * @enum {string}
              */
             surface: "WEB" | "MINIAPP";
+            /**
+             * Lease Token
+             * @default
+             */
+            lease_token: string;
         };
         /** LeaseCommandIn */
         LeaseCommandIn: {
@@ -5404,6 +5941,11 @@ export interface components {
              * @enum {string}
              */
             surface: "WEB" | "MINIAPP";
+            /**
+             * Lease Token
+             * @default
+             */
+            lease_token: string;
             /** Confirmed */
             confirmed: boolean;
         };
@@ -5494,6 +6036,22 @@ export interface components {
             surface: "WEB" | "MINIAPP";
             /** Warning Ids */
             warning_ids: string[];
+        };
+        /** ApplyRecognitionIn */
+        ApplyRecognitionIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Lease Token */
+            lease_token: string;
+            /** Client Id */
+            client_id: string;
+            /**
+             * Surface
+             * @enum {string}
+             */
+            surface: "WEB" | "MINIAPP";
+            /** Regions */
+            regions: string[];
         };
         /** PublicScoresheetStatOut */
         PublicScoresheetStatOut: {
@@ -5736,6 +6294,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_public_stats_team_leaderboard: {
+        parameters: {
+            query?: {
+                division_id?: string | null;
+                sort?: string;
+                order?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLeaderboardOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicDataErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicDataErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_public_stats_player_leaderboard: {
+        parameters: {
+            query?: {
+                division_id?: string | null;
+                sort?: string;
+                order?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayerLeaderboardOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicDataErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicDataErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_public_stats_published_games: {
+        parameters: {
+            query?: {
+                division_id?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishedGamePageOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicDataErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicDataErrorOut"];
                 };
             };
         };
@@ -7948,6 +8636,15 @@ export interface operations {
                     "application/json": components["schemas"]["RescheduleErrorOut"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -9672,6 +10369,258 @@ export interface operations {
             };
         };
     };
+    core_api_inbox_inbox_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxSummaryOut"];
+                };
+            };
+        };
+    };
+    core_api_inbox_list_inbox: {
+        parameters: {
+            query?: {
+                status?: string;
+                cursor?: string | null;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxPageOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_inbox_view_inbox_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxTaskOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_get_scoresheet_template_definition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_get_scoresheet_template_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_get_scoresheet_recognition_capabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetRecognitionCapabilityOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
     core_api_scoresheets_list_scoresheets: {
         parameters: {
             query?: {
@@ -10406,7 +11355,71 @@ export interface operations {
             };
         };
     };
-    core_api_scoresheets_stop_scoresheet_recognition: {
+    core_api_scoresheets_retry_scoresheet_recognition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scoresheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MutationContextIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_get_latest_scoresheet_recognition: {
         parameters: {
             query?: never;
             header?: never;
@@ -10423,7 +11436,257 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    } | null;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_get_scoresheet_recognition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scoresheet_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_get_scoresheet_recognition_diff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scoresheet_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_apply_scoresheet_recognition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scoresheet_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyRecognitionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["ScoresheetDetailOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_list_scoresheet_changes: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before_event?: number | null;
+            };
+            header?: never;
+            path: {
+                scoresheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Bad Request */

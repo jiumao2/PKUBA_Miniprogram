@@ -19,7 +19,9 @@ from .api_admin_schedule import router as admin_schedule_router
 from .api_auth import router as auth_router
 from .api_game_media import admin_router as admin_game_media_router
 from .api_game_media import router as game_media_router
+from .api_inbox import router as inbox_router
 from .api_mobile_admin import router as mobile_admin_router
+from .api_public_stats import router as public_stats_router
 from .api_reschedule import router as reschedule_router
 from .api_scoresheets import public_router as public_scoresheet_router
 from .api_scoresheets import router as scoresheet_router
@@ -439,6 +441,7 @@ def get_game(request: HttpRequest, game_id: UUID):
 
 
 api.add_router("/public", public)
+api.add_router("/public", public_stats_router)
 api.add_router("/auth", auth_router)
 api.add_router("/admin", admin_router)
 api.add_router("/admin", admin_draw_router)
@@ -452,5 +455,6 @@ api.add_router("/admin/mobile", mobile_admin_router)
 api.add_router("/admin/game-media", admin_game_media_router)
 api.add_router("/reschedule-requests", reschedule_router)
 api.add_router("/game-media", game_media_router)
+api.add_router("/inbox", inbox_router)
 api.add_router("/scoresheets", scoresheet_router)
 api.add_router("/public", public_scoresheet_router)
