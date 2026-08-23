@@ -33,6 +33,7 @@ export function MediaReviewPage({ client }: { client: AdminClient }) {
 
   useEffect(() => { void load(); }, [load]);
   const selected = assets.find((asset) => asset.id === selectedId) ?? null;
+  const selectedOnline = selected?.storage_status === "ONLINE" && Boolean(selected.content_url);
 
   const review = async (approve: boolean) => {
     if (!selected) return;
@@ -147,7 +148,11 @@ export function MediaReviewPage({ client }: { client: AdminClient }) {
               }}
               type="button"
             >
-              <img src={asset.content_url} alt="" />
+              {asset.storage_status === "ONLINE" && asset.content_url ? (
+                <img src={asset.content_url} alt="" />
+              ) : (
+                <span className="review-offline-thumb">已归档</span>
+              )}
               <span>
                 <strong>{mediaKindLabel(asset.kind)}</strong>
                 <b>{asset.game_label}</b>
@@ -167,16 +172,23 @@ export function MediaReviewPage({ client }: { client: AdminClient }) {
               <div><p className="eyebrow">{mediaKindLabel(selected.kind)}</p><h2>{selected.game_label}</h2></div>
               <span className={`review-state ${selected.review_status.toLowerCase()}`}>{reviewLabel(selected.review_status)}</span>
             </div>
-            <a className="review-image-link" href={selected.content_url} rel="noreferrer" target="_blank">
-              <img className="review-image" src={selected.content_url} alt={selected.game_label} />
-            </a>
+            {selectedOnline ? (
+              <a className="review-image-link" href={selected.content_url} rel="noreferrer" target="_blank">
+                <img className="review-image" src={selected.content_url} alt={selected.game_label} />
+              </a>
+            ) : (
+              <div className="review-offline-panel">
+                <strong>照片已归档至线下备份</strong>
+                <span>服务器已释放原文件，数据库元数据和校验值仍然保留。</span>
+              </div>
+            )}
             <dl className="review-metadata">
               <div><dt>像素</dt><dd>{selected.width} × {selected.height}</dd></div>
               <div><dt>大小</dt><dd>{formatBytes(selected.byte_size)}</dd></div>
               <div><dt>上传者</dt><dd>{selected.uploaded_by}</dd></div>
               <div><dt>结表确认</dt><dd>{selected.scoresheet_complete_confirmed ? "已确认" : "不适用"}</dd></div>
             </dl>
-            <div className="review-replacement" key={selected.id}>
+            {selectedOnline && <div className="review-replacement" key={selected.id}>
               <strong>重新上传</strong>
               <p>拍错、缺角或模糊时可替换。旧文件保留审计记录，新图片重新进入待审核。</p>
               <input
@@ -197,16 +209,16 @@ export function MediaReviewPage({ client }: { client: AdminClient }) {
                 </label>
               )}
               <button disabled={busy || !replacementFile} onClick={() => void replace()} type="button">上传替换图片</button>
-            </div>
-            <label className="review-note">
+            </div>}
+            {selectedOnline && <label className="review-note">
               审核说明
               <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="未通过时说明缺页、模糊、反光或未结表等问题" />
-            </label>
-            <div className="review-actions">
+            </label>}
+            {selectedOnline && <div className="review-actions">
               <button className="approve-action" disabled={busy} onClick={() => void review(true)} type="button">通过</button>
               <button className="reject-action" disabled={busy} onClick={() => void review(false)} type="button">退回</button>
               <button className="delete-action" disabled={busy} onClick={() => void remove()} type="button">删除</button>
-            </div>
+            </div>}
           </>
         )}
         {message && <p className="operation-message" role="status">{message}</p>}

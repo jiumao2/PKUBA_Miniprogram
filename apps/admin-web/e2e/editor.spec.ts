@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
+  demoGamePattern,
   hasAdminCredentials,
   loginAndOpenEditor,
   openDemoSheet,
@@ -140,6 +141,7 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
   });
 
   test('identical reupload resets the draft and automatically starts a new recognition cycle', async ({ page }) => {
+    test.setTimeout(1_200_000);
     test.skip(
       process.env.RUN_SCORESHEET_RECOGNITION_E2E !== '1',
       '真实照片重新识别需配置 Qwen Key，并显式设置 RUN_SCORESHEET_RECOGNITION_E2E=1。',
@@ -148,18 +150,19 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
     const source = await currentSourceFile(page);
     await page.getByRole('banner').getByRole('button', { name: '选择比赛' }).click();
     const dialog = page.getByRole('dialog', { name: '选择比赛' });
+    const demoRow = dialog.locator('.game-row-shell').filter({ hasText: demoGamePattern });
     page.once('dialog', (confirmation) => confirmation.accept());
     const [chooser] = await Promise.all([
       page.waitForEvent('filechooser'),
-      dialog.getByRole('button', { name: '重新上传' }).click(),
+      demoRow.getByRole('button', { name: '重新上传' }).click(),
     ]);
     await chooser.setFiles({ name: 'ScoresheetReader-demo.jpg', mimeType: 'image/jpeg', buffer: source });
     await expect(dialog).toHaveCount(0);
     await expect(page.getByLabel('大模型识别结果')).toContainText('识别结果已载入', {
-      timeout: 240_000,
+      timeout: 1_200_000,
     });
     await page.locator('rect[data-field-id="header.game_number"]').dblclick();
-    await expect(page.getByLabel('比赛序号')).toHaveValue('');
+    await expect(page.getByLabel('比赛序号')).toHaveValue('SCORESHEET-DEMO-001');
     await expect(page.getByText('重新上传记录表并重置草稿').first()).toBeVisible();
   });
 

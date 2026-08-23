@@ -252,7 +252,7 @@ def test_confirm_rolls_back_when_team_has_downstream_reference(tmp_path):
     assert not Team.objects.filter(name="新球队").exists()
 
 
-def test_online_add_and_active_maintenance_use_stable_ids_versions_and_preview():
+def test_online_add_and_published_maintenance_use_stable_ids_versions_and_preview():
     setup = _setup()
     team = create_team_with_roster(
         actor=setup["actor"],
@@ -263,7 +263,7 @@ def test_online_add_and_active_maintenance_use_stable_ids_versions_and_preview()
         expected_season_version=setup["season"].version,
     )
     player = team.roster.get()
-    setup["season"].status = Season.Status.ACTIVE
+    setup["season"].status = Season.Status.PUBLISHED
     setup["season"].save()
     payload = {
         "expected_team_version": team.version,

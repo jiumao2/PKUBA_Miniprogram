@@ -186,8 +186,18 @@ export function ScheduleEditorPage({
               <label>标准场地<select value={selected.standard_venue_id ?? ""} onChange={(event) => { const venue = options.venues.find((item) => item.id === event.target.value); setSelected({ ...selected, standard_venue_id: venue?.id ?? null, venue_name: venue?.name ?? selected.venue_name }); }}><option value="">其他场地 · 手动填写</option>{options.venues.map((venue) => <option key={venue.id} value={venue.id}>{venue.name}</option>)}</select></label>
               <label>实际场地<input disabled={selected.standard_venue_id !== null} value={selected.venue_name} onChange={(event) => setSelected({ ...selected, venue_name: event.target.value })} /></label>
               <label>比赛状态<select value={selected.status} onChange={(event) => setSelected({ ...selected, status: event.target.value })}>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
-              <label>主队<select value={selected.home_team_id ?? ""} onChange={(event) => setSelected({ ...selected, home_team_id: event.target.value || null })}><option value="">保留签位 · {selected.home_name}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
-              <label>客队<select value={selected.away_team_id ?? ""} onChange={(event) => setSelected({ ...selected, away_team_id: event.target.value || null })}><option value="">保留签位 · {selected.away_name}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
+              {selected.participants_managed_by_draw ? (
+                <div className="draw-managed-participants">
+                  <span>参赛双方由抽签映射管理</span>
+                  <strong>{selected.home_name} vs {selected.away_name}</strong>
+                  <small>如需更换球队，请前往“抽签映射”按比赛重新预览并保存。</small>
+                </div>
+              ) : (
+                <>
+                  <label>主队<select value={selected.home_team_id ?? ""} onChange={(event) => setSelected({ ...selected, home_team_id: event.target.value || null })}><option value="">保留签位 · {selected.home_name}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
+                  <label>客队<select value={selected.away_team_id ?? ""} onChange={(event) => setSelected({ ...selected, away_team_id: event.target.value || null })}><option value="">保留签位 · {selected.away_name}</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
+                </>
+              )}
               <label>主队比分<input min="0" type="number" value={selected.home_score ?? ""} onChange={(event) => setSelected({ ...selected, home_score: numeric(event.target.value) })} /></label>
               <label>客队比分<input min="0" type="number" value={selected.away_score ?? ""} onChange={(event) => setSelected({ ...selected, away_score: numeric(event.target.value) })} /></label>
             </div>

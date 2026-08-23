@@ -2640,6 +2640,948 @@
         ]
       }
     },
+    "/api/v1/admin/archives/storage-summary": {
+      "get": {
+        "operationId": "core_api_admin_archives_get_storage_summary",
+        "summary": "Get Storage Summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSummaryOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/exports/preview": {
+      "post": {
+        "operationId": "core_api_admin_archives_preview_season_export",
+        "summary": "Preview Season Export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivePreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeasonExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/exports": {
+      "post": {
+        "operationId": "core_api_admin_archives_request_season_export",
+        "summary": "Request Season Export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveJobOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeasonExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "core_api_admin_archives_list_season_exports",
+        "summary": "List Season Exports",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveJobPageOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/system-backups/preview": {
+      "post": {
+        "operationId": "core_api_admin_archives_preview_system_backup",
+        "summary": "Preview System Backup",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivePreviewOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/system-backups": {
+      "post": {
+        "operationId": "core_api_admin_archives_request_system_backup",
+        "summary": "Request System Backup",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveJobOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemBackupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "core_api_admin_archives_list_system_backups",
+        "summary": "List System Backups",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveJobPageOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/archive-jobs/{job_id}/download-ticket": {
+      "post": {
+        "operationId": "core_api_admin_archives_issue_download_ticket",
+        "summary": "Issue Download Ticket",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadTicketOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/archive-jobs/{job_id}/download": {
+      "get": {
+        "operationId": "core_api_admin_archives_download_archive",
+        "summary": "Download Archive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "ticket",
+            "schema": {
+              "title": "Ticket",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "Range Not Satisfiable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/archive-jobs/{job_id}/confirm-saved": {
+      "post": {
+        "operationId": "core_api_admin_archives_confirm_archive_saved",
+        "summary": "Confirm Archive Saved",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveJobOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmSavedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/archive-jobs/{job_id}/discard": {
+      "post": {
+        "operationId": "core_api_admin_archives_discard_archive_endpoint",
+        "summary": "Discard Archive Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveJobOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmSavedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/media-purge/preview": {
+      "post": {
+        "operationId": "core_api_admin_archives_preview_media_purge",
+        "summary": "Preview Media Purge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgePreviewOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/media-purge": {
+      "get": {
+        "operationId": "core_api_admin_archives_list_media_purge_jobs",
+        "summary": "List Media Purge Jobs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "title": "Page",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "title": "Page Size",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaPurgeJobPageOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/media-purge/apply": {
+      "post": {
+        "operationId": "core_api_admin_archives_apply_media_purge",
+        "summary": "Apply Media Purge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaPurgeJobOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/media-purge-jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "core_api_admin_archives_retry_media_purge",
+        "summary": "Retry Media Purge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaPurgeJobOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-archives"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryJobIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/seasons/{season_id}/draw-assignments": {
       "get": {
         "operationId": "core_api_admin_draw_get_draw_assignments",
@@ -2858,6 +3800,198 @@
         ]
       }
     },
+    "/api/v1/admin/seasons/{season_id}/draw-assignments/games/{game_id}/preview": {
+      "post": {
+        "operationId": "core_api_admin_draw_preview_game_draw_assignment_update",
+        "summary": "Preview Game Draw Assignment Update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawGamePreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-draw"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DrawGamePreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/draw-assignments/games/{game_id}": {
+      "put": {
+        "operationId": "core_api_admin_draw_update_game_draw_assignments",
+        "summary": "Update Game Draw Assignments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawDatasetOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DrawErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-draw"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DrawGameApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/seasons/{season_id}/lifecycle/preview": {
       "post": {
         "operationId": "core_api_admin_lifecycle_preview_lifecycle",
@@ -3018,396 +4152,6 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/LifecycleApplyIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "security": [
-          {
-            "SuperadminSessionAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}": {
-      "get": {
-        "operationId": "core_api_admin_brackets_get_bracket_management",
-        "summary": "Get Bracket Management",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "season_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Season Id",
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "in": "path",
-            "name": "division_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Division Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketManagementOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "admin-brackets"
-        ],
-        "security": [
-          {
-            "SuperadminSessionAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}/relations/preview": {
-      "post": {
-        "operationId": "core_api_admin_brackets_preview_relations",
-        "summary": "Preview Relations",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "season_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Season Id",
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "in": "path",
-            "name": "division_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Division Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketRelationPreviewOut"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "admin-brackets"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BracketRelationPreviewIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "security": [
-          {
-            "SuperadminSessionAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}/relations/apply": {
-      "post": {
-        "operationId": "core_api_admin_brackets_apply_relations",
-        "summary": "Apply Relations",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "season_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Season Id",
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "in": "path",
-            "name": "division_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Division Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketManagementOut"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "admin-brackets"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BracketRelationApplyIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "security": [
-          {
-            "SuperadminSessionAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/brackets/games/{game_id}/correction/preview": {
-      "post": {
-        "operationId": "core_api_admin_brackets_preview_correction",
-        "summary": "Preview Correction",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "game_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Game Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CorrectionPreviewOut"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "admin-brackets"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CorrectionPreviewIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "security": [
-          {
-            "SuperadminSessionAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/brackets/games/{game_id}/correction/apply": {
-      "post": {
-        "operationId": "core_api_admin_brackets_apply_correction",
-        "summary": "Apply Correction",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "game_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Game Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CorrectionPreviewOut"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BracketAdminErrorOut"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "admin-brackets"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CorrectionApplyIn"
               }
             }
           },
@@ -6545,6 +7289,26 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -9039,10 +9803,6 @@
             "title": "Gender",
             "type": "string"
           },
-          "operation_status": {
-            "title": "Operation Status",
-            "type": "string"
-          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -9053,7 +9813,6 @@
           "code",
           "name",
           "gender",
-          "operation_status",
           "version"
         ],
         "title": "DivisionOut",
@@ -9707,6 +10466,10 @@
             "title": "Stage",
             "type": "string"
           },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
           "home_team_id": {
             "anyOf": [
               {
@@ -9784,13 +10547,17 @@
             ],
             "title": "Winner Name"
           },
-          "source_game_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Source Game Ids",
-            "type": "array"
+          "home_review_required": {
+            "title": "Home Review Required",
+            "type": "boolean"
+          },
+          "away_review_required": {
+            "title": "Away Review Required",
+            "type": "boolean"
+          },
+          "review_required": {
+            "title": "Review Required",
+            "type": "boolean"
           },
           "status": {
             "title": "Status",
@@ -9804,6 +10571,7 @@
           "start_time",
           "venue_name",
           "stage",
+          "round_number",
           "home_team_id",
           "away_team_id",
           "home_name",
@@ -9812,7 +10580,9 @@
           "away_score",
           "winner_team_id",
           "winner_name",
-          "source_game_ids",
+          "home_review_required",
+          "away_review_required",
+          "review_required",
           "status"
         ],
         "title": "BracketGameOut",
@@ -9820,13 +10590,25 @@
       },
       "BracketRoundOut": {
         "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
           "stage": {
             "title": "Stage",
             "type": "string"
           },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
           "label": {
             "title": "Label",
             "type": "string"
+          },
+          "review_required": {
+            "title": "Review Required",
+            "type": "boolean"
           },
           "games": {
             "items": {
@@ -9837,8 +10619,11 @@
           }
         },
         "required": [
+          "key",
           "stage",
+          "round_number",
           "label",
+          "review_required",
           "games"
         ],
         "title": "BracketRoundOut",
@@ -9890,10 +10675,6 @@
             "title": "Gender",
             "type": "string"
           },
-          "relation_mode": {
-            "title": "Relation Mode",
-            "type": "string"
-          },
           "rounds": {
             "items": {
               "$ref": "#/components/schemas/BracketRoundOut"
@@ -9918,6 +10699,10 @@
               }
             ],
             "title": "Champion Name"
+          },
+          "champion_review_required": {
+            "title": "Champion Review Required",
+            "type": "boolean"
           }
         },
         "required": [
@@ -9925,10 +10710,10 @@
           "code",
           "name",
           "gender",
-          "relation_mode",
           "rounds",
           "placement_games",
-          "champion_name"
+          "champion_name",
+          "champion_review_required"
         ],
         "title": "DivisionBracketOut",
         "type": "object"
@@ -11108,10 +11893,6 @@
             "title": "Gender",
             "type": "string"
           },
-          "operation_status": {
-            "title": "Operation Status",
-            "type": "string"
-          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -11122,7 +11903,6 @@
           "code",
           "name",
           "gender",
-          "operation_status",
           "version"
         ],
         "title": "AdminDivisionOut",
@@ -11344,6 +12124,10 @@
             "title": "Stage Name",
             "type": "string"
           },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
           "prefix": {
             "title": "Prefix",
             "type": "string"
@@ -11369,6 +12153,7 @@
           "gender",
           "stage",
           "stage_name",
+          "round_number",
           "prefix",
           "slot_count",
           "sort_order",
@@ -11527,10 +12312,6 @@
             "title": "Sort Order",
             "type": "integer"
           },
-          "operation_status": {
-            "title": "Operation Status",
-            "type": "string"
-          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -11554,7 +12335,6 @@
           "name",
           "gender",
           "sort_order",
-          "operation_status",
           "version",
           "team_count",
           "group_count",
@@ -11794,6 +12574,11 @@
           "stage": {
             "title": "Stage",
             "type": "string"
+          },
+          "round_number": {
+            "default": 1,
+            "title": "Round Number",
+            "type": "integer"
           },
           "prefix": {
             "title": "Prefix",
@@ -13587,6 +14372,719 @@
         "title": "ScheduleImportResetIn",
         "type": "object"
       },
+      "StorageSeasonOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "season_year": {
+            "title": "Season Year",
+            "type": "integer"
+          },
+          "season_status": {
+            "title": "Season Status",
+            "type": "string"
+          },
+          "scoresheet_bytes": {
+            "title": "Scoresheet Bytes",
+            "type": "integer"
+          },
+          "group_photo_bytes": {
+            "title": "Group Photo Bytes",
+            "type": "integer"
+          },
+          "game_photo_bytes": {
+            "title": "Game Photo Bytes",
+            "type": "integer"
+          },
+          "online_bytes": {
+            "title": "Online Bytes",
+            "type": "integer"
+          },
+          "online_files": {
+            "title": "Online Files",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "season_year",
+          "season_status",
+          "scoresheet_bytes",
+          "group_photo_bytes",
+          "game_photo_bytes",
+          "online_bytes",
+          "online_files"
+        ],
+        "title": "StorageSeasonOut",
+        "type": "object"
+      },
+      "StorageSummaryOut": {
+        "properties": {
+          "disk_total_bytes": {
+            "title": "Disk Total Bytes",
+            "type": "integer"
+          },
+          "disk_used_bytes": {
+            "title": "Disk Used Bytes",
+            "type": "integer"
+          },
+          "disk_free_bytes": {
+            "title": "Disk Free Bytes",
+            "type": "integer"
+          },
+          "reserve_bytes": {
+            "title": "Reserve Bytes",
+            "type": "integer"
+          },
+          "database_bytes": {
+            "title": "Database Bytes",
+            "type": "integer"
+          },
+          "online_media_bytes": {
+            "title": "Online Media Bytes",
+            "type": "integer"
+          },
+          "staged_artifact_bytes": {
+            "title": "Staged Artifact Bytes",
+            "type": "integer"
+          },
+          "seasons": {
+            "items": {
+              "$ref": "#/components/schemas/StorageSeasonOut"
+            },
+            "title": "Seasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "disk_total_bytes",
+          "disk_used_bytes",
+          "disk_free_bytes",
+          "reserve_bytes",
+          "database_bytes",
+          "online_media_bytes",
+          "staged_artifact_bytes",
+          "seasons"
+        ],
+        "title": "StorageSummaryOut",
+        "type": "object"
+      },
+      "ArchiveBlockerOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ArchiveBlockerOut",
+        "type": "object"
+      },
+      "ArchivePreviewOut": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "season_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Id"
+          },
+          "season_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Version"
+          },
+          "estimated_bytes": {
+            "title": "Estimated Bytes",
+            "type": "integer"
+          },
+          "required_free_bytes": {
+            "title": "Required Free Bytes",
+            "type": "integer"
+          },
+          "available_bytes": {
+            "title": "Available Bytes",
+            "type": "integer"
+          },
+          "reserve_bytes": {
+            "title": "Reserve Bytes",
+            "type": "integer"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "season_id",
+          "season_version",
+          "estimated_bytes",
+          "required_free_bytes",
+          "available_bytes",
+          "reserve_bytes",
+          "blockers",
+          "ready"
+        ],
+        "title": "ArchivePreviewOut",
+        "type": "object"
+      },
+      "SeasonExportIn": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "expected_season_version"
+        ],
+        "title": "SeasonExportIn",
+        "type": "object"
+      },
+      "ArchiveJobOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "season_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Id"
+          },
+          "season_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Name"
+          },
+          "season_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Version"
+          },
+          "is_final": {
+            "title": "Is Final",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "file_sha256": {
+            "title": "File Sha256",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_message": {
+            "title": "Error Message",
+            "type": "string"
+          },
+          "download_count": {
+            "title": "Download Count",
+            "type": "integer"
+          },
+          "last_downloaded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Downloaded At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "confirmed_saved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Saved At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "season_id",
+          "season_name",
+          "season_version",
+          "is_final",
+          "status",
+          "filename",
+          "byte_size",
+          "file_sha256",
+          "summary",
+          "error_code",
+          "error_message",
+          "download_count",
+          "last_downloaded_at",
+          "completed_at",
+          "expires_at",
+          "confirmed_saved_at",
+          "created_at",
+          "version"
+        ],
+        "title": "ArchiveJobOut",
+        "type": "object"
+      },
+      "ArchiveJobPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "ArchiveJobPageOut",
+        "type": "object"
+      },
+      "SystemBackupIn": {
+        "properties": {
+          "current_password": {
+            "title": "Current Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password"
+        ],
+        "title": "SystemBackupIn",
+        "type": "object"
+      },
+      "DownloadTicketOut": {
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "file_sha256": {
+            "title": "File Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_in",
+          "filename",
+          "byte_size",
+          "file_sha256"
+        ],
+        "title": "DownloadTicketOut",
+        "type": "object"
+      },
+      "ConfirmSavedIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "confirmed_external_copy": {
+            "title": "Confirmed External Copy",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version",
+          "confirmed_external_copy"
+        ],
+        "title": "ConfirmSavedIn",
+        "type": "object"
+      },
+      "PurgePreviewOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "files": {
+            "title": "Files",
+            "type": "integer"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "by_kind": {
+            "additionalProperties": true,
+            "title": "By Kind",
+            "type": "object"
+          },
+          "data_archive_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Archive Id"
+          },
+          "photo_archive_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Archive Id"
+          },
+          "preview_hash": {
+            "title": "Preview Hash",
+            "type": "string"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_version",
+          "files",
+          "bytes",
+          "by_kind",
+          "data_archive_id",
+          "photo_archive_id",
+          "preview_hash",
+          "blockers",
+          "ready"
+        ],
+        "title": "PurgePreviewOut",
+        "type": "object"
+      },
+      "MediaPurgeJobOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "expected_files": {
+            "title": "Expected Files",
+            "type": "integer"
+          },
+          "expected_bytes": {
+            "title": "Expected Bytes",
+            "type": "integer"
+          },
+          "deleted_files": {
+            "title": "Deleted Files",
+            "type": "integer"
+          },
+          "deleted_bytes": {
+            "title": "Deleted Bytes",
+            "type": "integer"
+          },
+          "missing_files": {
+            "title": "Missing Files",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {},
+            "title": "Warnings",
+            "type": "array"
+          },
+          "error_code": {
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_message": {
+            "title": "Error Message",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "season_id",
+          "status",
+          "expected_files",
+          "expected_bytes",
+          "deleted_files",
+          "deleted_bytes",
+          "missing_files",
+          "warnings",
+          "error_code",
+          "error_message",
+          "completed_at",
+          "created_at",
+          "version"
+        ],
+        "title": "MediaPurgeJobOut",
+        "type": "object"
+      },
+      "MediaPurgeJobPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MediaPurgeJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "MediaPurgeJobPageOut",
+        "type": "object"
+      },
+      "PurgeApplyIn": {
+        "properties": {
+          "preview_hash": {
+            "title": "Preview Hash",
+            "type": "string"
+          },
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "confirmed_external_copy": {
+            "title": "Confirmed External Copy",
+            "type": "boolean"
+          },
+          "confirm_permanent_delete": {
+            "title": "Confirm Permanent Delete",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "preview_hash",
+          "expected_season_version",
+          "confirmed_external_copy",
+          "confirm_permanent_delete"
+        ],
+        "title": "PurgeApplyIn",
+        "type": "object"
+      },
+      "RetryJobIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "RetryJobIn",
+        "type": "object"
+      },
       "DrawDatasetOut": {
         "properties": {
           "season_id": {
@@ -13657,10 +15155,6 @@
             "title": "Sort Order",
             "type": "integer"
           },
-          "operation_status": {
-            "title": "Operation Status",
-            "type": "string"
-          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -13694,6 +15188,13 @@
             },
             "title": "Groups",
             "type": "array"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/DrawPhaseOut"
+            },
+            "title": "Phases",
+            "type": "array"
           }
         },
         "required": [
@@ -13702,14 +15203,14 @@
           "name",
           "gender",
           "sort_order",
-          "operation_status",
           "version",
           "slot_count",
           "active_team_count",
           "assigned_count",
           "complete",
           "teams",
-          "groups"
+          "groups",
+          "phases"
         ],
         "title": "DrawDivisionOut",
         "type": "object"
@@ -13749,6 +15250,247 @@
           "slots"
         ],
         "title": "DrawGroupOut",
+        "type": "object"
+      },
+      "DrawPhaseGameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "home_slot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Slot Id"
+          },
+          "home_slot_code": {
+            "title": "Home Slot Code",
+            "type": "string"
+          },
+          "home_slot_label": {
+            "title": "Home Slot Label",
+            "type": "string"
+          },
+          "away_slot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Slot Id"
+          },
+          "away_slot_code": {
+            "title": "Away Slot Code",
+            "type": "string"
+          },
+          "away_slot_label": {
+            "title": "Away Slot Label",
+            "type": "string"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "home_team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Name"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "away_team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Name"
+          },
+          "home_validation": {
+            "$ref": "#/components/schemas/DrawValidationOut"
+          },
+          "away_validation": {
+            "$ref": "#/components/schemas/DrawValidationOut"
+          },
+          "review_required": {
+            "title": "Review Required",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "stage",
+          "round_number",
+          "date",
+          "start_time",
+          "venue_name",
+          "home_slot_code",
+          "home_slot_label",
+          "away_slot_code",
+          "away_slot_label",
+          "home_validation",
+          "away_validation",
+          "review_required",
+          "status",
+          "version"
+        ],
+        "title": "DrawPhaseGameOut",
+        "type": "object"
+      },
+      "DrawPhaseOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "previous_phase_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Phase Key"
+          },
+          "previous_winner_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Previous Winner Ids",
+            "type": "array"
+          },
+          "previous_results_complete": {
+            "title": "Previous Results Complete",
+            "type": "boolean"
+          },
+          "games": {
+            "items": {
+              "$ref": "#/components/schemas/DrawPhaseGameOut"
+            },
+            "title": "Games",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "stage",
+          "round_number",
+          "label",
+          "previous_winner_ids",
+          "previous_results_complete",
+          "games"
+        ],
+        "title": "DrawPhaseOut",
         "type": "object"
       },
       "DrawSlotOut": {
@@ -13842,6 +15584,57 @@
           "active"
         ],
         "title": "DrawTeamOut",
+        "type": "object"
+      },
+      "DrawValidationOut": {
+        "properties": {
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "source_game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Game Id"
+          },
+          "source_game_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Game Version"
+          },
+          "source_version_stale": {
+            "title": "Source Version Stale",
+            "type": "boolean"
+          },
+          "review_required": {
+            "title": "Review Required",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "source_version_stale",
+          "review_required",
+          "status"
+        ],
+        "title": "DrawValidationOut",
         "type": "object"
       },
       "DrawErrorOut": {
@@ -14161,6 +15954,227 @@
         "title": "DrawPreviewIn",
         "type": "object"
       },
+      "DrawGamePreviewOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "game_version": {
+            "title": "Game Version",
+            "type": "integer"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
+          "home_team_id": {
+            "format": "uuid",
+            "title": "Home Team Id",
+            "type": "string"
+          },
+          "home_team_name": {
+            "title": "Home Team Name",
+            "type": "string"
+          },
+          "away_team_id": {
+            "format": "uuid",
+            "title": "Away Team Id",
+            "type": "string"
+          },
+          "away_team_name": {
+            "title": "Away Team Name",
+            "type": "string"
+          },
+          "participant_changed": {
+            "title": "Participant Changed",
+            "type": "boolean"
+          },
+          "public_impact": {
+            "title": "Public Impact",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/DrawWarningOut"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/DrawBlockerOut"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "requires_override": {
+            "title": "Requires Override",
+            "type": "boolean"
+          },
+          "can_apply": {
+            "title": "Can Apply",
+            "type": "boolean"
+          },
+          "references": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "References",
+            "type": "object"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_version",
+          "game_id",
+          "game_version",
+          "division_id",
+          "stage",
+          "round_number",
+          "home_team_id",
+          "home_team_name",
+          "away_team_id",
+          "away_team_name",
+          "participant_changed",
+          "public_impact",
+          "warnings",
+          "blockers",
+          "requires_override",
+          "can_apply",
+          "references",
+          "impact_hash"
+        ],
+        "title": "DrawGamePreviewOut",
+        "type": "object"
+      },
+      "DrawWarningOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "side",
+          "team_id",
+          "team_name"
+        ],
+        "title": "DrawWarningOut",
+        "type": "object"
+      },
+      "DrawGamePreviewIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "expected_game_version": {
+            "title": "Expected Game Version",
+            "type": "integer"
+          },
+          "home_team_id": {
+            "format": "uuid",
+            "title": "Home Team Id",
+            "type": "string"
+          },
+          "away_team_id": {
+            "format": "uuid",
+            "title": "Away Team Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "expected_game_version",
+          "home_team_id",
+          "away_team_id"
+        ],
+        "title": "DrawGamePreviewIn",
+        "type": "object"
+      },
+      "DrawGameApplyIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "expected_game_version": {
+            "title": "Expected Game Version",
+            "type": "integer"
+          },
+          "home_team_id": {
+            "format": "uuid",
+            "title": "Home Team Id",
+            "type": "string"
+          },
+          "away_team_id": {
+            "format": "uuid",
+            "title": "Away Team Id",
+            "type": "string"
+          },
+          "override_warnings": {
+            "default": false,
+            "title": "Override Warnings",
+            "type": "boolean"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "expected_game_version",
+          "home_team_id",
+          "away_team_id",
+          "impact_hash"
+        ],
+        "title": "DrawGameApplyIn",
+        "type": "object"
+      },
       "LifecycleBlockerOut": {
         "properties": {
           "code": {
@@ -14182,40 +16196,6 @@
           "count"
         ],
         "title": "LifecycleBlockerOut",
-        "type": "object"
-      },
-      "LifecycleDivisionImpactOut": {
-        "properties": {
-          "division_id": {
-            "format": "uuid",
-            "title": "Division Id",
-            "type": "string"
-          },
-          "division_name": {
-            "title": "Division Name",
-            "type": "string"
-          },
-          "before_status": {
-            "title": "Before Status",
-            "type": "string"
-          },
-          "after_status": {
-            "title": "After Status",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "division_id",
-          "division_name",
-          "before_status",
-          "after_status",
-          "version"
-        ],
-        "title": "LifecycleDivisionImpactOut",
         "type": "object"
       },
       "LifecyclePreviewOut": {
@@ -14240,25 +16220,6 @@
           "target_status": {
             "title": "Target Status",
             "type": "string"
-          },
-          "division_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Division Id"
-          },
-          "impacts": {
-            "items": {
-              "$ref": "#/components/schemas/LifecycleDivisionImpactOut"
-            },
-            "title": "Impacts",
-            "type": "array"
           },
           "blockers": {
             "items": {
@@ -14293,8 +16254,6 @@
           "before_season_status",
           "after_season_status",
           "target_status",
-          "division_id",
-          "impacts",
           "blockers",
           "references",
           "changed",
@@ -14331,29 +16290,6 @@
           "target_status": {
             "title": "Target Status",
             "type": "string"
-          },
-          "division_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Division Id"
-          },
-          "expected_division_version": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Division Version"
           }
         },
         "required": [
@@ -14373,29 +16309,6 @@
             "title": "Target Status",
             "type": "string"
           },
-          "division_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Division Id"
-          },
-          "expected_division_version": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Division Version"
-          },
           "impact_hash": {
             "title": "Impact Hash",
             "type": "string"
@@ -14407,724 +16320,6 @@
           "impact_hash"
         ],
         "title": "LifecycleApplyIn",
-        "type": "object"
-      },
-      "BracketAdminGameOut": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "stage": {
-            "title": "Stage",
-            "type": "string"
-          },
-          "round_number": {
-            "title": "Round Number",
-            "type": "integer"
-          },
-          "date": {
-            "format": "date",
-            "title": "Date",
-            "type": "string"
-          },
-          "start_time": {
-            "title": "Start Time",
-            "type": "string"
-          },
-          "home_name": {
-            "title": "Home Name",
-            "type": "string"
-          },
-          "away_name": {
-            "title": "Away Name",
-            "type": "string"
-          },
-          "home_team_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Home Team Id"
-          },
-          "away_team_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Away Team Id"
-          },
-          "home_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Home Score"
-          },
-          "away_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Away Score"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "code",
-          "stage",
-          "round_number",
-          "date",
-          "start_time",
-          "home_name",
-          "away_name",
-          "home_team_id",
-          "away_team_id",
-          "home_score",
-          "away_score",
-          "status",
-          "version"
-        ],
-        "title": "BracketAdminGameOut",
-        "type": "object"
-      },
-      "BracketManagementOut": {
-        "properties": {
-          "season_id": {
-            "format": "uuid",
-            "title": "Season Id",
-            "type": "string"
-          },
-          "season_name": {
-            "title": "Season Name",
-            "type": "string"
-          },
-          "season_status": {
-            "title": "Season Status",
-            "type": "string"
-          },
-          "season_version": {
-            "title": "Season Version",
-            "type": "integer"
-          },
-          "division_id": {
-            "format": "uuid",
-            "title": "Division Id",
-            "type": "string"
-          },
-          "division_name": {
-            "title": "Division Name",
-            "type": "string"
-          },
-          "division_status": {
-            "title": "Division Status",
-            "type": "string"
-          },
-          "division_version": {
-            "title": "Division Version",
-            "type": "integer"
-          },
-          "relation_mode": {
-            "title": "Relation Mode",
-            "type": "string"
-          },
-          "read_only": {
-            "title": "Read Only",
-            "type": "boolean"
-          },
-          "locked_reason": {
-            "title": "Locked Reason",
-            "type": "string"
-          },
-          "games": {
-            "items": {
-              "$ref": "#/components/schemas/BracketAdminGameOut"
-            },
-            "title": "Games",
-            "type": "array"
-          },
-          "feeds": {
-            "items": {
-              "$ref": "#/components/schemas/WinnerFeedOut"
-            },
-            "title": "Feeds",
-            "type": "array"
-          },
-          "legacy_suggestions": {
-            "items": {
-              "$ref": "#/components/schemas/WinnerFeedRelationOut"
-            },
-            "title": "Legacy Suggestions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "season_id",
-          "season_name",
-          "season_status",
-          "season_version",
-          "division_id",
-          "division_name",
-          "division_status",
-          "division_version",
-          "relation_mode",
-          "read_only",
-          "locked_reason",
-          "games",
-          "feeds",
-          "legacy_suggestions"
-        ],
-        "title": "BracketManagementOut",
-        "type": "object"
-      },
-      "WinnerFeedOut": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "source_game_id": {
-            "format": "uuid",
-            "title": "Source Game Id",
-            "type": "string"
-          },
-          "target_game_id": {
-            "format": "uuid",
-            "title": "Target Game Id",
-            "type": "string"
-          },
-          "target_side": {
-            "title": "Target Side",
-            "type": "string"
-          },
-          "applied_winner_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Applied Winner Id"
-          },
-          "applied_winner_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Applied Winner Name"
-          },
-          "applied_source_version": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Applied Source Version"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "source_game_id",
-          "target_game_id",
-          "target_side",
-          "applied_winner_id",
-          "applied_winner_name",
-          "applied_source_version",
-          "version"
-        ],
-        "title": "WinnerFeedOut",
-        "type": "object"
-      },
-      "WinnerFeedRelationOut": {
-        "properties": {
-          "source_game_id": {
-            "format": "uuid",
-            "title": "Source Game Id",
-            "type": "string"
-          },
-          "target_game_id": {
-            "format": "uuid",
-            "title": "Target Game Id",
-            "type": "string"
-          },
-          "target_side": {
-            "title": "Target Side",
-            "type": "string"
-          }
-        },
-        "required": [
-          "source_game_id",
-          "target_game_id",
-          "target_side"
-        ],
-        "title": "WinnerFeedRelationOut",
-        "type": "object"
-      },
-      "BracketAdminErrorOut": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code",
-          "message"
-        ],
-        "title": "BracketAdminErrorOut",
-        "type": "object"
-      },
-      "BracketBlockerOut": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "count": {
-            "title": "Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "count"
-        ],
-        "title": "BracketBlockerOut",
-        "type": "object"
-      },
-      "BracketRelationPreviewOut": {
-        "properties": {
-          "season_id": {
-            "format": "uuid",
-            "title": "Season Id",
-            "type": "string"
-          },
-          "season_version": {
-            "title": "Season Version",
-            "type": "integer"
-          },
-          "division_id": {
-            "format": "uuid",
-            "title": "Division Id",
-            "type": "string"
-          },
-          "division_version": {
-            "title": "Division Version",
-            "type": "integer"
-          },
-          "relation_mode_before": {
-            "title": "Relation Mode Before",
-            "type": "string"
-          },
-          "relation_mode_after": {
-            "title": "Relation Mode After",
-            "type": "string"
-          },
-          "added_count": {
-            "title": "Added Count",
-            "type": "integer"
-          },
-          "removed_count": {
-            "title": "Removed Count",
-            "type": "integer"
-          },
-          "unchanged_count": {
-            "title": "Unchanged Count",
-            "type": "integer"
-          },
-          "blockers": {
-            "items": {
-              "$ref": "#/components/schemas/BracketBlockerOut"
-            },
-            "title": "Blockers",
-            "type": "array"
-          },
-          "can_apply": {
-            "title": "Can Apply",
-            "type": "boolean"
-          },
-          "impact_hash": {
-            "title": "Impact Hash",
-            "type": "string"
-          },
-          "relations": {
-            "items": {
-              "$ref": "#/components/schemas/WinnerFeedRelationOut"
-            },
-            "title": "Relations",
-            "type": "array"
-          }
-        },
-        "required": [
-          "season_id",
-          "season_version",
-          "division_id",
-          "division_version",
-          "relation_mode_before",
-          "relation_mode_after",
-          "added_count",
-          "removed_count",
-          "unchanged_count",
-          "blockers",
-          "can_apply",
-          "impact_hash",
-          "relations"
-        ],
-        "title": "BracketRelationPreviewOut",
-        "type": "object"
-      },
-      "BracketRelationPreviewIn": {
-        "properties": {
-          "expected_season_version": {
-            "title": "Expected Season Version",
-            "type": "integer"
-          },
-          "expected_division_version": {
-            "title": "Expected Division Version",
-            "type": "integer"
-          },
-          "relations": {
-            "items": {
-              "$ref": "#/components/schemas/WinnerFeedRelationIn"
-            },
-            "title": "Relations",
-            "type": "array"
-          }
-        },
-        "required": [
-          "expected_season_version",
-          "expected_division_version",
-          "relations"
-        ],
-        "title": "BracketRelationPreviewIn",
-        "type": "object"
-      },
-      "WinnerFeedRelationIn": {
-        "properties": {
-          "source_game_id": {
-            "format": "uuid",
-            "title": "Source Game Id",
-            "type": "string"
-          },
-          "target_game_id": {
-            "format": "uuid",
-            "title": "Target Game Id",
-            "type": "string"
-          },
-          "target_side": {
-            "title": "Target Side",
-            "type": "string"
-          }
-        },
-        "required": [
-          "source_game_id",
-          "target_game_id",
-          "target_side"
-        ],
-        "title": "WinnerFeedRelationIn",
-        "type": "object"
-      },
-      "BracketRelationApplyIn": {
-        "properties": {
-          "expected_season_version": {
-            "title": "Expected Season Version",
-            "type": "integer"
-          },
-          "expected_division_version": {
-            "title": "Expected Division Version",
-            "type": "integer"
-          },
-          "relations": {
-            "items": {
-              "$ref": "#/components/schemas/WinnerFeedRelationIn"
-            },
-            "title": "Relations",
-            "type": "array"
-          },
-          "impact_hash": {
-            "title": "Impact Hash",
-            "type": "string"
-          }
-        },
-        "required": [
-          "expected_season_version",
-          "expected_division_version",
-          "relations",
-          "impact_hash"
-        ],
-        "title": "BracketRelationApplyIn",
-        "type": "object"
-      },
-      "AffectedGameOut": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          },
-          "home_team_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Home Team Id"
-          },
-          "away_team_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Away Team Id"
-          },
-          "home_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Home Score"
-          },
-          "away_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Away Score"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "current_publication_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Publication Id"
-          }
-        },
-        "required": [
-          "id",
-          "version",
-          "home_team_id",
-          "away_team_id",
-          "home_score",
-          "away_score",
-          "status",
-          "current_publication_id"
-        ],
-        "title": "AffectedGameOut",
-        "type": "object"
-      },
-      "CorrectionPreviewOut": {
-        "properties": {
-          "source_game_id": {
-            "format": "uuid",
-            "title": "Source Game Id",
-            "type": "string"
-          },
-          "source_game_version": {
-            "title": "Source Game Version",
-            "type": "integer"
-          },
-          "affected_games": {
-            "items": {
-              "$ref": "#/components/schemas/AffectedGameOut"
-            },
-            "title": "Affected Games",
-            "type": "array"
-          },
-          "affected_game_count": {
-            "title": "Affected Game Count",
-            "type": "integer"
-          },
-          "affected_feed_count": {
-            "title": "Affected Feed Count",
-            "type": "integer"
-          },
-          "active_request_count": {
-            "title": "Active Request Count",
-            "type": "integer"
-          },
-          "active_reservation_count": {
-            "title": "Active Reservation Count",
-            "type": "integer"
-          },
-          "publication_count": {
-            "title": "Publication Count",
-            "type": "integer"
-          },
-          "blockers": {
-            "items": {
-              "$ref": "#/components/schemas/BracketBlockerOut"
-            },
-            "title": "Blockers",
-            "type": "array"
-          },
-          "can_apply": {
-            "title": "Can Apply",
-            "type": "boolean"
-          },
-          "impact_hash": {
-            "title": "Impact Hash",
-            "type": "string"
-          },
-          "reset_game_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Reset Game Ids",
-            "type": "array"
-          },
-          "reset_feed_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Reset Feed Ids",
-            "type": "array"
-          },
-          "cancelled_request_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Cancelled Request Ids",
-            "type": "array"
-          },
-          "withdrawn_publication_count": {
-            "default": 0,
-            "title": "Withdrawn Publication Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "source_game_id",
-          "source_game_version",
-          "affected_games",
-          "affected_game_count",
-          "affected_feed_count",
-          "active_request_count",
-          "active_reservation_count",
-          "publication_count",
-          "blockers",
-          "can_apply",
-          "impact_hash"
-        ],
-        "title": "CorrectionPreviewOut",
-        "type": "object"
-      },
-      "CorrectionPreviewIn": {
-        "properties": {
-          "expected_game_version": {
-            "title": "Expected Game Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "expected_game_version"
-        ],
-        "title": "CorrectionPreviewIn",
-        "type": "object"
-      },
-      "CorrectionApplyIn": {
-        "properties": {
-          "expected_game_version": {
-            "title": "Expected Game Version",
-            "type": "integer"
-          },
-          "impact_hash": {
-            "title": "Impact Hash",
-            "type": "string"
-          }
-        },
-        "required": [
-          "expected_game_version",
-          "impact_hash"
-        ],
-        "title": "CorrectionApplyIn",
         "type": "object"
       },
       "AdvancedFieldOut": {
@@ -16226,6 +17421,34 @@
             "title": "Venue Name",
             "type": "string"
           },
+          "home_slot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Slot Id"
+          },
+          "away_slot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Slot Id"
+          },
+          "participants_managed_by_draw": {
+            "title": "Participants Managed By Draw",
+            "type": "boolean"
+          },
           "home_team_id": {
             "anyOf": [
               {
@@ -16323,6 +17546,9 @@
           "start_time",
           "standard_venue_id",
           "venue_name",
+          "home_slot_id",
+          "away_slot_id",
+          "participants_managed_by_draw",
           "home_team_id",
           "away_team_id",
           "home_name",
@@ -17122,6 +18348,16 @@
             "title": "Kind",
             "type": "string"
           },
+          "storage_status": {
+            "enum": [
+              "ONLINE",
+              "PURGE_PENDING",
+              "PURGED",
+              "MISSING"
+            ],
+            "title": "Storage Status",
+            "type": "string"
+          },
           "content_url": {
             "title": "Content Url",
             "type": "string"
@@ -17182,6 +18418,7 @@
           "game_code",
           "game_label",
           "kind",
+          "storage_status",
           "content_url",
           "original_filename",
           "mime_type",

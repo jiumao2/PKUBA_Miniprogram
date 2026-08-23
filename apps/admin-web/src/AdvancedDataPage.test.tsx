@@ -16,8 +16,11 @@ const models: AdvancedModel[] = [
     immutable: true,
     fields: [
       { name: "id", type: "UUIDField", relation: false, nullable: false, sensitive: false },
-      { name: "username", type: "CharField", relation: false, nullable: false, sensitive: false },
       { name: "password", type: "CharField", relation: false, nullable: false, sensitive: true },
+      { name: "publication", type: "ForeignKey", relation: true, nullable: true, sensitive: false },
+      { name: "status", type: "CharField", relation: false, nullable: false, sensitive: false },
+      { name: "username", type: "CharField", relation: false, nullable: false, sensitive: false },
+      { name: "token_hash", type: "CharField", relation: false, nullable: false, sensitive: true },
     ],
   },
 ];
@@ -45,7 +48,10 @@ describe("AdvancedDataPage", () => {
             values: {
               id: "10000000-0000-0000-0000-000000000001",
               username: "core-developer",
+              status: "ACTIVE",
+              publication: "20000000-0000-0000-0000-000000000001",
               password: "pbkdf2_sha256$full-hash",
+              token_hash: "opaque-token-digest",
             },
           },
         ],
@@ -55,6 +61,14 @@ describe("AdvancedDataPage", () => {
     render(<AdvancedDataPage client={client} />);
 
     expect(await screen.findByText("core-developer")).toBeTruthy();
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "status",
+      "username",
+      "publication",
+      "id",
+      "password",
+      "token_hash",
+    ]);
     await user.click(screen.getByText("core-developer"));
     expect(screen.getAllByText("pbkdf2_sha256$full-hash")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "新建" })).toBeNull();

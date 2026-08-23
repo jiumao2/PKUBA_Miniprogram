@@ -35,15 +35,17 @@ class Command(BaseCommand):
             self.stdout.write("Existing season found; demo seed skipped.")
             return
         today = timezone.localdate()
-        Season.objects.filter(is_public=True).exclude(name="PKUBA 本地演示赛季").update(
-            status=Season.Status.ARCHIVED, is_public=False
+        Season.objects.filter(status=Season.Status.PUBLISHED).exclude(
+            name="PKUBA 本地演示赛季"
+        ).update(
+            status=Season.Status.ARCHIVED
         )
         season, _ = Season.objects.update_or_create(
             name="PKUBA 本地演示赛季",
             defaults={
                 "competition_type": Season.CompetitionType.PKU_CUP,
                 "year": today.year,
-                "status": Season.Status.ACTIVE,
+                "status": Season.Status.PUBLISHED,
                 "starts_on": today - timedelta(days=7),
                 "ends_on": today + timedelta(days=60),
             },
@@ -54,7 +56,6 @@ class Command(BaseCommand):
             defaults={
                 "name": "男甲",
                 "sort_order": 1,
-                "operation_status": Division.OperationStatus.ACTIVE,
             },
         )
         group, _ = CompetitionGroup.objects.update_or_create(

@@ -4,6 +4,7 @@ import type {
   AdminSeason,
   DrawAssignmentDataset,
   DrawAssignmentPreview,
+  DrawGameAssignmentPreview,
   createAdminClient,
 } from "@pkuba/api-client";
 
@@ -11,6 +12,8 @@ import "./draw-mapping.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type DrawDivision = DrawAssignmentDataset["divisions"][number];
+type DrawPhase = DrawDivision["phases"][number];
+type DrawPhaseGame = DrawPhase["games"][number];
 
 interface DrawMappingPageProps {
   client: AdminClient;
@@ -22,17 +25,37 @@ interface DrawMappingPageProps {
   onOpenConfiguration: () => void;
 }
 
+interface GameDraft {
+  homeTeamId: string;
+  awayTeamId: string;
+  dirty: boolean;
+}
+
 const statusLabels: Record<string, string> = {
   SETUP: "准备中",
-  PRE_DRAW_PUBLIC: "抽签前公开",
-  ACTIVE: "进行中",
+  PUBLISHED: "已公开",
   ARCHIVED: "已归档",
 };
 
-function divisionDraft(division: DrawDivision): Record<string, string> {
+function initialGroupDraft(division: DrawDivision): Record<string, string> {
   return Object.fromEntries(
     division.groups.flatMap((group) =>
       group.slots.map((slot) => [slot.id, slot.team_id ?? ""]),
+    ),
+  );
+}
+
+function initialGameDrafts(division: DrawDivision): Record<string, GameDraft> {
+  return Object.fromEntries(
+    division.phases.flatMap((phase) =>
+      phase.games.map((game) => [
+        game.id,
+        {
+          homeTeamId: game.home_team_id ?? "",
+          awayTeamId: game.away_team_id ?? "",
+          dirty: false,
+        },
+      ]),
     ),
   );
 }
@@ -48,28 +71,47 @@ export function DrawMappingPage({
 }: DrawMappingPageProps) {
   const [dataset, setDataset] = useState<DrawAssignmentDataset | null>(null);
   const [selectedDivisionId, setSelectedDivisionId] = useState("");
-  const [draft, setDraft] = useState<Record<string, string>>({});
-  const [dirty, setDirty] = useState(false);
-  const [preview, setPreview] = useState<DrawAssignmentPreview | null>(null);
+  const [selectedPhaseKey, setSelectedPhaseKey] = useState("GROUP");
+  const [groupDraft, setGroupDraft] = useState<Record<string, string>>({});
+  const [gameDrafts, setGameDrafts] = useState<Record<string, GameDraft>>({});
+  const [groupDirty, setGroupDirty] = useState(false);
+  const [groupPreview, setGroupPreview] = useState<DrawAssignmentPreview | null>(null);
+  const [gamePreview, setGamePreview] = useState<DrawGameAssignmentPreview | null>(null);
+  const [focusedGameId, setFocusedGameId] = useState("");
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const applyDataset = (
+    next: DrawAssignmentDataset,
+    preferredDivisionId = selectedDivisionId,
+  ) => {
+    const nextDivision =
+      next.divisions.find((item) => item.id === preferredDivisionId) ??
+      next.divisions[0];
+    setDataset(next);
+    setSelectedDivisionId(nextDivision?.id ?? "");
+    setGroupDraft(nextDivision ? initialGroupDraft(nextDivision) : {});
+    setGameDrafts(nextDivision ? initialGameDrafts(nextDivision) : {});
+    setGroupDirty(false);
+    setGroupPreview(null);
+    setGamePreview(null);
+    setOverrideConfirmed(false);
+    if (nextDivision) {
+      const hasCurrentPhase =
+        selectedPhaseKey === "GROUP" ||
+        nextDivision.phases.some((item) => item.key === selectedPhaseKey);
+      setSelectedPhaseKey(hasCurrentPhase ? selectedPhaseKey : "GROUP");
+    }
+  };
 
   const loadDataset = async (targetSeasonId = seasonId) => {
     setLoading(true);
     setError(null);
     try {
-      const next = await client.getDrawAssignments(targetSeasonId);
-      setDataset(next);
-      const selected =
-        next.divisions.find((division) => division.id === selectedDivisionId) ??
-        next.divisions.find((division) => division.slot_count > 0) ??
-        next.divisions[0];
-      setSelectedDivisionId(selected?.id ?? "");
-      setDraft(selected ? divisionDraft(selected) : {});
-      setDirty(false);
-      setPreview(null);
+      applyDataset(await client.getDrawAssignments(targetSeasonId));
     } catch (caught) {
       setDataset(null);
       setError(caught instanceof Error ? caught.message : "无法读取抽签映射。");
@@ -82,127 +124,200 @@ export function DrawMappingPage({
     void loadDataset();
   }, [seasonId]);
 
+  const anyDirty =
+    groupDirty || Object.values(gameDrafts).some((draft) => draft.dirty);
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (!dirty) return;
-      event.preventDefault();
+      if (anyDirty) event.preventDefault();
     };
     window.addEventListener("beforeunload", beforeUnload);
     return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, [dirty]);
+  }, [anyDirty]);
 
-  const selectedDivision = dataset?.divisions.find(
-    (division) => division.id === selectedDivisionId,
-  );
+  const division = dataset?.divisions.find((item) => item.id === selectedDivisionId);
+  const phase = division?.phases.find((item) => item.key === selectedPhaseKey);
   const slots = useMemo(
-    () => selectedDivision?.groups.flatMap((group) => group.slots) ?? [],
-    [selectedDivision],
+    () => division?.groups.flatMap((group) => group.slots) ?? [],
+    [division],
   );
   const activeTeams = useMemo(
-    () => selectedDivision?.teams.filter((team) => team.active) ?? [],
-    [selectedDivision],
+    () => division?.teams.filter((team) => team.active) ?? [],
+    [division],
   );
-  const usedTeamIds = useMemo(
-    () => new Set(Object.values(draft).filter(Boolean)),
-    [draft],
+  const usedGroupTeams = useMemo(
+    () => new Set(Object.values(groupDraft).filter(Boolean)),
+    [groupDraft],
   );
-  const unassignedTeams = activeTeams.filter((team) => !usedTeamIds.has(team.id));
-  const selectedActiveTeamIds = Object.values(draft).filter((teamId) =>
-    activeTeams.some((team) => team.id === teamId),
-  );
-  const complete =
+  const groupComplete =
     slots.length > 0 &&
-    activeTeams.length === slots.length &&
-    slots.every((slot) => Boolean(draft[slot.id])) &&
-    new Set(selectedActiveTeamIds).size === slots.length;
-  const countMismatch = Boolean(
-    selectedDivision && selectedDivision.active_team_count !== selectedDivision.slot_count,
+    slots.length === activeTeams.length &&
+    slots.every((slot) => groupDraft[slot.id]) &&
+    new Set(Object.values(groupDraft)).size === slots.length;
+  const groupCountMismatch = Boolean(
+    division && division.active_team_count !== division.slot_count,
   );
   const readOnly = dataset?.read_only ?? true;
 
-  const resetSelectedDivision = (division = selectedDivision) => {
-    if (!division) return;
-    setDraft(divisionDraft(division));
-    setDirty(false);
-    setPreview(null);
-    setError(null);
-  };
-
-  const switchDivision = (division: DrawDivision) => {
+  const switchDivision = (next: DrawDivision) => {
     if (
-      dirty &&
-      !window.confirm(`当前${selectedDivision?.name ?? "组别"}有未保存修改，确定放弃吗？`)
+      anyDirty &&
+      !window.confirm("当前页面有未保存修改，确定放弃并切换组别吗？")
     ) {
       return;
     }
-    setSelectedDivisionId(division.id);
-    setDraft(divisionDraft(division));
-    setDirty(false);
-    setPreview(null);
+    setSelectedDivisionId(next.id);
+    setSelectedPhaseKey("GROUP");
+    setGroupDraft(initialGroupDraft(next));
+    setGameDrafts(initialGameDrafts(next));
+    setGroupDirty(false);
+    setGroupPreview(null);
+    setGamePreview(null);
+    setFocusedGameId("");
     setError(null);
     setNotice(null);
   };
 
   const switchSeason = (nextSeasonId: string) => {
-    if (dirty && !window.confirm("当前组别有未保存修改，确定切换赛季吗？")) return;
+    if (
+      anyDirty &&
+      !window.confirm("当前页面有未保存修改，确定切换赛季吗？")
+    ) {
+      return;
+    }
     onSeasonChange(nextSeasonId);
   };
 
-  const updateSlot = (slotId: string, teamId: string) => {
-    setDraft((current) => ({ ...current, [slotId]: teamId }));
-    setDirty(true);
-    setPreview(null);
+  const switchPhase = (key: string) => {
+    setSelectedPhaseKey(key);
+    setGamePreview(null);
+    setOverrideConfirmed(false);
+    setFocusedGameId("");
     setError(null);
-    setNotice(null);
   };
 
-  const buildAssignments = () =>
-    slots.map((slot) => ({ slot_id: slot.id, team_id: draft[slot.id] ?? "" }));
+  const groupAssignments = () =>
+    slots.map((slot) => ({
+      slot_id: slot.id,
+      team_id: groupDraft[slot.id] ?? "",
+    }));
 
-  const checkChanges = async () => {
-    if (!dataset || !selectedDivision || !complete) return;
-    setBusy(true);
+  const previewGroup = async () => {
+    if (!dataset || !division || !groupComplete) return;
+    setBusyKey("GROUP");
     setError(null);
     try {
-      setPreview(
+      setGroupPreview(
         await client.previewDrawAssignments(dataset.season_id, {
           expected_season_version: dataset.season_version,
-          division_id: selectedDivision.id,
-          assignments: buildAssignments(),
+          division_id: division.id,
+          assignments: groupAssignments(),
         }),
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法预览抽签影响。");
+      setError(
+        caught instanceof Error ? caught.message : "无法预览小组签位影响。",
+      );
     } finally {
-      setBusy(false);
+      setBusyKey("");
     }
   };
 
-  const saveChanges = async () => {
-    if (!dataset || !selectedDivision || !preview) return;
-    setBusy(true);
+  const saveGroup = async () => {
+    if (!dataset || !division || !groupPreview) return;
+    setBusyKey("GROUP");
     setError(null);
     try {
       const updated = await client.updateDrawAssignments(dataset.season_id, {
         expected_season_version: dataset.season_version,
-        division_id: selectedDivision.id,
-        assignments: buildAssignments(),
-        impact_hash: preview.impact_hash,
+        division_id: division.id,
+        assignments: groupAssignments(),
+        impact_hash: groupPreview.impact_hash,
       });
-      setDataset(updated);
-      const nextDivision = updated.divisions.find(
-        (division) => division.id === selectedDivision.id,
-      );
-      if (nextDivision) setDraft(divisionDraft(nextDivision));
-      setDirty(false);
-      setPreview(null);
-      setNotice(`${selectedDivision.name}的抽签结果已保存，并同步到相关比赛。`);
+      applyDataset(updated, division.id);
+      setNotice(`${division.name}的小组初始签位已整组保存。`);
       await onDataChanged();
     } catch (caught) {
-      setPreview(null);
-      setError(caught instanceof Error ? caught.message : "抽签映射保存失败。");
+      setGroupPreview(null);
+      setError(caught instanceof Error ? caught.message : "小组签位保存失败。");
     } finally {
-      setBusy(false);
+      setBusyKey("");
+    }
+  };
+
+  const updateGameDraft = (
+    gameId: string,
+    side: "homeTeamId" | "awayTeamId",
+    teamId: string,
+  ) => {
+    setGameDrafts((current) => ({
+      ...current,
+      [gameId]: {
+        ...current[gameId],
+        [side]: teamId,
+        dirty: true,
+      },
+    }));
+    setFocusedGameId(gameId);
+    setGamePreview(null);
+    setOverrideConfirmed(false);
+    setError(null);
+    setNotice(null);
+  };
+
+  const previewGame = async (game: DrawPhaseGame) => {
+    if (!dataset) return;
+    const draft = gameDrafts[game.id];
+    if (!draft?.homeTeamId || !draft.awayTeamId) return;
+    setBusyKey(game.id);
+    setFocusedGameId(game.id);
+    setError(null);
+    setOverrideConfirmed(false);
+    try {
+      setGamePreview(
+        await client.previewGameDrawAssignments(dataset.season_id, game.id, {
+          expected_season_version: dataset.season_version,
+          expected_game_version: game.version,
+          home_team_id: draft.homeTeamId,
+          away_team_id: draft.awayTeamId,
+        }),
+      );
+    } catch (caught) {
+      setGamePreview(null);
+      setError(
+        caught instanceof Error ? caught.message : "无法预览该场签位影响。",
+      );
+    } finally {
+      setBusyKey("");
+    }
+  };
+
+  const saveGame = async (game: DrawPhaseGame) => {
+    if (!dataset || !gamePreview) return;
+    const draft = gameDrafts[game.id];
+    setBusyKey(game.id);
+    setError(null);
+    try {
+      const updated = await client.updateGameDrawAssignments(
+        dataset.season_id,
+        game.id,
+        {
+          expected_season_version: dataset.season_version,
+          expected_game_version: game.version,
+          home_team_id: draft.homeTeamId,
+          away_team_id: draft.awayTeamId,
+          override_warnings: gamePreview.requires_override,
+          impact_hash: gamePreview.impact_hash,
+        },
+      );
+      applyDataset(updated, division?.id);
+      setSelectedPhaseKey(phase?.key ?? "GROUP");
+      setNotice(`${game.code} 的双方签位已保存。`);
+      await onDataChanged();
+    } catch (caught) {
+      setGamePreview(null);
+      setError(caught instanceof Error ? caught.message : "该场签位保存失败。");
+    } finally {
+      setBusyKey("");
     }
   };
 
@@ -210,210 +325,687 @@ export function DrawMappingPage({
     return <section className="draw-state">正在读取签位和球队…</section>;
   }
   if (!dataset) {
-    return <section className="draw-state draw-state-error">{error ?? "暂无抽签数据"}</section>;
+    return (
+      <section className="draw-state draw-state-error">
+        {error ?? "暂无抽签数据"}
+      </section>
+    );
   }
+
+  const focusedGame =
+    phase?.games.find((game) => game.id === focusedGameId) ?? phase?.games[0];
+  const phaseUsedTeams = new Set(
+    phase?.games.flatMap((game) => {
+      const draft = gameDrafts[game.id];
+      return draft
+        ? [draft.homeTeamId, draft.awayTeamId].filter(Boolean)
+        : [];
+    }) ?? [],
+  );
+  const phaseUnassignedTeams = activeTeams.filter(
+    (team) => !phaseUsedTeams.has(team.id),
+  );
+  const previousWinnerTeams =
+    phase?.previous_winner_ids
+      .map((teamId) => activeTeams.find((team) => team.id === teamId))
+      .filter(
+        (team): team is DrawDivision["teams"][number] => Boolean(team),
+      ) ?? [];
 
   return (
     <section className="draw-workspace">
-      <div className="draw-toolbar">
+      <header className="draw-toolbar">
         <label>
-          <span>当前赛季</span>
-          <select value={seasonId} onChange={(event) => switchSeason(event.target.value)}>
+          <span>赛季</span>
+          <select
+            value={seasonId}
+            onChange={(event) => switchSeason(event.target.value)}
+          >
             {seasons.map((season) => (
-              <option key={season.id} value={season.id}>{season.name}</option>
+              <option key={season.id} value={season.id}>
+                {season.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>组别</span>
+          <select
+            value={selectedDivisionId}
+            onChange={(event) => {
+              const next = dataset.divisions.find(
+                (item) => item.id === event.target.value,
+              );
+              if (next) switchDivision(next);
+            }}
+          >
+            {dataset.divisions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
             ))}
           </select>
         </label>
         <div className="draw-toolbar-status">
-          <span className={`draw-season-status ${dataset.season_status.toLowerCase()}`}>
+          <span
+            className={`draw-season-status ${dataset.season_status.toLowerCase()}`}
+          >
             {statusLabels[dataset.season_status] ?? dataset.season_status}
           </span>
-          <span>{dataset.divisions.filter((division) => division.complete).length} / {dataset.divisions.length} 个组别完成</span>
+          <span>赛季 v{dataset.season_version}</span>
         </div>
-      </div>
+      </header>
 
-      <div className="draw-heading">
-        <div>
-          <p className="draw-kicker">初始签位</p>
-          <h2>按组别确认球队落位</h2>
-          <p>每支启用球队只能出现一次。保存后，相关小组赛将立即显示真实球队。</p>
+      {error && (
+        <div className="draw-message error" role="alert">
+          {error}
         </div>
-        <div className="draw-progress" aria-label="组别完成进度">
-          {dataset.divisions.map((division) => {
-            const assigned = division.id === selectedDivisionId && dirty
-              ? Object.values(draft).filter(Boolean).length
-              : division.assigned_count;
-            return (
-              <button
-                className={division.id === selectedDivisionId ? "active" : ""}
-                type="button"
-                key={division.id}
-                onClick={() => switchDivision(division)}
-              >
-                <span>{division.name}</span>
-                <strong>{assigned}/{division.slot_count}</strong>
-                <small>{division.complete ? "已完成" : division.slot_count ? "待填写" : "无签位"}</small>
-              </button>
-            );
-          })}
+      )}
+      {notice && (
+        <div className="draw-message" role="status">
+          {notice}
         </div>
-      </div>
-
-      {error && <div className="draw-message error" role="alert">{error}</div>}
-      {notice && <div className="draw-message" role="status">{notice}</div>}
-      {readOnly && <div className="draw-readonly"><strong>当前页面只读</strong><span>{dataset.locked_reason}</span></div>}
-
-      {!selectedDivision ? (
-        <div className="draw-empty">当前赛季没有可用组别。</div>
-      ) : !slots.length ? (
-        <div className="draw-empty draw-empty-action">
-          <div>
-            <strong>{selectedDivision.name}尚未生成初始签位</strong>
-            <span>请先配置签位方案并完成赛程导入；淘汰赛占位不会显示在本页。</span>
-          </div>
-          <button className="secondary-action" type="button" onClick={onOpenConfiguration}>前往赛季与组别</button>
+      )}
+      {readOnly && (
+        <div className="draw-readonly">
+          <strong>当前页面只读</strong>
+          <span>{dataset.locked_reason}</span>
         </div>
-      ) : (
-        <>
-          {countMismatch && (
-            <div className="draw-mismatch" role="alert">
-              <div>
-                <strong>球队数与签位数不一致</strong>
-                <span>{selectedDivision.active_team_count} 支启用球队 / {selectedDivision.slot_count} 个初始签位，必须一致后才能保存。</span>
-              </div>
-              <div>
-                <button className="text-action" type="button" onClick={onOpenTeams}>检查球队与名单</button>
-                <button className="text-action" type="button" onClick={onOpenConfiguration}>检查签位方案</button>
-              </div>
-            </div>
-          )}
-
-          <div className="draw-layout">
-            <div className="draw-groups">
-              {selectedDivision.groups.map((group) => (
-                <section className="draw-group" key={group.id} aria-labelledby={`draw-group-${group.id}`}>
-                  <div className="draw-group-heading">
-                    <div>
-                      <span>{group.code.toUpperCase()}</span>
-                      <h3 id={`draw-group-${group.id}`}>{group.name}</h3>
-                    </div>
-                    <small>{group.slots.filter((slot) => Boolean(draft[slot.id])).length}/{group.slots.length} 已填写</small>
-                  </div>
-                  <div className="draw-slot-table" role="table" aria-label={`${group.name}签位映射`}>
-                    <div className="draw-slot-row header" role="row">
-                      <span>签位</span><span>对应球队</span><span>状态</span>
-                    </div>
-                    {group.slots.map((slot) => {
-                      const currentTeam = selectedDivision.teams.find(
-                        (team) => team.id === draft[slot.id],
-                      );
-                      const options = selectedDivision.teams.filter(
-                        (team) =>
-                          (team.active && (!usedTeamIds.has(team.id) || team.id === draft[slot.id])) ||
-                          team.id === draft[slot.id],
-                      );
-                      return (
-                        <label className="draw-slot-row" role="row" key={slot.id}>
-                          <span className="draw-slot-code"><strong>{slot.code}</strong><small>{slot.label}</small></span>
-                          <select
-                            aria-label={`${slot.code} 对应球队`}
-                            value={draft[slot.id] ?? ""}
-                            disabled={readOnly || busy}
-                            onChange={(event) => updateSlot(slot.id, event.target.value)}
-                          >
-                            <option value="">请选择球队</option>
-                            {options.map((team) => (
-                              <option key={team.id} value={team.id}>
-                                {team.name}{team.active ? "" : "（已停用，须替换）"}
-                              </option>
-                            ))}
-                          </select>
-                          <span className={currentTeam?.active ? "assigned" : currentTeam ? "inactive" : "empty"}>
-                            {currentTeam?.active ? "已分配" : currentTeam ? "球队已停用" : "待选择"}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
-
-            <aside className="draw-inspector" aria-label="未分配球队">
-              <div>
-                <p className="draw-kicker">未分配球队</p>
-                <strong>{unassignedTeams.length}</strong>
-                <span>支</span>
-              </div>
-              {unassignedTeams.length ? (
-                <ul>{unassignedTeams.map((team) => <li key={team.id}>{team.name}</li>)}</ul>
-              ) : (
-                <p className="draw-all-assigned">全部启用球队均已选择。</p>
-              )}
-              <small>已选择的球队会从其他签位下拉栏中移除，避免重复落位。</small>
-            </aside>
-          </div>
-
-          <div className="draw-savebar">
-            <span>{readOnly ? "归档赛季只读" : dirty ? `${selectedDivision.name}有未保存修改` : "已与服务器同步"}</span>
-            <div>
-              <button className="text-action" type="button" disabled={!dirty || busy} onClick={() => resetSelectedDivision()}>撤销修改</button>
-              <button className="primary-action" type="button" disabled={readOnly || busy || !dirty || !complete || countMismatch} onClick={() => void checkChanges()}>
-                {busy ? "检查中…" : "检查并保存"}
-              </button>
-            </div>
-          </div>
-        </>
       )}
 
-      {preview && (
-        <div className="dialog-backdrop" role="presentation" onMouseDown={() => !busy && setPreview(null)}>
-          <section className="draw-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="draw-preview-title" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="dialog-heading">
-              <div>
-                <p className="draw-kicker">保存前核对</p>
-                <h2 id="draw-preview-title">{preview.division_name}抽签影响</h2>
-              </div>
-              <button className="dialog-close" type="button" disabled={busy} onClick={() => setPreview(null)} aria-label="关闭">×</button>
-            </div>
-            <div className="draw-preview-summary">
-              <div><span>签位变更</span><strong>{preview.change_count}</strong></div>
-              <div><span>受影响比赛</span><strong>{preview.affected_game_count}</strong></div>
-              <div><span>公开影响</span><strong>{preview.public_impact ? "有" : "无"}</strong></div>
-            </div>
-            {preview.blockers.length > 0 && (
-              <div className="draw-preview-blockers" role="alert">
-                {preview.blockers.map((blocker) => <p key={blocker.code}><strong>{blocker.count} 项</strong>{blocker.message}</p>)}
-              </div>
-            )}
-            <div className="draw-preview-changes">
-              {preview.changes.map((change) => (
-                <div key={change.slot_id}>
-                  <strong>{change.slot_code}</strong>
-                  <span>{change.before_team_name ?? "未分配"}</span>
-                  <span aria-hidden="true">→</span>
-                  <span>{change.after_team_name}</span>
-                </div>
-              ))}
-            </div>
-            {preview.affected_games.length > 0 && (
-              <details className="draw-preview-games">
-                <summary>查看受影响比赛（{preview.affected_game_count}）</summary>
-                {preview.affected_games.slice(0, 12).map((game) => (
-                  <p key={game.id}><strong>{game.code}</strong><span>{game.date} · {game.start_time}</span><span>{game.before_home_name} vs {game.before_away_name}</span><span>更新为 {game.after_home_name} vs {game.after_away_name}</span></p>
-                ))}
-                {preview.affected_games.length > 12 && <small>另有 {preview.affected_games.length - 12} 场，保存时将按同一映射同步更新。</small>}
-              </details>
-            )}
-            <div className="dialog-actions">
-              <button className="secondary-action" type="button" disabled={busy} onClick={() => setPreview(null)}>返回修改</button>
-              <button className="primary-action" type="button" disabled={busy || !preview.can_apply || !preview.requires_confirmation} onClick={() => void saveChanges()}>
-                {busy ? "保存中…" : "确认写入抽签结果"}
+      {!division ? (
+        <div className="draw-empty">当前赛季没有可用组别。</div>
+      ) : (
+        <div className="draw-operation-layout">
+          <nav className="draw-stage-nav" aria-label="抽签阶段">
+            <p>阶段</p>
+            <button
+              className={selectedPhaseKey === "GROUP" ? "active" : ""}
+              type="button"
+              onClick={() => switchPhase("GROUP")}
+            >
+              <span>小组初始签位</span>
+              <small>
+                {division.assigned_count}/{division.slot_count}
+              </small>
+            </button>
+            {division.phases.map((item) => (
+              <button
+                className={`${selectedPhaseKey === item.key ? "active" : ""} ${
+                  item.games.some((game) => game.review_required)
+                    ? "needs-review"
+                    : ""
+                }`}
+                key={item.key}
+                type="button"
+                onClick={() => switchPhase(item.key)}
+              >
+                <span>{item.label}</span>
+                <small>
+                  {
+                    item.games.filter(
+                      (game) => game.home_team_id && game.away_team_id,
+                    ).length
+                  }
+                  /{item.games.length}
+                </small>
               </button>
-            </div>
-          </section>
+            ))}
+          </nav>
+
+          <main className="draw-editor">
+            {selectedPhaseKey === "GROUP" ? (
+              <GroupEditor
+                division={division}
+                draft={groupDraft}
+                usedTeamIds={usedGroupTeams}
+                readOnly={readOnly}
+                busy={busyKey === "GROUP"}
+                countMismatch={groupCountMismatch}
+                complete={groupComplete}
+                dirty={groupDirty}
+                onChange={(slotId, teamId) => {
+                  setGroupDraft((current) => ({
+                    ...current,
+                    [slotId]: teamId,
+                  }));
+                  setGroupDirty(true);
+                  setGroupPreview(null);
+                  setError(null);
+                }}
+                onPreview={() => void previewGroup()}
+                onReset={() => {
+                  setGroupDraft(initialGroupDraft(division));
+                  setGroupDirty(false);
+                  setGroupPreview(null);
+                }}
+                onOpenTeams={onOpenTeams}
+                onOpenConfiguration={onOpenConfiguration}
+              />
+            ) : phase ? (
+              <section className="draw-phase-editor">
+                <div className="draw-section-heading">
+                  <div>
+                    <p>
+                      {phase.stage === "RELEGATION"
+                        ? "独立手工录入"
+                        : "逐场手工录入"}
+                    </p>
+                    <h2>
+                      {division.name} · {phase.label}
+                    </h2>
+                  </div>
+                  <span>{phase.games.length} 场</span>
+                </div>
+                {phase.games.map((game) => {
+                  const draft = gameDrafts[game.id];
+                  return (
+                    <GameEditor
+                      key={game.id}
+                      game={game}
+                      draft={draft}
+                      teams={activeTeams}
+                      phaseUsedTeams={phaseUsedTeams}
+                      readOnly={readOnly}
+                      busy={busyKey === game.id}
+                      focused={focusedGame?.id === game.id}
+                      onFocus={() => {
+                        setFocusedGameId(game.id);
+                        setGamePreview(null);
+                        setOverrideConfirmed(false);
+                      }}
+                      onChange={(side, teamId) =>
+                        updateGameDraft(game.id, side, teamId)
+                      }
+                      onPreview={() => void previewGame(game)}
+                    />
+                  );
+                })}
+                {!phase.games.length && (
+                  <div className="draw-empty">当前阶段没有正式比赛。</div>
+                )}
+              </section>
+            ) : (
+              <div className="draw-empty">当前阶段不存在。</div>
+            )}
+          </main>
+
+          <aside className="draw-validation-panel" aria-label="签位校验">
+            {selectedPhaseKey === "GROUP" ? (
+              <GroupInspector
+                teams={activeTeams.filter(
+                  (team) => !usedGroupTeams.has(team.id),
+                )}
+                preview={groupPreview}
+                busy={busyKey === "GROUP"}
+                onSave={() => void saveGroup()}
+              />
+            ) : (
+              <GameInspector
+                phase={phase}
+                game={focusedGame}
+                previousWinnerTeams={previousWinnerTeams}
+                unassignedTeams={phaseUnassignedTeams}
+                preview={gamePreview}
+                overrideConfirmed={overrideConfirmed}
+                busy={Boolean(focusedGame && busyKey === focusedGame.id)}
+                onOverrideChange={setOverrideConfirmed}
+                onSave={() => focusedGame && void saveGame(focusedGame)}
+              />
+            )}
+          </aside>
         </div>
       )}
     </section>
+  );
+}
+
+function GroupEditor({
+  division,
+  draft,
+  usedTeamIds,
+  readOnly,
+  busy,
+  countMismatch,
+  complete,
+  dirty,
+  onChange,
+  onPreview,
+  onReset,
+  onOpenTeams,
+  onOpenConfiguration,
+}: {
+  division: DrawDivision;
+  draft: Record<string, string>;
+  usedTeamIds: Set<string>;
+  readOnly: boolean;
+  busy: boolean;
+  countMismatch: boolean;
+  complete: boolean;
+  dirty: boolean;
+  onChange: (slotId: string, teamId: string) => void;
+  onPreview: () => void;
+  onReset: () => void;
+  onOpenTeams: () => void;
+  onOpenConfiguration: () => void;
+}) {
+  if (!division.groups.length) {
+    return (
+      <div className="draw-empty draw-empty-action">
+        <div>
+          <strong>尚未生成小组初始签位</strong>
+          <span>请先配置签位方案并完成赛程导入。</span>
+        </div>
+        <button
+          className="secondary-action"
+          type="button"
+          onClick={onOpenConfiguration}
+        >
+          前往赛季与组别
+        </button>
+      </div>
+    );
+  }
+  return (
+    <section className="draw-group-editor">
+      <div className="draw-section-heading">
+        <div>
+          <p>整组原子保存</p>
+          <h2>{division.name} · 小组初始签位</h2>
+        </div>
+        <span>
+          {division.assigned_count}/{division.slot_count}
+        </span>
+      </div>
+      {countMismatch && (
+        <div className="draw-mismatch" role="alert">
+          <div>
+            <strong>球队数与签位数不一致</strong>
+            <span>
+              {division.active_team_count} 支启用球队 / {division.slot_count} 个签位
+            </span>
+          </div>
+          <div>
+            <button className="text-action" type="button" onClick={onOpenTeams}>
+              检查球队
+            </button>
+            <button
+              className="text-action"
+              type="button"
+              onClick={onOpenConfiguration}
+            >
+              检查签位
+            </button>
+          </div>
+        </div>
+      )}
+      {division.groups.map((group) => (
+        <section className="draw-group-block" key={group.id}>
+          <header>
+            <strong>{group.name}</strong>
+            <span>{group.code.toUpperCase()}</span>
+          </header>
+          {group.slots.map((slot) => {
+            const selectedId = draft[slot.id] ?? "";
+            const options = division.teams.filter(
+              (team) =>
+                (team.active &&
+                  (!usedTeamIds.has(team.id) || team.id === selectedId)) ||
+                team.id === selectedId,
+            );
+            return (
+              <label className="draw-slot-row" key={slot.id}>
+                <span>
+                  <strong>{slot.code}</strong>
+                  <small>{slot.label}</small>
+                </span>
+                <select
+                  aria-label={`${slot.code} 对应球队`}
+                  value={selectedId}
+                  disabled={readOnly || busy}
+                  onChange={(event) => onChange(slot.id, event.target.value)}
+                >
+                  <option value="">请选择球队</option>
+                  {options.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                      {team.active ? "" : "（已停用）"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          })}
+        </section>
+      ))}
+      <div className="draw-group-save">
+        <span>{dirty ? "有未保存修改" : "已与服务器同步"}</span>
+        <div>
+          <button
+            className="text-action"
+            type="button"
+            disabled={!dirty || busy}
+            onClick={onReset}
+          >
+            撤销
+          </button>
+          <button
+            className="primary-action"
+            type="button"
+            disabled={readOnly || busy || !dirty || !complete || countMismatch}
+            onClick={onPreview}
+          >
+            {busy ? "检查中…" : "预览整组影响"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GameEditor({
+  game,
+  draft,
+  teams,
+  phaseUsedTeams,
+  readOnly,
+  busy,
+  focused,
+  onFocus,
+  onChange,
+  onPreview,
+}: {
+  game: DrawPhaseGame;
+  draft: GameDraft;
+  teams: DrawDivision["teams"];
+  phaseUsedTeams: Set<string>;
+  readOnly: boolean;
+  busy: boolean;
+  focused: boolean;
+  onFocus: () => void;
+  onChange: (side: "homeTeamId" | "awayTeamId", teamId: string) => void;
+  onPreview: () => void;
+}) {
+  const optionsFor = (currentId: string, otherId: string) =>
+    teams.filter(
+      (team) =>
+        team.active &&
+        team.id !== otherId &&
+        (!phaseUsedTeams.has(team.id) || team.id === currentId),
+    );
+  return (
+    <article
+      className={`draw-game ${focused ? "focused" : ""} ${
+        game.review_required ? "needs-review" : ""
+      }`}
+      onClick={onFocus}
+    >
+      <header>
+        <div>
+          <strong>{game.code}</strong>
+          <span>{game.date} · {game.start_time}</span>
+        </div>
+        <div>
+          <span>{game.venue_name}</span>
+          {game.review_required && <b>签位待复核</b>}
+        </div>
+      </header>
+      <div className="draw-game-sides">
+        <label>
+          <span>
+            <small>主方签位</small>
+            <strong>{game.home_slot_code || game.home_slot_label}</strong>
+          </span>
+          <select
+            aria-label={`${game.code} 主方球队`}
+            value={draft?.homeTeamId ?? ""}
+            disabled={readOnly || busy}
+            onChange={(event) => onChange("homeTeamId", event.target.value)}
+          >
+            <option value="">待抽签</option>
+            {optionsFor(
+              draft?.homeTeamId ?? "",
+              draft?.awayTeamId ?? "",
+            ).map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+          <ValidationBadge validation={game.home_validation} />
+        </label>
+        <label>
+          <span>
+            <small>客方签位</small>
+            <strong>{game.away_slot_code || game.away_slot_label}</strong>
+          </span>
+          <select
+            aria-label={`${game.code} 客方球队`}
+            value={draft?.awayTeamId ?? ""}
+            disabled={readOnly || busy}
+            onChange={(event) => onChange("awayTeamId", event.target.value)}
+          >
+            <option value="">待抽签</option>
+            {optionsFor(
+              draft?.awayTeamId ?? "",
+              draft?.homeTeamId ?? "",
+            ).map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+          <ValidationBadge validation={game.away_validation} />
+        </label>
+      </div>
+      <footer className="draw-game-save">
+        <span>{draft?.dirty ? "本场有未保存修改" : "本场已保存"}</span>
+        <button
+          className="primary-action"
+          type="button"
+          disabled={
+            readOnly ||
+            busy ||
+            !draft?.dirty ||
+            !draft.homeTeamId ||
+            !draft.awayTeamId
+          }
+          onClick={(event) => {
+            event.stopPropagation();
+            onPreview();
+          }}
+        >
+          {busy ? "检查中…" : "逐场预览"}
+        </button>
+      </footer>
+    </article>
+  );
+}
+
+function ValidationBadge({
+  validation,
+}: {
+  validation: DrawPhaseGame["home_validation"];
+}) {
+  if (validation.review_required) {
+    return <b className="validation-badge warning">待复核</b>;
+  }
+  if (validation.status === "WINNER_CONFIRMED") {
+    return <b className="validation-badge valid">胜队已确认</b>;
+  }
+  if (validation.mode === "SUPERADMIN_OVERRIDE") {
+    return <b className="validation-badge override">已越过校验</b>;
+  }
+  if (validation.status === "AWAITING_RESULT") {
+    return <b className="validation-badge pending">等待上一轮赛果</b>;
+  }
+  return <b className="validation-badge neutral">手工签位</b>;
+}
+
+function GroupInspector({
+  teams,
+  preview,
+  busy,
+  onSave,
+}: {
+  teams: DrawDivision["teams"];
+  preview: DrawAssignmentPreview | null;
+  busy: boolean;
+  onSave: () => void;
+}) {
+  return (
+    <>
+      <header>
+        <p>校验信息</p>
+        <h3>小组签位</h3>
+      </header>
+      <section>
+        <span className="inspector-label">未分配球队</span>
+        <strong className="inspector-number">{teams.length}</strong>
+        {teams.length ? (
+          <ul>
+            {teams.map((team) => (
+              <li key={team.id}>{team.name}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>全部球队已选择。</p>
+        )}
+      </section>
+      {preview && (
+        <section
+          className={
+            preview.blockers.length ? "inspector-alert" : "inspector-success"
+          }
+        >
+          <strong>{preview.change_count} 个签位将变更</strong>
+          <p>
+            影响 {preview.affected_game_count} 场比赛；
+            {preview.public_impact ? "会立即影响公开页面。" : "当前不会公开显示。"}
+          </p>
+          {preview.blockers.map((blocker) => (
+            <p key={blocker.code}>{blocker.message}</p>
+          ))}
+          <button
+            className="primary-action"
+            type="button"
+            disabled={busy || !preview.can_apply}
+            onClick={onSave}
+          >
+            {busy ? "保存中…" : "确认整组保存"}
+          </button>
+        </section>
+      )}
+    </>
+  );
+}
+
+function GameInspector({
+  phase,
+  game,
+  previousWinnerTeams,
+  unassignedTeams,
+  preview,
+  overrideConfirmed,
+  busy,
+  onOverrideChange,
+  onSave,
+}: {
+  phase: DrawPhase | undefined;
+  game: DrawPhaseGame | undefined;
+  previousWinnerTeams: DrawDivision["teams"];
+  unassignedTeams: DrawDivision["teams"];
+  preview: DrawGameAssignmentPreview | null;
+  overrideConfirmed: boolean;
+  busy: boolean;
+  onOverrideChange: (value: boolean) => void;
+  onSave: () => void;
+}) {
+  return (
+    <>
+      <header>
+        <p>校验信息</p>
+        <h3>{game?.code ?? phase?.label ?? "选择比赛"}</h3>
+      </header>
+      {phase?.previous_phase_key && (
+        <section>
+          <span className="inspector-label">上一轮已产生胜队</span>
+          {previousWinnerTeams.length ? (
+            <ul>
+              {previousWinnerTeams.map((team) => (
+                <li key={team.id}>{team.name}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>上一轮尚未产生正式胜队。</p>
+          )}
+        </section>
+      )}
+      <section>
+        <span className="inspector-label">本轮未分配球队</span>
+        <strong className="inspector-number">{unassignedTeams.length}</strong>
+        {unassignedTeams.length > 0 && (
+          <ul>
+            {unassignedTeams.map((team) => (
+              <li key={team.id}>{team.name}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {game?.review_required && (
+        <section className="inspector-alert">
+          <strong>签位待复核</strong>
+          <p>上一轮赛果与当前人工签位不再一致。球队不会被自动修改。</p>
+        </section>
+      )}
+      {preview && (
+        <section
+          className={
+            preview.warnings.length ? "inspector-alert" : "inspector-success"
+          }
+        >
+          <strong>{preview.can_apply ? "预览完成" : "当前不能保存"}</strong>
+          <p>
+            {preview.public_impact
+              ? "保存后会立即影响当前公开对阵。"
+              : "当前赛季未公开。"}
+          </p>
+          {preview.blockers.map((blocker) => (
+            <p key={blocker.code}>{blocker.message}</p>
+          ))}
+          {preview.warnings.map((warning) => (
+            <p key={`${warning.side}-${warning.code}`}>{warning.message}</p>
+          ))}
+          {preview.requires_override && (
+            <label className="override-confirm">
+              <input
+                type="checkbox"
+                checked={overrideConfirmed}
+                onChange={(event) => onOverrideChange(event.target.checked)}
+              />
+              <span>我确认越过上一轮胜队校验，并按当前球队保存</span>
+            </label>
+          )}
+          <button
+            className={
+              preview.requires_override ? "danger-action" : "primary-action"
+            }
+            type="button"
+            disabled={
+              busy ||
+              !preview.can_apply ||
+              (preview.requires_override && !overrideConfirmed)
+            }
+            onClick={onSave}
+          >
+            {busy
+              ? "保存中…"
+              : preview.requires_override
+                ? "确认越级并保存"
+                : "确认保存本场"}
+          </button>
+        </section>
+      )}
+    </>
   );
 }

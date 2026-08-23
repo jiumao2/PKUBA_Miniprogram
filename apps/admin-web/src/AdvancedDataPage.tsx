@@ -16,6 +16,30 @@ const editableFields: Record<string, string[]> = {
   "participant-slots": ["division", "group", "code", "label", "seed"],
 };
 
+type AdvancedField = AdvancedModel["fields"][number];
+
+const readableFieldPattern = /(^|_)(name|label|title|status|state|kind|type|code|date|time|score|year|round|stage|gender|venue|team|player|username|filename)(_|$)/i;
+const opaqueFieldPattern = /(^id$|_id$|uuid|publication|revision|snapshot|hash|digest|token|password|secret|openid|payload|document|metadata|raw|file_key)/i;
+const bookkeepingFieldPattern = /(^|_)(version|created_at|updated_at|deleted_at|purged_at|created_by|updated_by|deleted_by|purged_by)(_|$)/i;
+
+function fieldPriority(field: AdvancedField) {
+  if (field.sensitive || /(hash|digest|token|password|secret|openid)/i.test(field.name)) return 90;
+  if (field.name === "id") return 85;
+  if (opaqueFieldPattern.test(field.name)) return 80;
+  if (field.relation) return 70;
+  if (bookkeepingFieldPattern.test(field.name)) return 60;
+  if (readableFieldPattern.test(field.name)) return 0;
+  if (/JSONField|BinaryField/i.test(field.type)) return 50;
+  return 20;
+}
+
+function orderedModelFields(fields: AdvancedField[]) {
+  return fields
+    .map((field, index) => ({ field, index }))
+    .sort((left, right) => fieldPriority(left.field) - fieldPriority(right.field) || left.index - right.index)
+    .map(({ field }) => field);
+}
+
 function displayValue(value: unknown) {
   if (value === null) return "null";
   if (value === true) return "true";
@@ -45,6 +69,11 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
   const [preview, setPreview] = useState<AdvancedMutationPreview | null>(null);
 
   const model = models.find((item) => item.key === modelKey) ?? null;
+  const orderedFields = useMemo(
+    () => orderedModelFields(model?.fields ?? []),
+    [model],
+  );
+  const summaryFields = orderedFields.slice(0, 7);
 
   useEffect(() => {
     client
@@ -198,8 +227,7 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
             <table className="advanced-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  {(model?.fields ?? []).slice(1, 7).map((field) => (
+                  {summaryFields.map((field) => (
                     <th className={field.sensitive ? "sensitive" : ""} key={field.name}>
                       {field.name}
                     </th>
@@ -213,10 +241,9 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
                     key={record.id}
                     onClick={() => setSelected(record)}
                   >
-                    <td title={record.id}>{record.id.slice(0, 8)}</td>
-                    {(model?.fields ?? []).slice(1, 7).map((field) => (
+                    {summaryFields.map((field) => (
                       <td className={field.sensitive ? "sensitive" : ""} key={field.name}>
-                        {displayValue(record.values[field.name])}
+                        {displayValue(field.name === "id" ? record.id : record.values[field.name])}
                       </td>
                     ))}
                   </tr>
@@ -234,10 +261,10 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
             <button type="button" onClick={() => setSelected(null)} aria-label="关闭详情">×</button>
           </header>
           <dl>
-            {(model?.fields ?? []).map((field) => (
+            {orderedFields.map((field) => (
               <div className={field.sensitive ? "sensitive" : ""} key={field.name}>
                 <dt>{field.name}{field.sensitive && <b>敏感</b>}</dt>
-                <dd>{displayValue(selected.values[field.name])}</dd>
+                <dd>{displayValue(field.name === "id" ? selected.id : selected.values[field.name])}</dd>
               </div>
             ))}
           </dl>

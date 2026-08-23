@@ -307,12 +307,12 @@ def test_duplicate_missing_inactive_and_cross_division_teams_are_rejected():
     assert inactive_error.value.code == "DRAW_COUNT_MISMATCH"
 
 
-def test_active_season_allows_only_safe_future_corrections():
+def test_published_season_allows_only_safe_future_corrections():
     setup = _setup_draw()
     _apply(setup)
     setup["season"].refresh_from_db()
-    setup["season"].status = Season.Status.ACTIVE
-    setup["season"].save(update_fields=["status", "is_public", "updated_at"])
+    setup["season"].status = Season.Status.PUBLISHED
+    setup["season"].save(update_fields=["status", "updated_at"])
     swapped = [dict(item) for item in setup["assignments"]]
     swapped[0]["team_id"], swapped[1]["team_id"] = (
         swapped[1]["team_id"],

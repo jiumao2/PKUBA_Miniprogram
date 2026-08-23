@@ -46,7 +46,7 @@ from core.models import (
 )
 from core.services.schedule_capacity import effective_capacity_map
 
-TEMPLATE_VERSION = "3.2.0"
+TEMPLATE_VERSION = "3.3.0"
 EXPECTED_SHEETS = ["填写说明", "签位定义", "赛程网格"]
 SLOT_HEADER_ROW = 5
 SLOT_START_ROW = 6
@@ -82,7 +82,7 @@ DEFAULT_GRID_COLUMNS = (
     ("p8", "五四东一", False),
 )
 
-SLOT_HEADERS = ["组别", "场次信息", "签位代码"]
+SLOT_HEADERS = ["组别", "场次信息", "轮次", "签位代码"]
 STAGE_BY_LABEL = {label: value for value, label in Game.Stage.choices}
 STAGE_BY_LABEL.update({value: value for value, _label in Game.Stage.choices})
 STAGE_LABEL_BY_VALUE = dict(Game.Stage.choices)
@@ -136,13 +136,14 @@ class ParsedFamily:
     division_name: str
     gender: str
     stage: str
+    round_number: int
     prefix: str
     slot_count: int
     sort_order: int
 
     @property
-    def key(self) -> tuple[str, str, str]:
-        return (self.division_code, self.stage, self.prefix)
+    def key(self) -> tuple[str, str, int, str]:
+        return (self.division_code, self.stage, self.round_number, self.prefix)
 
     @property
     def group_code(self) -> str | None:
@@ -163,6 +164,7 @@ class ParsedSlot:
     division_name: str
     gender: str
     stage: str
+    round_number: int
     prefix: str
     number: int
     code: str
@@ -170,8 +172,8 @@ class ParsedSlot:
     cell: str
 
     @property
-    def family_key(self) -> tuple[str, str, str]:
-        return (self.division_code, self.stage, self.prefix)
+    def family_key(self) -> tuple[str, str, int, str]:
+        return (self.division_code, self.stage, self.round_number, self.prefix)
 
 
 @dataclass(frozen=True)
@@ -182,6 +184,7 @@ class ParsedGame:
     division_name: str
     group_code: str | None
     stage: str
+    round_number: int
     home_slot_code: str
     away_slot_code: str
     target_date: date
@@ -209,7 +212,7 @@ class ParsedGridColumn:
 
 @dataclass
 class WorkbookAnalysis:
-    families: dict[tuple[str, str, str], ParsedFamily]
+    families: dict[tuple[str, str, int, str], ParsedFamily]
     groups: dict[tuple[str, str], ParsedGroup]
     slots: dict[tuple[str, str], ParsedSlot]
     games: dict[str, ParsedGame]
@@ -491,7 +494,7 @@ def generate_schedule_template(
                 horizontal="left" if column == 1 else "center",
                 vertical="center",
             )
-    _style_title(instructions, "PKUBA 赛程编排 V3.2 · 填写说明", 7)
+    _style_title(instructions, "PKUBA 赛程编排 V3.3 · 填写说明", 7)
     instructions.column_dimensions["A"].width = 20
     instructions.column_dimensions["B"].width = 76
     for column in ("C", "D"):
@@ -504,14 +507,15 @@ def generate_schedule_template(
         for number in range(1, family.slot_count + 1):
             slots_sheet.cell(row_index, 1, family.division.name)
             slots_sheet.cell(row_index, 2, family.get_stage_display())
-            slots_sheet.cell(row_index, 3, f"{family.prefix}{number}")
-            for column in range(1, 4):
+            slots_sheet.cell(row_index, 3, family.round_number)
+            slots_sheet.cell(row_index, 4, f"{family.prefix}{number}")
+            for column in range(1, 5):
                 slots_sheet.cell(row_index, column).fill = PatternFill(
                     "solid", fgColor="F2F5F3"
                 )
                 slots_sheet.cell(row_index, column).border = GRID_BORDER
             row_index += 1
-    slots_sheet.merge_cells(start_row=3, start_column=1, end_row=3, end_column=3)
+    slots_sheet.merge_cells(start_row=3, start_column=1, end_row=3, end_column=4)
     slots_sheet.cell(
         3,
         1,
@@ -520,11 +524,12 @@ def generate_schedule_template(
     slots_sheet.cell(3, 1).font = Font(color="66766F", italic=True)
     slots_sheet.cell(3, 1).alignment = Alignment(wrap_text=True)
     _style_title(slots_sheet, "签位提示 · 自动生成，无需填写", 3)
-    _style_headers(slots_sheet, SLOT_HEADER_ROW, 3)
+    _style_headers(slots_sheet, SLOT_HEADER_ROW, 4)
     slots_sheet.freeze_panes = "A6"
     slots_sheet.column_dimensions["A"].width = 18
     slots_sheet.column_dimensions["B"].width = 18
-    slots_sheet.column_dimensions["C"].width = 18
+    slots_sheet.column_dimensions["C"].width = 12
+    slots_sheet.column_dimensions["D"].width = 18
 
     grid_end_column = GRID_START_COLUMN + len(columns) - 1
     grid_sheet.cell(GRID_TIME_ROW, 1, "日期")
@@ -697,28 +702,39 @@ def _parse_slot_definitions_from_sheet(
     sheet,
     issues: list[ParsedIssue],
 ) -> tuple[
-    dict[tuple[str, str, str], ParsedFamily],
+    dict[tuple[str, str, int, str], ParsedFamily],
     dict[tuple[str, str], ParsedGroup],
     dict[tuple[str, str], ParsedSlot],
 ]:
     _validate_headers(sheet, SLOT_HEADER_ROW, SLOT_HEADERS)
     divisions = list(Division.objects.filter(season=season).order_by("sort_order", "name"))
     divisions_by_name = {item.name: item for item in divisions}
-    raw_slots: list[tuple[Division, str, str, int, str]] = []
+    raw_slots: list[tuple[Division, str, int, str, int, str]] = []
     seen_slot_keys: set[tuple[str, str]] = set()
-    prefix_owner: dict[tuple[str, str], tuple[str, str]] = {}
+    prefix_owner: dict[tuple[str, str], tuple[str, str, int]] = {}
 
     if sheet.max_row - SLOT_START_ROW + 1 > MAX_DATA_ROWS:
         issues.append(_issue("TOO_MANY_ROWS", "签位定义超过 5000 行。"))
     last_row = min(sheet.max_row, SLOT_START_ROW + MAX_DATA_ROWS - 1)
     for row in range(SLOT_START_ROW, last_row + 1):
-        cells = [sheet.cell(row, column) for column in range(1, 4)]
+        cells = [sheet.cell(row, column) for column in range(1, 5)]
         if all(cell.value in (None, "") for cell in cells):
             continue
         division_name = _read_text(cells[0], "组别", issues)
         stage_label = _read_text(cells[1], "场次信息", issues)
-        slot_code = _read_text(cells[2], "签位代码", issues)
-        if not division_name or not stage_label or not slot_code:
+        try:
+            round_number = int(cells[2].value)
+        except (TypeError, ValueError):
+            round_number = 0
+            issues.append(
+                _issue(
+                    "INVALID_ROUND_NUMBER",
+                    "轮次必须是大于等于 1 的整数。",
+                    cell=cells[2].coordinate,
+                )
+            )
+        slot_code = _read_text(cells[3], "签位代码", issues)
+        if not division_name or not stage_label or round_number < 1 or not slot_code:
             continue
         division = divisions_by_name.get(division_name)
         if division is None:
@@ -754,20 +770,20 @@ def _parse_slot_definitions_from_sheet(
                 _issue(
                     "INVALID_SLOT_CODE",
                     "签位代码必须是一个大小写敏感英文字母加正整数，例如 A1 或 a1。",
-                    cell=cells[2].coordinate,
+                    cell=cells[3].coordinate,
                 )
             )
             continue
         prefix, number_text = match.groups()
         number = int(number_text)
         namespace_key = (division.gender, prefix)
-        owner = (division.code, stage)
+        owner = (division.code, stage, round_number)
         if namespace_key in prefix_owner and prefix_owner[namespace_key] != owner:
             issues.append(
                 _issue(
                     "DUPLICATE_GENDER_PREFIX",
                     f"同一性别内签位字母 {prefix} 只能属于一个组别和阶段。",
-                    cell=cells[2].coordinate,
+                    cell=cells[3].coordinate,
                 )
             )
         prefix_owner[namespace_key] = owner
@@ -777,18 +793,18 @@ def _parse_slot_definitions_from_sheet(
                 _issue(
                     "DUPLICATE_SLOT_DEFINITION",
                     f"签位 {division.name}/{slot_code} 在表中重复。",
-                    cell=cells[2].coordinate,
+                    cell=cells[3].coordinate,
                 )
             )
             continue
         seen_slot_keys.add(slot_key)
-        raw_slots.append((division, stage, prefix, number, cells[2].coordinate))
+        raw_slots.append((division, stage, round_number, prefix, number, cells[3].coordinate))
 
-    family_numbers: dict[tuple[str, str, str], set[int]] = defaultdict(set)
-    family_divisions: dict[tuple[str, str, str], Division] = {}
-    family_cells: dict[tuple[str, str, str], dict[int, str]] = defaultdict(dict)
-    for division, stage, prefix, number, cell in raw_slots:
-        key = (division.code, stage, prefix)
+    family_numbers: dict[tuple[str, str, int, str], set[int]] = defaultdict(set)
+    family_divisions: dict[tuple[str, str, int, str], Division] = {}
+    family_cells: dict[tuple[str, str, int, str], dict[int, str]] = defaultdict(dict)
+    for division, stage, round_number, prefix, number, cell in raw_slots:
+        key = (division.code, stage, round_number, prefix)
         family_numbers[key].add(number)
         family_divisions[key] = division
         family_cells[key][number] = cell
@@ -799,15 +815,16 @@ def _parse_slot_definitions_from_sheet(
             family_divisions[key].sort_order,
             STAGE_ORDER[key[1]],
             key[2],
+            key[3],
         ),
     )
-    families: dict[tuple[str, str, str], ParsedFamily] = {}
+    families: dict[tuple[str, str, int, str], ParsedFamily] = {}
     groups: dict[tuple[str, str], ParsedGroup] = {}
     slots: dict[tuple[str, str], ParsedSlot] = {}
     group_totals: Counter[str] = Counter()
     for sort_order, key in enumerate(sorted_keys, start=1):
         division = family_divisions[key]
-        _division_code, stage, prefix = key
+        _division_code, stage, round_number, prefix = key
         numbers = family_numbers[key]
         slot_count = max(numbers)
         expected_numbers = set(range(1, slot_count + 1))
@@ -838,6 +855,7 @@ def _parse_slot_definitions_from_sheet(
             division_name=division.name,
             gender=division.gender,
             stage=stage,
+            round_number=round_number,
             prefix=prefix,
             slot_count=slot_count,
             sort_order=sort_order,
@@ -858,6 +876,7 @@ def _parse_slot_definitions_from_sheet(
                 division_name=division.name,
                 gender=division.gender,
                 stage=stage,
+                round_number=round_number,
                 prefix=prefix,
                 number=number,
                 code=code,
@@ -925,7 +944,7 @@ def _configured_slot_definitions(
     season: Season,
     issues: list[ParsedIssue],
 ) -> tuple[
-    dict[tuple[str, str, str], ParsedFamily],
+    dict[tuple[str, str, int, str], ParsedFamily],
     dict[tuple[str, str], ParsedGroup],
     dict[tuple[str, str], ParsedSlot],
 ]:
@@ -936,7 +955,7 @@ def _configured_slot_definitions(
     redefine divisions, stages, groups, or participant slots.
     """
 
-    families: dict[tuple[str, str, str], ParsedFamily] = {}
+    families: dict[tuple[str, str, int, str], ParsedFamily] = {}
     groups: dict[tuple[str, str], ParsedGroup] = {}
     slots: dict[tuple[str, str], ParsedSlot] = {}
     for configured in _slot_families(season):
@@ -947,6 +966,7 @@ def _configured_slot_definitions(
             division_name=division.name,
             gender=division.gender,
             stage=configured.stage,
+            round_number=configured.round_number,
             prefix=configured.prefix,
             slot_count=configured.slot_count,
             sort_order=configured.sort_order,
@@ -966,6 +986,7 @@ def _configured_slot_definitions(
                 division_name=division.name,
                 gender=division.gender,
                 stage=configured.stage,
+                round_number=configured.round_number,
                 prefix=configured.prefix,
                 number=number,
                 code=code,
@@ -1276,6 +1297,7 @@ def _parse_grid(
                 division_name=home.division_name,
                 group_code=home.group_code,
                 stage=home.stage,
+                round_number=home.round_number,
                 home_slot_code=home.code,
                 away_slot_code=away.code,
                 target_date=target_date,
@@ -1338,15 +1360,15 @@ def _validate_existing_matchups(
 
 def _validate_completeness(
     season: Season,
-    families: dict[tuple[str, str, str], ParsedFamily],
+    families: dict[tuple[str, str, int, str], ParsedFamily],
     slots: dict[tuple[str, str], ParsedSlot],
     games: dict[str, ParsedGame],
     issues: list[ParsedIssue],
 ) -> int:
-    pair_counts: dict[tuple[str, str, str], Counter[tuple[str, str]]] = defaultdict(Counter)
-    usage_counts: dict[tuple[str, str, str], Counter[str]] = defaultdict(Counter)
+    pair_counts: dict[tuple[str, str, int, str], Counter[tuple[str, str]]] = defaultdict(Counter)
+    usage_counts: dict[tuple[str, str, int, str], Counter[str]] = defaultdict(Counter)
     covered_matchups: set[
-        tuple[tuple[str, str, str], tuple[str, str]]
+        tuple[tuple[str, str, int, str], tuple[str, str]]
     ] = set()
 
     def add_game(division_code: str, stage: str, home: str, away: str) -> None:
@@ -1638,7 +1660,7 @@ def _build_summary(
             "group_code": item.group_code,
             "stage": item.stage,
             "stage_name": STAGE_LABEL_BY_VALUE[item.stage],
-            "round_number": 1,
+            "round_number": item.round_number,
             "home_slot_code": item.home_slot_code,
             "home_slot_label": item.home_slot_code,
             "away_slot_code": item.away_slot_code,
@@ -1985,7 +2007,7 @@ def _confirm_schedule_import(
                 ),
                 code=item.code,
                 stage=item.stage,
-                round_number=1,
+                round_number=item.round_number,
                 date=item.target_date,
                 period=periods[item.period_id],
                 start_time=time.fromisoformat(item.start_time),

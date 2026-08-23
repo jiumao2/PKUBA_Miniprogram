@@ -10,7 +10,7 @@ from ninja import NinjaAPI, Router, Schema, Status
 
 from .api_admin import router as admin_router
 from .api_admin_advanced_data import router as admin_advanced_data_router
-from .api_admin_brackets import router as admin_brackets_router
+from .api_admin_archives import router as admin_archives_router
 from .api_admin_draw import router as admin_draw_router
 from .api_admin_lifecycle import router as admin_lifecycle_router
 from .api_admin_reschedule import router as admin_reschedule_router
@@ -53,7 +53,6 @@ class DivisionOut(Schema):
     code: str
     name: str
     gender: str
-    operation_status: str
     version: int
 
 
@@ -173,6 +172,7 @@ class BracketGameOut(Schema):
     start_time: str
     venue_name: str
     stage: str
+    round_number: int
     home_team_id: UUID | None
     away_team_id: UUID | None
     home_name: str
@@ -181,13 +181,18 @@ class BracketGameOut(Schema):
     away_score: int | None
     winner_team_id: UUID | None
     winner_name: str | None
-    source_game_ids: list[UUID]
+    home_review_required: bool
+    away_review_required: bool
+    review_required: bool
     status: str
 
 
 class BracketRoundOut(Schema):
+    key: str
     stage: str
+    round_number: int
     label: str
+    review_required: bool
     games: list[BracketGameOut]
 
 
@@ -196,10 +201,10 @@ class DivisionBracketOut(Schema):
     code: str
     name: str
     gender: str
-    relation_mode: str
     rounds: list[BracketRoundOut]
     placement_games: list[BracketGameOut]
     champion_name: str | None
+    champion_review_required: bool
 
 
 class BracketsOut(Schema):
@@ -209,12 +214,16 @@ class BracketsOut(Schema):
 
 
 def current_public_season() -> Season | None:
-    return Season.objects.filter(is_public=True).prefetch_related("divisions").first()
+    return (
+        Season.objects.filter(status=Season.Status.PUBLISHED)
+        .prefetch_related("divisions")
+        .first()
+    )
 
 
 def public_games() -> QuerySet[Game]:
     return (
-        Game.objects.filter(season__is_public=True)
+        Game.objects.filter(season__status=Season.Status.PUBLISHED)
         .exclude(status=Game.Status.VOID)
         .select_related(
             "division",
@@ -288,7 +297,6 @@ def get_current_season(request: HttpRequest):
                 "code": division.code,
                 "name": division.name,
                 "gender": division.gender,
-                "operation_status": division.operation_status,
                 "version": division.version,
             }
             for division in season.divisions.all()
@@ -462,9 +470,9 @@ api.add_router("/public", public)
 api.add_router("/public", public_stats_router)
 api.add_router("/auth", auth_router)
 api.add_router("/admin", admin_router)
+api.add_router("/admin", admin_archives_router)
 api.add_router("/admin", admin_draw_router)
 api.add_router("/admin", admin_lifecycle_router)
-api.add_router("/admin", admin_brackets_router)
 api.add_router("/admin", admin_advanced_data_router)
 api.add_router("/admin", admin_reschedule_router)
 api.add_router("/admin/schedule", admin_schedule_router)

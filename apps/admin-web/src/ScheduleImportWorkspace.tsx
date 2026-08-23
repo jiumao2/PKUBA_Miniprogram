@@ -31,8 +31,7 @@ const nextGridKey = () => `grid-column-new-${++localGridKey}`;
 
 const statusLabels: Record<string, string> = {
   SETUP: "准备中",
-  PRE_DRAW_PUBLIC: "抽签前公开",
-  ACTIVE: "进行中",
+  PUBLISHED: "已公开",
   ARCHIVED: "已归档",
 };
 

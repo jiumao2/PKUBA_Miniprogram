@@ -27,8 +27,7 @@ def _setup():
         name="榜单赛季",
         competition_type=Season.CompetitionType.PKU_CUP,
         year=today.year,
-        status=Season.Status.ACTIVE,
-        is_public=True,
+        status=Season.Status.PUBLISHED,
         starts_on=today - timedelta(days=10),
         ends_on=today + timedelta(days=10),
     )

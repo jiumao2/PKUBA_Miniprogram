@@ -16,8 +16,8 @@ def test_offseason_returns_explicit_404():
     assert response.json()["code"] == "NO_PUBLIC_SEASON"
 
 
-def test_pre_draw_schedule_exposes_placeholders():
-    target_season = season(status=Season.Status.PRE_DRAW_PUBLIC)
+def test_published_schedule_exposes_placeholders():
+    target_season = season(status=Season.Status.PUBLISHED)
     game = placeholder_game(target_season)
 
     response = Client().get("/api/v1/public/games")

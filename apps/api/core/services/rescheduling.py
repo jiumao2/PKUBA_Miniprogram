@@ -226,12 +226,10 @@ def available_reschedule_targets(
         ).get(id=game_id)
     except Game.DoesNotExist:
         _raise("GAME_NOT_FOUND", "比赛不存在。")
-    if game.season.status != game.season.Status.ACTIVE:
-        _raise("SEASON_NOT_ACTIVE", "只有正式进行中的赛季可以申请调赛。")
-    if game.division.operation_status != game.division.OperationStatus.ACTIVE:
-        _raise("DIVISION_NOT_ACTIVE", "当前组别尚未正式上线，不能申请调赛。")
+    if game.season.status != game.season.Status.PUBLISHED:
+        _raise("SEASON_NOT_PUBLISHED", "只有已公开赛季可以申请调赛。")
     if not game.home_team_id or not game.away_team_id:
-        _raise("DRAW_NOT_RESOLVED", "签位尚未解析，不能申请调赛。")
+        _raise("GAME_PARTICIPANTS_UNRESOLVED", "比赛双方尚未完成签位映射，不能申请调赛。")
     if game.status != Game.Status.SCHEDULED:
         _raise("GAME_NOT_SCHEDULED", "只有未开始的比赛可以申请调赛。")
     if not game.leader_adjustable:
@@ -371,12 +369,10 @@ def submit_reschedule(
 
     if game.version != expected_game_version:
         _raise("VERSION_CONFLICT", "赛程已被其他操作更新，请刷新后重试。")
-    if game.season.status != game.season.Status.ACTIVE:
-        _raise("SEASON_NOT_ACTIVE", "只有正式进行中的赛季可以申请调赛。")
-    if game.division.operation_status != game.division.OperationStatus.ACTIVE:
-        _raise("DIVISION_NOT_ACTIVE", "当前组别尚未正式上线，不能申请调赛。")
+    if game.season.status != game.season.Status.PUBLISHED:
+        _raise("SEASON_NOT_PUBLISHED", "只有已公开赛季可以申请调赛。")
     if not game.home_team_id or not game.away_team_id:
-        _raise("DRAW_NOT_RESOLVED", "签位尚未解析，不能申请调赛。")
+        _raise("GAME_PARTICIPANTS_UNRESOLVED", "比赛双方尚未完成签位映射，不能申请调赛。")
     if game.status != Game.Status.SCHEDULED:
         _raise("GAME_NOT_SCHEDULED", "只有未开始的比赛可以申请调赛。")
     if not game.leader_adjustable:

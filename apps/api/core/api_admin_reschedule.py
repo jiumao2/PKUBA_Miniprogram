@@ -105,7 +105,7 @@ class AdminRescheduleActionIn(Schema):
 
 
 def _public_season() -> Season | None:
-    return Season.objects.filter(is_public=True).first()
+    return Season.objects.filter(status=Season.Status.PUBLISHED).first()
 
 
 def _resource_out(item: RescheduleRequest) -> dict[str, object]:

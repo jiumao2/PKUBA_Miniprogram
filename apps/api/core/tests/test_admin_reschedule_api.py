@@ -20,8 +20,6 @@ pytestmark = pytest.mark.django_db
 
 
 def _cross_week_request(setup):
-    setup["season"].is_public = True
-    setup["season"].save(update_fields=["is_public", "updated_at"])
     for slot, team in zip(
         setup["group"].participant_slots.order_by("code"),
         setup["teams"],

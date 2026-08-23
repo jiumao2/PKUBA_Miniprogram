@@ -67,7 +67,9 @@ export default function GameMediaPage() {
   });
 
   const allUrls = useMemo(
-    () => collection?.assets.map((asset) => absoluteMediaUrl(asset.content_url)) ?? [],
+    () => collection?.assets
+      .filter((asset) => asset.storage_status === "ONLINE" && asset.content_url)
+      .map((asset) => absoluteMediaUrl(asset.content_url)) ?? [],
     [collection],
   );
 
@@ -251,6 +253,7 @@ export default function GameMediaPage() {
                           canReplace={collection.can_review}
                           key={asset.id}
                           onPreview={() => {
+                            if (asset.storage_status !== "ONLINE" || !asset.content_url) return;
                             const current = absoluteMediaUrl(asset.content_url);
                             void Taro.previewImage({ current, urls: allUrls });
                           }}
@@ -281,21 +284,28 @@ function MediaAsset({
   onPreview: () => void;
   onReplace: () => void;
 }) {
+  const online = asset.storage_status === "ONLINE" && Boolean(asset.content_url);
   return (
     <View className="media-asset">
-      <View className="media-preview" onClick={onPreview}>
-        <Image className="media-image" src={absoluteMediaUrl(asset.content_url)} mode="aspectFill" />
+      <View className={`media-preview ${online ? "" : "is-offline"}`} onClick={onPreview}>
+        {online ? (
+          <Image className="media-image" src={absoluteMediaUrl(asset.content_url)} mode="aspectFill" />
+        ) : (
+          <View className="media-offline-placeholder">
+            <Text>照片已归档至线下备份</Text>
+          </View>
+        )}
         <View className="media-asset-meta">
           <Text className="media-kind">{mediaKindLabel(asset.kind)}</Text>
           <Text className={`media-status status-${asset.review_status.toLowerCase()}`}>
             {reviewLabel(asset.review_status)}
           </Text>
         </View>
-        <Text className="media-preview-label">查看原图</Text>
+        <Text className="media-preview-label">{online ? "查看原图" : "服务器已释放原文件"}</Text>
         <Text className="media-dimensions">{asset.width}×{asset.height}</Text>
         {asset.review_note && <Text className="media-review-note">{asset.review_note}</Text>}
       </View>
-      {canReplace && (
+      {canReplace && online && (
         <Button className="media-replace" onClick={onReplace}>重新上传</Button>
       )}
     </View>

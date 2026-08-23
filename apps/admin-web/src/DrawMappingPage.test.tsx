@@ -6,6 +6,7 @@ import type {
   AdminSeason,
   DrawAssignmentDataset,
   DrawAssignmentPreview,
+  DrawGameAssignmentPreview,
   createAdminClient,
 } from "@pkuba/api-client";
 import { DrawMappingPage } from "./DrawMappingPage";
@@ -27,7 +28,6 @@ const season: AdminSeason = {
       code: "men-a",
       name: "男甲",
       gender: "MEN",
-      operation_status: "SETUP",
       version: 1,
     },
   ],
@@ -60,7 +60,6 @@ const dataset: DrawAssignmentDataset = {
       name: "男甲",
       gender: "MEN",
       sort_order: 1,
-      operation_status: "SETUP",
       version: 1,
       slot_count: 4,
       active_team_count: 4,
@@ -103,6 +102,7 @@ const dataset: DrawAssignmentDataset = {
           })),
         },
       ],
+      phases: [],
     },
   ],
 };
@@ -131,6 +131,99 @@ const preview: DrawAssignmentPreview = {
   blockers: [],
 };
 
+const gamePreview: DrawGameAssignmentPreview = {
+  season_id: season.id,
+  season_version: 4,
+  game_id: "70000000-0000-0000-0000-000000000001",
+  game_version: 1,
+  division_id: season.divisions[0].id,
+  stage: "KNOCKOUT",
+  round_number: 2,
+  home_team_id: teamIds[2],
+  home_team_name: "球队3",
+  away_team_id: teamIds[1],
+  away_team_name: "球队2",
+  participant_changed: true,
+  public_impact: true,
+  warnings: [
+    {
+      code: "TEAM_NOT_CONFIRMED_PREVIOUS_WINNER",
+      message: "球队3 不是紧邻上一轮当前已确认的胜队；保存需要再次确认。",
+      side: "HOME",
+      team_id: teamIds[2],
+      team_name: "球队3",
+    },
+  ],
+  blockers: [],
+  requires_override: true,
+  can_apply: true,
+  references: {},
+  impact_hash: "game-impact-hash",
+};
+
+const knockoutDataset: DrawAssignmentDataset = {
+  ...dataset,
+  season_status: "PUBLISHED",
+  divisions: [
+    {
+      ...dataset.divisions[0],
+      phases: [
+        {
+          key: "KNOCKOUT:2",
+          stage: "KNOCKOUT",
+          round_number: 2,
+          label: "淘汰赛第 2 轮",
+          previous_phase_key: "KNOCKOUT:1",
+          previous_winner_ids: [teamIds[0], teamIds[1]],
+          previous_results_complete: true,
+          games: [
+            {
+              id: gamePreview.game_id,
+              code: "KO2-1",
+              stage: "KNOCKOUT",
+              round_number: 2,
+              date: "2027-05-01",
+              start_time: "18:30",
+              venue_name: "邱德拔体育馆",
+              home_slot_id: "71000000-0000-0000-0000-000000000001",
+              home_slot_code: "K3",
+              home_slot_label: "淘汰赛第二轮主方",
+              away_slot_id: "71000000-0000-0000-0000-000000000002",
+              away_slot_code: "K4",
+              away_slot_label: "淘汰赛第二轮客方",
+              home_team_id: null,
+              home_team_name: null,
+              away_team_id: null,
+              away_team_name: null,
+              home_validation: {
+                mode: "UNASSIGNED",
+                source_game_id: null,
+                source_game_version: null,
+                source_version_stale: false,
+                review_required: false,
+                status: "UNASSIGNED",
+              },
+              away_validation: {
+                mode: "UNASSIGNED",
+                source_game_id: null,
+                source_game_version: null,
+                source_version_stale: false,
+                review_required: false,
+                status: "UNASSIGNED",
+              },
+              review_required: false,
+              status: "SCHEDULED",
+              home_score: null,
+              away_score: null,
+              version: 1,
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
 function clientWith(
   currentDataset: DrawAssignmentDataset = dataset,
   overrides: Partial<Record<keyof AdminClient, unknown>> = {},
@@ -139,6 +232,8 @@ function clientWith(
     getDrawAssignments: vi.fn().mockResolvedValue(currentDataset),
     previewDrawAssignments: vi.fn().mockResolvedValue(preview),
     updateDrawAssignments: vi.fn().mockResolvedValue(currentDataset),
+    previewGameDrawAssignments: vi.fn().mockResolvedValue(gamePreview),
+    updateGameDrawAssignments: vi.fn().mockResolvedValue(currentDataset),
     ...overrides,
   } as unknown as AdminClient;
 }
@@ -183,9 +278,9 @@ describe("DrawMappingPage", () => {
       screen.getByRole("combobox", { name: "M-B-2 对应球队" }),
       teamIds[3],
     );
-    await user.click(screen.getByRole("button", { name: "检查并保存" }));
+    await user.click(screen.getByRole("button", { name: "预览整组影响" }));
 
-    expect(await screen.findByText("男甲抽签影响")).toBeTruthy();
+    expect(await screen.findByText("4 个签位将变更")).toBeTruthy();
     expect(client.previewDrawAssignments).toHaveBeenCalledWith(season.id, {
       expected_season_version: 4,
       division_id: season.divisions[0].id,
@@ -195,7 +290,7 @@ describe("DrawMappingPage", () => {
       })),
     });
 
-    await user.click(screen.getByRole("button", { name: "确认写入抽签结果" }));
+    await user.click(screen.getByRole("button", { name: "确认整组保存" }));
     await waitFor(() =>
       expect(client.updateDrawAssignments).toHaveBeenCalledWith(
         season.id,
@@ -213,7 +308,7 @@ describe("DrawMappingPage", () => {
 
     expect(await screen.findByText("球队数与签位数不一致")).toBeTruthy();
     expect(
-      (screen.getByRole("button", { name: "检查并保存" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "预览整组影响" }) as HTMLButtonElement).disabled,
     ).toBe(true);
   });
 
@@ -231,5 +326,44 @@ describe("DrawMappingPage", () => {
       (screen.getByRole("combobox", { name: "M-A-1 对应球队" }) as HTMLSelectElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("requires an explicit warning override before saving a later knockout round", async () => {
+    const client = clientWith(knockoutDataset, {
+      updateGameDrawAssignments: vi.fn().mockResolvedValue(knockoutDataset),
+    });
+    const user = userEvent.setup();
+    renderPage(client, knockoutDataset);
+
+    await user.click(await screen.findByRole("button", { name: /淘汰赛第 2 轮/ }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "KO2-1 主方球队" }),
+      teamIds[2],
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "KO2-1 客方球队" }),
+      teamIds[1],
+    );
+    await user.click(screen.getByRole("button", { name: "逐场预览" }));
+
+    const save = await screen.findByRole("button", { name: "确认越级并保存" });
+    expect(save).toBeDisabled();
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "我确认越过上一轮胜队校验，并按当前球队保存",
+      }),
+    );
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(client.updateGameDrawAssignments).toHaveBeenCalledWith(
+        season.id,
+        gamePreview.game_id,
+        expect.objectContaining({
+          override_warnings: true,
+          impact_hash: "game-impact-hash",
+        }),
+      ),
+    );
   });
 });

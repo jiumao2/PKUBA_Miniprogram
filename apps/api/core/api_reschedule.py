@@ -298,7 +298,7 @@ def _request_out(request_item: RescheduleRequest, actor: Account) -> dict[str, o
 
 
 def _visible_requests(actor: Account) -> QuerySet[RescheduleRequest]:
-    season = Season.objects.filter(is_public=True).first()
+    season = Season.objects.filter(status=Season.Status.PUBLISHED).first()
     if season is None:
         return _request_queryset().none()
     requests = _request_queryset().filter(game__season=season)
@@ -340,9 +340,9 @@ def list_requests(
 
 @router.get("/eligible-games", response=list[RescheduleGameOut])
 def eligible_games(request: HttpRequest):
-    season = Season.objects.filter(is_public=True).first()
+    season = Season.objects.filter(status=Season.Status.PUBLISHED).first()
     binding = _binding(request.auth, season)
-    if season is None or binding is None or season.status != Season.Status.ACTIVE:
+    if season is None or binding is None:
         return []
     now = timezone.now()
     games = (

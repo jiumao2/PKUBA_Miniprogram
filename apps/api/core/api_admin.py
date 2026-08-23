@@ -304,7 +304,6 @@ class AdminDivisionOut(Schema):
     code: str
     name: str
     gender: str
-    operation_status: str
     version: int
 
 
@@ -326,7 +325,6 @@ class SeasonDivisionConfigurationOut(Schema):
     name: str
     gender: str
     sort_order: int
-    operation_status: str
     version: int
     team_count: int
     group_count: int
@@ -361,6 +359,7 @@ class ScheduleSlotFamilyOut(Schema):
     gender: str
     stage: str
     stage_name: str
+    round_number: int
     prefix: str
     slot_count: int
     sort_order: int
@@ -489,6 +488,7 @@ class ScheduleSlotFamilyIn(Schema):
     id: UUID | None = None
     division_id: UUID
     stage: str
+    round_number: int = 1
     prefix: str
     slot_count: int
     sort_order: int
@@ -603,7 +603,6 @@ def _serialize_season(season: Season) -> dict[str, object]:
                 "code": division.code,
                 "name": division.name,
                 "gender": division.gender,
-                "operation_status": division.operation_status,
                 "version": division.version,
             }
             for division in season.divisions.all()

@@ -209,16 +209,16 @@ def import_legacy_2026(source: Path) -> dict[str, object]:
     report = inspect_legacy_2026(source)
     venue_assignment = report.pop("venue_assignments")
     starts = [_legacy_datetime(row) for row in game_rows]
-    Season.objects.filter(is_public=True).exclude(
+    Season.objects.filter(status=Season.Status.PUBLISHED).exclude(
         id=_stable_uuid("season", "2026-pku-cup-preview")
-    ).update(status=Season.Status.ARCHIVED, is_public=False)
+    ).update(status=Season.Status.ARCHIVED)
     season, _ = Season.objects.update_or_create(
         id=_stable_uuid("season", "2026-pku-cup-preview"),
         defaults={
             "name": str(metadata["GAME_NAME"]),
             "competition_type": Season.CompetitionType.PKU_CUP,
             "year": 2026,
-            "status": Season.Status.ACTIVE,
+            "status": Season.Status.PUBLISHED,
             "starts_on": min(value.date() for value in starts),
             "ends_on": max(value.date() for value in starts),
         },

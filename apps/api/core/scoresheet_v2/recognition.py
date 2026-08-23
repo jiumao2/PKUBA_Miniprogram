@@ -41,6 +41,11 @@ from .models import (
 )
 
 PROMPT_VERSION = "scoresheet-2026-08-20-v24-cn"
+QWEN_DATA_URI_MAX_BYTES = 20_000_000
+QWEN_WEBP_MAX_LONG_EDGE = 3840
+QWEN_WEBP_MAX_SHORT_EDGE = 2160
+JPEG_MIN_QUALITY = 1
+JPEG_MAX_QUALITY = 95
 
 SYSTEM_PROMPT = """【任务与输出边界】
 你是FIBA 2024纸质手写篮球记录表转录器，严格输出符合给定JSON Schema的JSON。只输出实际填写的球员行和事件，空白行不要输出。无法可靠转录
@@ -233,6 +238,10 @@ class RecognitionContext:
 
 class RecognitionProviderError(ValueError):
     """A malformed provider payload that is safe to surface as a schema failure."""
+
+
+class RecognitionImageError(ValueError):
+    """An image that cannot be prepared without violating the provider contract."""
 
 
 def normalize_provider_payload(payload: Any) -> dict[str, Any]:
@@ -617,43 +626,134 @@ def build_user_prompt(prior: GamePriorSnapshot, profile: RuleProfileId) -> str:
     )
 
 
-def prepare_image(raw: bytes, max_pixels: int) -> tuple[bytes, str, str]:
-    with Image.open(io.BytesIO(raw)) as opened:
+def _data_url_size(payload_size: int, mime_type: str) -> int:
+    prefix_size = len(f"data:{mime_type};base64,")
+    return prefix_size + 4 * ((payload_size + 2) // 3)
+
+
+def _make_data_url(payload: bytes, mime_type: str) -> str:
+    return f"data:{mime_type};base64," + base64.b64encode(payload).decode("ascii")
+
+
+def _flatten_to_rgb(image: Image.Image) -> Image.Image:
+    if image.mode in {"RGBA", "LA"} or "transparency" in image.info:
+        rgba = image.convert("RGBA")
+        flattened = Image.new("RGB", rgba.size, "white")
+        flattened.paste(rgba, mask=rgba.getchannel("A"))
+        rgba.close()
+        return flattened
+    return image.convert("RGB")
+
+
+def _encode_jpeg(image: Image.Image, quality: int) -> bytes:
+    output = io.BytesIO()
+    image.save(
+        output,
+        format="JPEG",
+        quality=quality,
+        subsampling=0,
+        optimize=True,
+    )
+    return output.getvalue()
+
+
+def _fit_jpeg_to_data_url(
+    image: Image.Image,
+    max_data_uri_bytes: int,
+) -> tuple[bytes, str]:
+    rgb = _flatten_to_rgb(image)
+    try:
+        payload = _encode_jpeg(rgb, JPEG_MAX_QUALITY)
+        if _data_url_size(len(payload), "image/jpeg") <= max_data_uri_bytes:
+            return payload, _make_data_url(payload, "image/jpeg")
+
+        best_payload: bytes | None = None
+        low = JPEG_MIN_QUALITY
+        high = JPEG_MAX_QUALITY - 1
+        while low <= high:
+            quality = (low + high) // 2
+            candidate = _encode_jpeg(rgb, quality)
+            if _data_url_size(len(candidate), "image/jpeg") <= max_data_uri_bytes:
+                best_payload = candidate
+                low = quality + 1
+            else:
+                high = quality - 1
+        if best_payload is None:
+            raise RecognitionImageError(
+                "图片在不缩小分辨率的条件下无法满足 Qwen 20 MB Base64 Data URI 限制。"
+            )
+        return best_payload, _make_data_url(best_payload, "image/jpeg")
+    finally:
+        rgb.close()
+
+
+def _webp_exceeds_direct_resolution(width: int, height: int) -> bool:
+    long_edge, short_edge = sorted((width, height), reverse=True)
+    return long_edge > QWEN_WEBP_MAX_LONG_EDGE or short_edge > QWEN_WEBP_MAX_SHORT_EDGE
+
+
+def prepare_image(
+    path: Path,
+    upscale_target_pixels: int,
+    *,
+    max_data_uri_bytes: int = QWEN_DATA_URI_MAX_BYTES,
+) -> tuple[bytes, str, str]:
+    with Image.open(path) as opened:
+        image_format = (opened.format or "").upper()
+        orientation = opened.getexif().get(274, 1)
+        width, height = opened.size
+        pixel_count = width * height
+        needs_upscale = pixel_count < upscale_target_pixels
+        webp_requires_jpeg = image_format == "WEBP" and _webp_exceeds_direct_resolution(
+            width, height
+        )
+        mime_type = {
+            "JPEG": "image/jpeg",
+            "PNG": "image/png",
+            "WEBP": "image/webp",
+        }.get(image_format)
+
+        if (
+            mime_type is not None
+            and orientation in (0, 1)
+            and not needs_upscale
+            and not webp_requires_jpeg
+            and _data_url_size(path.stat().st_size, mime_type) <= max_data_uri_bytes
+        ):
+            payload = path.read_bytes()
+            if _data_url_size(len(payload), mime_type) <= max_data_uri_bytes:
+                digest = hashlib.sha256(payload).hexdigest()
+                return payload, _make_data_url(payload, mime_type), digest
+
         image = ImageOps.exif_transpose(opened)
         image.load()
-        pixel_count = image.width * image.height
-        if pixel_count != max_pixels:
-            target_scale = math.sqrt(max_pixels / pixel_count)
-            scale = min(target_scale, 2.0) if target_scale > 1 else target_scale
-            image = image.resize(
-                (
-                    max(1, math.floor(image.width * scale)),
-                    max(1, math.floor(image.height * scale)),
-                ),
+        if needs_upscale:
+            target_scale = math.sqrt(upscale_target_pixels / pixel_count)
+            scale = min(target_scale, 2.0)
+            resized = image.resize(
+                (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
                 Image.Resampling.LANCZOS,
             )
-        output = io.BytesIO()
-        image.convert("RGB").save(
-            output,
-            format="JPEG",
-            quality=95,
-            subsampling=0,
-            optimize=True,
-        )
-    payload = output.getvalue()
-    digest = hashlib.sha256(payload).hexdigest()
-    return payload, "data:image/jpeg;base64," + base64.b64encode(payload).decode("ascii"), digest
+            if resized is not image:
+                image.close()
+            image = resized
+        try:
+            payload, data_url = _fit_jpeg_to_data_url(image, max_data_uri_bytes)
+            digest = hashlib.sha256(payload).hexdigest()
+            return payload, data_url, digest
+        finally:
+            image.close()
 
 
 def build_context(
     prior: GamePriorSnapshot,
-    raw_image: bytes,
+    image_path: Path,
     rule_profiles_path: Path,
-    max_pixels: int,
+    upscale_target_pixels: int,
 ) -> RecognitionContext:
     payload_model = build_payload_model(prior, RuleProfileId.FIBA_2024, rule_profiles_path)
     schema = payload_model.model_json_schema()
-    image_bytes, data_url, image_sha256 = prepare_image(raw_image, max_pixels)
+    image_bytes, data_url, image_sha256 = prepare_image(image_path, upscale_target_pixels)
     return RecognitionContext(
         payload_model=payload_model,
         system_prompt=SYSTEM_PROMPT,

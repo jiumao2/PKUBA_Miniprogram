@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
+import tempfile
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.files.uploadedfile import SimpleUploadedFile, TemporaryUploadedFile
 from django.test import Client, override_settings
 from PIL import Image
 
 from core.models import Account, AdminAuditLog, ApiIdempotencyRecord, GameMediaAsset
+from core.services.game_media import GameMediaError, replace_game_media, upload_game_media
 from core.services.wechat import issue_session
 from core.tests.factories import reschedule_setup
 
@@ -20,6 +24,25 @@ def image_file(name: str, size: tuple[int, int]) -> SimpleUploadedFile:
     content = io.BytesIO()
     Image.new("RGB", size, color=(245, 244, 240)).save(content, format="JPEG", quality=90)
     return SimpleUploadedFile(name, content.getvalue(), content_type="image/jpeg")
+
+
+def image_file_larger_than_old_limit(name: str) -> TemporaryUploadedFile:
+    prefix = io.BytesIO()
+    Image.new("RGB", (64, 64), color=(245, 244, 240)).save(
+        prefix,
+        format="JPEG",
+        quality=90,
+    )
+    uploaded = TemporaryUploadedFile(name, "image/jpeg", 0, None)
+    uploaded.write(prefix.getvalue())
+    target_size = 20 * 1024 * 1024 + 1
+    padding = b"\0" * (1024 * 1024)
+    while uploaded.tell() < target_size:
+        remaining = target_size - uploaded.tell()
+        uploaded.write(padding[:remaining])
+    uploaded.size = uploaded.tell()
+    uploaded.seek(0)
+    return uploaded
 
 
 def upload(
@@ -388,3 +411,224 @@ def test_plain_account_cannot_view_game_media():
         HTTP_AUTHORIZATION=f"Bearer {token}",
     )
     assert response.status_code == 403
+
+
+def test_purged_media_is_serialized_without_content_url_and_returns_410(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["superadmin"])
+    client = Client()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        created = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("archived-photo.jpg", (900, 700)),
+        )
+        asset = GameMediaAsset.objects.get(id=created.json()["id"])
+        original_ticket_url = created.json()["content_url"]
+        asset.storage_status = GameMediaAsset.StorageStatus.PURGED
+        asset.save(update_fields=["storage_status", "updated_at"])
+
+        client.force_login(setup["superadmin"])
+        listed = client.get("/api/v1/admin/game-media/")
+        content = client.get(original_ticket_url)
+
+    assert listed.status_code == 200
+    serialized = next(item for item in listed.json()["items"] if item["id"] == str(asset.id))
+    assert serialized["storage_status"] == GameMediaAsset.StorageStatus.PURGED
+    assert serialized["content_url"] == ""
+    assert content.status_code == 410
+    assert content.json()["code"] == "MEDIA_PURGED"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        GameMediaAsset.Kind.SCORESHEET,
+        GameMediaAsset.Kind.GROUP_PHOTO,
+        GameMediaAsset.Kind.GAME_PHOTO,
+    ],
+)
+def test_all_media_kinds_stream_past_old_twenty_mib_limit(tmp_path, kind: str):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    uploaded = image_file_larger_than_old_limit(f"large-{kind.lower()}.jpg")
+    expected_size = uploaded.size
+    expected_sha256 = hashlib.file_digest(uploaded.file, "sha256").hexdigest()
+    uploaded.seek(0)
+
+    try:
+        with override_settings(MEDIA_ROOT=tmp_path):
+            asset = upload_game_media(
+                actor=setup["superadmin"],
+                game=game,
+                kind=kind,
+                scoresheet_complete_confirmed=kind == GameMediaAsset.Kind.SCORESHEET,
+                uploaded_file=uploaded,
+            )
+    finally:
+        uploaded.close()
+
+    stored_path = tmp_path / asset.file_key
+    assert asset.byte_size == expected_size
+    assert asset.byte_size > 20 * 1024 * 1024
+    assert asset.file_sha256 == expected_sha256
+    assert stored_path.stat().st_size == expected_size
+    with stored_path.open("rb") as stored:
+        assert hashlib.file_digest(stored, "sha256").hexdigest() == expected_sha256
+
+    replacement_upload = image_file_larger_than_old_limit(
+        f"large-replacement-{kind.lower()}.jpg"
+    )
+    replacement_size = replacement_upload.size
+    replacement_upload.seek(0)
+    try:
+        with override_settings(MEDIA_ROOT=tmp_path):
+            replacement = replace_game_media(
+                actor=setup["superadmin"],
+                asset_id=asset.id,
+                expected_version=asset.version,
+                scoresheet_complete_confirmed=kind == GameMediaAsset.Kind.SCORESHEET,
+                uploaded_file=replacement_upload,
+            )
+    finally:
+        replacement_upload.close()
+
+    asset.refresh_from_db()
+    assert asset.deleted_at is not None
+    assert replacement.byte_size == replacement_size
+    assert replacement.byte_size > 20 * 1024 * 1024
+    assert (tmp_path / replacement.file_key).stat().st_size == replacement_size
+
+
+def test_http_upload_accepts_file_past_old_twenty_mib_limit(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["superadmin"])
+    uploaded = image_file_larger_than_old_limit("large-http-upload.jpg")
+    expected_size = uploaded.size
+
+    try:
+        with override_settings(MEDIA_ROOT=tmp_path):
+            response = upload(
+                Client(),
+                game.id,
+                token,
+                kind=GameMediaAsset.Kind.GAME_PHOTO,
+                confirmed=False,
+                file=uploaded,
+            )
+    finally:
+        uploaded.close()
+
+    assert response.status_code == 201
+    assert response.json()["byte_size"] == expected_size
+    assert GameMediaAsset.objects.get(id=response.json()["id"]).byte_size == expected_size
+
+
+def test_image_over_forty_megapixels_uses_pillow_default_safety_threshold(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    content = io.BytesIO()
+    Image.new("1", (6_400, 6_400), 1).save(content, format="PNG")
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        asset = upload_game_media(
+            actor=setup["superadmin"],
+            game=game,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            scoresheet_complete_confirmed=False,
+            uploaded_file=SimpleUploadedFile(
+                "forty-megapixels.png",
+                content.getvalue(),
+                content_type="image/png",
+            ),
+        )
+
+    assert asset.width == 6_400
+    assert asset.height == 6_400
+    assert asset.width * asset.height > 40_000_000
+
+
+def test_pillow_decompression_warning_is_a_413_safety_error(tmp_path, monkeypatch):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["superadmin"])
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        response = upload(
+            Client(),
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("bomb-warning.jpg", (15, 10)),
+        )
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "IMAGE_DECOMPRESSION_BOMB"
+    assert not GameMediaAsset.objects.filter(game=game).exists()
+
+
+def test_invalid_upload_and_storage_failure_clean_staging_files(
+    tmp_path,
+    monkeypatch,
+):
+    from core.services import game_media as media_service
+
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    created_paths: list[Path] = []
+    real_named_temporary_file = tempfile.NamedTemporaryFile
+
+    def tracked_temporary_file(*args, **kwargs):
+        kwargs["dir"] = staging_dir
+        temporary = real_named_temporary_file(*args, **kwargs)
+        created_paths.append(Path(temporary.name))
+        return temporary
+
+    monkeypatch.setattr(media_service.tempfile, "NamedTemporaryFile", tracked_temporary_file)
+    with pytest.raises(GameMediaError, match="可安全读取"):
+        upload_game_media(
+            actor=setup["superadmin"],
+            game=game,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            scoresheet_complete_confirmed=False,
+            uploaded_file=SimpleUploadedFile(
+                "invalid.jpg",
+                b"not-an-image",
+                content_type="image/jpeg",
+            ),
+        )
+    assert created_paths
+    assert all(not path.exists() for path in created_paths)
+
+    partial_paths: list[Path] = []
+
+    def fail_storage(name, content):
+        partial_path = Path(media_service.default_storage.path(name))
+        partial_path.parent.mkdir(parents=True, exist_ok=True)
+        partial_path.write_bytes(content.read(32))
+        partial_paths.append(partial_path)
+        raise OSError("storage unavailable")
+
+    with override_settings(MEDIA_ROOT=tmp_path / "media"):
+        monkeypatch.setattr(media_service.default_storage, "save", fail_storage)
+        with pytest.raises(OSError, match="storage unavailable"):
+            upload_game_media(
+                actor=setup["superadmin"],
+                game=game,
+                kind=GameMediaAsset.Kind.GAME_PHOTO,
+                scoresheet_complete_confirmed=False,
+                uploaded_file=image_file("storage-failure.jpg", (40, 30)),
+            )
+    assert partial_paths
+    assert all(not path.exists() for path in partial_paths)
+    assert all(not path.exists() for path in created_paths)

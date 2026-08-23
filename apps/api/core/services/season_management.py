@@ -213,7 +213,7 @@ def _normalize_configuration(payload: dict) -> dict:
         UUID(str(row["id"])): row for row in divisions if row.get("id")
     }
     slot_families = []
-    prefix_owners: dict[tuple[str, str], tuple[UUID, str]] = {}
+    prefix_owners: dict[tuple[str, str], tuple[UUID, str, int]] = {}
     family_orders: set[int] = set()
     for order, raw in enumerate(payload.get("slot_families", []), start=1):
         try:
@@ -230,6 +230,17 @@ def _normalize_configuration(payload: dict) -> dict:
         stage = str(raw["stage"])
         if stage not in Game.Stage.values:
             raise SeasonManagementError("INVALID_STAGE", "签位方案比赛阶段无效。")
+        round_number = int(raw.get("round_number", 1))
+        if round_number < 1:
+            raise SeasonManagementError("INVALID_ROUND_NUMBER", "签位方案轮次必须大于等于 1。")
+        if (
+            stage in {Game.Stage.SEMIFINAL, Game.Stage.FINAL, Game.Stage.RELEGATION}
+            and round_number != 1
+        ):
+            raise SeasonManagementError(
+                "INVALID_ROUND_NUMBER",
+                "半决赛、决赛和保级赛的轮次固定为 1。",
+            )
         prefix = str(raw["prefix"]).strip()
         if not re.fullmatch(r"[A-Za-z]", prefix):
             raise SeasonManagementError(
@@ -254,17 +265,18 @@ def _normalize_configuration(payload: dict) -> dict:
         family_orders.add(sort_order)
         namespace_key = (division["gender"], prefix)
         owner = prefix_owners.get(namespace_key)
-        if owner is not None and owner != (division_id, stage):
+        if owner is not None and owner != (division_id, stage, round_number):
             raise SeasonManagementError(
                 "DUPLICATE_GENDER_PREFIX",
                 f"同一性别内签位字母 {prefix} 只能属于一个组别和阶段。",
             )
-        prefix_owners[namespace_key] = (division_id, stage)
+        prefix_owners[namespace_key] = (division_id, stage, round_number)
         slot_families.append(
             {
                 "id": raw.get("id"),
                 "division_id": division_id,
                 "stage": stage,
+                "round_number": round_number,
                 "prefix": prefix,
                 "slot_count": slot_count,
                 "sort_order": sort_order,
@@ -297,7 +309,6 @@ def _division_snapshot(division: Division) -> dict:
         "name": division.name,
         "gender": division.gender,
         "sort_order": division.sort_order,
-        "operation_status": division.operation_status,
         "version": division.version,
         "team_count": division.teams.filter(active=True).count(),
         "group_count": division.groups.count(),
@@ -356,6 +367,7 @@ def _slot_family_snapshot(item: ScheduleSlotFamily) -> dict:
         "gender": item.division.gender,
         "stage": item.stage,
         "stage_name": item.get_stage_display(),
+        "round_number": item.round_number,
         "prefix": item.prefix,
         "slot_count": item.slot_count,
         "sort_order": item.sort_order,
@@ -636,6 +648,7 @@ def _copy_configuration(season: Season, source: Season) -> None:
                 season=season,
                 division=division,
                 stage=item.stage,
+                round_number=item.round_number,
                 prefix=item.prefix,
                 slot_count=item.slot_count,
                 sort_order=item.sort_order,
@@ -872,6 +885,7 @@ def update_season_configuration(
             season=season,
             division=divisions_by_id[row["division_id"]],
             stage=row["stage"],
+            round_number=row["round_number"],
             prefix=row["prefix"],
             slot_count=row["slot_count"],
             sort_order=row["sort_order"],
@@ -892,7 +906,6 @@ def update_season_configuration(
             "starts_on",
             "ends_on",
             "version",
-            "is_public",
             "updated_at",
         ]
     )

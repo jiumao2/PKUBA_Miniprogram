@@ -143,12 +143,16 @@ def _assert_version(scoresheet: GameScoresheet, expected_version: int) -> None:
 
 
 def _assert_scoresheet_operable(scoresheet: GameScoresheet) -> None:
-    if scoresheet.game.season.status == scoresheet.game.season.Status.ARCHIVED:
-        raise ScoresheetError("SEASON_ARCHIVED", "已归档赛季只读。", status=409)
-    if scoresheet.game.division.operation_status != scoresheet.game.division.OperationStatus.ACTIVE:
+    if scoresheet.game.season.status != scoresheet.game.season.Status.PUBLISHED:
         raise ScoresheetError(
-            "DIVISION_NOT_ACTIVE",
-            "当前组别尚未正式上线，不能维护记录表或赛果。",
+            "SEASON_NOT_PUBLISHED",
+            "只有已公开赛季可以维护记录表或赛果。",
+            status=409,
+        )
+    if not scoresheet.game.home_team_id or not scoresheet.game.away_team_id:
+        raise ScoresheetError(
+            "GAME_PARTICIPANTS_UNRESOLVED",
+            "比赛双方尚未完成签位映射，不能维护记录表或赛果。",
             status=409,
         )
 
@@ -355,12 +359,16 @@ def register_scoresheet_source(
             .select_related("season", "division", "home_team", "away_team")
             .get(id=game.id)
         )
-        if locked_game.season.status == locked_game.season.Status.ARCHIVED:
-            raise ScoresheetError("SEASON_ARCHIVED", "已归档赛季只读。", status=409)
-        if locked_game.division.operation_status != locked_game.division.OperationStatus.ACTIVE:
+        if locked_game.season.status != locked_game.season.Status.PUBLISHED:
             raise ScoresheetError(
-                "DIVISION_NOT_ACTIVE",
-                "当前组别尚未正式上线，不能上传记录表。",
+                "SEASON_NOT_PUBLISHED",
+                "只有已公开赛季可以上传记录表。",
+                status=409,
+            )
+        if not locked_game.home_team_id or not locked_game.away_team_id:
+            raise ScoresheetError(
+                "GAME_PARTICIPANTS_UNRESOLVED",
+                "比赛双方尚未完成签位映射，不能上传记录表。",
                 status=409,
             )
         prior = game_prior_snapshot(locked_game)
@@ -1160,12 +1168,6 @@ def publish_scoresheet(
         game.status = Game.Status.COMPLETED
         game.version += 1
         game.save(update_fields=["home_score", "away_score", "status", "version", "updated_at"])
-        from core.services.game_results import GameResultError, propagate_winner_locked
-
-        try:
-            propagate_winner_locked(source_game=game, actor=actor)
-        except GameResultError as error:
-            raise ScoresheetError(error.code, str(error), status=409) from error
 
         source = scoresheet.source_asset
         source.review_status = GameMediaAsset.ReviewStatus.APPROVED

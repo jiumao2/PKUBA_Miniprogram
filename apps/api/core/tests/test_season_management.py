@@ -416,7 +416,7 @@ def test_archived_season_configuration_is_fully_read_only():
     setup = reschedule_setup()
     season = setup["season"]
     season.status = Season.Status.ARCHIVED
-    season.save(update_fields=["status", "is_public", "updated_at"])
+    season.save(update_fields=["status", "updated_at"])
     superadmin = _superadmin()
     client = Client(enforce_csrf_checks=True)
     csrf_token = login_admin(client, superadmin)

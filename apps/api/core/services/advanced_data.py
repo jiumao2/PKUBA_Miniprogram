@@ -70,7 +70,6 @@ MODEL_SPECS = (
         "特殊日期容量",
     ),
     ModelSpec("games", core_models.Game, "比赛"),
-    ModelSpec("game-winner-feeds", core_models.GameWinnerFeed, "淘汰赛胜者关系"),
     ModelSpec("schedule-slot-families", core_models.ScheduleSlotFamily, "签位方案"),
     ModelSpec("schedule-grid-columns", core_models.ScheduleGridColumn, "赛程网格列"),
     ModelSpec("schedule-grid-drafts", core_models.ScheduleGridDraft, "赛程草稿"),
@@ -115,6 +114,8 @@ MODEL_SPECS = (
         "接口幂等记录",
         immutable=True,
     ),
+    ModelSpec("archive-jobs", core_models.ArchiveJob, "归档任务", immutable=True),
+    ModelSpec("media-purge-jobs", core_models.MediaPurgeJob, "照片清理任务", immutable=True),
     ModelSpec("admin-audit-logs", core_models.AdminAuditLog, "管理员审计日志", immutable=True),
 )
 

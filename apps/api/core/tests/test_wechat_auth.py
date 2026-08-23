@@ -38,7 +38,7 @@ def active_season_with_team():
         name="微信身份测试赛季",
         competition_type=Season.CompetitionType.PKU_CUP,
         year=today.year,
-        status=Season.Status.ACTIVE,
+        status=Season.Status.PUBLISHED,
         starts_on=today - timedelta(days=2),
         ends_on=today + timedelta(days=60),
     )
@@ -222,7 +222,7 @@ def test_superadmin_can_rotate_season_invite_without_exposing_value():
 def test_archived_season_invite_cannot_be_rotated():
     season, _ = active_season_with_team()
     season.status = Season.Status.ARCHIVED
-    season.save(update_fields=["status", "is_public", "updated_at"])
+    season.save(update_fields=["status", "updated_at"])
     superadmin = Account.objects.create_user(
         username="archived-invite-admin",
         password="StrongPass!2026",

@@ -449,7 +449,9 @@ def list_scoresheets(
         if season_id:
             games = games.filter(season_id=season_id)
         else:
-            games = games.filter(Q(season__is_public=True) | Q(scoresheet__isnull=False))
+            games = games.filter(
+                Q(season__status=Season.Status.PUBLISHED) | Q(scoresheet__isnull=False)
+            )
         page = max(page, 1)
         page_size = min(max(page_size, 1), 100)
         total = games.count()
@@ -1120,7 +1122,7 @@ def list_public_scoresheet_stats(request: HttpRequest, game_id: UUID | None = No
     publications = (
         ScoresheetPublication.objects.filter(
             current_for_scoresheets__isnull=False,
-            scoresheet__game__season__is_public=True,
+            scoresheet__game__season__status=Season.Status.PUBLISHED,
         )
         .select_related(
             "scoresheet__game",

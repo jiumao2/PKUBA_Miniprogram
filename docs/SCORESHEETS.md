@@ -1,6 +1,6 @@
 # 记录表识别、跨端审核与统计发布
 
-本模块把每场比赛的纸质记录表原图、结构化草稿、人工编辑、正式发布和公开统计纳入同一套 Django/PostgreSQL 权威数据。旧小程序与原 `ScoresheetReader` 仓库保持只读，运行时不读取其目录，也不保存网页端或小程序端的独立业务副本。电脑端编辑器以 `ScoresheetReader` 提交 `c27fe987a71637a8f1161a991d3c15f6c0afdeed` 为冻结基线，将其完整工作台、领域模型、校验、模板坐标和 PDF 渲染迁入本仓库；电脑端不得另行改造原有编辑方式或删减功能。
+本模块把每场比赛的纸质记录表原图、结构化草稿、人工编辑、正式发布和公开统计纳入同一套 Django/PostgreSQL 权威数据。旧小程序与原 `ScoresheetReader` 仓库保持只读，运行时不读取其目录，也不保存网页端或小程序端的独立业务副本。电脑端编辑器以 `ScoresheetReader` 提交 `c27fe987a71637a8f1161a991d3c15f6c0afdeed` 为冻结基线，将其完整工作台、领域模型、校验、模板坐标和 PDF 渲染迁入本仓库；识别图片准备与 Qwen 请求模式以提交 `d631601` 为基线。电脑端不得另行改造原有编辑方式或删减功能。
 
 ## 权限与唯一性
 
@@ -36,9 +36,13 @@
 | 第 3 次 | 30 秒 |
 | 第 4 次 | 进入 `RECOGNITION_FAILED` |
 
-网络错误、超时、HTTP 429/5xx、服务商无效 JSON 和结果 Schema 错误可重试。服务商 `Retry-After` 更长时采用更长时间。来源缺失/替换、名单缺失、图片不合法和凭据缺失不会重复调用。
+网络错误、180 秒 SDK 网络读写超时、HTTP 429/5xx、服务商无效 JSON 和结果 Schema 错误可重试。服务商 `Retry-After` 更长时采用更长时间。来源缺失/替换、名单缺失、图片不合法、图片无法满足 Qwen Data URI 限制和凭据缺失不会重复调用。
 
-发送给 Qwen 的内容严格限定为：安全解码、EXIF 纠正、10 MP 上限并以 JPEG 95、4:4:4 重新编码后的完整记录表，以及双方球队名称和球员姓名。不会发送账号、OpenID、UUID、球衣号码、赛季、日期、场地或其他比赛先验。默认使用 `qwen3.8-max`、`xhigh`、高分辨率视觉与 thinking、`seed=1234`、原版动态名单枚举 Schema 和严格结构校验。单次模型调用不设置客户端超时，允许执行超过十分钟；Worker 每分钟续期 PostgreSQL 任务租约，进程异常退出后仍由五分钟租约负责恢复。每个任务记录真实模型、提示词版本、处理后图像 SHA-256、token、来源版本和入队草稿版本；来源被替换时结果标记为 `SUPERSEDED`，人工已修改草稿后成功结果只进入差异面板，不自动覆盖人工输入。
+发送给 Qwen 的内容严格限定为处理后的完整记录表，以及双方球队名称和球员姓名；不会发送账号、OpenID、UUID、球衣号码、赛季、日期、场地或其他比赛先验。8,000,000 像素只是小图放大目标，不是分辨率上限：小于目标时等比例放大且任一边最多两倍；达到目标的 JPEG/PNG 在无需 EXIF 纠正且完整 Data URI 未超限时保持原字节、分辨率和 MIME，WebP 在可直接传输的尺寸内同样保持原样，超过视觉服务尺寸边界时只转为同宽高 JPEG。不会主动缩小大图。
+
+完整 Base64 Data URI 的十进制上限固定为 `20,000,000` 字节。超限时保持宽高不变、透明背景铺白，并在 JPEG 质量 1–95 中选择满足限制的最高质量；质量 1 仍无法满足时，以不可重试的 `IMAGE_DATA_URI_TOO_LARGE` 结束，不实例化 Qwen 客户端、不产生 token、也不进入后三次自动重试。原始上传文件始终原样保存在私有审计来源中，EXIF 纠正、放大和压缩只作用于 Qwen 临时副本。
+
+默认使用 `qwen3.8-max`、`xhigh`、高分辨率视觉与 thinking、`seed=1234`、原版动态名单枚举 Schema 和严格结构校验。OpenAI SDK 的 `180` 秒参数是一次请求的网络读写超时，不是严格的总墙钟时限；超时按可重试错误处理。Worker 每分钟续期 PostgreSQL 五分钟任务租约，因此等待流式输出期间不会被其他 worker 重领。每个任务记录真实模型、提示词版本、最终发送图像 SHA-256、token、来源版本和入队草稿版本；来源被替换时结果标记为 `SUPERSEDED`，人工已修改草稿后成功结果只进入差异面板，不自动覆盖人工输入。
 
 本地与生产环境变量：
 
@@ -47,8 +51,11 @@ QWEN_API_KEY=
 QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 QWEN_MODEL=qwen3.8-max
 QWEN_REASONING_EFFORT=xhigh
-SCORESHEET_RECOGNITION_MAX_PIXELS=10000000
+SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=8000000
+SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=180
 ```
+
+`scripts/deploy-wsl.ps1` 获取密钥时依次使用当前 Windows 进程/系统环境中的 `QWEN_API_KEY`、项目私有 `.env`、已有 `.env.wsl.local`，并把最终值写入被 Git 忽略的 `.env.wsl.local`。`check-api.sh` 与 `pytest-api.sh` 只通过容器环境传递该配置，不打印密钥。普通回归默认使用 Mock；只有显式启用真实识别验收时才会产生 Qwen 调用与费用。
 
 未配置 `QWEN_API_KEY` 时，worker 会把任务一次性标记为不可重试失败，页面仍可进入人工录入。生产 worker：
 
@@ -110,20 +117,15 @@ python manage.py seed_scoresheet_demo --confirm-local-demo --actor <superadmin-u
 
 默认管理员记录表队列继续列出公开赛季全部比赛，同时会额外列出已有记录表的非公开演示比赛；没有记录表的其他非公开赛季比赛不会混入队列。小程序卡片只展示日期、开赛时间、组别和双方，不展示内部比赛代码或 UUID。
 
-## 私有文件、COS 与备份
+## 私有文件、导出与备份
 
-当前部署仍使用 Django `default_storage` 的私有本地 Docker volume；文件只能通过短期签名票据接口读取。仓库中的 `COS_*` 变量是迁移预留项，尚未配置 COS storage backend，不能仅填写变量就宣称已上云。
+记录表、比赛合照和其他照片全部按块写入安全临时文件，同时累计真实字节数和 SHA-256，再由 Pillow 从路径验证 JPEG/PNG/WebP、尺寸与 EXIF。应用层不再按文件字节数主动拒绝，也不设置自定义解码像素上限；Pillow 的解压炸弹 Warning/Error 都作为 413 安全错误。原始上传文件原样保存，格式失败、存储失败、数据库冲突和幂等重放都必须清理临时文件及未引用存储对象。所谓“无上传大小限制”不等于无限资源：600 秒 HTTP 请求时限、微信/浏览器客户端能力、磁盘容量与 Pillow 安全保护仍是运行边界。
 
-启用腾讯云 COS 前必须完成并验证：私有 bucket、最小权限服务账号、服务端 SDK/storage backend、现有 `file_key` 原样迁移、对象数量与 SHA-256 清单核对、短期读取链路、失败回滚和本地副本保留期。API 与 worker 必须使用同一 storage backend；bucket 不得公开读，也不得把长期 COS 凭据写入小程序或网页。
+当前部署长期使用 Django `default_storage` 的私有本地 Docker volume，不接入腾讯 COS；文件只能通过短期签名票据接口读取。PostgreSQL 与私有媒体必须作为同一恢复点，不能只备份数据库：publication 会保留来源外键，但缺少对应文件时将无法查看已发布原图或重新识别。
 
-生产备份必须把 PostgreSQL 和私有媒体视为同一个恢复点。建议在停止上传/发布的维护窗口执行：
+超级管理员可分别导出赛季结构化数据、赛季全部照片和未加密全系统原始备份。归档赛季在最终数据/照片包完整并确认线下保存后，可永久删除服务器上的记录表、比赛合照、其他照片及历史版本；数据库媒体行、文件哈希、publication 来源、历史修订和审计仍永久保留。已清理文件读取返回 `410 MEDIA_PURGED`，界面不得显示破图。
 
-1. `pg_dump --format=custom` 导出数据库，并记录 SHA-256。
-2. 以只读方式归档 `private-media` volume，记录文件数、总字节数和归档 SHA-256。
-3. 将数据库、媒体归档和清单复制到独立存储；至少保留一份异地副本。
-4. 每月至少在隔离环境演练一次恢复：先恢复数据库，再恢复同一批次媒体，检查随机文件 SHA-256、记录表原图读取、PDF/CSV/XLSX 导出和当前 publication。
-
-不要只备份数据库：publication 会保留来源外键，但缺少对应私有对象时领队无法查看已发布原图，识别重跑也无法读取来源。不要在生产库上直接演练恢复或删除旧来源文件。
+三类包格式、24 小时暂存、磁盘预检、照片清理前置条件、阿里云日备覆盖和 `restore_system_backup` 隔离恢复步骤统一见 [`docs/BACKUP_AND_ARCHIVE.md`](BACKUP_AND_ARCHIVE.md)。不要在生产库或当前媒体卷上直接演练恢复。
 
 ## 验收命令
 
@@ -139,5 +141,11 @@ npm --workspace @pkuba/admin-web run test:e2e:list
 Qwen 凭据时才设置 `RUN_SCORESHEET_RECOGNITION_E2E=1`，该开关会真实重传照片并
 产生模型调用费用。未配置凭据时，真实照片识别场景应明确跳过，其余编辑、日志、
 撤销/重做、画布、校验、发布、PDF 与双标签同步场景仍必须通过。
+
+2026-08-23 本地 WSL 验收已确认：系统环境中的密钥会写入被 Git 忽略的
+`.env.wsl.local`；演示纸面 JPEG 使用 `qwen3.8-max` 连续两次在第 1/4 次成功，网页端
+载入 `SCORESHEET-DEMO-001` 与重传审计，分别总计 19,810 与 18,967 tokens，最终
+Playwright 场景绿色通过。该结果只证明本地真实调用和自动应用链路可用，不替代真实
+高清比赛照片、30 秒重试和四次耗尽验收。
 
 自动检查覆盖 PostgreSQL 并发/事务、识别四次尝试与迟到隔离、租约、发布回滚、权限、公开统计、单页 PDF、移动端无损回并、TypeScript、管理站和小程序构建。微信开发者工具仍需人工检查真机手势、软键盘、安全区、后台恢复、四角对齐、自动只读/恢复编辑和跨端同步。

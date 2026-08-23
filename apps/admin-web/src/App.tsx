@@ -84,7 +84,10 @@ export function App() {
         {!loading && !error && season && (
           <>
             <section className="metrics" aria-label="赛季摘要">
-              <Metric label="公开状态" value={season.status === "ACTIVE" ? "正式进行中" : "抽签前公开"} />
+              <Metric
+                label="赛季状态"
+                value={season.status === "PUBLISHED" ? "已公开" : season.status === "ARCHIVED" ? "已归档" : "准备中"}
+              />
               <Metric label="已排比赛" value={`${games.length} 场`} />
               <Metric label="待抽签占位" value={`${unresolved} 场`} />
               <Metric label="领队不可调" value={`${locked} 场`} />

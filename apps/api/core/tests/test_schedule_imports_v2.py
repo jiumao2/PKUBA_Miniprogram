@@ -474,7 +474,7 @@ def test_reset_requires_setup_state_and_exact_season_name(tmp_path):
         )
     assert mismatch.value.code == "SEASON_NAME_MISMATCH"
 
-    setup["season"].status = Season.Status.PRE_DRAW_PUBLIC
+    setup["season"].status = Season.Status.PUBLISHED
     setup["season"].save()
     with pytest.raises(ScheduleImportError) as wrong_state:
         reset_schedule_imports(

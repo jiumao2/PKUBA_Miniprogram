@@ -409,7 +409,7 @@ def test_superadmin_schedule_draft_api_supports_save_xlsx_replace_export_and_val
     initial = client.get(draft_path)
     assert initial.status_code == 200
     initial_json = initial.json()
-    assert initial_json["template_version"] == "3.2.0"
+    assert initial_json["template_version"] == "3.3.0"
     assert len(initial_json["columns"]) == 4
 
     first_column = initial_json["columns"][0]

@@ -7,8 +7,8 @@
 - `pkuba.cn` 备案通过前只做配置和内网验收，不开放正式域名，也不向微信后台提交正式 request 域名。
 - `.env.production` 只保存在服务器，权限设为 `600`；不得提交 AppSecret、数据库密码、Django 密钥或 GHCR 读取令牌。
 - 业务事务已把调赛状态和管理员异常写入去重 `EmailOutbox`，但默认不启动真实 `outbox` 发送进程。所有通知只允许发到协会公邮 `pkubaoutward@163.com`，不配置协会成员或领队邮箱；启用前必须轮换旧项目中已暴露的 163 邮箱授权码，并先在 Mailpit 验证正文和失败重试。
-- 图片当前保存在服务器私有 Docker volume，不通过静态目录公开；PostgreSQL 与该 volume 必须作为同一恢复点备份并在隔离环境演练恢复。腾讯 COS 尚未接入 storage backend，不能仅配置环境变量就视为已迁移。
-- `QWEN_API_KEY` 只进入 API/worker 的服务器环境。Qwen 请求只允许携带安全预处理后的整表图片、球队名称和球员姓名；不得把密钥、账号、OpenID、UUID、赛季或场地写入请求、日志或前端。
+- 图片保存在服务器私有 Docker volume，不通过静态目录公开，也不接入腾讯 COS；PostgreSQL 与该 volume 必须作为同一恢复点备份并在隔离环境演练恢复。三类比赛图片都按临时文件分块接收，不设置应用层字节上限；600 秒 Gunicorn 请求时限、磁盘、客户端和 Pillow 解压安全保护仍是实际边界。
+- `QWEN_API_KEY` 只进入 API/worker 的服务器环境。Qwen 请求只允许携带安全预处理后的整表图片、球队名称和球员姓名；不得把密钥、账号、OpenID、UUID、赛季或场地写入请求、日志或前端。识别环境固定配置 `SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=8000000` 与 `SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=180`；8 MP 仅为小图放大目标，180 秒仅为 SDK 网络读写超时。
 - 旧小程序仓库仍为只读。2026 初始数据只从获准的公开骨架导入，不迁移 OpenID、人员、申请、照片或旧秘密。
 
 ## GitHub 与镜像
@@ -42,7 +42,7 @@ docker compose \
 
 本地或 CI 使用脱敏模板检查时，可临时设置 `PKUBA_ENV_FILE=.env.production.example`；服务器不设置该变量，始终读取 `.env.production`。
 
-备案、DNS、秘密、备份和镜像均准备完成后，生产启动顺序为：拉取固定镜像、启动 PostgreSQL、执行迁移、启动 API/Caddy/调赛过期任务/`scoresheet-worker` 并检查健康状态。`scoresheet-worker` 复用固定版本的 API 镜像，通过 PostgreSQL 队列取任务，不依赖 Redis/Celery。首次导入 2026 数据和首次创建超级管理员必须单独执行并审计，不写进通用启动脚本。
+备案、DNS、秘密、备份和镜像均准备完成后，生产启动顺序为：拉取固定镜像、启动 PostgreSQL、执行迁移、启动 API/Caddy/调赛过期任务/`scoresheet-worker`/`archive-worker` 并检查健康状态。两个 worker 均复用固定版本的 API 镜像，通过 PostgreSQL 队列取任务，不依赖 Redis/Celery。首次录入正式赛季和首次创建超级管理员必须单独执行并审计，不写进通用启动脚本。
 
 记录表上线前还必须完成：
 
@@ -50,8 +50,9 @@ docker compose \
 2. 同时保留数据库 dump 与 `private-media` 只读归档，记录两者 SHA-256、媒体文件数、总字节数和同一恢复点标识。
 3. 在隔离 Compose project 中恢复同一批次数据库与媒体，抽查已发布原图、当前 publication、PDF/CSV/XLSX 导出和识别任务状态。
 4. 微信开发者工具和真机验证全屏编辑器手势、软键盘、安全区、后台恢复、2 秒跨端同步，以及租约占用时自动只读、释放或失效后自动恢复编辑。
+5. 通过真实 HTTP 上传一张超过旧 20 MiB 门槛的合成 JPEG/PNG/WebP，核对存储字节、SHA-256、尺寸及临时文件清理；同时确认 API Gunicorn `--timeout 600`，worker 的 8 MP/180 秒配置和 Caddy 未增加请求体大小限制。
 
-记录表状态、权限、重试、租约、发布、COS 迁移门槛和完整备份要求见 [`docs/SCORESHEETS.md`](SCORESHEETS.md)。
+记录表状态、权限、重试、租约和发布见 [`docs/SCORESHEETS.md`](SCORESHEETS.md)；本地私有存储、导出、照片清理和隔离恢复见 [`docs/BACKUP_AND_ARCHIVE.md`](BACKUP_AND_ARCHIVE.md)。
 
 ## 小程序生产构建
 

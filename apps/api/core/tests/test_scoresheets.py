@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import json
 from datetime import timedelta
@@ -28,7 +29,13 @@ from core.models import (
     ScoresheetPublication,
     ScoresheetRecognitionRun,
 )
-from core.scoresheet_v2.recognition import prepare_image
+from core.scoresheet_v2.recognition import (
+    QWEN_DATA_URI_MAX_BYTES,
+    RecognitionImageError,
+    _data_url_size,
+    _encode_jpeg,
+    prepare_image,
+)
 from core.services.game_media import replace_game_media, upload_game_media
 from core.services.scoresheet_recognition import (
     RecognitionAttemptError,
@@ -55,6 +62,11 @@ from core.services.wechat import issue_session
 from core.tests.factories import reschedule_setup
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+@pytest.fixture(autouse=True)
+def _disable_live_qwen_credentials(settings):
+    settings.QWEN_API_KEY = ""
 
 
 def image_file(name: str = "scoresheet.jpg") -> SimpleUploadedFile:
@@ -1256,7 +1268,8 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
         QWEN_API_KEY="private-test-key",
         QWEN_MODEL="qwen3.8-max",
         QWEN_REASONING_EFFORT="xhigh",
-        SCORESHEET_RECOGNITION_MAX_PIXELS=10_000_000,
+        SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=8_000_000,
+        SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=180,
     ):
         _, _, _, _, scoresheet = create_scoresheet()
         run = ScoresheetRecognitionRun.objects.get(scoresheet=scoresheet)
@@ -1268,7 +1281,7 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
         "ad8bd0f20d5b0d18496187555d3ad7d7559b734cac08cca1612a56e9e50b8586"
     )
     assert captured["model"] == "qwen3.8-max"
-    assert captured["client"]["timeout"] is None
+    assert captured["client"]["timeout"] == 180
     assert captured["seed"] == 1234
     assert captured["stream"] is True
     assert captured["stream_options"] == {"include_usage": True}
@@ -1306,15 +1319,227 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
     assert run.image_sha256 == hashlib.sha256(processed_image).hexdigest()
 
 
-def test_image_preprocessing_caps_output_at_ten_megapixels():
-    source = io.BytesIO()
-    Image.new("RGB", (4000, 3000), color=(246, 244, 239)).save(source, format="JPEG")
+def test_small_whole_image_is_upscaled_toward_target_with_two_times_axis_cap(tmp_path):
+    source = tmp_path / "small.png"
+    Image.new("RGB", (100, 200), "white").save(source)
 
-    processed, _, _ = prepare_image(source.getvalue(), 10_000_000)
+    payload, _, _ = prepare_image(source, 80_000)
 
-    with Image.open(io.BytesIO(processed)) as image:
-        assert image.width * image.height <= 10_000_000
-        assert image.width * image.height >= 9_900_000
+    with Image.open(io.BytesIO(payload)) as prepared:
+        assert prepared.size == (200, 400)
+        assert prepared.width * prepared.height == 80_000
+
+
+@pytest.mark.parametrize(
+    ("image_format", "mime_type"),
+    [("JPEG", "image/jpeg"), ("PNG", "image/png")],
+)
+def test_native_large_jpeg_and_png_are_not_resampled_or_reencoded(
+    tmp_path,
+    image_format: str,
+    mime_type: str,
+):
+    source = tmp_path / f"large.{image_format.lower()}"
+    Image.new("RGB", (40, 30), "white").save(source, format=image_format)
+    original = source.read_bytes()
+
+    payload, data_url, digest = prepare_image(source, 1_000)
+
+    assert payload == original
+    assert data_url.startswith(f"data:{mime_type};base64,")
+    assert len(data_url.encode("ascii")) == _data_url_size(len(payload), mime_type)
+    assert digest == hashlib.sha256(original).hexdigest()
+
+
+def test_native_webp_is_preserved_below_direct_resolution_threshold(tmp_path):
+    source = tmp_path / "native.webp"
+    Image.new("RGB", (40, 30), "white").save(source, format="WEBP")
+    original = source.read_bytes()
+
+    payload, data_url, _ = prepare_image(source, 1_000)
+
+    assert payload == original
+    assert data_url.startswith("data:image/webp;base64,")
+
+
+def test_large_webp_is_converted_to_same_size_jpeg(tmp_path, monkeypatch):
+    monkeypatch.setattr("core.scoresheet_v2.recognition.QWEN_WEBP_MAX_LONG_EDGE", 10)
+    monkeypatch.setattr("core.scoresheet_v2.recognition.QWEN_WEBP_MAX_SHORT_EDGE", 5)
+    source = tmp_path / "large.webp"
+    Image.new("RGB", (20, 10), "white").save(source, format="WEBP")
+
+    payload, data_url, _ = prepare_image(source, 1)
+
+    assert data_url.startswith("data:image/jpeg;base64,")
+    with Image.open(io.BytesIO(payload)) as prepared:
+        assert prepared.format == "JPEG"
+        assert prepared.size == (20, 10)
+
+
+def test_exif_rotation_is_applied_only_to_qwen_copy(tmp_path):
+    source = tmp_path / "rotated.jpg"
+    image = Image.new("RGB", (30, 20), "white")
+    exif = Image.Exif()
+    exif[274] = 6
+    image.save(source, format="JPEG", exif=exif)
+    original = source.read_bytes()
+
+    payload, data_url, _ = prepare_image(source, 1)
+
+    assert source.read_bytes() == original
+    assert payload != original
+    assert data_url.startswith("data:image/jpeg;base64,")
+    with Image.open(io.BytesIO(payload)) as prepared:
+        assert prepared.size == (20, 30)
+
+
+def test_transparent_background_is_flattened_to_white_for_qwen_jpeg(tmp_path):
+    source = tmp_path / "transparent.png"
+    Image.new("RGBA", (20, 20), (0, 0, 0, 0)).save(source)
+
+    payload, data_url, _ = prepare_image(source, 1_600)
+
+    assert data_url.startswith("data:image/jpeg;base64,")
+    with Image.open(io.BytesIO(payload)) as prepared:
+        assert prepared.size == (40, 40)
+        assert prepared.convert("RGB").getpixel((20, 20)) == (255, 255, 255)
+
+
+def test_exact_data_url_boundary_preserves_native_bytes(tmp_path):
+    source = tmp_path / "boundary.png"
+    Image.new("RGB", (40, 30), "white").save(source, format="PNG")
+    original = source.read_bytes()
+    limit = _data_url_size(len(original), "image/png")
+
+    payload, data_url, _ = prepare_image(source, 1, max_data_uri_bytes=limit)
+
+    assert payload == original
+    assert len(data_url.encode("ascii")) == limit
+
+
+def test_oversize_data_url_uses_highest_fitting_quality_without_resizing(tmp_path):
+    source = tmp_path / "noise.png"
+    image = Image.effect_noise((96, 96), 100).convert("RGB")
+    image.save(source, format="PNG")
+    encoded_by_quality = {quality: _encode_jpeg(image, quality) for quality in range(1, 96)}
+    limit = _data_url_size(len(encoded_by_quality[50]), "image/jpeg")
+    expected_quality = max(
+        quality
+        for quality, payload in encoded_by_quality.items()
+        if _data_url_size(len(payload), "image/jpeg") <= limit
+    )
+    assert _data_url_size(source.stat().st_size, "image/png") > limit
+
+    payload, data_url, _ = prepare_image(source, 1, max_data_uri_bytes=limit)
+
+    assert payload == encoded_by_quality[expected_quality]
+    assert len(data_url.encode("ascii")) <= limit
+    with Image.open(io.BytesIO(payload)) as prepared:
+        assert prepared.size == image.size
+    image.close()
+
+
+def test_image_that_cannot_fit_at_quality_one_fails(tmp_path):
+    source = tmp_path / "sheet.png"
+    Image.new("RGB", (20, 20), "white").save(source)
+
+    with pytest.raises(RecognitionImageError, match="不缩小分辨率"):
+        prepare_image(source, 1, max_data_uri_bytes=10)
+
+
+def test_preparation_failure_skips_qwen_and_all_automatic_retries(
+    tmp_path,
+    monkeypatch,
+):
+    import sys
+    from types import SimpleNamespace
+
+    from core.services import scoresheet_recognition as recognition
+
+    provider_constructions = 0
+
+    class ForbiddenOpenAI:
+        def __init__(self, **kwargs):
+            del kwargs
+            nonlocal provider_constructions
+            provider_constructions += 1
+
+    def fail_preparation(*args, **kwargs):
+        del args, kwargs
+        raise RecognitionImageError(
+            "图片在不缩小分辨率的条件下无法满足 Qwen 20 MB Base64 Data URI 限制。"
+        )
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=ForbiddenOpenAI))
+    monkeypatch.setattr(recognition, "build_context", fail_preparation)
+    with override_settings(
+        MEDIA_ROOT=tmp_path,
+        QWEN_API_KEY="must-not-be-used",
+        SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=8_000_000,
+        SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=180,
+    ):
+        _, _, _, _, scoresheet = create_scoresheet()
+        assert run_once("image-preparation-failure") == "failed"
+        run = ScoresheetRecognitionRun.objects.get(scoresheet=scoresheet)
+
+    assert run.status == ScoresheetRecognitionRun.Status.FAILED
+    assert run.attempt_count == 1
+    assert run.max_attempts == 4
+    assert run.next_attempt_at is None
+    assert run.last_error_code == "IMAGE_DATA_URI_TOO_LARGE"
+    assert run.provider_usage == {}
+    assert provider_constructions == 0
+
+
+def test_worker_streams_remote_storage_source_to_temporary_file(
+    tmp_path,
+    monkeypatch,
+):
+    from core.services import scoresheet_recognition as recognition
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        _, _, _, _, scoresheet = create_scoresheet()
+        run = ScoresheetRecognitionRun.objects.get(scoresheet=scoresheet)
+    raw = image_file("remote-source.jpg").read()
+    read_sizes: list[int] = []
+
+    class TrackingStream(io.BytesIO):
+        def read(self, size=-1):
+            read_sizes.append(size)
+            return super().read(size)
+
+    class RemoteStorage:
+        @staticmethod
+        def exists(key):
+            del key
+            return True
+
+        @staticmethod
+        def path(key):
+            del key
+            raise NotImplementedError
+
+        @staticmethod
+        def open(key, mode):
+            del key, mode
+            return TrackingStream(raw)
+
+    monkeypatch.setattr(recognition, "default_storage", RemoteStorage())
+    with recognition._source_image_path(run) as source_path:
+        temporary_path = source_path
+        assert source_path.read_bytes() == raw
+
+    assert read_sizes
+    assert set(read_sizes) == {recognition.SOURCE_CHUNK_BYTES}
+    assert not temporary_path.exists()
+
+
+def test_default_image_contract_uses_decimal_eight_megapixel_upscale_target():
+    from django.conf import settings
+
+    assert settings.SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS == 8_000_000
+    assert settings.SCORESHEET_RECOGNITION_TIMEOUT_SECONDS == 180
+    assert QWEN_DATA_URI_MAX_BYTES == 20_000_000
 
 
 def test_admin_pdf_uses_current_correction_draft_not_old_publication(tmp_path, monkeypatch):

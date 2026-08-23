@@ -13,6 +13,24 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $envFile = Join-Path $root '.env.wsl.local'
 $legacySource = Join-Path (Split-Path -Parent $root) '北大篮协小程序\Backup'
 
+function Read-DotEnv([string]$Path) {
+    $values = @{}
+    if (-not (Test-Path -LiteralPath $Path)) { return $values }
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        if (-not $line -or $line.TrimStart().StartsWith('#') -or -not $line.Contains('=')) { continue }
+        $name, $value = $line.Split('=', 2)
+        $values[$name.Trim()] = $value.Trim().Trim('"')
+    }
+    return $values
+}
+
+$existing = Read-DotEnv $envFile
+if (-not $PSBoundParameters.ContainsKey('AdminUsername') -and $existing.PKUBA_LOCAL_ADMIN_USERNAME) {
+    $AdminUsername = $existing.PKUBA_LOCAL_ADMIN_USERNAME
+}
+if (-not $AdminPassword -and $existing.PKUBA_LOCAL_ADMIN_PASSWORD) {
+    $AdminPassword = $existing.PKUBA_LOCAL_ADMIN_PASSWORD
+}
 if (-not $AdminPassword) {
     $securePassword = Read-Host 'WSL 本地管理员密码' -AsSecureString
     $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
@@ -54,18 +72,6 @@ function New-RandomHex([int]$ByteCount) {
     ).ToLowerInvariant()
 }
 
-function Read-DotEnv([string]$Path) {
-    $values = @{}
-    if (-not (Test-Path -LiteralPath $Path)) { return $values }
-    foreach ($line in Get-Content -LiteralPath $Path) {
-        if (-not $line -or $line.TrimStart().StartsWith('#') -or -not $line.Contains('=')) { continue }
-        $name, $value = $line.Split('=', 2)
-        $values[$name.Trim()] = $value.Trim().Trim('"')
-    }
-    return $values
-}
-
-$existing = Read-DotEnv $envFile
 $projectEnv = Read-DotEnv (Join-Path $root '.env')
 $projectConfig = Get-Content -Raw -LiteralPath (Join-Path $root 'apps\miniapp\project.config.json') | ConvertFrom-Json
 $repoWsl = Convert-ToWslPath $root
@@ -74,11 +80,30 @@ $dbPassword = if ($existing.PKUBA_DB_PASSWORD) { $existing.PKUBA_DB_PASSWORD } e
 $djangoSecret = if ($existing.DJANGO_SECRET_KEY) { $existing.DJANGO_SECRET_KEY } else { New-RandomHex 48 }
 $wechatAppId = if ($projectEnv.WECHAT_APP_ID) { $projectEnv.WECHAT_APP_ID } else { $projectConfig.appid }
 $wechatSecret = if ($projectEnv.WECHAT_APP_SECRET) { $projectEnv.WECHAT_APP_SECRET } else { '' }
-$qwenApiKey = if ($projectEnv.QWEN_API_KEY) { $projectEnv.QWEN_API_KEY } else { '' }
+$qwenApiKey = if ($env:QWEN_API_KEY) {
+    $env:QWEN_API_KEY
+}
+elseif ($projectEnv.QWEN_API_KEY) {
+    $projectEnv.QWEN_API_KEY
+}
+elseif ($existing.QWEN_API_KEY) {
+    $existing.QWEN_API_KEY
+}
+else {
+    ''
+}
 $qwenBaseUrl = if ($projectEnv.QWEN_BASE_URL) { $projectEnv.QWEN_BASE_URL } else { 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
 $qwenModel = if ($projectEnv.QWEN_MODEL) { $projectEnv.QWEN_MODEL } else { 'qwen3.8-max' }
 $qwenReasoningEffort = if ($projectEnv.QWEN_REASONING_EFFORT) { $projectEnv.QWEN_REASONING_EFFORT } else { 'xhigh' }
-$scoresheetRecognitionMaxPixels = if ($projectEnv.SCORESHEET_RECOGNITION_MAX_PIXELS) { $projectEnv.SCORESHEET_RECOGNITION_MAX_PIXELS } else { '10000000' }
+$scoresheetRecognitionUpscaleTargetPixels = if ($projectEnv.SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS) { $projectEnv.SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS } else { '8000000' }
+$scoresheetRecognitionTimeoutSeconds = if ($projectEnv.SCORESHEET_RECOGNITION_TIMEOUT_SECONDS) { $projectEnv.SCORESHEET_RECOGNITION_TIMEOUT_SECONDS } else { '180' }
+$gitCommit = if ($env:PKUBA_GIT_COMMIT) {
+    $env:PKUBA_GIT_COMMIT
+}
+else {
+    (& git -C $root rev-parse HEAD).Trim()
+}
+if (-not $gitCommit) { $gitCommit = 'unknown' }
 
 $envLines = @(
     "PKUBA_DB_PASSWORD=$dbPassword"
@@ -89,7 +114,9 @@ $envLines = @(
     "QWEN_BASE_URL=$qwenBaseUrl"
     "QWEN_MODEL=$qwenModel"
     "QWEN_REASONING_EFFORT=$qwenReasoningEffort"
-    "SCORESHEET_RECOGNITION_MAX_PIXELS=$scoresheetRecognitionMaxPixels"
+    "SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=$scoresheetRecognitionUpscaleTargetPixels"
+    "SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=$scoresheetRecognitionTimeoutSeconds"
+    "PKUBA_GIT_COMMIT=$gitCommit"
     "PKUBA_LOCAL_ADMIN_USERNAME=$AdminUsername"
     "PKUBA_LOCAL_ADMIN_PASSWORD=$AdminPassword"
     "PKUBA_LEGACY_SOURCE=$legacyWsl"
@@ -172,7 +199,7 @@ Write-Host "API 文档：http://localhost:$WebPort/api/v1/docs"
 Write-Host "邮件调试：http://localhost:$MailPort/"
 Write-Host "微信小程序项目：$(Join-Path $root 'apps\miniapp')"
 Write-Host "管理员用户名：$AdminUsername"
-Write-Host "管理员密码：$AdminPassword"
+Write-Host '管理员密码：已保存在 .env.wsl.local，不在日志输出'
 if (-not $wechatSecret) {
     Write-Warning 'WECHAT_APP_SECRET 尚未配置；公开页面和网页管理员登录可用，小程序微信身份登录需补充后重新部署。'
 }

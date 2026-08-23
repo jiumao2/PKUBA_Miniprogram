@@ -16,7 +16,7 @@ const historical: SeasonConfiguration = {
   name: "北大杯",
   competition_type: "PKU_CUP",
   year: 2026,
-  status: "ACTIVE",
+  status: "PUBLISHED",
   starts_on: "2026-03-21",
   ends_on: "2026-05-10",
   timezone: "Asia/Shanghai",
@@ -30,7 +30,6 @@ const historical: SeasonConfiguration = {
     name,
     gender: name.startsWith("男") ? "MEN" : "WOMEN",
     sort_order: index + 1,
-    operation_status: "ACTIVE",
     version: 1,
     team_count: [12, 23, 8, 14][index],
     group_count: [2, 5, 1, 3][index],
@@ -75,6 +74,7 @@ const historical: SeasonConfiguration = {
       gender: "MEN",
       stage: "GROUP",
       stage_name: "小组赛",
+      round_number: 1,
       prefix: "A",
       slot_count: 12,
       sort_order: 1,
@@ -108,12 +108,11 @@ const seasons: AdminSeason[] = [{
   ends_on: historical.ends_on,
   version: historical.version,
   divisions: historical.divisions.map(
-    ({ id, code, name, gender, operation_status, version }) => ({
+    ({ id, code, name, gender, version }) => ({
       id,
       code,
       name,
       gender,
-      operation_status,
       version,
     }),
   ),

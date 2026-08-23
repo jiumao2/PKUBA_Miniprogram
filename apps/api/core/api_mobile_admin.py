@@ -16,14 +16,12 @@ from core.models import (
     AdminAuditLog,
     Game,
     GameScoresheet,
-    GameWinnerFeed,
     Period,
     Season,
     SlotReservation,
     Team,
     Venue,
 )
-from core.services.game_results import GameResultError, propagate_winner_locked
 from core.services.rescheduling import (
     RescheduleError,
     _lock_schedule_slot,
@@ -79,6 +77,9 @@ class AdminGameOut(Schema):
     start_time: str
     standard_venue_id: UUID | None
     venue_name: str
+    home_slot_id: UUID | None
+    away_slot_id: UUID | None
+    participants_managed_by_draw: bool
     home_team_id: UUID | None
     away_team_id: UUID | None
     home_name: str
@@ -170,6 +171,9 @@ def _game_out(game: Game) -> dict[str, object]:
         "start_time": game.start_time.strftime("%H:%M"),
         "standard_venue_id": _standard_venue_id(game),
         "venue_name": game.venue_name,
+        "home_slot_id": game.home_slot_id,
+        "away_slot_id": game.away_slot_id,
+        "participants_managed_by_draw": bool(game.home_slot_id or game.away_slot_id),
         "home_team_id": game.home_team_id,
         "away_team_id": game.away_team_id,
         "home_name": game.home_display,
@@ -212,7 +216,7 @@ def schedule_options(request: HttpRequest):
     denied = _require_admin(request)
     if denied:
         return denied
-    season = Season.objects.filter(is_public=True).first()
+    season = Season.objects.filter(status=Season.Status.PUBLISHED).first()
     if season is None:
         return _error("NO_PUBLIC_SEASON", "当前没有公开赛季。", 404)
     return {
@@ -261,7 +265,7 @@ def get_admin_game(
         return denied
     games = _game_queryset().filter(id=game_id)
     if not allow_nonpublic:
-        games = games.filter(season__is_public=True)
+        games = games.filter(season__status=Season.Status.PUBLISHED)
     game = games.first()
     if game is None:
         return _error("GAME_NOT_FOUND", "比赛不存在或不属于当前赛季。", 404)
@@ -293,27 +297,13 @@ def update_admin_game(
         with transaction.atomic():
             games = _game_queryset().select_for_update(of=("self",)).filter(id=game_id)
             if not allow_nonpublic:
-                games = games.filter(season__is_public=True)
+                games = games.filter(season__status=Season.Status.PUBLISHED)
             game = games.get()
             if game.season.status == Season.Status.ARCHIVED:
                 return _error("SEASON_ARCHIVED", "已归档赛季只读。", 409)
             if game.version != payload.expected_version:
                 return _error("VERSION_CONFLICT", "比赛已被其他操作更新，请刷新。", 409)
             before = _snapshot(game)
-            result_changed = (
-                payload.home_score != game.home_score
-                or payload.away_score != game.away_score
-                or payload.status != game.status
-            )
-            if result_changed and GameWinnerFeed.objects.filter(
-                source_game=game,
-                applied_winner__isnull=False,
-            ).exists():
-                return _error(
-                    "CORRECTION_PREVIEW_REQUIRED",
-                    "该赛果已影响下游对阵；请先在淘汰赛管理中预览并确认级联纠错。",
-                    409,
-                )
             if GameScoresheet.objects.filter(
                 game=game,
                 current_publication__isnull=False,
@@ -355,6 +345,16 @@ def update_admin_game(
             venue_name = venue.name if venue else payload.venue_name.strip()
             if not venue_name:
                 return _error("VENUE_REQUIRED", "请填写比赛实际场地。")
+            participant_changed = (
+                payload.home_team_id != game.home_team_id
+                or payload.away_team_id != game.away_team_id
+            )
+            if participant_changed and (game.home_slot_id or game.away_slot_id):
+                return _error(
+                    "SLOT_ASSIGNMENT_MANAGED_BY_DRAW",
+                    "有签位的比赛只能在抽签映射页面修改参赛球队。",
+                    409,
+                )
             if (payload.home_team_id is None) != (payload.away_team_id is None):
                 return _error("TEAM_PAIR_REQUIRED", "主客队必须同时选择或同时保留签位。")
             teams = []
@@ -471,8 +471,6 @@ def update_admin_game(
             game.version += 1
             game.full_clean()
             game.save()
-            if game.status in {Game.Status.COMPLETED, Game.Status.FORFEIT}:
-                propagate_winner_locked(source_game=game, actor=request.auth)
             allocations = list(
                 SlotReservation.objects.select_for_update().filter(
                     converted_game=game,
@@ -519,7 +517,5 @@ def update_admin_game(
     except IntegrityError:
         return _error("SCHEDULE_CONFLICT", "赛程与现有比赛发生并发冲突。", 409)
     except RescheduleError as error:
-        return _error(error.code, str(error), 409)
-    except GameResultError as error:
         return _error(error.code, str(error), 409)
     return _game_out(_game_queryset().get(id=game_id))

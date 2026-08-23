@@ -23,11 +23,12 @@ services:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     restart: unless-stopped
     env_file: ${PKUBA_ENV_FILE:-./.env.production}
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 60
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 600
     expose:
       - "8000"
     volumes:
       - private-media:/app/.local/media
+      - archive-staging:/app/.local/archives
     depends_on:
       db:
         condition: service_healthy
@@ -78,6 +79,18 @@ services:
       db:
         condition: service_healthy
 
+  archive-worker:
+    image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
+    restart: unless-stopped
+    env_file: ${PKUBA_ENV_FILE:-./.env.production}
+    command: python manage.py process_archives --loop --poll-seconds 2
+    volumes:
+      - private-media:/app/.local/media
+      - archive-staging:/app/.local/archives
+    depends_on:
+      db:
+        condition: service_healthy
+
   db:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -94,4 +107,5 @@ volumes:
   caddy-data:
   caddy-config:
   private-media:
+  archive-staging:
   postgres-data:

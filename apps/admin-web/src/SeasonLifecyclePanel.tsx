@@ -9,21 +9,23 @@ type AdminClient = ReturnType<typeof import("@pkuba/api-client").createAdminClie
 
 const statusLabels: Record<string, string> = {
   SETUP: "准备中",
-  PRE_DRAW_PUBLIC: "占位赛程公开",
-  ACTIVE: "正式业务开放",
+  PUBLISHED: "已公开",
   ARCHIVED: "已归档",
 };
 
 function previewSummary(preview: LifecyclePreview) {
   const lines = [
     `赛季：${statusLabels[preview.before_season_status] ?? preview.before_season_status} → ${statusLabels[preview.after_season_status] ?? preview.after_season_status}`,
-    ...preview.impacts.map(
-      (item) =>
-        `${item.division_name}：${statusLabels[item.before_status] ?? item.before_status} → ${statusLabels[item.after_status] ?? item.after_status}`,
-    ),
   ];
   if (preview.blockers.length) {
-    lines.push("", ...preview.blockers.map((item) => `阻塞：${item.message}（${item.count}）`));
+    lines.push(
+      "",
+      ...preview.blockers.map((item) => `阻塞：${item.message}（${item.count}）`),
+    );
+  }
+  const references = Object.entries(preview.references).filter(([, count]) => count > 0);
+  if (references.length) {
+    lines.push("", `仍有关联业务数据：${references.map(([key, count]) => `${key} ${count}`).join("、")}`);
   }
   return lines.join("\n");
 }
@@ -75,8 +77,8 @@ export function SeasonLifecyclePanel({
     <section className="season-lifecycle" aria-labelledby="season-lifecycle-title">
       <div className="season-section-heading">
         <div>
-          <h2 id="season-lifecycle-title">赛季上线</h2>
-          <p>先公开占位赛程，再按组别完成抽签并开放业务；归档后整季永久只读。</p>
+          <h2 id="season-lifecycle-title">赛季状态</h2>
+          <p>赛季公开后，比赛能否操作由双方是否完成签位及业务数据实时判断。</p>
         </div>
         <span>赛季 v{configuration.version}</span>
       </div>
@@ -87,7 +89,7 @@ export function SeasonLifecyclePanel({
 
       <div className="lifecycle-overview">
         <div className="lifecycle-season-state">
-          <span>全局状态</span>
+          <span>当前状态</span>
           <strong className={`lifecycle-status status-${configuration.status.toLowerCase()}`}>
             {statusLabels[configuration.status] ?? configuration.status}
           </strong>
@@ -101,16 +103,16 @@ export function SeasonLifecyclePanel({
                   "publish",
                   {
                     expected_season_version: configuration.version,
-                    target_status: "PRE_DRAW_PUBLIC",
+                    target_status: "PUBLISHED",
                   },
-                  "公开占位赛程",
+                  "公开赛季",
                 )
               }
             >
-              {busyKey === "publish" ? "正在检查…" : "公开占位赛程"}
+              {busyKey === "publish" ? "正在检查…" : "公开赛季"}
             </button>
           )}
-          {configuration.status !== "SETUP" && configuration.status !== "ARCHIVED" && (
+          {configuration.status === "PUBLISHED" && (
             <button
               className="danger-action"
               disabled={disabled}
@@ -131,59 +133,19 @@ export function SeasonLifecyclePanel({
           )}
         </div>
 
-        <div className="lifecycle-division-list">
-          {configuration.divisions.map((division) => {
-            const key = `division-${division.id}`;
-            const commandBase = {
-              expected_season_version: configuration.version,
-              division_id: division.id,
-              expected_division_version: division.version,
-            };
-            return (
-              <article key={division.id}>
-                <div>
-                  <span>{division.gender === "WOMEN" ? "女子" : "男子"}</span>
-                  <strong>{division.name}</strong>
-                  <small>v{division.version} · {division.game_count} 场</small>
-                </div>
-                <span className={`lifecycle-status status-${division.operation_status.toLowerCase()}`}>
-                  {statusLabels[division.operation_status] ?? division.operation_status}
-                </span>
-                {division.operation_status === "PRE_DRAW_PUBLIC" && (
-                  <button
-                    className="secondary-action"
-                    disabled={disabled}
-                    type="button"
-                    onClick={() =>
-                      void run(
-                        key,
-                        { ...commandBase, target_status: "ACTIVE" },
-                        `开放${division.name}`,
-                      )
-                    }
-                  >
-                    {busyKey === key ? "正在检查…" : "开放业务"}
-                  </button>
-                )}
-                {division.operation_status === "ACTIVE" && (
-                  <button
-                    className="text-action"
-                    disabled={disabled}
-                    type="button"
-                    onClick={() =>
-                      void run(
-                        key,
-                        { ...commandBase, target_status: "SETUP" },
-                        `撤回${division.name}`,
-                      )
-                    }
-                  >
-                    {busyKey === key ? "正在检查…" : "安全撤回"}
-                  </button>
-                )}
-              </article>
-            );
-          })}
+        <div className="lifecycle-division-list" aria-label="组别数据概览">
+          {configuration.divisions.map((division) => (
+            <article key={division.id}>
+              <div>
+                <span>{division.gender === "WOMEN" ? "女子" : "男子"}</span>
+                <strong>{division.name}</strong>
+                <small>
+                  {division.team_count} 队 · {division.group_count} 组 · {division.game_count} 场
+                </small>
+              </div>
+              <span className="lifecycle-derived-state">按比赛数据自动开放</span>
+            </article>
+          ))}
         </div>
       </div>
       {notice && <p className="lifecycle-notice success" role="status">{notice}</p>}

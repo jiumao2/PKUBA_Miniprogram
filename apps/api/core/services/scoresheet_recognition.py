@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 import uuid
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from threading import Event, Thread
 
 from django.conf import settings
@@ -27,6 +30,7 @@ from core.scoresheet_schema_v2 import merge_recognition_result
 from core.scoresheet_v2.models import ScoresheetDocument
 from core.scoresheet_v2.recognition import (
     PROMPT_VERSION,
+    RecognitionImageError,
     build_context,
     map_payload_to_document,
     validate_provider_payload,
@@ -37,6 +41,7 @@ from core.services.scoresheets import _event_locked, _revision_locked
 RETRY_DELAYS = (30, 30, 30)
 WORKER_LEASE_SECONDS = 5 * 60
 WORKER_LEASE_REFRESH_SECONDS = 60
+SOURCE_CHUNK_BYTES = 1024 * 1024
 logger = logging.getLogger(__name__)
 
 
@@ -180,25 +185,46 @@ def _maintain_worker_lease(claim: ClaimedRun) -> Iterator[None]:
         heartbeat.join(timeout=5)
 
 
-def _source_image_bytes(run: ScoresheetRecognitionRun) -> bytes:
+@contextmanager
+def _source_image_path(run: ScoresheetRecognitionRun) -> Iterator[Path]:
     if run.source_asset.deleted_at or not default_storage.exists(run.source_asset.file_key):
         raise RecognitionAttemptError(
             "SOURCE_MISSING", "记录表原图已被替换或删除。", retryable=False
         )
+    temporary_path: Path | None = None
     try:
-        with default_storage.open(run.source_asset.file_key, "rb") as source:
-            raw = source.read(20 * 1024 * 1024 + 1)
-        if not raw or len(raw) > 20 * 1024 * 1024:
+        try:
+            local_path = Path(default_storage.path(run.source_asset.file_key))
+        except (AttributeError, NotImplementedError):
+            local_path = None
+        if local_path is not None:
+            if not local_path.is_file() or local_path.stat().st_size == 0:
+                raise RecognitionAttemptError(
+                    "IMAGE_INVALID", "记录表图片为空或无法读取。", retryable=False
+                )
+            yield local_path
+            return
+
+        suffix = Path(run.source_asset.file_key).suffix
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temporary:
+            temporary_path = Path(temporary.name)
+            with default_storage.open(run.source_asset.file_key, "rb") as source:
+                while chunk := source.read(SOURCE_CHUNK_BYTES):
+                    temporary.write(chunk)
+        if temporary_path.stat().st_size == 0:
             raise RecognitionAttemptError(
-                "IMAGE_INVALID", "记录表图片为空或超过安全大小。", retryable=False
+                "IMAGE_INVALID", "记录表图片为空或无法读取。", retryable=False
             )
-        return raw
+        yield temporary_path
     except RecognitionAttemptError:
         raise
-    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
+    except OSError as exc:
         raise RecognitionAttemptError(
-            "IMAGE_INVALID", "记录表图片无法安全预处理。", retryable=False
+            "IMAGE_INVALID", "记录表图片无法读取。", retryable=False
         ) from exc
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def _provider_prior(scoresheet: GameScoresheet) -> dict[str, object]:
@@ -273,7 +299,6 @@ def _provider_failure(error: Exception) -> RecognitionAttemptError:
 
 
 def call_qwen(run: ScoresheetRecognitionRun) -> tuple[dict[str, object], dict[str, object]]:
-    raw_image = _source_image_bytes(run)
     try:
         document = ScoresheetDocument.model_validate(run.scoresheet.draft)
         prior = document.game_prior
@@ -282,15 +307,27 @@ def call_qwen(run: ScoresheetRecognitionRun) -> tuple[dict[str, object], dict[st
                 "ROSTER_MISSING", "双方冻结名单不完整。", retryable=False
             )
         rule_path = settings.BASE_DIR / "core" / "assets" / "scoresheet" / "rule_profiles.json"
-        context = build_context(
-            prior,
-            raw_image,
-            rule_path,
-            settings.SCORESHEET_RECOGNITION_MAX_PIXELS,
-        )
+        with _source_image_path(run) as image_path, warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            context = build_context(
+                prior,
+                image_path,
+                rule_path,
+                settings.SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS,
+            )
     except RecognitionAttemptError:
         raise
-    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
+    except RecognitionImageError as exc:
+        raise RecognitionAttemptError(
+            "IMAGE_DATA_URI_TOO_LARGE", str(exc), retryable=False
+        ) from exc
+    except (
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+    ) as exc:
         raise RecognitionAttemptError(
             "IMAGE_INVALID", "记录表图片无法安全预处理。", retryable=False
         ) from exc
@@ -311,7 +348,7 @@ def call_qwen(run: ScoresheetRecognitionRun) -> tuple[dict[str, object], dict[st
         client = OpenAI(
             api_key=api_key,
             base_url=settings.QWEN_BASE_URL,
-            timeout=None,
+            timeout=settings.SCORESHEET_RECOGNITION_TIMEOUT_SECONDS,
             max_retries=0,
         )
         response = client.chat.completions.create(

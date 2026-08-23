@@ -36,12 +36,16 @@ services:
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen3.8-max}
       QWEN_REASONING_EFFORT: ${QWEN_REASONING_EFFORT:-xhigh}
-      SCORESHEET_RECOGNITION_MAX_PIXELS: ${SCORESHEET_RECOGNITION_MAX_PIXELS:-10000000}
+      SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS: ${SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS:-8000000}
+      SCORESHEET_RECOGNITION_TIMEOUT_SECONDS: ${SCORESHEET_RECOGNITION_TIMEOUT_SECONDS:-180}
       EMAIL_HOST: mailpit
       EMAIL_PORT: "1025"
       LOCAL_MEDIA_ROOT: /app/media
+      LOCAL_ARCHIVE_ROOT: /app/archives
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
     volumes:
       - pkuba-wsl-media:/app/media
+      - pkuba-wsl-archives:/app/archives
     depends_on:
       db:
         condition: service_healthy
@@ -71,10 +75,31 @@ services:
       QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       QWEN_MODEL: ${QWEN_MODEL:-qwen3.8-max}
       QWEN_REASONING_EFFORT: ${QWEN_REASONING_EFFORT:-xhigh}
-      SCORESHEET_RECOGNITION_MAX_PIXELS: ${SCORESHEET_RECOGNITION_MAX_PIXELS:-10000000}
+      SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS: ${SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS:-8000000}
+      SCORESHEET_RECOGNITION_TIMEOUT_SECONDS: ${SCORESHEET_RECOGNITION_TIMEOUT_SECONDS:-180}
       LOCAL_MEDIA_ROOT: /app/media
     volumes:
       - pkuba-wsl-media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+
+  archive-worker:
+    build:
+      context: ./apps/api
+      target: production
+    restart: unless-stopped
+    command: python manage.py process_archives --loop --poll-seconds 2
+    environment:
+      DATABASE_URL: postgresql://pkuba:${PKUBA_DB_PASSWORD}@db:5432/pkuba
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
+      LOCAL_MEDIA_ROOT: /app/media
+      LOCAL_ARCHIVE_ROOT: /app/archives
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
+    volumes:
+      - pkuba-wsl-media:/app/media
+      - pkuba-wsl-archives:/app/archives
     depends_on:
       db:
         condition: service_healthy
@@ -101,3 +126,4 @@ services:
 volumes:
   pkuba-wsl-postgres:
   pkuba-wsl-media:
+  pkuba-wsl-archives:

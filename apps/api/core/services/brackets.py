@@ -1,52 +1,77 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from uuid import UUID
 
-from core.models import Division, Game, GameWinnerFeed, Season
+from core.models import Division, DrawAssignment, Game, Season
 
 BRACKET_STAGES = (
     Game.Stage.KNOCKOUT,
     Game.Stage.SEMIFINAL,
     Game.Stage.FINAL,
 )
+STAGE_ORDER = {
+    Game.Stage.KNOCKOUT: 10,
+    Game.Stage.SEMIFINAL: 20,
+    Game.Stage.FINAL: 30,
+}
 
 
-def _winner(game: Game) -> tuple[object | None, str | None]:
-    if game.home_score is None or game.away_score is None:
-        return None, None
-    if game.home_score == game.away_score:
-        return None, None
-    if game.home_score > game.away_score:
-        return game.home_team_id, game.home_display
-    return game.away_team_id, game.away_display
+def _winner_id(game: Game) -> UUID | None:
+    if (
+        game.home_team_id is None
+        or game.away_team_id is None
+        or game.home_score is None
+        or game.away_score is None
+        or game.home_score == game.away_score
+    ):
+        return None
+    return game.home_team_id if game.home_score > game.away_score else game.away_team_id
 
 
-def _round_label(stage: str, game_count: int) -> str:
+def _winner_name(game: Game) -> str | None:
+    winner_id = _winner_id(game)
+    if winner_id == game.home_team_id and game.home_team:
+        return game.home_team.name
+    if winner_id == game.away_team_id and game.away_team:
+        return game.away_team.name
+    return None
+
+
+def _round_label(stage: str, round_number: int, game_count: int) -> str:
     if stage == Game.Stage.FINAL:
         return "决赛"
     if stage == Game.Stage.SEMIFINAL:
         return "半决赛"
-    if game_count == 4:
+    if round_number == 1 and game_count == 4:
         return "四分之一决赛"
-    return "淘汰赛"
+    return f"淘汰赛第 {round_number} 轮"
 
 
-def _serialize_bracket_game(
+def _assignment_review_required(
+    assignment: DrawAssignment | None,
+    previous_games: list[Game],
+) -> bool:
+    if assignment is None or not previous_games:
+        return False
+    if assignment.validation_mode == DrawAssignment.ValidationMode.SUPERADMIN_OVERRIDE:
+        return False
+    if assignment.source_game_id:
+        return _winner_id(assignment.source_game) not in {None, assignment.team_id}
+    winners = {_winner_id(game) for game in previous_games}
+    if None in winners:
+        return False
+    return assignment.team_id not in winners
+
+
+def _serialize_game(
     game: Game,
-    *,
-    derived_home: tuple[object | None, str | None] | None = None,
-    derived_away: tuple[object | None, str | None] | None = None,
-    source_game_ids: Iterable[object] = (),
+    assignments: dict[UUID, DrawAssignment],
+    previous_games: list[Game],
 ) -> dict[str, object]:
-    home_team_id = game.home_team_id
-    away_team_id = game.away_team_id
-    home_name = game.home_display
-    away_name = game.away_display
-    if not home_team_id and derived_home and derived_home[1]:
-        home_team_id, home_name = derived_home
-    if not away_team_id and derived_away and derived_away[1]:
-        away_team_id, away_name = derived_away
-    winner_team_id, winner_name = _winner(game)
+    home_assignment = assignments.get(game.home_slot_id)
+    away_assignment = assignments.get(game.away_slot_id)
+    home_review_required = _assignment_review_required(home_assignment, previous_games)
+    away_review_required = _assignment_review_required(away_assignment, previous_games)
     return {
         "id": game.id,
         "code": game.code,
@@ -54,15 +79,18 @@ def _serialize_bracket_game(
         "start_time": game.start_time.strftime("%H:%M"),
         "venue_name": game.venue_name,
         "stage": game.stage,
-        "home_team_id": home_team_id,
-        "away_team_id": away_team_id,
-        "home_name": home_name,
-        "away_name": away_name,
+        "round_number": game.round_number,
+        "home_team_id": game.home_team_id,
+        "away_team_id": game.away_team_id,
+        "home_name": game.home_team.name if game.home_team_id else "待抽签",
+        "away_name": game.away_team.name if game.away_team_id else "待抽签",
         "home_score": game.home_score,
         "away_score": game.away_score,
-        "winner_team_id": winner_team_id,
-        "winner_name": winner_name,
-        "source_game_ids": list(source_game_ids),
+        "winner_team_id": _winner_id(game),
+        "winner_name": _winner_name(game),
+        "home_review_required": home_review_required,
+        "away_review_required": away_review_required,
+        "review_required": home_review_required or away_review_required,
         "status": game.status,
     }
 
@@ -71,7 +99,7 @@ def _division_bracket(division: Division) -> dict[str, object]:
     games = list(
         Game.objects.filter(
             division=division,
-            stage__in=BRACKET_STAGES,
+            stage__in=(*BRACKET_STAGES, Game.Stage.RELEGATION),
         )
         .exclude(status=Game.Status.VOID)
         .select_related(
@@ -83,88 +111,78 @@ def _division_bracket(division: Division) -> dict[str, object]:
         )
         .order_by("date", "start_time", "venue_name", "code")
     )
-    feeds = list(
-        GameWinnerFeed.objects.filter(source_game__division=division)
-        .select_related(
+    slot_ids = {
+        slot_id
+        for game in games
+        for slot_id in (game.home_slot_id, game.away_slot_id)
+        if slot_id
+    }
+    assignments = {
+        row.slot_id: row
+        for row in DrawAssignment.objects.filter(slot_id__in=slot_ids).select_related(
             "source_game__home_team",
             "source_game__away_team",
-            "target_game",
         )
-        .order_by("target_game__date", "target_game__start_time", "target_side")
+    }
+    bracket_games = [game for game in games if game.stage in BRACKET_STAGES]
+    phase_keys = sorted(
+        {(game.stage, game.round_number) for game in bracket_games},
+        key=lambda key: (STAGE_ORDER[key[0]], key[1]),
     )
-    authoritative = bool(feeds)
-    feeds_by_target: dict[object, dict[str, GameWinnerFeed]] = {}
-    for feed in feeds:
-        feeds_by_target.setdefault(feed.target_game_id, {})[feed.target_side] = feed
-    by_stage = {stage: [game for game in games if game.stage == stage] for stage in BRACKET_STAGES}
     rounds: list[dict[str, object]] = []
     previous_games: list[Game] = []
-    previous_winners: list[tuple[object | None, str | None]] = []
-    for stage in BRACKET_STAGES:
-        stage_games = by_stage[stage]
-        if not stage_games:
-            continue
-        can_feed = bool(previous_games) and len(previous_games) == len(stage_games) * 2
-        serialized_games = []
-        for index, game in enumerate(stage_games):
-            target_feeds = feeds_by_target.get(game.id, {}) if authoritative else {}
-            if authoritative:
-                home_feed = target_feeds.get(GameWinnerFeed.TargetSide.HOME)
-                away_feed = target_feeds.get(GameWinnerFeed.TargetSide.AWAY)
-                source_games = [
-                    feed.source_game for feed in (home_feed, away_feed) if feed is not None
-                ]
-                derived_home = _winner(home_feed.source_game) if home_feed else None
-                derived_away = _winner(away_feed.source_game) if away_feed else None
-            else:
-                source_games = previous_games[index * 2 : index * 2 + 2] if can_feed else []
-                derived = previous_winners[index * 2 : index * 2 + 2] if can_feed else []
-                derived_home = derived[0] if len(derived) > 0 else None
-                derived_away = derived[1] if len(derived) > 1 else None
-            serialized_games.append(
-                _serialize_bracket_game(
-                    game,
-                    derived_home=derived_home,
-                    derived_away=derived_away,
-                    source_game_ids=(source.id for source in source_games),
-                )
-            )
+    for stage, round_number in phase_keys:
+        phase_games = [
+            game
+            for game in bracket_games
+            if game.stage == stage and game.round_number == round_number
+        ]
         rounds.append(
             {
+                "key": f"{stage}:{round_number}",
                 "stage": stage,
-                "label": _round_label(stage, len(stage_games)),
-                "games": serialized_games,
+                "round_number": round_number,
+                "label": _round_label(stage, round_number, len(phase_games)),
+                "review_required": any(
+                    _assignment_review_required(
+                        assignments.get(slot_id),
+                        previous_games,
+                    )
+                    for game in phase_games
+                    for slot_id in (game.home_slot_id, game.away_slot_id)
+                    if slot_id
+                ),
+                "games": [
+                    _serialize_game(game, assignments, previous_games)
+                    for game in phase_games
+                ],
             }
         )
-        previous_games = stage_games
-        previous_winners = [_winner(game) for game in stage_games]
+        previous_games = phase_games
 
-    placement_games = list(
-        Game.objects.filter(division=division, stage=Game.Stage.RELEGATION)
-        .exclude(status=Game.Status.VOID)
-        .select_related(
-            "period",
-            "home_team",
-            "away_team",
-            "home_slot",
-            "away_slot",
-        )
-        .order_by("date", "start_time", "venue_name", "code")
-    )
+    placement_games = [
+        _serialize_game(game, assignments, [])
+        for game in games
+        if game.stage == Game.Stage.RELEGATION
+    ]
     champion_name = None
+    champion_review_required = False
     if rounds and rounds[-1]["stage"] == Game.Stage.FINAL:
         final_games = rounds[-1]["games"]
         if len(final_games) == 1:
             champion_name = final_games[0]["winner_name"]
+            champion_review_required = bool(
+                champion_name and final_games[0]["review_required"]
+            )
     return {
         "id": division.id,
         "code": division.code,
         "name": division.name,
         "gender": division.gender,
-        "relation_mode": "AUTHORITATIVE" if authoritative else "LEGACY_DERIVED",
         "rounds": rounds,
-        "placement_games": [_serialize_bracket_game(game) for game in placement_games],
+        "placement_games": placement_games,
         "champion_name": champion_name,
+        "champion_review_required": champion_review_required,
     }
 
 

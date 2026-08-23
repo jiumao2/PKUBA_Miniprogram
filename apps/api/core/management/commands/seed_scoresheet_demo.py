@@ -378,28 +378,8 @@ class Command(BaseCommand):
                     defaults={
                         "name": "男甲",
                         "sort_order": 1,
-                        # Deliberate local-only exception: the isolated season stays
-                        # non-public while its sole division must be operable so both
-                        # editors can exercise the real lease/save/publish services.
-                        "operation_status": Division.OperationStatus.ACTIVE,
-                        "activated_at": timezone.now(),
-                        "activated_by": actor,
                     },
                 )
-                if division.operation_status != Division.OperationStatus.ACTIVE:
-                    division.operation_status = Division.OperationStatus.ACTIVE
-                    division.version += 1
-                    division.activated_at = timezone.now()
-                    division.activated_by = actor
-                    division.save(
-                        update_fields=[
-                            "operation_status",
-                            "version",
-                            "activated_at",
-                            "activated_by",
-                            "updated_at",
-                        ]
-                    )
                 group, _ = CompetitionGroup.objects.get_or_create(
                     division=division,
                     code="a",
@@ -531,15 +511,17 @@ class Command(BaseCommand):
             raise CommandError("演示赛季名称存在重复，请先人工核对，命令未写入数据。")
         if matches:
             season = matches[0]
-            if season.status != Season.Status.SETUP or season.is_public:
-                raise CommandError("同名赛季不是非公开 SETUP 演示赛季，命令未写入数据。")
+            if season.status != Season.Status.PUBLISHED:
+                raise CommandError("同名赛季不是已公开演示赛季，命令未写入数据。")
             return season
+        if Season.objects.filter(status=Season.Status.PUBLISHED).exists():
+            raise CommandError("已有其他公开赛季；不能创建记录表演示赛季。")
         today = timezone.localdate()
         return Season.objects.create(
             name=DEMO_SEASON_NAME,
             competition_type=Season.CompetitionType.PKU_CUP,
             year=today.year,
-            status=Season.Status.SETUP,
+            status=Season.Status.PUBLISHED,
             starts_on=today,
             ends_on=today + timedelta(days=30),
         )

@@ -1,15 +1,11 @@
-from datetime import timedelta
-
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import Client, override_settings
-from django.utils import timezone
 
 from core.models import (
     Account,
     AdminAuditLog,
-    Division,
     GameMediaAsset,
     GameScoresheet,
     ScoresheetRecognitionRun,
@@ -25,16 +21,7 @@ def test_scoresheet_demo_requires_explicit_confirmation():
         call_command("seed_scoresheet_demo")
 
 
-def test_scoresheet_demo_is_isolated_visible_and_idempotent(tmp_path):
-    today = timezone.localdate()
-    public_season = Season.objects.create(
-        name="Current public season",
-        competition_type=Season.CompetitionType.PKU_CUP,
-        year=today.year,
-        status=Season.Status.ACTIVE,
-        starts_on=today - timedelta(days=30),
-        ends_on=today + timedelta(days=30),
-    )
+def test_scoresheet_demo_is_published_visible_and_idempotent(tmp_path):
     actor = Account.objects.create_user(
         username="scoresheet-demo-root",
         password="test-password",
@@ -68,12 +55,8 @@ def test_scoresheet_demo_is_isolated_visible_and_idempotent(tmp_path):
         client.force_login(actor)
         queue_response = client.get("/api/v1/scoresheets/")
 
-    public_season.refresh_from_db()
-    assert public_season.status == Season.Status.ACTIVE
-    assert public_season.is_public is True
-    assert scoresheet.game.season.status == Season.Status.SETUP
-    assert scoresheet.game.season.is_public is False
-    assert scoresheet.game.division.operation_status == Division.OperationStatus.ACTIVE
+    scoresheet.game.season.refresh_from_db()
+    assert scoresheet.game.season.status == Season.Status.PUBLISHED
     assert scoresheet.game.start_time.strftime("%H:%M") == "12:50"
     assert scoresheet.game.season.teams.count() == 2
     assert sum(team.roster.count() for team in scoresheet.game.season.teams.all()) == 24

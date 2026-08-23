@@ -262,6 +262,27 @@
   gap: 16px 18px;
 }
 
+.draw-managed-participants {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 5px;
+  padding: 12px 14px;
+  background: #f4f8f5;
+  border: 1px solid #cfe3d5;
+  border-radius: var(--pkuba-radius-sm);
+}
+
+.draw-managed-participants span,
+.draw-managed-participants small {
+  color: var(--pkuba-muted);
+  font-size: 11px;
+}
+
+.draw-managed-participants strong {
+  color: var(--pkuba-text);
+  font-size: 14px;
+}
+
 .schedule-form-grid label,
 .review-note {
   display: grid;
@@ -373,6 +394,20 @@
   background: #e8e3dc;
 }
 
+.review-offline-thumb {
+  display: grid !important;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  border: 1px dashed #c8c1b8;
+  border-radius: 6px;
+  background: #f1ede8;
+  color: var(--pkuba-muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-align: center;
+}
+
 .review-asset-row span {
   display: grid;
   align-content: center;
@@ -417,6 +452,27 @@
   width: 100%;
   max-height: 430px;
   object-fit: contain;
+}
+
+.review-offline-panel {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  padding: 32px;
+  border: 1px dashed #c8c1b8;
+  background: #f3f0eb;
+  color: var(--pkuba-muted);
+  text-align: center;
+}
+
+.review-offline-panel strong {
+  color: var(--pkuba-ink);
+  font-size: 18px;
+}
+
+.review-offline-panel span {
+  margin-top: 7px;
+  font-size: 13px;
 }
 
 .review-metadata {

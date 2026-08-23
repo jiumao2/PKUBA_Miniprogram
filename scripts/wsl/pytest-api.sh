@@ -32,6 +32,12 @@ exec docker run --rm \
   -v "$repo_root/apps/api:/app" \
   -e "DATABASE_URL=postgresql://pkuba:${PKUBA_DB_PASSWORD}@db:5432/pkuba" \
   -e "DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}" \
+  -e "QWEN_API_KEY=${QWEN_API_KEY:-}" \
+  -e "QWEN_BASE_URL=${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}" \
+  -e "QWEN_MODEL=${QWEN_MODEL:-qwen3.8-max}" \
+  -e "QWEN_REASONING_EFFORT=${QWEN_REASONING_EFFORT:-xhigh}" \
+  -e "SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=${SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS:-8000000}" \
+  -e "SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=${SCORESHEET_RECOGNITION_TIMEOUT_SECONDS:-180}" \
   "${extra_mounts[@]}" \
   pkuba-dev-api:latest \
   pytest "$@"

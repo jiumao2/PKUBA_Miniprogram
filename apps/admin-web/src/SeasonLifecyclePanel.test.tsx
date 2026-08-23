@@ -27,7 +27,6 @@ const configuration: SeasonConfiguration = {
       name: "男甲",
       gender: "MEN",
       sort_order: 1,
-      operation_status: "SETUP",
       version: 2,
       team_count: 12,
       group_count: 2,
@@ -48,23 +47,13 @@ afterEach(() => {
 });
 
 describe("SeasonLifecyclePanel", () => {
-  it("previews and confirms placeholder publication", async () => {
+  it("previews and confirms publishing the season", async () => {
     const previewSeasonLifecycle = vi.fn().mockResolvedValue({
       season_id: configuration.id,
       season_version: 3,
       before_season_status: "SETUP",
-      after_season_status: "PRE_DRAW_PUBLIC",
-      target_status: "PRE_DRAW_PUBLIC",
-      division_id: null,
-      impacts: [
-        {
-          division_id: configuration.divisions[0].id,
-          division_name: "男甲",
-          before_status: "SETUP",
-          after_status: "PRE_DRAW_PUBLIC",
-          version: 2,
-        },
-      ],
+      after_season_status: "PUBLISHED",
+      target_status: "PUBLISHED",
       blockers: [],
       references: {},
       changed: true,
@@ -75,7 +64,6 @@ describe("SeasonLifecyclePanel", () => {
     const onApplied = vi.fn().mockResolvedValue(undefined);
     const client = { previewSeasonLifecycle, applySeasonLifecycle } as unknown as AdminClient;
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    const user = userEvent.setup();
 
     render(
       <SeasonLifecyclePanel
@@ -85,12 +73,12 @@ describe("SeasonLifecyclePanel", () => {
         onApplied={onApplied}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "公开占位赛程" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "公开赛季" }));
 
     await waitFor(() => expect(applySeasonLifecycle).toHaveBeenCalledOnce());
     expect(applySeasonLifecycle.mock.calls[0][1]).toMatchObject({
       expected_season_version: 3,
-      target_status: "PRE_DRAW_PUBLIC",
+      target_status: "PUBLISHED",
       impact_hash: "lifecycle-hash",
     });
     expect(onApplied).toHaveBeenCalledOnce();
@@ -105,9 +93,6 @@ describe("SeasonLifecyclePanel", () => {
         onApplied={vi.fn()}
       />,
     );
-    expect(screen.getByRole("button", { name: "公开占位赛程" })).toHaveProperty(
-      "disabled",
-      true,
-    );
+    expect(screen.getByRole("button", { name: "公开赛季" })).toBeDisabled();
   });
 });

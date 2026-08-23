@@ -28,8 +28,7 @@ def _setup():
         name="合成榜单赛季",
         competition_type=Season.CompetitionType.PKU_CUP,
         year=today.year,
-        status=Season.Status.ACTIVE,
-        is_public=True,
+        status=Season.Status.PUBLISHED,
         starts_on=today - timedelta(days=10),
         ends_on=today + timedelta(days=10),
     )
@@ -37,7 +36,6 @@ def _setup():
         season=season,
         code="men-a",
         name="男甲",
-        operation_status=Division.OperationStatus.ACTIVE,
     )
     period = Period.objects.create(
         season=season, code="P1", name="第一时段", start_time=time(12, 50)

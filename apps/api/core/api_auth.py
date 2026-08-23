@@ -297,7 +297,7 @@ def _serialize_personal_game(game: Game | None):
 
 
 def _serialize_miniapp_me(account: Account):
-    season = Season.objects.filter(is_public=True).first()
+    season = Season.objects.filter(status=Season.Status.PUBLISHED).first()
     binding = None
     next_game = None
     if season:
@@ -427,7 +427,7 @@ def miniapp_logout(request: HttpRequest):
 )
 def claimable_teams(request: HttpRequest, season_id: UUID):
     del request
-    season = Season.objects.filter(id=season_id, is_public=True).first()
+    season = Season.objects.filter(id=season_id, status=Season.Status.PUBLISHED).first()
     if season is None:
         return Status(400, {"code": "SEASON_NOT_PUBLIC", "message": "当前赛季不可认领球队。"})
     claimed = SeasonLeaderBinding.objects.filter(season=season, active=True).values_list(
@@ -469,7 +469,7 @@ def claim_leader_team(request: HttpRequest, payload: LeaderClaimIn):
     try:
         with transaction.atomic():
             season = Season.objects.select_for_update().get(
-                id=payload.season_id, is_public=True
+                id=payload.season_id, status=Season.Status.PUBLISHED
             )
             account = Account.objects.select_for_update().get(id=request.auth.id)
             team = Team.objects.select_for_update().get(
@@ -529,7 +529,7 @@ def register_admin(request: HttpRequest, payload: AdminRegisterIn):
             {"code": "REGISTRATION_RATE_LIMITED", "message": "邀请码尝试次数过多，请稍后重试。"},
         )
     try:
-        season = Season.objects.get(id=payload.season_id, is_public=True)
+        season = Season.objects.get(id=payload.season_id, status=Season.Status.PUBLISHED)
     except Season.DoesNotExist:
         return Status(400, {"code": "SEASON_NOT_PUBLIC", "message": "当前赛季不可注册管理员。"})
     if not check_password(payload.invite_code, season.admin_invite_code_hash):

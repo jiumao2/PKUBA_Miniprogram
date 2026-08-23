@@ -52,12 +52,6 @@ export type CapacityLedgerRow = components["schemas"]["CapacityLedgerRowOut"];
 export type LifecycleCommand = components["schemas"]["LifecycleCommandIn"];
 export type LifecycleApply = components["schemas"]["LifecycleApplyIn"];
 export type LifecyclePreview = components["schemas"]["LifecyclePreviewOut"];
-export type BracketManagement = components["schemas"]["BracketManagementOut"];
-export type BracketAdminGame = components["schemas"]["BracketAdminGameOut"];
-export type WinnerFeedRelation = components["schemas"]["WinnerFeedRelationIn"];
-export type BracketRelationPreview =
-  components["schemas"]["BracketRelationPreviewOut"];
-export type CorrectionPreview = components["schemas"]["CorrectionPreviewOut"];
 export type AdvancedModel = components["schemas"]["AdvancedModelOut"];
 export type AdvancedRecord = components["schemas"]["AdvancedRecordOut"];
 export type AdvancedRecordList = components["schemas"]["AdvancedRecordListOut"];
@@ -81,6 +75,9 @@ export type DrawAssignmentDataset = components["schemas"]["DrawDatasetOut"];
 export type DrawAssignmentPreview = components["schemas"]["DrawPreviewOut"];
 export type PreviewDrawAssignments = components["schemas"]["DrawPreviewIn"];
 export type ApplyDrawAssignments = components["schemas"]["DrawApplyIn"];
+export type DrawGameAssignmentPreview = components["schemas"]["DrawGamePreviewOut"];
+export type PreviewGameDrawAssignments = components["schemas"]["DrawGamePreviewIn"];
+export type ApplyGameDrawAssignments = components["schemas"]["DrawGameApplyIn"];
 export type WeChatExchange = components["schemas"]["WeChatExchangeOut"];
 export type MiniAppMe = components["schemas"]["MiniAppMeOut"];
 export type ClaimableTeam = components["schemas"]["ClaimableTeamOut"];
@@ -102,6 +99,110 @@ export type MobileScheduleOptions = components["schemas"]["ScheduleOptionsOut"];
 export type UpdateMobileAdminGame = components["schemas"]["UpdateAdminGameIn"];
 export type GameMediaAsset = components["schemas"]["GameMediaAssetOut"];
 export type GameMediaCollection = components["schemas"]["GameMediaCollectionOut"];
+
+export type ArchiveKind = "SEASON_DATA" | "SEASON_PHOTOS" | "SYSTEM_RAW";
+export type ArchiveStatus = "QUEUED" | "BUILDING" | "READY" | "FAILED" | "EXPIRED" | "DISCARDED";
+
+export interface ArchiveBlocker {
+  code: string;
+  message: string;
+}
+
+export interface ArchivePreview {
+  kind: ArchiveKind;
+  season_id: string | null;
+  season_version: number | null;
+  estimated_bytes: number;
+  required_free_bytes: number;
+  available_bytes: number;
+  reserve_bytes: number;
+  blockers: ArchiveBlocker[];
+  ready: boolean;
+}
+
+export interface ArchiveJob {
+  id: string;
+  kind: ArchiveKind;
+  season_id: string | null;
+  season_name: string | null;
+  season_version: number | null;
+  is_final: boolean;
+  status: ArchiveStatus;
+  filename: string;
+  byte_size: number;
+  file_sha256: string;
+  summary: Record<string, unknown>;
+  error_code: string;
+  error_message: string;
+  download_count: number;
+  last_downloaded_at: string | null;
+  completed_at: string | null;
+  expires_at: string | null;
+  confirmed_saved_at: string | null;
+  created_at: string;
+  version: number;
+}
+
+export interface ArchiveDownloadTicket {
+  url: string;
+  expires_in: number;
+  filename: string;
+  byte_size: number;
+  file_sha256: string;
+}
+
+export interface StorageSeason {
+  season_id: string;
+  season_name: string;
+  season_year: number;
+  season_status: string;
+  scoresheet_bytes: number;
+  group_photo_bytes: number;
+  game_photo_bytes: number;
+  online_bytes: number;
+  online_files: number;
+}
+
+export interface StorageSummary {
+  disk_total_bytes: number;
+  disk_used_bytes: number;
+  disk_free_bytes: number;
+  reserve_bytes: number;
+  database_bytes: number;
+  online_media_bytes: number;
+  staged_artifact_bytes: number;
+  seasons: StorageSeason[];
+}
+
+export interface MediaPurgePreview {
+  season_id: string;
+  season_version: number;
+  files: number;
+  bytes: number;
+  by_kind: Record<string, { files: number; bytes: number }>;
+  data_archive_id: string | null;
+  photo_archive_id: string | null;
+  preview_hash: string;
+  blockers: ArchiveBlocker[];
+  ready: boolean;
+}
+
+export interface MediaPurgeJob {
+  id: string;
+  season_id: string;
+  status: string;
+  expected_files: number;
+  expected_bytes: number;
+  deleted_files: number;
+  deleted_bytes: number;
+  missing_files: number;
+  warnings: Array<Record<string, unknown>>;
+  error_code: string;
+  error_message: string;
+  completed_at: string | null;
+  created_at: string;
+  version: number;
+}
 
 export interface ScoresheetLeaseResponse {
   read_only: boolean;
@@ -1098,6 +1199,197 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           body: JSON.stringify(payload),
         }),
       ),
+    previewGameDrawAssignments: async (
+      seasonId: string,
+      gameId: string,
+      payload: PreviewGameDrawAssignments,
+    ) =>
+      parseAdminResponse<DrawGameAssignmentPreview>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/draw-assignments/games/${gameId}/preview`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            body: JSON.stringify(payload),
+          },
+        ),
+      ),
+    updateGameDrawAssignments: async (
+      seasonId: string,
+      gameId: string,
+      payload: ApplyGameDrawAssignments,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<DrawAssignmentDataset>(
+        await fetchAdmin(
+          `/api/v1/admin/seasons/${seasonId}/draw-assignments/games/${gameId}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": idempotencyKey,
+              ...csrfHeaders(),
+            },
+            body: JSON.stringify(payload),
+          },
+        ),
+      ),
+    getArchiveStorageSummary: async () =>
+      parseAdminResponse<StorageSummary>(
+        await fetchAdmin("/api/v1/admin/archives/storage-summary"),
+      ),
+    previewSeasonExport: async (
+      seasonId: string,
+      kind: Extract<ArchiveKind, "SEASON_DATA" | "SEASON_PHOTOS">,
+      expectedSeasonVersion: number,
+    ) =>
+      parseAdminResponse<ArchivePreview>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/exports/preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({ kind, expected_season_version: expectedSeasonVersion }),
+        }),
+      ),
+    createSeasonExport: async (
+      seasonId: string,
+      kind: Extract<ArchiveKind, "SEASON_DATA" | "SEASON_PHOTOS">,
+      expectedSeasonVersion: number,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<ArchiveJob>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/exports`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({ kind, expected_season_version: expectedSeasonVersion }),
+        }),
+      ),
+    listSeasonExports: async (seasonId: string) =>
+      parseAdminResponse<PagedResponse<ArchiveJob>>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/exports?page=1&page_size=100`),
+      ),
+    previewSystemBackup: async () =>
+      parseAdminResponse<ArchivePreview>(
+        await fetchAdmin("/api/v1/admin/system-backups/preview", {
+          method: "POST",
+          headers: csrfHeaders(),
+        }),
+      ),
+    createSystemBackup: async (
+      currentPassword: string,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<ArchiveJob>(
+        await fetchAdmin("/api/v1/admin/system-backups", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({ current_password: currentPassword }),
+        }),
+      ),
+    listSystemBackups: async () =>
+      parseAdminResponse<PagedResponse<ArchiveJob>>(
+        await fetchAdmin("/api/v1/admin/system-backups?page=1&page_size=100"),
+      ),
+    issueArchiveDownloadTicket: async (jobId: string) =>
+      parseAdminResponse<ArchiveDownloadTicket>(
+        await fetchAdmin(`/api/v1/admin/archive-jobs/${jobId}/download-ticket`, {
+          method: "POST",
+          headers: csrfHeaders(),
+        }),
+      ),
+    confirmArchiveSaved: async (
+      jobId: string,
+      expectedVersion: number,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<ArchiveJob>(
+        await fetchAdmin(`/api/v1/admin/archive-jobs/${jobId}/confirm-saved`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({
+            expected_version: expectedVersion,
+            confirmed_external_copy: true,
+          }),
+        }),
+      ),
+    discardArchive: async (
+      jobId: string,
+      expectedVersion: number,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<ArchiveJob>(
+        await fetchAdmin(`/api/v1/admin/archive-jobs/${jobId}/discard`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({
+            expected_version: expectedVersion,
+            confirmed_external_copy: false,
+          }),
+        }),
+      ),
+    previewMediaPurge: async (seasonId: string) =>
+      parseAdminResponse<MediaPurgePreview>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/media-purge/preview`, {
+          method: "POST",
+          headers: csrfHeaders(),
+        }),
+      ),
+    listMediaPurgeJobs: async (seasonId: string) =>
+      parseAdminResponse<PagedResponse<MediaPurgeJob>>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/media-purge?page=1&page_size=100`),
+      ),
+    applyMediaPurge: async (
+      seasonId: string,
+      payload: {
+        preview_hash: string;
+        expected_season_version: number;
+        confirmed_external_copy: boolean;
+        confirm_permanent_delete: boolean;
+      },
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<MediaPurgeJob>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/media-purge/apply`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    retryMediaPurge: async (
+      jobId: string,
+      expectedVersion: number,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<MediaPurgeJob>(
+        await fetchAdmin(`/api/v1/admin/media-purge-jobs/${jobId}/retry`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({ expected_version: expectedVersion }),
+        }),
+      ),
     listAdminSeasons: async () =>
       parseAdminResponse<AdminSeason[]>(await fetchAdmin("/api/v1/admin/seasons")),
     createAdminSeason: async (payload: CreateSeason) =>
@@ -1174,74 +1466,6 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
             ...csrfHeaders(),
           },
           body: JSON.stringify(payload),
-        }),
-      ),
-    getBracketManagement: async (seasonId: string, divisionId: string) =>
-      parseAdminResponse<BracketManagement>(
-        await fetchAdmin(
-          `/api/v1/admin/seasons/${seasonId}/brackets/${divisionId}`,
-        ),
-      ),
-    previewBracketRelations: async (
-      seasonId: string,
-      divisionId: string,
-      payload: {
-        expected_season_version: number;
-        expected_division_version: number;
-        relations: WinnerFeedRelation[];
-      },
-    ) =>
-      parseAdminResponse<BracketRelationPreview>(
-        await fetchAdmin(
-          `/api/v1/admin/seasons/${seasonId}/brackets/${divisionId}/relations/preview`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...csrfHeaders() },
-            body: JSON.stringify(payload),
-          },
-        ),
-      ),
-    applyBracketRelations: async (
-      seasonId: string,
-      divisionId: string,
-      payload: {
-        expected_season_version: number;
-        expected_division_version: number;
-        relations: WinnerFeedRelation[];
-        impact_hash: string;
-      },
-    ) =>
-      parseAdminResponse<BracketManagement>(
-        await fetchAdmin(
-          `/api/v1/admin/seasons/${seasonId}/brackets/${divisionId}/relations/apply`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...csrfHeaders() },
-            body: JSON.stringify(payload),
-          },
-        ),
-      ),
-    previewBracketCorrection: async (gameId: string, expectedGameVersion: number) =>
-      parseAdminResponse<CorrectionPreview>(
-        await fetchAdmin(`/api/v1/admin/brackets/games/${gameId}/correction/preview`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
-          body: JSON.stringify({ expected_game_version: expectedGameVersion }),
-        }),
-      ),
-    applyBracketCorrection: async (
-      gameId: string,
-      expectedGameVersion: number,
-      impactHash: string,
-    ) =>
-      parseAdminResponse<CorrectionPreview>(
-        await fetchAdmin(`/api/v1/admin/brackets/games/${gameId}/correction/apply`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
-          body: JSON.stringify({
-            expected_game_version: expectedGameVersion,
-            impact_hash: impactHash,
-          }),
         }),
       ),
     listAdvancedModels: async () =>

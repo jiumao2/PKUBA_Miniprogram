@@ -19,7 +19,7 @@ from core.models import (
 )
 
 
-def season(status=Season.Status.ACTIVE, name="测试赛季"):
+def season(status=Season.Status.PUBLISHED, name="测试赛季"):
     today = timezone.localdate()
     return Season.objects.create(
         name=name,
@@ -36,7 +36,6 @@ def placeholder_game(target_season: Season):
         season=target_season,
         code="men-a",
         name="男甲",
-        operation_status=target_season.status,
     )
     home = ParticipantSlot.objects.create(division=division, code="A1", label="A 组 1 号签")
     away = ParticipantSlot.objects.create(division=division, code="A2", label="A 组 2 号签")
@@ -66,7 +65,7 @@ def reschedule_setup(*, capacity: int = 3):
         name=f"调赛测试-{today.isoformat()}",
         competition_type=Season.CompetitionType.PKU_CUP,
         year=target_date.year,
-        status=Season.Status.ACTIVE,
+        status=Season.Status.PUBLISHED,
         starts_on=next_monday,
         ends_on=next_monday + timedelta(days=90),
     )
@@ -74,7 +73,6 @@ def reschedule_setup(*, capacity: int = 3):
         season=target_season,
         code="men-a",
         name="男甲",
-        operation_status=Division.OperationStatus.ACTIVE,
     )
     group = CompetitionGroup.objects.create(division=division, code="a", name="A 组")
     period = Period.objects.create(

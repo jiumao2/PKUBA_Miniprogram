@@ -39,7 +39,6 @@ def _setup_division() -> tuple[Season, Division]:
         season=target_season,
         code="men-a",
         name="男甲",
-        operation_status=Division.OperationStatus.SETUP,
     )
     return target_season, division
 
@@ -63,7 +62,9 @@ def test_advanced_data_api_is_superadmin_only_and_never_cached():
     keys = {item["key"] for item in response.json()}
     assert "accounts" in keys
     assert "games" in keys
-    assert "game-winner-feeds" in keys
+    assert "draw-assignments" in keys
+    assert "archive-jobs" in keys
+    assert "media-purge-jobs" in keys
     assert "auth-group" not in keys
 
 
@@ -160,7 +161,7 @@ def test_referenced_and_archived_master_data_cannot_be_mutated():
     assert {item["code"] for item in referenced["blockers"]} == {"RECORD_IN_USE"}
 
     target_season.status = Season.Status.ARCHIVED
-    target_season.save(update_fields=["status", "is_public", "updated_at"])
+    target_season.save(update_fields=["status", "updated_at"])
     archived = preview_mutation(
         spec=get_spec("competition-groups"),
         operation="UPDATE",

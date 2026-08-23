@@ -791,6 +791,229 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/archives/storage-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Storage Summary */
+        get: operations["core_api_admin_archives_get_storage_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/exports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Season Export */
+        post: operations["core_api_admin_archives_preview_season_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Season Exports */
+        get: operations["core_api_admin_archives_list_season_exports"];
+        put?: never;
+        /** Request Season Export */
+        post: operations["core_api_admin_archives_request_season_export"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/system-backups/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview System Backup */
+        post: operations["core_api_admin_archives_preview_system_backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/system-backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List System Backups */
+        get: operations["core_api_admin_archives_list_system_backups"];
+        put?: never;
+        /** Request System Backup */
+        post: operations["core_api_admin_archives_request_system_backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/archive-jobs/{job_id}/download-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue Download Ticket */
+        post: operations["core_api_admin_archives_issue_download_ticket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/archive-jobs/{job_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Archive */
+        get: operations["core_api_admin_archives_download_archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/archive-jobs/{job_id}/confirm-saved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Archive Saved */
+        post: operations["core_api_admin_archives_confirm_archive_saved"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/archive-jobs/{job_id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discard Archive Endpoint */
+        post: operations["core_api_admin_archives_discard_archive_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/media-purge/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Media Purge */
+        post: operations["core_api_admin_archives_preview_media_purge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/media-purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Media Purge Jobs */
+        get: operations["core_api_admin_archives_list_media_purge_jobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/media-purge/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Media Purge */
+        post: operations["core_api_admin_archives_apply_media_purge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/media-purge-jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Media Purge */
+        post: operations["core_api_admin_archives_retry_media_purge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/seasons/{season_id}/draw-assignments": {
         parameters: {
             query?: never;
@@ -826,6 +1049,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/seasons/{season_id}/draw-assignments/games/{game_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Game Draw Assignment Update */
+        post: operations["core_api_admin_draw_preview_game_draw_assignment_update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/draw-assignments/games/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Game Draw Assignments */
+        put: operations["core_api_admin_draw_update_game_draw_assignments"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/seasons/{season_id}/lifecycle/preview": {
         parameters: {
             query?: never;
@@ -854,91 +1111,6 @@ export interface paths {
         put?: never;
         /** Apply Lifecycle */
         post: operations["core_api_admin_lifecycle_apply_lifecycle"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Bracket Management */
-        get: operations["core_api_admin_brackets_get_bracket_management"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}/relations/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Preview Relations */
-        post: operations["core_api_admin_brackets_preview_relations"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/seasons/{season_id}/brackets/{division_id}/relations/apply": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Apply Relations */
-        post: operations["core_api_admin_brackets_apply_relations"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/brackets/games/{game_id}/correction/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Preview Correction */
-        post: operations["core_api_admin_brackets_preview_correction"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/brackets/games/{game_id}/correction/apply": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Apply Correction */
-        post: operations["core_api_admin_brackets_apply_correction"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2149,8 +2321,6 @@ export interface components {
             name: string;
             /** Gender */
             gender: string;
-            /** Operation Status */
-            operation_status: string;
             /** Version */
             version: number;
         };
@@ -2411,6 +2581,8 @@ export interface components {
             venue_name: string;
             /** Stage */
             stage: string;
+            /** Round Number */
+            round_number: number;
             /** Home Team Id */
             home_team_id: string | null;
             /** Away Team Id */
@@ -2427,17 +2599,27 @@ export interface components {
             winner_team_id: string | null;
             /** Winner Name */
             winner_name: string | null;
-            /** Source Game Ids */
-            source_game_ids: string[];
+            /** Home Review Required */
+            home_review_required: boolean;
+            /** Away Review Required */
+            away_review_required: boolean;
+            /** Review Required */
+            review_required: boolean;
             /** Status */
             status: string;
         };
         /** BracketRoundOut */
         BracketRoundOut: {
+            /** Key */
+            key: string;
             /** Stage */
             stage: string;
+            /** Round Number */
+            round_number: number;
             /** Label */
             label: string;
+            /** Review Required */
+            review_required: boolean;
             /** Games */
             games: components["schemas"]["BracketGameOut"][];
         };
@@ -2466,14 +2648,14 @@ export interface components {
             name: string;
             /** Gender */
             gender: string;
-            /** Relation Mode */
-            relation_mode: string;
             /** Rounds */
             rounds: components["schemas"]["BracketRoundOut"][];
             /** Placement Games */
             placement_games: components["schemas"]["BracketGameOut"][];
             /** Champion Name */
             champion_name: string | null;
+            /** Champion Review Required */
+            champion_review_required: boolean;
         };
         /** TeamLeaderboardItemOut */
         TeamLeaderboardItemOut: {
@@ -2969,8 +3151,6 @@ export interface components {
             name: string;
             /** Gender */
             gender: string;
-            /** Operation Status */
-            operation_status: string;
             /** Version */
             version: number;
         };
@@ -3091,6 +3271,8 @@ export interface components {
             stage: string;
             /** Stage Name */
             stage_name: string;
+            /** Round Number */
+            round_number: number;
             /** Prefix */
             prefix: string;
             /** Slot Count */
@@ -3165,8 +3347,6 @@ export interface components {
             gender: string;
             /** Sort Order */
             sort_order: number;
-            /** Operation Status */
-            operation_status: string;
             /** Version */
             version: number;
             /** Team Count */
@@ -3289,6 +3469,11 @@ export interface components {
             division_id: string;
             /** Stage */
             stage: string;
+            /**
+             * Round Number
+             * @default 1
+             */
+            round_number: number;
             /** Prefix */
             prefix: string;
             /** Slot Count */
@@ -4002,6 +4187,266 @@ export interface components {
             /** Season Name */
             season_name: string;
         };
+        /** StorageSeasonOut */
+        StorageSeasonOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Season Year */
+            season_year: number;
+            /** Season Status */
+            season_status: string;
+            /** Scoresheet Bytes */
+            scoresheet_bytes: number;
+            /** Group Photo Bytes */
+            group_photo_bytes: number;
+            /** Game Photo Bytes */
+            game_photo_bytes: number;
+            /** Online Bytes */
+            online_bytes: number;
+            /** Online Files */
+            online_files: number;
+        };
+        /** StorageSummaryOut */
+        StorageSummaryOut: {
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            /** Disk Used Bytes */
+            disk_used_bytes: number;
+            /** Disk Free Bytes */
+            disk_free_bytes: number;
+            /** Reserve Bytes */
+            reserve_bytes: number;
+            /** Database Bytes */
+            database_bytes: number;
+            /** Online Media Bytes */
+            online_media_bytes: number;
+            /** Staged Artifact Bytes */
+            staged_artifact_bytes: number;
+            /** Seasons */
+            seasons: components["schemas"]["StorageSeasonOut"][];
+        };
+        /** ArchiveBlockerOut */
+        ArchiveBlockerOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** ArchivePreviewOut */
+        ArchivePreviewOut: {
+            /** Kind */
+            kind: string;
+            /** Season Id */
+            season_id: string | null;
+            /** Season Version */
+            season_version: number | null;
+            /** Estimated Bytes */
+            estimated_bytes: number;
+            /** Required Free Bytes */
+            required_free_bytes: number;
+            /** Available Bytes */
+            available_bytes: number;
+            /** Reserve Bytes */
+            reserve_bytes: number;
+            /** Blockers */
+            blockers: components["schemas"]["ArchiveBlockerOut"][];
+            /** Ready */
+            ready: boolean;
+        };
+        /** SeasonExportIn */
+        SeasonExportIn: {
+            /** Kind */
+            kind: string;
+            /** Expected Season Version */
+            expected_season_version: number;
+        };
+        /** ArchiveJobOut */
+        ArchiveJobOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Season Id */
+            season_id: string | null;
+            /** Season Name */
+            season_name: string | null;
+            /** Season Version */
+            season_version: number | null;
+            /** Is Final */
+            is_final: boolean;
+            /** Status */
+            status: string;
+            /** Filename */
+            filename: string;
+            /** Byte Size */
+            byte_size: number;
+            /** File Sha256 */
+            file_sha256: string;
+            /** Summary */
+            summary: {
+                [key: string]: unknown;
+            };
+            /** Error Code */
+            error_code: string;
+            /** Error Message */
+            error_message: string;
+            /** Download Count */
+            download_count: number;
+            /** Last Downloaded At */
+            last_downloaded_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Confirmed Saved At */
+            confirmed_saved_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Version */
+            version: number;
+        };
+        /** ArchiveJobPageOut */
+        ArchiveJobPageOut: {
+            /** Items */
+            items: components["schemas"]["ArchiveJobOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** SystemBackupIn */
+        SystemBackupIn: {
+            /** Current Password */
+            current_password: string;
+        };
+        /** DownloadTicketOut */
+        DownloadTicketOut: {
+            /** Url */
+            url: string;
+            /** Expires In */
+            expires_in: number;
+            /** Filename */
+            filename: string;
+            /** Byte Size */
+            byte_size: number;
+            /** File Sha256 */
+            file_sha256: string;
+        };
+        /** ConfirmSavedIn */
+        ConfirmSavedIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Confirmed External Copy */
+            confirmed_external_copy: boolean;
+        };
+        /** PurgePreviewOut */
+        PurgePreviewOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Version */
+            season_version: number;
+            /** Files */
+            files: number;
+            /** Bytes */
+            bytes: number;
+            /** By Kind */
+            by_kind: {
+                [key: string]: unknown;
+            };
+            /** Data Archive Id */
+            data_archive_id: string | null;
+            /** Photo Archive Id */
+            photo_archive_id: string | null;
+            /** Preview Hash */
+            preview_hash: string;
+            /** Blockers */
+            blockers: components["schemas"]["ArchiveBlockerOut"][];
+            /** Ready */
+            ready: boolean;
+        };
+        /** MediaPurgeJobOut */
+        MediaPurgeJobOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Status */
+            status: string;
+            /** Expected Files */
+            expected_files: number;
+            /** Expected Bytes */
+            expected_bytes: number;
+            /** Deleted Files */
+            deleted_files: number;
+            /** Deleted Bytes */
+            deleted_bytes: number;
+            /** Missing Files */
+            missing_files: number;
+            /** Warnings */
+            warnings: unknown[];
+            /** Error Code */
+            error_code: string;
+            /** Error Message */
+            error_message: string;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Version */
+            version: number;
+        };
+        /** MediaPurgeJobPageOut */
+        MediaPurgeJobPageOut: {
+            /** Items */
+            items: components["schemas"]["MediaPurgeJobOut"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** PurgeApplyIn */
+        PurgeApplyIn: {
+            /** Preview Hash */
+            preview_hash: string;
+            /** Expected Season Version */
+            expected_season_version: number;
+            /** Confirmed External Copy */
+            confirmed_external_copy: boolean;
+            /** Confirm Permanent Delete */
+            confirm_permanent_delete: boolean;
+        };
+        /** RetryJobIn */
+        RetryJobIn: {
+            /** Expected Version */
+            expected_version: number;
+        };
         /** DrawDatasetOut */
         DrawDatasetOut: {
             /**
@@ -4037,8 +4482,6 @@ export interface components {
             gender: string;
             /** Sort Order */
             sort_order: number;
-            /** Operation Status */
-            operation_status: string;
             /** Version */
             version: number;
             /** Slot Count */
@@ -4053,6 +4496,8 @@ export interface components {
             teams: components["schemas"]["DrawTeamOut"][];
             /** Groups */
             groups: components["schemas"]["DrawGroupOut"][];
+            /** Phases */
+            phases: components["schemas"]["DrawPhaseOut"][];
         };
         /** DrawGroupOut */
         DrawGroupOut: {
@@ -4069,6 +4514,80 @@ export interface components {
             sort_order: number;
             /** Slots */
             slots: components["schemas"]["DrawSlotOut"][];
+        };
+        /** DrawPhaseGameOut */
+        DrawPhaseGameOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Stage */
+            stage: string;
+            /** Round Number */
+            round_number: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Start Time */
+            start_time: string;
+            /** Venue Name */
+            venue_name: string;
+            /** Home Slot Id */
+            home_slot_id?: string | null;
+            /** Home Slot Code */
+            home_slot_code: string;
+            /** Home Slot Label */
+            home_slot_label: string;
+            /** Away Slot Id */
+            away_slot_id?: string | null;
+            /** Away Slot Code */
+            away_slot_code: string;
+            /** Away Slot Label */
+            away_slot_label: string;
+            /** Home Team Id */
+            home_team_id?: string | null;
+            /** Home Team Name */
+            home_team_name?: string | null;
+            /** Away Team Id */
+            away_team_id?: string | null;
+            /** Away Team Name */
+            away_team_name?: string | null;
+            home_validation: components["schemas"]["DrawValidationOut"];
+            away_validation: components["schemas"]["DrawValidationOut"];
+            /** Review Required */
+            review_required: boolean;
+            /** Status */
+            status: string;
+            /** Home Score */
+            home_score?: number | null;
+            /** Away Score */
+            away_score?: number | null;
+            /** Version */
+            version: number;
+        };
+        /** DrawPhaseOut */
+        DrawPhaseOut: {
+            /** Key */
+            key: string;
+            /** Stage */
+            stage: string;
+            /** Round Number */
+            round_number: number;
+            /** Label */
+            label: string;
+            /** Previous Phase Key */
+            previous_phase_key?: string | null;
+            /** Previous Winner Ids */
+            previous_winner_ids: string[];
+            /** Previous Results Complete */
+            previous_results_complete: boolean;
+            /** Games */
+            games: components["schemas"]["DrawPhaseGameOut"][];
         };
         /** DrawSlotOut */
         DrawSlotOut: {
@@ -4101,6 +4620,21 @@ export interface components {
             name: string;
             /** Active */
             active: boolean;
+        };
+        /** DrawValidationOut */
+        DrawValidationOut: {
+            /** Mode */
+            mode: string;
+            /** Source Game Id */
+            source_game_id?: string | null;
+            /** Source Game Version */
+            source_game_version?: number | null;
+            /** Source Version Stale */
+            source_version_stale: boolean;
+            /** Review Required */
+            review_required: boolean;
+            /** Status */
+            status: string;
         };
         /** DrawErrorOut */
         DrawErrorOut: {
@@ -4242,6 +4776,121 @@ export interface components {
             /** Assignments */
             assignments: components["schemas"]["DrawAssignmentIn"][];
         };
+        /** DrawGamePreviewOut */
+        DrawGamePreviewOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Version */
+            season_version: number;
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Game Version */
+            game_version: number;
+            /**
+             * Division Id
+             * Format: uuid
+             */
+            division_id: string;
+            /** Stage */
+            stage: string;
+            /** Round Number */
+            round_number: number;
+            /**
+             * Home Team Id
+             * Format: uuid
+             */
+            home_team_id: string;
+            /** Home Team Name */
+            home_team_name: string;
+            /**
+             * Away Team Id
+             * Format: uuid
+             */
+            away_team_id: string;
+            /** Away Team Name */
+            away_team_name: string;
+            /** Participant Changed */
+            participant_changed: boolean;
+            /** Public Impact */
+            public_impact: boolean;
+            /** Warnings */
+            warnings: components["schemas"]["DrawWarningOut"][];
+            /** Blockers */
+            blockers: components["schemas"]["DrawBlockerOut"][];
+            /** Requires Override */
+            requires_override: boolean;
+            /** Can Apply */
+            can_apply: boolean;
+            /** References */
+            references: {
+                [key: string]: number;
+            };
+            /** Impact Hash */
+            impact_hash: string;
+        };
+        /** DrawWarningOut */
+        DrawWarningOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Side */
+            side: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+        };
+        /** DrawGamePreviewIn */
+        DrawGamePreviewIn: {
+            /** Expected Season Version */
+            expected_season_version: number;
+            /** Expected Game Version */
+            expected_game_version: number;
+            /**
+             * Home Team Id
+             * Format: uuid
+             */
+            home_team_id: string;
+            /**
+             * Away Team Id
+             * Format: uuid
+             */
+            away_team_id: string;
+        };
+        /** DrawGameApplyIn */
+        DrawGameApplyIn: {
+            /** Expected Season Version */
+            expected_season_version: number;
+            /** Expected Game Version */
+            expected_game_version: number;
+            /**
+             * Home Team Id
+             * Format: uuid
+             */
+            home_team_id: string;
+            /**
+             * Away Team Id
+             * Format: uuid
+             */
+            away_team_id: string;
+            /**
+             * Override Warnings
+             * @default false
+             */
+            override_warnings: boolean;
+            /** Impact Hash */
+            impact_hash: string;
+        };
         /** LifecycleBlockerOut */
         LifecycleBlockerOut: {
             /** Code */
@@ -4250,22 +4899,6 @@ export interface components {
             message: string;
             /** Count */
             count: number;
-        };
-        /** LifecycleDivisionImpactOut */
-        LifecycleDivisionImpactOut: {
-            /**
-             * Division Id
-             * Format: uuid
-             */
-            division_id: string;
-            /** Division Name */
-            division_name: string;
-            /** Before Status */
-            before_status: string;
-            /** After Status */
-            after_status: string;
-            /** Version */
-            version: number;
         };
         /** LifecyclePreviewOut */
         LifecyclePreviewOut: {
@@ -4282,10 +4915,6 @@ export interface components {
             after_season_status: string;
             /** Target Status */
             target_status: string;
-            /** Division Id */
-            division_id: string | null;
-            /** Impacts */
-            impacts: components["schemas"]["LifecycleDivisionImpactOut"][];
             /** Blockers */
             blockers: components["schemas"]["LifecycleBlockerOut"][];
             /** References */
@@ -4312,10 +4941,6 @@ export interface components {
             expected_season_version: number;
             /** Target Status */
             target_status: string;
-            /** Division Id */
-            division_id?: string | null;
-            /** Expected Division Version */
-            expected_division_version?: number | null;
         };
         /** LifecycleApplyIn */
         LifecycleApplyIn: {
@@ -4323,286 +4948,6 @@ export interface components {
             expected_season_version: number;
             /** Target Status */
             target_status: string;
-            /** Division Id */
-            division_id?: string | null;
-            /** Expected Division Version */
-            expected_division_version?: number | null;
-            /** Impact Hash */
-            impact_hash: string;
-        };
-        /** BracketAdminGameOut */
-        BracketAdminGameOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Code */
-            code: string;
-            /** Stage */
-            stage: string;
-            /** Round Number */
-            round_number: number;
-            /**
-             * Date
-             * Format: date
-             */
-            date: string;
-            /** Start Time */
-            start_time: string;
-            /** Home Name */
-            home_name: string;
-            /** Away Name */
-            away_name: string;
-            /** Home Team Id */
-            home_team_id: string | null;
-            /** Away Team Id */
-            away_team_id: string | null;
-            /** Home Score */
-            home_score: number | null;
-            /** Away Score */
-            away_score: number | null;
-            /** Status */
-            status: string;
-            /** Version */
-            version: number;
-        };
-        /** BracketManagementOut */
-        BracketManagementOut: {
-            /**
-             * Season Id
-             * Format: uuid
-             */
-            season_id: string;
-            /** Season Name */
-            season_name: string;
-            /** Season Status */
-            season_status: string;
-            /** Season Version */
-            season_version: number;
-            /**
-             * Division Id
-             * Format: uuid
-             */
-            division_id: string;
-            /** Division Name */
-            division_name: string;
-            /** Division Status */
-            division_status: string;
-            /** Division Version */
-            division_version: number;
-            /** Relation Mode */
-            relation_mode: string;
-            /** Read Only */
-            read_only: boolean;
-            /** Locked Reason */
-            locked_reason: string;
-            /** Games */
-            games: components["schemas"]["BracketAdminGameOut"][];
-            /** Feeds */
-            feeds: components["schemas"]["WinnerFeedOut"][];
-            /** Legacy Suggestions */
-            legacy_suggestions: components["schemas"]["WinnerFeedRelationOut"][];
-        };
-        /** WinnerFeedOut */
-        WinnerFeedOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Source Game Id
-             * Format: uuid
-             */
-            source_game_id: string;
-            /**
-             * Target Game Id
-             * Format: uuid
-             */
-            target_game_id: string;
-            /** Target Side */
-            target_side: string;
-            /** Applied Winner Id */
-            applied_winner_id: string | null;
-            /** Applied Winner Name */
-            applied_winner_name: string | null;
-            /** Applied Source Version */
-            applied_source_version: number | null;
-            /** Version */
-            version: number;
-        };
-        /** WinnerFeedRelationOut */
-        WinnerFeedRelationOut: {
-            /**
-             * Source Game Id
-             * Format: uuid
-             */
-            source_game_id: string;
-            /**
-             * Target Game Id
-             * Format: uuid
-             */
-            target_game_id: string;
-            /** Target Side */
-            target_side: string;
-        };
-        /** BracketAdminErrorOut */
-        BracketAdminErrorOut: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
-        };
-        /** BracketBlockerOut */
-        BracketBlockerOut: {
-            /** Code */
-            code: string;
-            /** Message */
-            message: string;
-            /** Count */
-            count: number;
-        };
-        /** BracketRelationPreviewOut */
-        BracketRelationPreviewOut: {
-            /**
-             * Season Id
-             * Format: uuid
-             */
-            season_id: string;
-            /** Season Version */
-            season_version: number;
-            /**
-             * Division Id
-             * Format: uuid
-             */
-            division_id: string;
-            /** Division Version */
-            division_version: number;
-            /** Relation Mode Before */
-            relation_mode_before: string;
-            /** Relation Mode After */
-            relation_mode_after: string;
-            /** Added Count */
-            added_count: number;
-            /** Removed Count */
-            removed_count: number;
-            /** Unchanged Count */
-            unchanged_count: number;
-            /** Blockers */
-            blockers: components["schemas"]["BracketBlockerOut"][];
-            /** Can Apply */
-            can_apply: boolean;
-            /** Impact Hash */
-            impact_hash: string;
-            /** Relations */
-            relations: components["schemas"]["WinnerFeedRelationOut"][];
-        };
-        /** BracketRelationPreviewIn */
-        BracketRelationPreviewIn: {
-            /** Expected Season Version */
-            expected_season_version: number;
-            /** Expected Division Version */
-            expected_division_version: number;
-            /** Relations */
-            relations: components["schemas"]["WinnerFeedRelationIn"][];
-        };
-        /** WinnerFeedRelationIn */
-        WinnerFeedRelationIn: {
-            /**
-             * Source Game Id
-             * Format: uuid
-             */
-            source_game_id: string;
-            /**
-             * Target Game Id
-             * Format: uuid
-             */
-            target_game_id: string;
-            /** Target Side */
-            target_side: string;
-        };
-        /** BracketRelationApplyIn */
-        BracketRelationApplyIn: {
-            /** Expected Season Version */
-            expected_season_version: number;
-            /** Expected Division Version */
-            expected_division_version: number;
-            /** Relations */
-            relations: components["schemas"]["WinnerFeedRelationIn"][];
-            /** Impact Hash */
-            impact_hash: string;
-        };
-        /** AffectedGameOut */
-        AffectedGameOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Version */
-            version: number;
-            /** Home Team Id */
-            home_team_id: string | null;
-            /** Away Team Id */
-            away_team_id: string | null;
-            /** Home Score */
-            home_score: number | null;
-            /** Away Score */
-            away_score: number | null;
-            /** Status */
-            status: string;
-            /** Current Publication Id */
-            current_publication_id: string | null;
-        };
-        /** CorrectionPreviewOut */
-        CorrectionPreviewOut: {
-            /**
-             * Source Game Id
-             * Format: uuid
-             */
-            source_game_id: string;
-            /** Source Game Version */
-            source_game_version: number;
-            /** Affected Games */
-            affected_games: components["schemas"]["AffectedGameOut"][];
-            /** Affected Game Count */
-            affected_game_count: number;
-            /** Affected Feed Count */
-            affected_feed_count: number;
-            /** Active Request Count */
-            active_request_count: number;
-            /** Active Reservation Count */
-            active_reservation_count: number;
-            /** Publication Count */
-            publication_count: number;
-            /** Blockers */
-            blockers: components["schemas"]["BracketBlockerOut"][];
-            /** Can Apply */
-            can_apply: boolean;
-            /** Impact Hash */
-            impact_hash: string;
-            /** Reset Game Ids */
-            reset_game_ids?: string[];
-            /** Reset Feed Ids */
-            reset_feed_ids?: string[];
-            /** Cancelled Request Ids */
-            cancelled_request_ids?: string[];
-            /**
-             * Withdrawn Publication Count
-             * @default 0
-             */
-            withdrawn_publication_count: number;
-        };
-        /** CorrectionPreviewIn */
-        CorrectionPreviewIn: {
-            /** Expected Game Version */
-            expected_game_version: number;
-        };
-        /** CorrectionApplyIn */
-        CorrectionApplyIn: {
-            /** Expected Game Version */
-            expected_game_version: number;
             /** Impact Hash */
             impact_hash: string;
         };
@@ -5063,6 +5408,12 @@ export interface components {
             standard_venue_id: string | null;
             /** Venue Name */
             venue_name: string;
+            /** Home Slot Id */
+            home_slot_id: string | null;
+            /** Away Slot Id */
+            away_slot_id: string | null;
+            /** Participants Managed By Draw */
+            participants_managed_by_draw: boolean;
             /** Home Team Id */
             home_team_id: string | null;
             /** Away Team Id */
@@ -5437,6 +5788,11 @@ export interface components {
              * @enum {string}
              */
             kind: "SCORESHEET" | "GROUP_PHOTO" | "GAME_PHOTO";
+            /**
+             * Storage Status
+             * @enum {string}
+             */
+            storage_status: "ONLINE" | "PURGE_PENDING" | "PURGED" | "MISSING";
             /** Content Url */
             content_url: string;
             /** Original Filename */
@@ -7875,6 +8231,619 @@ export interface operations {
             };
         };
     };
+    core_api_admin_archives_get_storage_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSummaryOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_preview_season_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeasonExportIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchivePreviewOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_list_season_exports: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveJobPageOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_request_season_export: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeasonExportIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveJobOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_preview_system_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchivePreviewOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_list_system_backups: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveJobPageOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_request_system_backup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemBackupIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveJobOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_issue_download_ticket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadTicketOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_download_archive: {
+        parameters: {
+            query: {
+                ticket: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_confirm_archive_saved: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmSavedIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveJobOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_discard_archive_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmSavedIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveJobOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_preview_media_purge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgePreviewOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_list_media_purge_jobs: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPurgeJobPageOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_apply_media_purge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeApplyIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPurgeJobOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_archives_retry_media_purge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetryJobIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaPurgeJobOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     core_api_admin_draw_get_draw_assignments: {
         parameters: {
             query?: never;
@@ -8014,6 +8983,116 @@ export interface operations {
             };
         };
     };
+    core_api_admin_draw_preview_game_draw_assignment_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrawGamePreviewIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawGamePreviewOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_draw_update_game_draw_assignments: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                season_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrawGameApplyIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawDatasetOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawErrorOut"];
+                };
+            };
+        };
+    };
     core_api_admin_lifecycle_preview_lifecycle: {
         parameters: {
             query?: never;
@@ -8118,252 +9197,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LifecycleErrorOut"];
-                };
-            };
-        };
-    };
-    core_api_admin_brackets_get_bracket_management: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                season_id: string;
-                division_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketManagementOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-        };
-    };
-    core_api_admin_brackets_preview_relations: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                season_id: string;
-                division_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BracketRelationPreviewIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketRelationPreviewOut"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-        };
-    };
-    core_api_admin_brackets_apply_relations: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                season_id: string;
-                division_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BracketRelationApplyIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketManagementOut"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-        };
-    };
-    core_api_admin_brackets_preview_correction: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CorrectionPreviewIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CorrectionPreviewOut"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-        };
-    };
-    core_api_admin_brackets_apply_correction: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CorrectionApplyIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CorrectionPreviewOut"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BracketAdminErrorOut"];
                 };
             };
         };
@@ -10341,6 +11174,24 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Gone */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,29 +1,41 @@
 import { Text, View } from "@tarojs/components";
 import Taro, { useDidShow } from "@tarojs/taro";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Brackets, Game } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { BracketView } from "../../components/bracket-view";
 import { GameTimeline } from "../../components/game-timeline";
 import { syncTabBar } from "../../tabbar";
+import { loadBracketState, loadScheduleState } from "./load";
 import "./index.css";
 
 export default function SchedulePage() {
   const [games, setGames] = useState<Game[]>([]);
   const [brackets, setBrackets] = useState<Brackets | null>(null);
   const [view, setView] = useState<"schedule" | "bracket">("schedule");
-  const [message, setMessage] = useState("正在读取赛程…");
+  const [scheduleMessage, setScheduleMessage] = useState("正在读取赛程…");
+  const [bracketMessage, setBracketMessage] = useState("正在读取淘汰赛…");
+  const loadIdRef = useRef(0);
 
   useDidShow(() => {
     syncTabBar(1);
-    Promise.all([api.getGames(), api.getBrackets()])
-      .then(([gameResult, bracketResult]) => {
-        setGames(gameResult);
-        setBrackets(bracketResult);
-        setMessage(gameResult.length ? "" : "当前赛季尚未排入比赛。");
-      })
-      .catch((reason: unknown) => setMessage(reason instanceof Error ? reason.message : "读取失败"));
+    const loadId = ++loadIdRef.current;
+    setGames([]);
+    setBrackets(null);
+    setScheduleMessage("正在读取赛程…");
+    setBracketMessage("正在读取淘汰赛…");
+
+    void loadScheduleState(api).then((result) => {
+      if (loadId !== loadIdRef.current) return;
+      setGames(result.games);
+      setScheduleMessage(result.message);
+    });
+    void loadBracketState(api).then((result) => {
+      if (loadId !== loadIdRef.current) return;
+      setBrackets(result.brackets);
+      setBracketMessage(result.message);
+    });
   });
 
   return (
@@ -44,8 +56,8 @@ export default function SchedulePage() {
           </View>
         </View>
       </View>
-      {message && view === "schedule" && (
-        <View className="state"><Text className="state-detail">{message}</Text></View>
+      {scheduleMessage && view === "schedule" && (
+        <View className="state"><Text className="state-detail">{scheduleMessage}</Text></View>
       )}
       {view === "schedule" && !!games.length && (
         <GameTimeline
@@ -53,7 +65,10 @@ export default function SchedulePage() {
           onGameClick={(game) => Taro.navigateTo({ url: `/pages/game-media/index?id=${game.id}` })}
         />
       )}
-      {view === "bracket" && brackets && <BracketView data={brackets} />}
+      {bracketMessage && view === "bracket" && (
+        <View className="state"><Text className="state-detail">{bracketMessage}</Text></View>
+      )}
+      {view === "bracket" && !bracketMessage && brackets && <BracketView data={brackets} />}
     </View>
   );
 }

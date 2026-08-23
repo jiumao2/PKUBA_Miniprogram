@@ -60,7 +60,7 @@ class _PlayerAccumulator:
 
 
 def _public_season() -> Season:
-    season = Season.objects.filter(is_public=True).first()
+    season = Season.objects.filter(status=Season.Status.PUBLISHED).first()
     if season is None:
         raise LeaderboardError("NO_PUBLIC_SEASON", "当前处于休赛期，暂无公开赛季。", status=404)
     return season

@@ -12,7 +12,7 @@ from ninja import File, Form, Header, Router, Schema, Status
 from ninja.files import UploadedFile
 
 from core.api_security import admin_session_auth, miniapp_bearer_auth
-from core.models import Game, GameMediaAsset, GameScoresheet
+from core.models import Game, GameMediaAsset, GameScoresheet, Season
 from core.services.game_media import (
     GameMediaError,
     asset_from_ticket,
@@ -40,6 +40,7 @@ class GameMediaAssetOut(Schema):
     game_code: str
     game_label: str
     kind: Literal["SCORESHEET", "GROUP_PHOTO", "GAME_PHOTO"]
+    storage_status: Literal["ONLINE", "PURGE_PENDING", "PURGED", "MISSING"]
     content_url: str
     original_filename: str
     mime_type: str
@@ -90,7 +91,7 @@ def _error_response(error: GameMediaError):
         "VERSION_CONFLICT",
     }:
         status = 409
-    elif error.code == "FILE_TOO_LARGE":
+    elif error.code == "IMAGE_DECOMPRESSION_BOMB":
         status = 413
     else:
         status = 400
@@ -122,7 +123,10 @@ def _asset_queryset(*, include_deleted: bool = False):
 
 
 def _serialize_asset(asset: GameMediaAsset) -> dict[str, object]:
-    ticket = quote(issue_media_ticket(asset), safe="")
+    content_url = ""
+    if asset.storage_status == GameMediaAsset.StorageStatus.ONLINE:
+        ticket = quote(issue_media_ticket(asset), safe="")
+        content_url = f"/api/v1/game-media/assets/{asset.id}/content?ticket={ticket}"
     return {
         "id": asset.id,
         "game_id": asset.game_id,
@@ -132,7 +136,8 @@ def _serialize_asset(asset: GameMediaAsset) -> dict[str, object]:
             f"{asset.game.home_display} vs {asset.game.away_display}"
         ),
         "kind": asset.kind,
-        "content_url": f"/api/v1/game-media/assets/{asset.id}/content?ticket={ticket}",
+        "storage_status": asset.storage_status,
+        "content_url": content_url,
         "original_filename": asset.original_filename,
         "mime_type": asset.mime_type,
         "byte_size": asset.byte_size,
@@ -168,7 +173,7 @@ def _upload_fingerprint(uploaded_file: UploadedFile) -> dict[str, object]:
     response={200: GameMediaCollectionOut, 403: GameMediaErrorOut, 404: GameMediaErrorOut},
 )
 def list_game_media(request: HttpRequest, game_id: UUID):
-    game = _game_queryset().filter(id=game_id, season__is_public=True).first()
+    game = _game_queryset().filter(id=game_id, season__status=Season.Status.PUBLISHED).first()
     if game is None:
         return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
     permissions = media_permissions(request.auth, game)
@@ -218,7 +223,7 @@ def create_game_media(
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
     del idempotency_key
-    game = _game_queryset().filter(id=game_id, season__is_public=True).first()
+    game = _game_queryset().filter(id=game_id, season__status=Season.Status.PUBLISHED).first()
     if game is None:
         return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
     try:
@@ -254,10 +259,37 @@ def create_game_media(
 
 @router.get(
     "/assets/{asset_id}/content",
-    response={200: None, 400: GameMediaErrorOut, 404: GameMediaErrorOut},
+    response={
+        200: None,
+        400: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+        410: GameMediaErrorOut,
+    },
 )
 def game_media_content(request: HttpRequest, asset_id: UUID, ticket: str):
     del request
+    storage_status = (
+        GameMediaAsset.objects.filter(id=asset_id)
+        .values_list("storage_status", flat=True)
+        .first()
+    )
+    if storage_status in {
+        GameMediaAsset.StorageStatus.PURGED,
+        GameMediaAsset.StorageStatus.MISSING,
+    }:
+        return Status(
+            410,
+            {
+                "code": "MEDIA_PURGED",
+                "message": "照片已归档至线下备份，服务器不再保存原文件。",
+            },
+        )
+    if storage_status == GameMediaAsset.StorageStatus.PURGE_PENDING:
+        return Status(
+            409,
+            {"code": "MEDIA_PURGE_PENDING", "message": "照片正在归档清理，请稍后刷新。"},
+        )
     try:
         asset = asset_from_ticket(ticket)
     except GameMediaError as error:
@@ -370,7 +402,7 @@ def list_admin_game_media(
     page_size: int = 100,
 ):
     del request
-    assets = _asset_queryset().filter(game__season__is_public=True).order_by(
+    assets = _asset_queryset().filter(game__season__status=Season.Status.PUBLISHED).order_by(
         "review_status",
         "-created_at",
     )

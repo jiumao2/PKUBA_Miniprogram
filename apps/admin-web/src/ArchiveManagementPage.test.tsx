@@ -1,0 +1,105 @@
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AdminSeason, createAdminClient } from "@pkuba/api-client";
+
+import { ArchiveManagementPage } from "./ArchiveManagementPage";
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+const season: AdminSeason = {
+  id: "10000000-0000-0000-0000-000000000001",
+  name: "北大杯",
+  competition_type: "PKU_CUP",
+  year: 2026,
+  status: "ARCHIVED",
+  starts_on: "2026-03-21",
+  ends_on: "2026-05-10",
+  version: 7,
+  divisions: [],
+};
+
+afterEach(() => cleanup());
+
+describe("ArchiveManagementPage", () => {
+  it("shows storage, blockers, and resumes a failed purge", async () => {
+    const retryMediaPurge = vi.fn().mockResolvedValue({});
+    const client = {
+      getArchiveStorageSummary: vi.fn().mockResolvedValue({
+        disk_total_bytes: 100 * 1024 ** 3,
+        disk_used_bytes: 30 * 1024 ** 3,
+        disk_free_bytes: 70 * 1024 ** 3,
+        reserve_bytes: 25 * 1024 ** 3,
+        database_bytes: 29 * 1024 ** 2,
+        online_media_bytes: 2 * 1024 ** 3,
+        staged_artifact_bytes: 0,
+        seasons: [{
+          season_id: season.id,
+          season_name: season.name,
+          season_year: season.year,
+          season_status: season.status,
+          scoresheet_bytes: 1024 ** 3,
+          group_photo_bytes: 512 * 1024 ** 2,
+          game_photo_bytes: 512 * 1024 ** 2,
+          online_bytes: 2 * 1024 ** 3,
+          online_files: 375,
+        }],
+      }),
+      listSeasonExports: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 }),
+      listSystemBackups: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100 }),
+      listMediaPurgeJobs: vi.fn().mockResolvedValue({
+        items: [{
+          id: "20000000-0000-0000-0000-000000000001",
+          season_id: season.id,
+          status: "FAILED",
+          expected_files: 375,
+          expected_bytes: 2 * 1024 ** 3,
+          deleted_files: 180,
+          deleted_bytes: 1024 ** 3,
+          missing_files: 1,
+          warnings: [],
+          error_code: "MEDIA_PURGE_FAILED",
+          error_message: "磁盘暂时不可用",
+          completed_at: null,
+          created_at: "2026-08-23T10:00:00+08:00",
+          version: 3,
+        }],
+        total: 1,
+        page: 1,
+        page_size: 100,
+      }),
+      previewMediaPurge: vi.fn().mockResolvedValue({
+        season_id: season.id,
+        season_version: season.version,
+        files: 195,
+        bytes: 1024 ** 3,
+        by_kind: {},
+        data_archive_id: null,
+        photo_archive_id: null,
+        preview_hash: "preview",
+        ready: false,
+        blockers: [{ code: "FINAL_DATA_ARCHIVE_REQUIRED", message: "缺少归档后的最终赛季数据包。" }],
+      }),
+      retryMediaPurge,
+    } as unknown as AdminClient;
+
+    render(
+      <ArchiveManagementPage
+        client={client}
+        seasons={[season]}
+        seasonId={season.id}
+        onSeasonChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("70.0 GiB 可用")).toBeInTheDocument();
+    expect(screen.getByText("缺少归档后的最终赛季数据包。")).toBeInTheDocument();
+    expect(screen.getByText("180 / 375 个文件")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "继续清理" }));
+    await waitFor(() => expect(retryMediaPurge).toHaveBeenCalledWith(
+      "20000000-0000-0000-0000-000000000001",
+      3,
+    ));
+  });
+});

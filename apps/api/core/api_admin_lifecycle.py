@@ -25,8 +25,6 @@ class LifecycleErrorOut(Schema):
 class LifecycleCommandIn(Schema):
     expected_season_version: int
     target_status: str
-    division_id: UUID | None = None
-    expected_division_version: int | None = None
 
 
 class LifecycleApplyIn(LifecycleCommandIn):
@@ -39,22 +37,12 @@ class LifecycleBlockerOut(Schema):
     count: int
 
 
-class LifecycleDivisionImpactOut(Schema):
-    division_id: UUID
-    division_name: str
-    before_status: str
-    after_status: str
-    version: int
-
-
 class LifecyclePreviewOut(Schema):
     season_id: UUID
     season_version: int
     before_season_status: str
     after_season_status: str
     target_status: str
-    division_id: UUID | None
-    impacts: list[LifecycleDivisionImpactOut]
     blockers: list[LifecycleBlockerOut]
     references: dict[str, int]
     changed: bool
@@ -101,8 +89,6 @@ def preview_lifecycle(
             season=season,
             expected_season_version=payload.expected_season_version,
             target_status=payload.target_status,
-            division_id=payload.division_id,
-            expected_division_version=payload.expected_division_version,
         )
     except SeasonLifecycleError as error:
         return _error(error)
@@ -140,8 +126,6 @@ def apply_lifecycle(
                     season_id=season_id,
                     expected_season_version=payload.expected_season_version,
                     target_status=payload.target_status,
-                    division_id=payload.division_id,
-                    expected_division_version=payload.expected_division_version,
                     impact_hash=payload.impact_hash,
                 ),
             ),

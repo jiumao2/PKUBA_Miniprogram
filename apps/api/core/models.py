@@ -106,8 +106,7 @@ class MiniAppSession(UUIDModel):
 class Season(UUIDModel):
     class Status(models.TextChoices):
         SETUP = "SETUP", "准备中"
-        PRE_DRAW_PUBLIC = "PRE_DRAW_PUBLIC", "抽签前公开"
-        ACTIVE = "ACTIVE", "进行中"
+        PUBLISHED = "PUBLISHED", "已公开"
         ARCHIVED = "ARCHIVED", "已归档"
 
     class CompetitionType(models.TextChoices):
@@ -118,7 +117,6 @@ class Season(UUIDModel):
     competition_type = models.CharField(max_length=24, choices=CompetitionType.choices)
     year = models.PositiveSmallIntegerField()
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.SETUP)
-    is_public = models.BooleanField(default=False, editable=False)
     timezone = models.CharField(max_length=64, default="Asia/Shanghai")
     starts_on = models.DateField()
     ends_on = models.DateField()
@@ -137,14 +135,9 @@ class Season(UUIDModel):
         ordering = ["-year", "name"]
         constraints = [
             models.UniqueConstraint(
-                fields=["is_public"], condition=Q(is_public=True), name="only_one_public_season"
-            ),
-            models.CheckConstraint(
-                condition=(
-                    Q(status__in=["PRE_DRAW_PUBLIC", "ACTIVE"], is_public=True)
-                    | Q(status__in=["SETUP", "ARCHIVED"], is_public=False)
-                ),
-                name="season_public_matches_status",
+                fields=["status"],
+                condition=Q(status="PUBLISHED"),
+                name="only_one_published_season",
             ),
             models.CheckConstraint(
                 condition=Q(ends_on__gte=models.F("starts_on")), name="season_dates_ordered"
@@ -152,7 +145,6 @@ class Season(UUIDModel):
         ]
 
     def save(self, *args, **kwargs):
-        self.is_public = self.status in {self.Status.PRE_DRAW_PUBLIC, self.Status.ACTIVE}
         if not self.admin_invite_code_hash:
             self.admin_invite_code_hash = make_password("PKUBA1997")
             self.admin_invite_updated_at = timezone.now()
@@ -167,31 +159,12 @@ class Division(UUIDModel):
         MEN = "MEN", "男篮"
         WOMEN = "WOMEN", "女篮"
 
-    class OperationStatus(models.TextChoices):
-        SETUP = "SETUP", "准备中"
-        PRE_DRAW_PUBLIC = "PRE_DRAW_PUBLIC", "抽签前公开"
-        ACTIVE = "ACTIVE", "正式进行中"
-        ARCHIVED = "ARCHIVED", "已归档"
-
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="divisions")
     code = models.SlugField(max_length=32)
     name = models.CharField(max_length=80)
     gender = models.CharField(max_length=8, choices=Gender.choices, default=Gender.MEN)
     sort_order = models.PositiveSmallIntegerField(default=0)
-    operation_status = models.CharField(
-        max_length=24,
-        choices=OperationStatus.choices,
-        default=OperationStatus.SETUP,
-    )
     version = models.PositiveIntegerField(default=1)
-    activated_at = models.DateTimeField(null=True, blank=True)
-    activated_by = models.ForeignKey(
-        Account,
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="activated_divisions",
-    )
 
     class Meta:
         ordering = ["sort_order", "name"]
@@ -278,17 +251,31 @@ class Team(UUIDModel):
 
 
 class DrawAssignment(UUIDModel):
+    class ValidationMode(models.TextChoices):
+        NOT_APPLICABLE = "NOT_APPLICABLE", "无需校验"
+        WINNER_CONFIRMED = "WINNER_CONFIRMED", "上一轮胜队已确认"
+        SUPERADMIN_OVERRIDE = "SUPERADMIN_OVERRIDE", "超级管理员越过校验"
+        LEGACY_IMPORTED = "LEGACY_IMPORTED", "旧数据导入"
+
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="draw_assignments")
     slot = models.OneToOneField(
         ParticipantSlot, on_delete=models.PROTECT, related_name="assignment"
     )
     team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="draw_assignments")
     assigned_by = models.ForeignKey(Account, null=True, blank=True, on_delete=models.PROTECT)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["season", "team"], name="uniq_draw_team_per_season")
-        ]
+    source_game = models.ForeignKey(
+        "Game",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="validated_draw_assignments",
+    )
+    source_game_version = models.PositiveIntegerField(null=True, blank=True)
+    validation_mode = models.CharField(
+        max_length=24,
+        choices=ValidationMode.choices,
+        default=ValidationMode.NOT_APPLICABLE,
+    )
 
     def clean(self):
         if self.slot_id and self.season_id and self.slot.division.season_id != self.season_id:
@@ -297,6 +284,15 @@ class DrawAssignment(UUIDModel):
             raise ValidationError("球队必须属于当前赛季。")
         if self.slot_id and self.team_id and self.slot.division_id != self.team.division_id:
             raise ValidationError("球队与签位必须属于同一组别。")
+        if self.source_game_id:
+            if self.source_game.season_id != self.season_id:
+                raise ValidationError("签位校验来源比赛必须属于同一赛季。")
+            if self.source_game.division_id != self.slot.division_id:
+                raise ValidationError("签位校验来源比赛必须属于同一组别。")
+        if self.validation_mode == self.ValidationMode.WINNER_CONFIRMED and not self.source_game_id:
+            raise ValidationError("胜队确认签位必须保存来源比赛。")
+        if self.source_game_version is not None and not self.source_game_id:
+            raise ValidationError("来源比赛版本只能与来源比赛一起保存。")
 
 
 class RosterPlayer(UUIDModel):
@@ -545,69 +541,6 @@ class Game(UUIDModel):
         return self.away_team.name if self.away_team_id else self.away_slot.label
 
 
-class GameWinnerFeed(UUIDModel):
-    class TargetSide(models.TextChoices):
-        HOME = "HOME", "主队"
-        AWAY = "AWAY", "客队"
-
-    source_game = models.ForeignKey(
-        Game,
-        on_delete=models.PROTECT,
-        related_name="winner_feeds_out",
-    )
-    target_game = models.ForeignKey(
-        Game,
-        on_delete=models.PROTECT,
-        related_name="winner_feeds_in",
-    )
-    target_side = models.CharField(max_length=8, choices=TargetSide.choices)
-    applied_winner = models.ForeignKey(
-        Team,
-        null=True,
-        blank=True,
-        on_delete=models.PROTECT,
-        related_name="applied_winner_feeds",
-    )
-    applied_source_version = models.PositiveIntegerField(null=True, blank=True)
-    confirmed_by = models.ForeignKey(
-        Account,
-        on_delete=models.PROTECT,
-        related_name="confirmed_winner_feeds",
-    )
-    confirmed_at = models.DateTimeField(default=timezone.now)
-    version = models.PositiveIntegerField(default=1)
-
-    class Meta:
-        ordering = ["target_game__date", "target_game__start_time", "target_side"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["target_game", "target_side"],
-                name="uniq_winner_feed_target_side",
-            ),
-            models.CheckConstraint(
-                condition=~Q(source_game=models.F("target_game")),
-                name="winner_feed_distinct_games",
-            ),
-        ]
-
-    def clean(self):
-        if not self.source_game_id or not self.target_game_id:
-            return
-        if self.source_game.season_id != self.target_game.season_id:
-            raise ValidationError("胜者来源与目标比赛必须属于同一赛季。")
-        if self.source_game.division_id != self.target_game.division_id:
-            raise ValidationError("胜者来源与目标比赛必须属于同一组别。")
-        source_key = (self.source_game.date, self.source_game.start_time)
-        target_key = (self.target_game.date, self.target_game.start_time)
-        if target_key <= source_key:
-            raise ValidationError("目标比赛必须晚于胜者来源比赛。")
-        if self.applied_winner_id and (
-            self.applied_winner.season_id != self.source_game.season_id
-            or self.applied_winner.division_id != self.source_game.division_id
-        ):
-            raise ValidationError("已应用胜者必须属于同一赛季和组别。")
-
-
 class ScheduleSlotFamily(UUIDModel):
     season = models.ForeignKey(
         Season, on_delete=models.PROTECT, related_name="schedule_slot_families"
@@ -616,15 +549,16 @@ class ScheduleSlotFamily(UUIDModel):
         Division, on_delete=models.PROTECT, related_name="schedule_slot_families"
     )
     stage = models.CharField(max_length=20, choices=Game.Stage.choices)
+    round_number = models.PositiveSmallIntegerField(default=1)
     prefix = models.CharField(max_length=1)
     slot_count = models.PositiveSmallIntegerField()
     sort_order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
-        ordering = ["sort_order", "division__sort_order", "prefix"]
+        ordering = ["sort_order", "division__sort_order", "stage", "round_number", "prefix"]
         constraints = [
             models.UniqueConstraint(
-                fields=["season", "division", "stage", "prefix"],
+                fields=["season", "division", "stage", "round_number", "prefix"],
                 name="uniq_schedule_slot_family",
             ),
             models.UniqueConstraint(
@@ -646,6 +580,12 @@ class ScheduleSlotFamily(UUIDModel):
             raise ValidationError("半决赛签位数固定为 4。")
         if self.stage == Game.Stage.FINAL and self.slot_count != 2:
             raise ValidationError("决赛签位数固定为 2。")
+        if (
+            self.stage
+            in {Game.Stage.SEMIFINAL, Game.Stage.FINAL, Game.Stage.RELEGATION}
+            and self.round_number != 1
+        ):
+            raise ValidationError("半决赛、决赛和保级赛的轮次固定为 1。")
         if self.stage in {Game.Stage.KNOCKOUT, Game.Stage.RELEGATION} and (
             self.slot_count < 2 or self.slot_count % 2
         ):
@@ -993,13 +933,19 @@ class GameMediaAsset(UUIDModel):
         APPROVED = "APPROVED", "已通过"
         REJECTED = "REJECTED", "未通过"
 
+    class StorageStatus(models.TextChoices):
+        ONLINE = "ONLINE", "在线"
+        PURGE_PENDING = "PURGE_PENDING", "等待归档清理"
+        PURGED = "PURGED", "已离线归档"
+        MISSING = "MISSING", "文件缺失"
+
     game = models.ForeignKey(Game, on_delete=models.PROTECT, related_name="media_assets")
     kind = models.CharField(max_length=20, choices=Kind.choices)
     file_key = models.CharField(max_length=512, unique=True)
     original_filename = models.CharField(max_length=255)
     mime_type = models.CharField(max_length=80)
     file_sha256 = models.CharField(max_length=64)
-    byte_size = models.PositiveIntegerField()
+    byte_size = models.PositiveBigIntegerField()
     width = models.PositiveIntegerField()
     height = models.PositiveIntegerField()
     sort_order = models.PositiveSmallIntegerField(default=0)
@@ -1031,6 +977,26 @@ class GameMediaAsset(UUIDModel):
         related_name="deleted_game_media",
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
+    storage_status = models.CharField(
+        max_length=20,
+        choices=StorageStatus.choices,
+        default=StorageStatus.ONLINE,
+    )
+    purge_job = models.ForeignKey(
+        "MediaPurgeJob",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="media_assets",
+    )
+    purged_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="purged_game_media",
+    )
+    purged_at = models.DateTimeField(null=True, blank=True)
     version = models.PositiveIntegerField(default=1)
 
     class Meta:
@@ -1515,6 +1481,135 @@ class ApiIdempotencyRecord(UUIDModel):
         indexes = [
             models.Index(fields=["expires_at"], name="api_idempotency_expiry_idx")
         ]
+
+
+class ArchiveJob(UUIDModel):
+    class Kind(models.TextChoices):
+        SEASON_DATA = "SEASON_DATA", "赛季数据包"
+        SEASON_PHOTOS = "SEASON_PHOTOS", "赛季照片包"
+        SYSTEM_RAW = "SYSTEM_RAW", "全系统原始备份"
+
+    class Status(models.TextChoices):
+        QUEUED = "QUEUED", "等待生成"
+        BUILDING = "BUILDING", "正在生成"
+        READY = "READY", "可以下载"
+        FAILED = "FAILED", "生成失败"
+        EXPIRED = "EXPIRED", "已过期"
+        DISCARDED = "DISCARDED", "已清理"
+
+    kind = models.CharField(max_length=24, choices=Kind.choices)
+    season = models.ForeignKey(
+        Season,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="archive_jobs",
+    )
+    season_version = models.PositiveIntegerField(null=True, blank=True)
+    is_final = models.BooleanField(default=False)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
+    requested_by = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="requested_archive_jobs",
+    )
+    filename = models.CharField(max_length=255, blank=True)
+    artifact_key = models.CharField(max_length=512, blank=True)
+    byte_size = models.PositiveBigIntegerField(default=0)
+    file_sha256 = models.CharField(max_length=64, blank=True)
+    summary = models.JSONField(default=dict)
+    error_code = models.CharField(max_length=64, blank=True)
+    error_message = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    download_count = models.PositiveIntegerField(default=0)
+    last_downloaded_at = models.DateTimeField(null=True, blank=True)
+    confirmed_saved_at = models.DateTimeField(null=True, blank=True)
+    confirmed_saved_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="confirmed_archive_jobs",
+    )
+    discarded_at = models.DateTimeField(null=True, blank=True)
+    worker_lease_token = models.UUIDField(null=True, blank=True)
+    worker_lease_owner = models.CharField(max_length=96, blank=True)
+    worker_lease_expires_at = models.DateTimeField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(kind="SYSTEM_RAW", season__isnull=True, season_version__isnull=True)
+                    | Q(
+                        kind__in=["SEASON_DATA", "SEASON_PHOTOS"],
+                        season__isnull=False,
+                        season_version__isnull=False,
+                    )
+                ),
+                name="archive_job_scope_matches_kind",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "created_at"], name="archive_status_created_idx"),
+            models.Index(fields=["expires_at"], name="archive_expiry_idx"),
+        ]
+
+
+class MediaPurgeJob(UUIDModel):
+    class Status(models.TextChoices):
+        QUEUED = "QUEUED", "等待清理"
+        BUILDING = "BUILDING", "正在清理"
+        COMPLETED = "COMPLETED", "清理完成"
+        COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS", "完成但有警告"
+        FAILED = "FAILED", "清理失败"
+
+    season = models.ForeignKey(
+        Season,
+        on_delete=models.PROTECT,
+        related_name="media_purge_jobs",
+    )
+    season_version = models.PositiveIntegerField()
+    data_archive = models.ForeignKey(
+        ArchiveJob,
+        on_delete=models.PROTECT,
+        related_name="data_archive_purge_jobs",
+    )
+    photo_archive = models.ForeignKey(
+        ArchiveJob,
+        on_delete=models.PROTECT,
+        related_name="photo_archive_purge_jobs",
+    )
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.QUEUED)
+    preview_hash = models.CharField(max_length=64)
+    requested_by = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="requested_media_purge_jobs",
+    )
+    confirmed_external_copy = models.BooleanField(default=False)
+    expected_files = models.PositiveIntegerField(default=0)
+    expected_bytes = models.PositiveBigIntegerField(default=0)
+    deleted_files = models.PositiveIntegerField(default=0)
+    deleted_bytes = models.PositiveBigIntegerField(default=0)
+    missing_files = models.PositiveIntegerField(default=0)
+    warnings = models.JSONField(default=list)
+    error_code = models.CharField(max_length=64, blank=True)
+    error_message = models.TextField(blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    worker_lease_token = models.UUIDField(null=True, blank=True)
+    worker_lease_owner = models.CharField(max_length=96, blank=True)
+    worker_lease_expires_at = models.DateTimeField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "created_at"], name="purge_status_created_idx")]
 
 
 class AdminAuditLog(UUIDModel):

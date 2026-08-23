@@ -39,8 +39,7 @@ type ConfigurationDraft = Omit<
 
 const statusLabels: Record<string, string> = {
   SETUP: "准备中",
-  PRE_DRAW_PUBLIC: "抽签前公开",
-  ACTIVE: "进行中",
+  PUBLISHED: "已公开",
   ARCHIVED: "已归档",
 };
 const dayTypeLabels: Record<string, string> = { WEEKDAY: "周中", WEEKEND: "周末" };
@@ -271,6 +270,7 @@ export function SeasonManagementPage({
         gender: division.gender,
         stage: "GROUP",
         stage_name: "小组赛",
+        round_number: 1,
         prefix,
         slot_count: slotCount,
         sort_order: nextSortOrder(draft.slot_families),
@@ -381,7 +381,7 @@ export function SeasonManagementPage({
     </section>
 
     <section className="season-config-section">
-      <div className="season-section-heading"><div><h2>赛事组别</h2><p>球队、签位和比赛均归属于组别。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, divisions: [...draft.divisions, { id: "", key: nextKey("division"), code: nextCode(draft.divisions, "division-"), name: "新组别", gender: "MEN", sort_order: nextSortOrder(draft.divisions), operation_status: "SETUP", version: 1, team_count: 0, group_count: 0, game_count: 0 }] })}>＋ 添加组别</button>}</div>
+      <div className="season-section-heading"><div><h2>赛事组别</h2><p>球队、签位和比赛均归属于组别。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, divisions: [...draft.divisions, { id: "", key: nextKey("division"), code: nextCode(draft.divisions, "division-"), name: "新组别", gender: "MEN", sort_order: nextSortOrder(draft.divisions), version: 1, team_count: 0, group_count: 0, game_count: 0 }] })}>＋ 添加组别</button>}</div>
       <div className="division-config-table">
         <div className="division-config-row division-config-head"><span>顺序</span><span>代码</span><span>名称</span><span>分类</span><span>已关联</span><span /></div>
         {draft.divisions.map((row) => {
@@ -440,7 +440,7 @@ export function SeasonManagementPage({
         })}
       </div>
       <div className="slot-family-table">
-        <div className="slot-family-row slot-family-head"><span>顺序</span><span>组别 / 球队</span><span>阶段</span><span>字母</span><span>签位数</span><span>自动比赛数</span><span /></div>
+        <div className="slot-family-row slot-family-head"><span>顺序</span><span>组别 / 球队</span><span>阶段</span><span>轮次</span><span>字母</span><span>签位数</span><span>自动比赛数</span><span /></div>
         {[...draft.slot_families]
           .sort((left, right) => left.sort_order - right.sort_order)
           .map((row) => <div className="slot-family-row" key={row.key}>
@@ -463,10 +463,15 @@ export function SeasonManagementPage({
             </select>
             <select aria-label={`${row.prefix}签位阶段`} disabled={!editable} value={row.stage} onChange={(event) => {
               const option = stageOptions.find(([value]) => value === event.target.value);
-              updateSlotFamily(row.key, { stage: event.target.value, stage_name: option?.[1] ?? event.target.value });
+              updateSlotFamily(row.key, {
+                stage: event.target.value,
+                stage_name: option?.[1] ?? event.target.value,
+                round_number: event.target.value === "KNOCKOUT" ? row.round_number : 1,
+              });
             }}>
               {stageOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
+            <input aria-label={`${row.prefix}签位轮次`} disabled={!editable || row.stage !== "KNOCKOUT"} min="1" type="number" value={row.round_number} onChange={(event) => updateSlotFamily(row.key, { round_number: Math.max(1, Number(event.target.value)) })} />
             <input aria-label={`${row.division_name}${row.stage_name}签位字母`} className="slot-prefix-input" disabled={!editable} maxLength={1} pattern="[A-Za-z]" value={row.prefix} onChange={(event) => updateSlotFamily(row.key, { prefix: event.target.value.replace(/[^A-Za-z]/g, "").slice(0, 1) })} />
             <input aria-label={`${row.prefix}签位数`} disabled={!editable} min="1" type="number" value={row.slot_count} onChange={(event) => updateSlotFamily(row.key, { slot_count: Number(event.target.value) })} />
             <span className="resource-usage"><strong>{expectedFamilyGames(row.stage, row.slot_count)}</strong> 场</span>

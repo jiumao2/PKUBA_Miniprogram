@@ -289,9 +289,9 @@ def test_valid_v3_upload_stages_then_atomically_confirms_and_resets(tmp_path):
     assert ScheduleSlotFamily.objects.filter(season=setup["season"]).count() == 2
 
 
-def test_active_season_can_download_template_but_cannot_import(tmp_path):
+def test_published_season_can_download_template_but_cannot_import(tmp_path):
     setup = _setup()
-    setup["season"].status = Season.Status.ACTIVE
+    setup["season"].status = Season.Status.PUBLISHED
     setup["season"].save()
 
     readiness = schedule_import_readiness(setup["season"])

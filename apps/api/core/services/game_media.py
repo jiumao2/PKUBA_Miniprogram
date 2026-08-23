@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import hashlib
-import io
+import logging
+import tempfile
 import uuid
+import warnings
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 from django.core import signing
-from django.core.files.base import ContentFile
+from django.core.files import File
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
@@ -23,7 +27,7 @@ from core.models import (
     SeasonLeaderBinding,
 )
 
-MAX_GAME_MEDIA_BYTES = 20 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 1024 * 1024
 MEDIA_TICKET_MAX_AGE_SECONDS = 10 * 60
 MEDIA_TICKET_SALT = "pkuba-game-media-v1"
 
@@ -32,6 +36,7 @@ SUPPORTED_FORMATS = {
     "PNG": ("image/png", ".png"),
     "WEBP": ("image/webp", ".webp"),
 }
+logger = logging.getLogger(__name__)
 
 
 class GameMediaError(Exception):
@@ -49,7 +54,8 @@ class MediaPermissions:
 
 @dataclass(frozen=True)
 class ValidatedImage:
-    data: bytes
+    path: Path
+    byte_size: int
     sha256: str
     mime_type: str
     extension: str
@@ -58,12 +64,15 @@ class ValidatedImage:
 
 
 def _assert_media_mutable(game: Game) -> None:
-    if game.season.status == game.season.Status.ARCHIVED:
-        raise GameMediaError("SEASON_ARCHIVED", "已归档赛季只读。")
-    if game.division.operation_status != game.division.OperationStatus.ACTIVE:
+    if game.season.status != game.season.Status.PUBLISHED:
         raise GameMediaError(
-            "DIVISION_NOT_ACTIVE",
-            "当前组别尚未正式上线，不能维护比赛图片。",
+            "SEASON_NOT_PUBLISHED",
+            "只有已公开赛季可以维护比赛图片。",
+        )
+    if not game.home_team_id or not game.away_team_id:
+        raise GameMediaError(
+            "GAME_PARTICIPANTS_UNRESOLVED",
+            "比赛双方尚未完成签位映射，不能维护比赛图片。",
         )
 
 
@@ -85,15 +94,13 @@ def _register_scoresheet_source(
 
 def media_permissions(account: Account, game: Game) -> MediaPermissions:
     if account.is_pkuba_superadmin:
-        mutable = (
-            game.season.status != game.season.Status.ARCHIVED
-            and game.division.operation_status == game.division.OperationStatus.ACTIVE
+        mutable = game.season.status == game.season.Status.PUBLISHED and bool(
+            game.home_team_id and game.away_team_id
         )
         return MediaPermissions(can_view=True, can_upload=mutable, can_review=mutable)
     if account.is_pkuba_admin:
-        mutable = (
-            game.season.status != game.season.Status.ARCHIVED
-            and game.division.operation_status == game.division.OperationStatus.ACTIVE
+        mutable = game.season.status == game.season.Status.PUBLISHED and bool(
+            game.home_team_id and game.away_team_id
         )
         return MediaPermissions(can_view=True, can_upload=mutable, can_review=False)
     binding = (
@@ -111,33 +118,92 @@ def media_permissions(account: Account, game: Game) -> MediaPermissions:
     return MediaPermissions(can_view=participates, can_upload=False, can_review=False)
 
 
-def validate_image(uploaded_file, *, kind: str) -> ValidatedImage:
-    data = uploaded_file.read(MAX_GAME_MEDIA_BYTES + 1)
-    if not data:
-        raise GameMediaError("EMPTY_FILE", "请选择非空图片。")
-    if len(data) > MAX_GAME_MEDIA_BYTES:
-        raise GameMediaError("FILE_TOO_LARGE", "单张图片不能超过 20 MB。")
+@contextmanager
+def validate_image(uploaded_file, *, kind: str) -> Iterator[ValidatedImage]:
+    del kind
+    temporary_path: Path | None = None
     try:
-        with Image.open(io.BytesIO(data)) as image:
-            image.verify()
-        with Image.open(io.BytesIO(data)) as image:
-            image_format = (image.format or "").upper()
-            width, height = image.size
-    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as error:
+        digest = hashlib.sha256()
+        byte_size = 0
+        with tempfile.NamedTemporaryFile(
+            prefix="pkuba-game-media-",
+            suffix=".upload",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            for chunk in uploaded_file.chunks(UPLOAD_CHUNK_BYTES):
+                if not chunk:
+                    continue
+                temporary.write(chunk)
+                digest.update(chunk)
+                byte_size += len(chunk)
+        if byte_size == 0:
+            raise GameMediaError("EMPTY_FILE", "请选择非空图片。")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(temporary_path) as image:
+                image.verify()
+            with Image.open(temporary_path) as image:
+                image_format = (image.format or "").upper()
+                width, height = image.size
+                image.getexif()
+        if image_format not in SUPPORTED_FORMATS:
+            raise GameMediaError(
+                "IMAGE_FORMAT_UNSUPPORTED", "仅支持 JPEG、PNG 或 WebP 图片。"
+            )
+        if width <= 0 or height <= 0:
+            raise GameMediaError("IMAGE_DIMENSIONS_INVALID", "无法读取图片像素尺寸。")
+        mime_type, extension = SUPPORTED_FORMATS[image_format]
+        validated = ValidatedImage(
+            path=temporary_path,
+            byte_size=byte_size,
+            sha256=digest.hexdigest(),
+            mime_type=mime_type,
+            extension=extension,
+            width=width,
+            height=height,
+        )
+    except GameMediaError:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as error:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        raise GameMediaError(
+            "IMAGE_DECOMPRESSION_BOMB",
+            "图片解码尺寸触发 Pillow 安全保护，请检查是否为异常超大图片。",
+        ) from error
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as error:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
         raise GameMediaError("IMAGE_INVALID", "文件不是可安全读取的图片。") from error
-    if image_format not in SUPPORTED_FORMATS:
-        raise GameMediaError("IMAGE_FORMAT_UNSUPPORTED", "仅支持 JPEG、PNG 或 WebP 图片。")
-    if width <= 0 or height <= 0:
-        raise GameMediaError("IMAGE_DIMENSIONS_INVALID", "无法读取图片像素尺寸。")
-    mime_type, extension = SUPPORTED_FORMATS[image_format]
-    return ValidatedImage(
-        data=data,
-        sha256=hashlib.sha256(data).hexdigest(),
-        mime_type=mime_type,
-        extension=extension,
-        width=width,
-        height=height,
-    )
+
+    try:
+        yield validated
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _discard_storage_object(file_key: str) -> None:
+    try:
+        default_storage.delete(file_key)
+    except Exception:
+        logger.exception(
+            "Failed to clean unreferenced game media object",
+            extra={"file_key": file_key},
+        )
+
+
+def _store_validated_image(file_key: str, image: ValidatedImage) -> str:
+    try:
+        with image.path.open("rb") as source:
+            return default_storage.save(file_key, File(source))
+    except Exception:
+        _discard_storage_object(file_key)
+        raise
 
 
 def upload_game_media(
@@ -173,13 +239,13 @@ def upload_game_media(
             "SCORESHEET_SOURCE_EXISTS",
             "该比赛已有当前记录表；请从记录表编辑器执行重传，以保留来源审计。",
         )
-    image = validate_image(uploaded_file, kind=kind)
-    asset_id = uuid.uuid4()
-    file_key = (
-        f"game-media/{game.season_id}/{game.id}/{asset_id}{image.extension}"
-    )
-    original_filename = Path(getattr(uploaded_file, "name", "image")).name[:255]
-    stored_key = default_storage.save(file_key, ContentFile(image.data))
+    with validate_image(uploaded_file, kind=kind) as image:
+        asset_id = uuid.uuid4()
+        file_key = (
+            f"game-media/{game.season_id}/{game.id}/{asset_id}{image.extension}"
+        )
+        original_filename = Path(getattr(uploaded_file, "name", "image")).name[:255]
+        stored_key = _store_validated_image(file_key, image)
     try:
         with transaction.atomic():
             sort_order = (
@@ -198,7 +264,7 @@ def upload_game_media(
                 original_filename=original_filename,
                 mime_type=image.mime_type,
                 file_sha256=image.sha256,
-                byte_size=len(image.data),
+                byte_size=image.byte_size,
                 width=image.width,
                 height=image.height,
                 sort_order=sort_order,
@@ -220,14 +286,14 @@ def upload_game_media(
                     "game_id": str(game.id),
                     "kind": kind,
                     "file_sha256": image.sha256,
-                    "byte_size": len(image.data),
+                    "byte_size": image.byte_size,
                     "width": image.width,
                     "height": image.height,
                     "review_status": asset.review_status,
                 },
             )
     except IntegrityError as error:
-        default_storage.delete(stored_key)
+        _discard_storage_object(stored_key)
         if kind == GameMediaAsset.Kind.SCORESHEET:
             raise GameMediaError(
                 "SCORESHEET_SOURCE_EXISTS",
@@ -235,7 +301,7 @@ def upload_game_media(
             ) from error
         raise GameMediaError("DUPLICATE_MEDIA", "该比赛已上传过同一张图片。") from error
     except Exception:
-        default_storage.delete(stored_key)
+        _discard_storage_object(stored_key)
         raise
     return asset
 
@@ -346,14 +412,14 @@ def replace_game_media(
             "SCORESHEET_CONFIRMATION_REQUIRED",
             "重新上传记录表前必须确认已正确结表且关键信息清晰完整。",
         )
-    image = validate_image(uploaded_file, kind=current.kind)
-    replacement_id = uuid.uuid4()
-    file_key = (
-        f"game-media/{current.game.season_id}/{current.game_id}/"
-        f"{replacement_id}{image.extension}"
-    )
-    original_filename = Path(getattr(uploaded_file, "name", "image")).name[:255]
-    stored_key = default_storage.save(file_key, ContentFile(image.data))
+    with validate_image(uploaded_file, kind=current.kind) as image:
+        replacement_id = uuid.uuid4()
+        file_key = (
+            f"game-media/{current.game.season_id}/{current.game_id}/"
+            f"{replacement_id}{image.extension}"
+        )
+        original_filename = Path(getattr(uploaded_file, "name", "image")).name[:255]
+        stored_key = _store_validated_image(file_key, image)
     try:
         with transaction.atomic():
             try:
@@ -393,7 +459,7 @@ def replace_game_media(
                 original_filename=original_filename,
                 mime_type=image.mime_type,
                 file_sha256=image.sha256,
-                byte_size=len(image.data),
+                byte_size=image.byte_size,
                 width=image.width,
                 height=image.height,
                 sort_order=replaced.sort_order,
@@ -433,10 +499,10 @@ def replace_game_media(
                 },
             )
     except IntegrityError as error:
-        default_storage.delete(stored_key)
+        _discard_storage_object(stored_key)
         raise GameMediaError("DUPLICATE_MEDIA", "该比赛已上传过同一张图片。") from error
     except Exception:
-        default_storage.delete(stored_key)
+        _discard_storage_object(stored_key)
         raise
     return replacement
 

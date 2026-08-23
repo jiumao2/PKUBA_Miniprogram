@@ -144,13 +144,13 @@ class Command(BaseCommand):
         query = (
             Season.objects.filter(id=season_id)
             if season_id
-            else Season.objects.filter(is_public=True)
+            else Season.objects.filter(status=Season.Status.PUBLISHED)
         )
         season = query.first()
         if season is None:
             raise CommandError("未找到目标公开赛季。")
-        if not season.is_public or season.status != Season.Status.ACTIVE:
-            raise CommandError("仅允许向当前公开且 ACTIVE 的本地赛季写入合成数据。")
+        if season.status != Season.Status.PUBLISHED:
+            raise CommandError("仅允许向当前已公开的本地赛季写入合成数据。")
         return season
 
     @staticmethod

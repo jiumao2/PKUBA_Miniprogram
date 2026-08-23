@@ -35,7 +35,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if not settings.DEBUG:
             raise CommandError("调赛演示数据只能在 DEBUG 本地环境生成。")
-        season = Season.objects.filter(is_public=True).first()
+        season = Season.objects.filter(status=Season.Status.PUBLISHED).first()
         if season is None or season.name != DEMO_SEASON_NAME:
             raise CommandError(
                 "当前公开赛季不是 PKUBA 本地演示赛季；为避免污染真实数据，已拒绝执行。"

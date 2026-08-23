@@ -28,7 +28,6 @@ const season: AdminSeason = {
       code: "men-a",
       name: "男甲",
       gender: "MEN",
-      operation_status: "SETUP",
       version: 1,
     },
   ],
@@ -196,9 +195,9 @@ describe("TeamRosterPage", () => {
     }));
   });
 
-  it("uses a maintenance preview before renaming an active-season team", async () => {
+  it("uses a maintenance preview before renaming a published-season team", async () => {
     const user = userEvent.setup();
-    const activeDataset = { ...dataset, season_status: "ACTIVE" } as RosterDataset;
+    const activeDataset = { ...dataset, season_status: "PUBLISHED" } as RosterDataset;
     const preview: TeamMaintenancePreview = {
       team_id: dataset.teams[0].id,
       requires_confirmation: true,
