@@ -11,14 +11,18 @@ interface PageWithTabBar {
   getTabBar?: () => TabBarController | null;
 }
 
-export function syncTabBar(selected: number) {
+export function syncTabBar(
+  selected: number,
+  options: { refreshInbox?: boolean } = {},
+) {
   const apply = () => {
     const page = Taro.getCurrentInstance().page as unknown as PageWithTabBar | undefined;
-    page?.getTabBar?.()?.setData({ selected });
+    const tabBar = page?.getTabBar?.();
+    tabBar?.setData({ selected });
+    return Boolean(tabBar);
   };
-  apply();
-  setTimeout(apply, 0);
-  void refreshInboxBadge();
+  if (!apply()) setTimeout(apply, 0);
+  if (options.refreshInbox !== false) void refreshInboxBadge();
 }
 
 export async function refreshInboxBadge() {

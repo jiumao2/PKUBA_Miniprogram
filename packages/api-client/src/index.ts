@@ -16,6 +16,9 @@ export type {
 export type Division = components["schemas"]["DivisionOut"];
 export type Season = components["schemas"]["SeasonOut"];
 export type Game = components["schemas"]["GameOut"];
+export type ScheduleDays = components["schemas"]["ScheduleDaysOut"];
+export type ScheduleDay = components["schemas"]["ScheduleDayOut"];
+export type PublicGameDetail = components["schemas"]["PublicGameDetailOut"];
 export type HomeDashboard = components["schemas"]["HomeDashboardOut"];
 export type Standings = components["schemas"]["StandingsOut"];
 export type DivisionStandings = components["schemas"]["DivisionStandingsOut"];
@@ -95,6 +98,7 @@ export type AdminRescheduleRequest =
   components["schemas"]["AdminRescheduleRequestOut"];
 export type AdminRescheduleAction = components["schemas"]["AdminRescheduleActionIn"];
 export type MobileAdminGame = components["schemas"]["AdminGameOut"];
+export type MobileAdminDashboard = components["schemas"]["MobileDashboardOut"];
 export type MobileScheduleOptions = components["schemas"]["ScheduleOptionsOut"];
 export type UpdateMobileAdminGame = components["schemas"]["UpdateAdminGameIn"];
 export type GameMediaAsset = components["schemas"]["GameMediaAssetOut"];
@@ -482,7 +486,7 @@ export interface UpdateScheduleDraft {
 }
 
 export interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "PATCH";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   headers?: Record<string, string>;
   body?: string;
 }
@@ -572,6 +576,10 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
     getBrackets: () => send<Brackets>("/api/v1/public/brackets"),
     getGames: (query = "") => collectPages<Game>("/api/v1/public/games", query),
     getGame: (gameId: string) => send<Game>(`/api/v1/public/games/${gameId}`),
+    getGameDetail: (gameId: string) =>
+      send<PublicGameDetail>(`/api/v1/public/games/${gameId}/detail`),
+    getScheduleDays: (query = "") =>
+      send<ScheduleDays>(`/api/v1/public/schedule-days${query}`),
     getPublicScoresheetStats: (gameId?: string) =>
       send<PublicScoresheetStat[]>(
         `/api/v1/public/scoresheet-stats${gameId ? `?game_id=${encodeURIComponent(gameId)}` : ""}`,
@@ -588,6 +596,38 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       send<PublishedGamePage>(`/api/v1/public/scoresheet-games${query}`),
     getGameMedia: (gameId: string, token: string) =>
       send<GameMediaCollection>(`/api/v1/game-media/games/${gameId}`, bearer(token)),
+    reviewGameMedia: (
+      assetId: string,
+      expectedVersion: number,
+      approve: boolean,
+      note: string,
+      token: string,
+    ) => send<GameMediaAsset>(
+      `/api/v1/game-media/assets/${assetId}/review`,
+      json("POST", {
+        expected_version: expectedVersion,
+        approve,
+        note,
+      }, token),
+    ),
+    deleteGameMedia: (assetId: string, expectedVersion: number, token: string) =>
+      send<void>(`/api/v1/game-media/assets/${assetId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ expected_version: expectedVersion }),
+      }),
+    reorderGameMedia: (
+      gameId: string,
+      kind: GameMediaAsset["kind"],
+      items: Array<{ id: string; expected_version: number }>,
+      token: string,
+    ) => send<GameMediaCollection>(
+      `/api/v1/game-media/games/${gameId}/reorder`,
+      json("POST", { kind, items }, token),
+    ),
     listScoresheets: (token: string, seasonId?: string) =>
       collectPages<ScoresheetQueueItem>(
         "/api/v1/scoresheets/",
@@ -847,6 +887,8 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       ),
     getMobileScheduleOptions: (token: string) =>
       send<MobileScheduleOptions>("/api/v1/admin/mobile/schedule-options", bearer(token)),
+    getMobileAdminDashboard: (token: string) =>
+      send<MobileAdminDashboard>("/api/v1/admin/mobile/dashboard", bearer(token)),
     getMobileAdminGame: (gameId: string, token: string) =>
       send<MobileAdminGame>(`/api/v1/admin/mobile/games/${gameId}`, bearer(token)),
     updateMobileAdminGame: (

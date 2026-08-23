@@ -10,6 +10,7 @@ import {
   getMiniAppSession,
 } from "../../auth";
 import { refreshInboxBadge, syncTabBar } from "../../tabbar";
+import { navigateToOnce } from "../../navigation";
 import "./index.css";
 
 export default function MinePage() {
@@ -61,7 +62,7 @@ export default function MinePage() {
   };
 
   useDidShow(() => {
-    syncTabBar(4);
+    syncTabBar(4, { refreshInbox: false });
     void identify();
   });
 
@@ -125,7 +126,7 @@ export default function MinePage() {
           <Text className="section-detail">首次使用需要设置唯一昵称。</Text>
           <Button
             className="role-entry role-entry-account"
-            onClick={() => Taro.navigateTo({ url: "/pages/auth/index" })}
+            onClick={() => void navigateToOnce("/pages/auth/index")}
           >
             微信登录
           </Button>
@@ -140,7 +141,7 @@ export default function MinePage() {
             </View>
           </View>
 
-          <View className="inbox-entry" onClick={() => Taro.navigateTo({ url: "/pages/inbox/index" })}>
+          <View className="inbox-entry" onClick={() => void navigateToOnce("/pages/inbox/index")}>
             <View>
               <Text className="inbox-entry-title">任务箱</Text>
               <Text className="inbox-entry-detail">
@@ -163,7 +164,7 @@ export default function MinePage() {
                     <Text className="role-meta">{me.leader_binding.division_name}</Text>
                   </View>
                 </View>
-                <Button className="role-workspace-link" onClick={() => Taro.navigateTo({ url: "/pages/leader/index" })}>
+                <Button className="role-workspace-link" onClick={() => void navigateToOnce("/pages/leader/index")}>
                   进入领队工作台
                 </Button>
               </>
@@ -172,7 +173,7 @@ export default function MinePage() {
                 <Text className="section-detail">每个赛季一人只能认领一队，认领后仅超级管理员可纠正。</Text>
                 <Button
                   className="secondary-action"
-                  onClick={() => Taro.navigateTo({ url: "/pages/leader-register/index" })}
+                  onClick={() => void navigateToOnce("/pages/leader-register/index")}
                 >
                   认领球队
                 </Button>
@@ -190,7 +191,7 @@ export default function MinePage() {
                     <Text className="role-meta">网页登录账号：{me.account.username}</Text>
                   </View>
                 </View>
-                <Button className="role-workspace-link" onClick={() => Taro.navigateTo({ url: "/pages/admin/index" })}>
+                <Button className="role-workspace-link" onClick={() => void navigateToOnce("/pages/admin/index")}>
                   进入管理员工作台
                 </Button>
                 <Button
@@ -206,7 +207,7 @@ export default function MinePage() {
                 <Text className="section-detail">邀请码属于当前赛季；注册时需要自行设置个人网页登录密码。</Text>
                 <Button
                   className="secondary-action"
-                  onClick={() => Taro.navigateTo({ url: "/pages/admin-register/index" })}
+                  onClick={() => void navigateToOnce("/pages/admin-register/index")}
                 >
                   注册管理员
                 </Button>

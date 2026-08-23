@@ -17,6 +17,7 @@ from core.models import (
     Game,
     GameScoresheet,
     Period,
+    RescheduleRequest,
     Season,
     SlotReservation,
     Team,
@@ -61,6 +62,48 @@ class ScheduleOptionsOut(Schema):
     periods: list[PeriodOptionOut]
     venues: list[VenueOptionOut]
     teams: list[MobileAdminTeamOptionOut]
+
+
+class MobileDashboardSeasonOut(Schema):
+    id: UUID
+    name: str
+    year: int
+
+
+class MobileDashboardGameOut(Schema):
+    id: UUID
+    code: str
+    division_id: UUID
+    division_name: str
+    division_gender: str
+    group_name: str | None
+    stage: str
+    round_number: int
+    date: date
+    slot_code: str
+    slot_name: str
+    period_code: str
+    period_name: str
+    start_time: str
+    venue_name: str
+    home_team_id: UUID | None
+    away_team_id: UUID | None
+    home_name: str
+    away_name: str
+    home_score: int | None
+    away_score: int | None
+    participants_resolved: bool
+    leader_adjustable: bool
+    status: str
+    version: int
+
+
+class MobileDashboardOut(Schema):
+    username: str
+    admin_role: str
+    season: MobileDashboardSeasonOut | None
+    active_reschedule_count: int
+    recent_games: list[MobileDashboardGameOut]
 
 
 class AdminGameOut(Schema):
@@ -136,12 +179,43 @@ def _game_queryset():
     return Game.objects.select_related(
         "season",
         "division",
+        "group",
         "period",
         "home_team",
         "away_team",
         "home_slot",
         "away_slot",
     ).prefetch_related("converted_reservations")
+
+
+def _dashboard_game_out(game: Game) -> dict[str, object]:
+    return {
+        "id": game.id,
+        "code": game.code,
+        "division_id": game.division_id,
+        "division_name": game.division.name,
+        "division_gender": game.division.gender,
+        "group_name": game.group.name if game.group_id else None,
+        "stage": game.stage,
+        "round_number": game.round_number,
+        "date": game.date,
+        "slot_code": game.period.code.upper(),
+        "slot_name": game.period.name,
+        "period_code": game.period.code,
+        "period_name": game.period.name,
+        "start_time": game.start_time.strftime("%H:%M"),
+        "venue_name": game.venue_name,
+        "home_team_id": game.home_team_id,
+        "away_team_id": game.away_team_id,
+        "home_name": game.home_display,
+        "away_name": game.away_display,
+        "home_score": game.home_score,
+        "away_score": game.away_score,
+        "participants_resolved": bool(game.home_team_id and game.away_team_id),
+        "leader_adjustable": game.leader_adjustable,
+        "status": game.status,
+        "version": game.version,
+    }
 
 
 def _standard_venue_id(game: Game) -> UUID | None:
@@ -205,6 +279,47 @@ def _snapshot(game: Game) -> dict[str, object]:
         "status": game.status,
         "leader_adjustable": game.leader_adjustable,
         "version": game.version,
+    }
+
+
+@router.get(
+    "/dashboard",
+    response={200: MobileDashboardOut, 403: MobileAdminErrorOut},
+)
+def mobile_dashboard(request: HttpRequest):
+    denied = _require_admin(request)
+    if denied:
+        return denied
+    season = Season.objects.filter(status=Season.Status.PUBLISHED).first()
+    if season is None:
+        return {
+            "username": request.auth.username,
+            "admin_role": request.auth.role,
+            "season": None,
+            "active_reschedule_count": 0,
+            "recent_games": [],
+        }
+
+    active_reschedule_count = 0
+    if request.auth.is_pkuba_superadmin:
+        active_reschedule_count = RescheduleRequest.objects.filter(
+            game__season=season,
+        ).exclude(status__in=RescheduleRequest.TERMINAL_STATUSES).count()
+
+    today = timezone.localdate()
+    games = _game_queryset().filter(season=season).exclude(status=Game.Status.VOID)
+    future_games = list(games.filter(date__gte=today)[:10])
+    remaining = 10 - len(future_games)
+    past_games = list(
+        games.filter(date__lt=today).order_by("-date", "-start_time", "-code")[:remaining]
+    )
+    recent_games = [*reversed(past_games), *future_games]
+    return {
+        "username": request.auth.username,
+        "admin_role": request.auth.role,
+        "season": {"id": season.id, "name": season.name, "year": season.year},
+        "active_reschedule_count": active_reschedule_count,
+        "recent_games": [_dashboard_game_out(game) for game in recent_games],
     }
 
 

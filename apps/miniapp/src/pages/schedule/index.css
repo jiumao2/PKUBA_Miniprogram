@@ -63,12 +63,9 @@
   text-align: right;
 }
 
-.schedule-page .game-timeline {
-  margin-top: 32rpx;
-}
-
 .schedule-page {
   padding-top: 0;
+  overflow: hidden;
 }
 
 .schedule-sticky-header {
@@ -109,3 +106,8 @@
 
 .schedule-view-tab.is-active { color: #171614; }
 .schedule-view-tab.is-active::after { background: #c91f26; }
+.bracket-content { position: relative; }
+.bracket-refreshing { position: absolute; z-index: 3; top: 12rpx; right: 0; color: #7b746d; font-size: 26rpx; }
+.bracket-loading { padding-top: 28rpx; }
+.bracket-loading view { height: 180rpx; margin-bottom: 20rpx; border-radius: 14rpx; background: linear-gradient(90deg, #e7e3dd, #f5f2ed, #e7e3dd); background-size: 220% 100%; animation: bracket-shimmer 1.2s linear infinite; }
+@keyframes bracket-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }

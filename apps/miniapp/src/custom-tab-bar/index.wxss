@@ -64,3 +64,5 @@
 .tabbar-item.is-selected .tabbar-indicator {
   background: #c91f26;
 }
+
+.tabbar-item.is-switching { opacity: .58; }

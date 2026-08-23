@@ -697,3 +697,132 @@ def test_invalid_upload_and_storage_failure_clean_staging_files(
     assert partial_paths
     assert all(not path.exists() for path in partial_paths)
     assert all(not path.exists() for path in created_paths)
+
+
+def test_public_game_detail_exposes_only_online_group_photos_without_review_gate(
+    tmp_path,
+):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["admin"])
+    client = Client()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        group_photo = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GROUP_PHOTO,
+            confirmed=False,
+            file=image_file("team-photo.jpg", (1200, 800)),
+        )
+        upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("other-photo.jpg", (1000, 700)),
+        )
+        detail = client.get(f"/api/v1/public/games/{game.id}/detail")
+
+    assert group_photo.json()["review_status"] == GameMediaAsset.ReviewStatus.PENDING
+    assert detail.status_code == 200
+    assert detail.json()["game"]["id"] == str(game.id)
+    assert detail.json()["stats"] is None
+    assert [photo["id"] for photo in detail.json()["group_photos"]] == [
+        group_photo.json()["id"]
+    ]
+    assert set(detail.json()["group_photos"][0]) == {
+        "id",
+        "content_url",
+        "width",
+        "height",
+        "sort_order",
+    }
+
+
+def test_superadmin_can_review_delete_and_reorder_media_from_miniapp(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["superadmin"])
+    ordinary_token = issue_session(setup["admin"])
+    client = Client()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        first = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GROUP_PHOTO,
+            confirmed=False,
+            file=image_file("first.jpg", (1200, 800)),
+        ).json()
+        second = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GROUP_PHOTO,
+            confirmed=False,
+            file=image_file("second.jpg", (1201, 800)),
+        ).json()
+        reordered = client.post(
+            f"/api/v1/game-media/games/{game.id}/reorder",
+            data=json.dumps(
+                {
+                    "kind": GameMediaAsset.Kind.GROUP_PHOTO,
+                    "items": [
+                        {"id": second["id"], "expected_version": second["version"]},
+                        {"id": first["id"], "expected_version": first["version"]},
+                    ],
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        rows = [
+            row
+            for row in reordered.json()["assets"]
+            if row["kind"] == GameMediaAsset.Kind.GROUP_PHOTO
+        ]
+        ordinary_review = client.post(
+            f"/api/v1/game-media/assets/{rows[0]['id']}/review",
+            data=json.dumps(
+                {
+                    "expected_version": rows[0]["version"],
+                    "approve": True,
+                    "note": "",
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {ordinary_token}",
+        )
+        reviewed = client.post(
+            f"/api/v1/game-media/assets/{rows[0]['id']}/review",
+            data=json.dumps(
+                {
+                    "expected_version": rows[0]["version"],
+                    "approve": True,
+                    "note": "",
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        deleted = client.delete(
+            f"/api/v1/game-media/assets/{rows[1]['id']}",
+            data=json.dumps({"expected_version": rows[1]["version"]}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+    assert reordered.status_code == 200
+    assert [row["id"] for row in rows] == [second["id"], first["id"]]
+    assert [row["sort_order"] for row in rows] == [1, 2]
+    assert ordinary_review.status_code == 403
+    assert reviewed.status_code == 200
+    assert reviewed.json()["review_status"] == GameMediaAsset.ReviewStatus.APPROVED
+    assert deleted.status_code == 204
+    assert AdminAuditLog.objects.filter(
+        action="GAME_MEDIA_REORDERED", object_id=game.id
+    ).exists()

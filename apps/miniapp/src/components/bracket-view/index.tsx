@@ -11,7 +11,13 @@ import {
 } from "./model";
 import "./index.css";
 
-export function BracketView({ data }: { data: Brackets }) {
+export function BracketView({
+  data,
+  onGameClick,
+}: {
+  data: Brackets;
+  onGameClick?: (game: BracketGame) => void;
+}) {
   const available = availableDivisions(data);
   const [divisionId, setDivisionId] = useState(available[0]?.id ?? "");
   useEffect(() => {
@@ -75,6 +81,7 @@ export function BracketView({ data }: { data: Brackets }) {
                     <MatchCard
                       game={game}
                       gender={division.gender}
+                      onClick={onGameClick}
                       key={game.id}
                     />
                   ))}
@@ -89,7 +96,7 @@ export function BracketView({ data }: { data: Brackets }) {
         <View className="placement-section">
           <Text className="placement-title">保级赛</Text>
           {division.placement_games.map((game) => (
-            <MatchCard game={game} gender={division.gender} key={game.id} />
+            <MatchCard game={game} gender={division.gender} key={game.id} onClick={onGameClick} />
           ))}
         </View>
       )}
@@ -100,12 +107,17 @@ export function BracketView({ data }: { data: Brackets }) {
 function MatchCard({
   game,
   gender,
+  onClick,
 }: {
   game: BracketGame;
   gender: string;
+  onClick?: (game: BracketGame) => void;
 }) {
   return (
-    <View className={`bracket-match ${gender === "WOMEN" ? "gender-women" : "gender-men"} ${game.review_required ? "needs-review" : ""}`}>
+    <View
+      className={`bracket-match ${gender === "WOMEN" ? "gender-women" : "gender-men"} ${game.review_required ? "needs-review" : ""} ${onClick ? "is-clickable" : ""}`}
+      onClick={() => onClick?.(game)}
+    >
       <View className="match-meta">
         <Text>{formatDate(game.date)} · {game.start_time}</Text>
         <Text>{game.venue_name}</Text>

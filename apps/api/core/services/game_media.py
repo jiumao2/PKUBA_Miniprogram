@@ -560,6 +560,72 @@ def delete_game_media(
     return asset
 
 
+def reorder_game_media(
+    *,
+    actor: Account,
+    game_id,
+    kind: str,
+    ordered_assets: list[tuple[object, int]],
+) -> list[GameMediaAsset]:
+    if kind not in GameMediaAsset.Kind.values:
+        raise GameMediaError("MEDIA_KIND_INVALID", "图片类型不合法。")
+    if not ordered_assets:
+        raise GameMediaError("MEDIA_ORDER_EMPTY", "图片排序不能为空。")
+    requested_ids = [asset_id for asset_id, _ in ordered_assets]
+    if len(requested_ids) != len(set(requested_ids)):
+        raise GameMediaError("MEDIA_ORDER_DUPLICATE", "图片排序中存在重复项目。")
+
+    with transaction.atomic():
+        try:
+            game = Game.objects.select_for_update().get(id=game_id)
+        except Game.DoesNotExist as error:
+            raise GameMediaError("GAME_NOT_FOUND", "比赛不存在。") from error
+        _assert_media_mutable(game)
+        if not media_permissions(actor, game).can_upload:
+            raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料排序仅限管理员。")
+        assets = list(
+            GameMediaAsset.objects.select_for_update()
+            .filter(game=game, kind=kind, deleted_at__isnull=True)
+            .order_by("sort_order", "created_at")
+        )
+        assets_by_id = {asset.id: asset for asset in assets}
+        if set(requested_ids) != set(assets_by_id):
+            raise GameMediaError("MEDIA_ORDER_STALE", "图片列表已变化，请刷新后重试。")
+
+        before = [
+            {"id": str(asset.id), "sort_order": asset.sort_order, "version": asset.version}
+            for asset in assets
+        ]
+        reordered: list[GameMediaAsset] = []
+        for sort_order, (asset_id, expected_version) in enumerate(ordered_assets, start=1):
+            asset = assets_by_id[asset_id]
+            if asset.version != expected_version:
+                raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
+            asset.sort_order = sort_order
+            asset.version += 1
+            asset.save(update_fields=["sort_order", "version", "updated_at"])
+            reordered.append(asset)
+        AdminAuditLog.objects.create(
+            actor=actor,
+            action="GAME_MEDIA_REORDERED",
+            object_type="Game",
+            object_id=game.id,
+            before={"kind": kind, "assets": before},
+            after={
+                "kind": kind,
+                "assets": [
+                    {
+                        "id": str(asset.id),
+                        "sort_order": asset.sort_order,
+                        "version": asset.version,
+                    }
+                    for asset in reordered
+                ],
+            },
+        )
+    return reordered
+
+
 def issue_media_ticket(asset: GameMediaAsset) -> str:
     return signing.dumps(
         {"asset_id": str(asset.id), "version": asset.version},

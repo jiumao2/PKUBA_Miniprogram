@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 import pytest
 from django.test import Client
@@ -288,3 +289,46 @@ def test_web_schedule_editor_rejects_archived_season_writes():
 
     assert response.status_code == 409
     assert response.json()["code"] == "SEASON_ARCHIVED"
+
+
+def test_mobile_admin_dashboard_is_bounded_and_survives_no_public_season():
+    setup = reschedule_setup()
+    template = setup["games"][0]
+    for index in range(12):
+        Game.objects.create(
+            season=setup["season"],
+            division=setup["division"],
+            group=setup["group"],
+            code=f"DASH-{index:03}",
+            date=template.date + timedelta(days=index + 1),
+            period=setup["period"],
+            start_time=template.start_time,
+            venue_name=f"仪表盘场地 {index}",
+            home_team=setup["teams"][0],
+            away_team=setup["teams"][1],
+            home_slot=template.home_slot,
+            away_slot=template.away_slot,
+        )
+    token = issue_session(setup["superadmin"])
+    client = Client()
+
+    response = client.get(
+        "/api/v1/admin/mobile/dashboard",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == setup["superadmin"].username
+    assert response.json()["admin_role"] == Account.Role.SUPERADMIN
+    assert response.json()["season"]["id"] == str(setup["season"].id)
+    assert len(response.json()["recent_games"]) == 10
+
+    setup["season"].status = setup["season"].Status.ARCHIVED
+    setup["season"].save(update_fields=["status", "updated_at"])
+    offseason = client.get(
+        "/api/v1/admin/mobile/dashboard",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert offseason.status_code == 200
+    assert offseason.json()["season"] is None
+    assert offseason.json()["recent_games"] == []

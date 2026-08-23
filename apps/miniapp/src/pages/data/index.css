@@ -14,6 +14,8 @@
 .sort-strip { margin-bottom: 18rpx; }
 .data-state { margin-top: 28rpx; }
 .data-state.error { border-left: 6rpx solid #a72b27; color: #8c211e; }
+.data-refreshing { margin: 0 0 14rpx; color: #7b746d; font-size: 26rpx; text-align: right; }
+.data-inline-error { margin-bottom: 14rpx; padding: 14rpx 18rpx; border-left: 5rpx solid #a72b27; background: #fff1f1; color: #922427; font-size: 26rpx; }
 .leaderboard, .game-list, .game-detail { overflow: hidden; border: 1rpx solid #ded8d0; border-radius: 16rpx; background: #fff; }
 .leader-row { position: relative; display: grid; grid-template-columns: 66rpx minmax(0, 1fr) 116rpx 94rpx; align-items: center; min-height: 104rpx; padding: 12rpx 18rpx 12rpx 20rpx; border-bottom: 1rpx solid #ebe7e1; }
 .leader-row:last-child { border-bottom: 0; }

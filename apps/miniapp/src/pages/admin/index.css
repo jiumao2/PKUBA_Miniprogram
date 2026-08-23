@@ -1,2 +1,12 @@
 .admin-identity { border-top-color: #c91f26; }
 .admin-workspace-page .game-timeline { margin-top: 0; }
+.workspace-refreshing { position: fixed; z-index: 20; top: 18rpx; right: 24rpx; padding: 8rpx 16rpx; border-radius: 999rpx; background: rgba(36, 33, 30, .84); color: #fff; font-size: 26rpx; }
+.workspace-inline-error { margin: 20rpx 0; padding: 18rpx 20rpx; border-left: 5rpx solid #c91f26; background: #fff1f1; color: #9e262a; font-size: 26rpx; }
+.workspace-skeleton { padding-top: 26rpx; }
+.skeleton-identity, .skeleton-actions view, .skeleton-game { border-radius: 14rpx; background: #e7e3dd; animation: workspace-pulse 1.1s ease-in-out infinite; }
+.skeleton-identity { height: 126rpx; }
+.skeleton-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 16rpx; margin-top: 22rpx; }
+.skeleton-actions view { height: 128rpx; }
+.skeleton-actions view:last-child { grid-column: 1 / -1; }
+.skeleton-game { height: 220rpx; margin-top: 34rpx; }
+@keyframes workspace-pulse { 0%, 100% { opacity: .44; } 50% { opacity: 1; } }

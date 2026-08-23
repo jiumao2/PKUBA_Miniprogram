@@ -33,8 +33,20 @@ Component({
     },
     switchTab(event) {
       const { index, path } = event.currentTarget.dataset
-      this.setData({ selected: Number(index) })
-      wx.switchTab({ url: path })
+      const pages = getCurrentPages()
+      const current = pages[pages.length - 1]
+      if (this.switching || (current && `/${current.route}` === path)) return
+      const previous = this.data.selected
+      this.switching = true
+      this.setData({ selected: Number(index), switching: true })
+      wx.switchTab({
+        url: path,
+        fail: () => this.setData({ selected: previous }),
+        complete: () => {
+          this.switching = false
+          this.setData({ switching: false })
+        }
+      })
     }
   }
 })

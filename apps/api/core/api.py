@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from urllib.parse import quote
 from uuid import UUID
 
 from django.db.models import Count, Max, Min, Q, QuerySet
@@ -23,10 +24,15 @@ from .api_inbox import router as inbox_router
 from .api_mobile_admin import router as mobile_admin_router
 from .api_public_stats import router as public_stats_router
 from .api_reschedule import router as reschedule_router
+from .api_scoresheets import (
+    PublicScoresheetStatOut,
+    serialize_public_scoresheet_stat,
+)
 from .api_scoresheets import public_router as public_scoresheet_router
 from .api_scoresheets import router as scoresheet_router
-from .models import Game, Season
+from .models import Game, GameMediaAsset, ScoresheetPublication, Season
 from .services.brackets import build_brackets
+from .services.game_media import issue_media_ticket
 from .services.standings import build_standings
 
 api = NinjaAPI(
@@ -101,6 +107,36 @@ class GamePageOut(Schema):
     total: int
     page: int
     page_size: int
+
+
+class ScheduleDayOut(Schema):
+    date: date
+    games: list[GameOut]
+
+
+class ScheduleDaysOut(Schema):
+    today: date
+    focus_date: date | None
+    days: list[ScheduleDayOut]
+    previous_cursor: date | None
+    next_cursor: date | None
+    has_previous: bool
+    has_next: bool
+    total_games: int
+
+
+class PublicGroupPhotoOut(Schema):
+    id: UUID
+    content_url: str
+    width: int
+    height: int
+    sort_order: int
+
+
+class PublicGameDetailOut(Schema):
+    game: GameOut
+    stats: PublicScoresheetStatOut | None
+    group_photos: list[PublicGroupPhotoOut]
 
 
 class DailyGameCountOut(Schema):
@@ -267,6 +303,37 @@ def serialize_game(game: Game) -> dict[str, object]:
     }
 
 
+def _schedule_focus_date(match_dates: list[date], today: date) -> date | None:
+    if not match_dates:
+        return None
+    if today in match_dates:
+        return today
+    previous = [match_date for match_date in match_dates if match_date < today]
+    return previous[-1] if previous else match_dates[0]
+
+
+def _initial_schedule_dates(
+    match_dates: list[date], focus_date: date, day_count: int
+) -> list[date]:
+    focus_index = match_dates.index(focus_date)
+    before = min(2, focus_index)
+    start = focus_index - before
+    end = min(len(match_dates), start + day_count)
+    start = max(0, end - day_count)
+    return match_dates[start:end]
+
+
+def _serialize_public_group_photo(asset: GameMediaAsset) -> dict[str, object]:
+    ticket = quote(issue_media_ticket(asset), safe="")
+    return {
+        "id": asset.id,
+        "content_url": f"/api/v1/game-media/assets/{asset.id}/content?ticket={ticket}",
+        "width": asset.width,
+        "height": asset.height,
+        "sort_order": asset.sort_order,
+    }
+
+
 @api.get("/health", response=HealthOut, tags=["system"])
 def health(request: HttpRequest):
     del request
@@ -430,6 +497,86 @@ def list_games(
     }
 
 
+@public.get(
+    "/schedule-days",
+    response={200: ScheduleDaysOut, 400: ErrorOut},
+)
+def schedule_days(
+    request: HttpRequest,
+    division_id: UUID | None = None,
+    direction: str = "initial",
+    cursor: date | None = None,
+    day_count: int = 5,
+    date_from: date | None = None,
+    date_to: date | None = None,
+):
+    del request
+    today = timezone.localdate()
+    games = public_games()
+    if division_id:
+        games = games.filter(division_id=division_id)
+    total_games = games.count()
+    match_dates = list(
+        games.order_by("date").values_list("date", flat=True).distinct()
+    )
+    focus_date = _schedule_focus_date(match_dates, today)
+    day_count = min(max(day_count, 1), 5)
+
+    if direction == "initial":
+        selected_dates = (
+            _initial_schedule_dates(match_dates, focus_date, day_count)
+            if focus_date is not None
+            else []
+        )
+    elif direction == "before" and cursor is not None:
+        selected_dates = [value for value in match_dates if value < cursor][-day_count:]
+    elif direction == "after" and cursor is not None:
+        selected_dates = [value for value in match_dates if value > cursor][:day_count]
+    elif direction == "range" and date_from is not None and date_to is not None:
+        if date_from > date_to or (date_to - date_from).days > 180:
+            return Status(
+                400,
+                {
+                    "code": "SCHEDULE_RANGE_INVALID",
+                    "message": "赛程核对范围必须为不超过 180 天的有效日期区间。",
+                },
+            )
+        selected_dates = [
+            value for value in match_dates if date_from <= value <= date_to
+        ]
+    else:
+        return Status(
+            400,
+            {
+                "code": "SCHEDULE_CURSOR_INVALID",
+                "message": "赛程加载方向或日期游标无效。",
+            },
+        )
+
+    selected_games = list(games.filter(date__in=selected_dates))
+    games_by_date: dict[date, list[Game]] = {value: [] for value in selected_dates}
+    for game in selected_games:
+        games_by_date[game.date].append(game)
+    first_date = selected_dates[0] if selected_dates else None
+    last_date = selected_dates[-1] if selected_dates else None
+    return {
+        "today": today,
+        "focus_date": focus_date,
+        "days": [
+            {
+                "date": value,
+                "games": [serialize_game(game) for game in games_by_date[value]],
+            }
+            for value in selected_dates
+        ],
+        "previous_cursor": first_date,
+        "next_cursor": last_date,
+        "has_previous": bool(first_date and match_dates and match_dates[0] < first_date),
+        "has_next": bool(last_date and match_dates and match_dates[-1] > last_date),
+        "total_games": total_games,
+    }
+
+
 @public.get("/standings", response={200: StandingsOut, 404: ErrorOut})
 def standings(request: HttpRequest):
     del request
@@ -464,6 +611,48 @@ def get_game(request: HttpRequest, game_id: UUID):
             {"code": "GAME_NOT_FOUND", "message": "比赛不存在或不属于当前公开赛季。"},
         )
     return serialize_game(game)
+
+
+@public.get(
+    "/games/{game_id}/detail",
+    response={200: PublicGameDetailOut, 404: ErrorOut},
+)
+def get_game_detail(request: HttpRequest, game_id: UUID):
+    del request
+    game = public_games().filter(id=game_id).first()
+    if game is None:
+        return Status(
+            404,
+            {"code": "GAME_NOT_FOUND", "message": "比赛不存在或不属于当前公开赛季。"},
+        )
+    publication = (
+        ScoresheetPublication.objects.filter(
+            current_for_scoresheets__game_id=game.id,
+        )
+        .select_related(
+            "scoresheet__game",
+            "scoresheet__game__division",
+            "scoresheet__game__home_team",
+            "scoresheet__game__away_team",
+        )
+        .prefetch_related("team_stats__team", "player_stats__team")
+        .first()
+    )
+    group_photos = GameMediaAsset.objects.filter(
+        game=game,
+        kind=GameMediaAsset.Kind.GROUP_PHOTO,
+        storage_status=GameMediaAsset.StorageStatus.ONLINE,
+        deleted_at__isnull=True,
+    ).order_by("sort_order", "created_at")
+    return {
+        "game": serialize_game(game),
+        "stats": (
+            serialize_public_scoresheet_stat(publication) if publication else None
+        ),
+        "group_photos": [
+            _serialize_public_group_photo(asset) for asset in group_photos
+        ],
+    }
 
 
 api.add_router("/public", public)

@@ -1,51 +1,57 @@
 import { ScrollView, Text, View } from "@tarojs/components";
-import Taro, { useDidShow } from "@tarojs/taro";
-import { useMemo, useState } from "react";
-import type { Game, MiniAppMe } from "@pkuba/api-client";
+import { useDidShow } from "@tarojs/taro";
+import { useRef, useState } from "react";
+import type { Division, MiniAppMe } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
-import { GameTimeline } from "../../components/game-timeline";
+import { ScheduleDayScroller } from "../../components/schedule-day-scroller";
+import { navigateToOnce } from "../../navigation";
 import "./index.css";
 
 export default function AdminGamesPage() {
   const [me, setMe] = useState<MiniAppMe | null>(null);
-  const [games, setGames] = useState<Game[]>([]);
+  const [divisions, setDivisions] = useState<Division[]>([]);
   const [divisionId, setDivisionId] = useState("all");
-  const [message, setMessage] = useState("正在读取赛程…");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const requestVersionRef = useRef(0);
 
   useDidShow(() => {
     const token = getMiniAppSession();
     if (!token) {
       setMessage("请先登录管理员账号。");
+      setLoading(false);
       return;
     }
-    Promise.all([api.getMiniAppMe(token), api.getGames()])
-      .then(([current, allGames]) => {
+    const requestVersion = ++requestVersionRef.current;
+    setRefreshKey((value) => value + 1);
+    setLoading(true);
+    Promise.all([api.getMiniAppMe(token), api.getCurrentSeason()])
+      .then(([current, season]) => {
+        if (requestVersion !== requestVersionRef.current) return;
         setMe(current);
-        setGames(allGames);
-        setMessage(allGames.length ? "" : "当前赛季暂无赛程。");
+        setDivisions(season.divisions);
+        setMessage(current.admin_role ? "" : "当前账号没有管理员权限。");
       })
-      .catch((reason: unknown) => setMessage(reason instanceof Error ? reason.message : "读取失败"));
+      .catch((reason: unknown) => {
+        if (requestVersion === requestVersionRef.current) {
+          setMessage(reason instanceof Error ? reason.message : "读取失败");
+        }
+      })
+      .finally(() => {
+        if (requestVersion === requestVersionRef.current) setLoading(false);
+      });
   });
 
-  const divisions = useMemo(() => {
-    const seen = new Map<string, { id: string; name: string; gender: string }>();
-    games.forEach((game) => seen.set(game.division_id, {
-      id: game.division_id,
-      name: game.division_name,
-      gender: game.division_gender,
-    }));
-    return Array.from(seen.values());
-  }, [games]);
-  const shown = divisionId === "all" ? games : games.filter((game) => game.division_id === divisionId);
   return (
     <View className="page admin-games-page">
       <Text className="page-title">赛程与资料</Text>
       {me?.admin_role === "SUPERADMIN" && (
         <View className="state"><Text className="state-detail">赛程直接修改统一在网页后台完成；点击比赛可查看和上传资料。</Text></View>
       )}
-      {!!games.length && (
+      {!!divisions.length && (
         <ScrollView scrollX className="admin-division-tabs" showScrollbar={false}>
           <View className="admin-division-row">
             <View className={`admin-division-tab ${divisionId === "all" ? "is-active" : ""}`} onClick={() => setDivisionId("all")}><Text>全部</Text></View>
@@ -61,11 +67,14 @@ export default function AdminGamesPage() {
           </View>
         </ScrollView>
       )}
-      {message && <View className="state"><Text className="state-detail">{message}</Text></View>}
-      {!!shown.length && (
-        <GameTimeline
-          games={shown}
-          onGameClick={(game) => Taro.navigateTo({ url: `/pages/game-media/index?id=${game.id}` })}
+      {loading && !me && <View className="admin-games-skeleton"><View /><View /></View>}
+      {message && !loading && <View className="state"><Text className="state-detail">{message}</Text></View>}
+      {me?.admin_role && !message && (
+        <ScheduleDayScroller
+          divisionId={divisionId === "all" ? "" : divisionId}
+          mode="admin"
+          refreshKey={refreshKey}
+          onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
         />
       )}
     </View>

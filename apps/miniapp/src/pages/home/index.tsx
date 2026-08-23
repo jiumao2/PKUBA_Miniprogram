@@ -6,6 +6,7 @@ import type { HomeDashboard, Season } from "@pkuba/api-client";
 import logoUrl from "../../assets/pkuba-logo.png";
 import { api } from "../../api";
 import { GameTimeline } from "../../components/game-timeline";
+import { navigateToOnce } from "../../navigation";
 import { formatDate } from "../../format";
 import { syncTabBar } from "../../tabbar";
 import {
@@ -153,7 +154,7 @@ function Matchday({ dashboard, onSchedule }: { dashboard: HomeDashboard; onSched
       <GameTimeline
         games={dashboard.games}
         showDates={recentResults}
-        onGameClick={(game) => Taro.navigateTo({ url: `/pages/game-media/index?id=${game.id}` })}
+        onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
       />
       <Button className="text-button" onClick={onSchedule}>
         {recentResults ? "查看全部赛程与赛果" : "查看完整赛程"}

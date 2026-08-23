@@ -153,3 +153,124 @@ def test_home_calendar_ignores_void_boundaries_and_returns_null_for_no_games():
     assert payload["calendar_start_date"] is None
     assert payload["calendar_end_date"] is None
     assert payload["daily_game_counts"] == []
+
+
+def _create_game_on(game: Game, *, code: str, match_date):
+    return Game.objects.create(
+        season=game.season,
+        division=game.division,
+        code=code,
+        date=match_date,
+        period=game.period,
+        start_time=game.start_time,
+        venue_name=f"测试场地 {code}",
+        home_slot=game.home_slot,
+        away_slot=game.away_slot,
+    )
+
+
+def test_schedule_days_centres_today_and_loads_both_directions_without_overlap():
+    target_season = season()
+    game = placeholder_game(target_season)
+    today = timezone.localdate()
+    Game.objects.filter(id=game.id).update(date=today)
+    for offset in [value for value in range(-10, 11) if value != 0]:
+        _create_game_on(
+            game,
+            code=f"WINDOW-{offset + 10:02}",
+            match_date=today + timedelta(days=offset),
+        )
+
+    client = Client()
+    initial = client.get("/api/v1/public/schedule-days").json()
+    before = client.get(
+        "/api/v1/public/schedule-days",
+        {"direction": "before", "cursor": initial["previous_cursor"]},
+    ).json()
+    after = client.get(
+        "/api/v1/public/schedule-days",
+        {"direction": "after", "cursor": initial["next_cursor"]},
+    ).json()
+
+    assert initial["today"] == today.isoformat()
+    assert initial["focus_date"] == today.isoformat()
+    assert [row["date"] for row in initial["days"]] == [
+        (today + timedelta(days=offset)).isoformat() for offset in [-2, -1, 0, 1, 2]
+    ]
+    date_sets = [
+        {row["date"] for row in payload["days"]}
+        for payload in (before, initial, after)
+    ]
+    assert not (date_sets[0] & date_sets[1])
+    assert not (date_sets[1] & date_sets[2])
+    assert before["has_previous"] is True
+    assert after["has_next"] is True
+    assert initial["total_games"] == 21
+
+
+def test_schedule_days_focuses_previous_matchday_when_today_is_empty():
+    target_season = season()
+    game = placeholder_game(target_season)
+    today = timezone.localdate()
+    Game.objects.filter(id=game.id).update(date=today - timedelta(days=2))
+    _create_game_on(
+        game,
+        code="NEXT-GAME",
+        match_date=today + timedelta(days=2),
+    )
+
+    payload = Client().get("/api/v1/public/schedule-days").json()
+
+    assert payload["focus_date"] == (today - timedelta(days=2)).isoformat()
+    assert [row["date"] for row in payload["days"]] == [
+        (today - timedelta(days=2)).isoformat(),
+        (today + timedelta(days=2)).isoformat(),
+    ]
+
+
+def test_schedule_days_focuses_first_future_game_and_handles_empty_schedule():
+    target_season = season()
+    game = placeholder_game(target_season)
+    today = timezone.localdate()
+    Game.objects.filter(id=game.id).update(date=today + timedelta(days=3))
+    _create_game_on(
+        game,
+        code="LATER-GAME",
+        match_date=today + timedelta(days=6),
+    )
+
+    payload = Client().get("/api/v1/public/schedule-days").json()
+    assert payload["focus_date"] == (today + timedelta(days=3)).isoformat()
+
+    Game.objects.all().update(status=Game.Status.VOID)
+    empty = Client().get("/api/v1/public/schedule-days").json()
+    assert empty["focus_date"] is None
+    assert empty["days"] == []
+    assert empty["total_games"] == 0
+
+
+def test_schedule_days_range_revalidates_only_loaded_dates():
+    target_season = season()
+    game = placeholder_game(target_season)
+    today = timezone.localdate()
+    for offset in [2, 4, 8]:
+        _create_game_on(
+            game,
+            code=f"RANGE-{offset}",
+            match_date=today + timedelta(days=offset),
+        )
+
+    payload = Client().get(
+        "/api/v1/public/schedule-days",
+        {
+            "direction": "range",
+            "date_from": today.isoformat(),
+            "date_to": (today + timedelta(days=4)).isoformat(),
+        },
+    ).json()
+
+    assert [row["date"] for row in payload["days"]] == [
+        today.isoformat(),
+        (today + timedelta(days=2)).isoformat(),
+        (today + timedelta(days=4)).isoformat(),
+    ]

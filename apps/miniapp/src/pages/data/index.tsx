@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import type {
   Division,
   PlayerLeaderboardItem,
-  PublicScoresheetStat,
   PublishedGameSummary,
   TeamLeaderboardItem,
 } from "@pkuba/api-client";
 
 import { api } from "../../api";
+import { navigateToOnce } from "../../navigation";
 import { syncTabBar } from "../../tabbar";
 import {
   loadCompleteList,
@@ -17,22 +17,11 @@ import {
   playerPageCount,
   playerVisibleTotal,
 } from "./pagination";
+import { PLAYER_SORTS, TEAM_SORTS } from "./sorts";
 import "./index.css";
 
 type Tab = "teams" | "players" | "games";
 type Order = "asc" | "desc";
-
-const TEAM_SORTS = [
-  ["points_per_game", "场均得分"], ["total_points", "总得分"],
-  ["points_against_per_game", "场均失分"], ["point_difference_per_game", "场均净胜"],
-  ["win_percentage", "胜率"], ["wins", "胜场"], ["games_played", "场次"],
-] as const;
-const PLAYER_SORTS = [
-  ["points_per_game", "场均得分"], ["total_points", "总得分"],
-  ["games_played", "出场"], ["starts", "首发"], ["one_point_events", "罚球"],
-  ["two_point_events", "两分球"], ["three_point_events", "三分球"],
-  ["fouls_per_game", "场均犯规"],
-] as const;
 
 export default function DataPage() {
   const [tab, setTab] = useState<Tab>("teams");
@@ -46,7 +35,6 @@ export default function DataPage() {
   const [playerPage, setPlayerPage] = useState(1);
   const [playerTotal, setPlayerTotal] = useState(0);
   const [games, setGames] = useState<PublishedGameSummary[]>([]);
-  const [selected, setSelected] = useState<PublicScoresheetStat | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestVersion = useRef(0);
@@ -111,21 +99,18 @@ export default function DataPage() {
       setOrder("desc");
     }
   }
-  async function openGame(gameId: string) {
-    setLoading(true);
-    try {
-      const rows = await api.getPublicScoresheetStats(gameId);
-      setSelected(rows[0] ?? null);
-    } catch (reason) { setError(messageOf(reason)); }
-    finally { setLoading(false); }
-  }
+  const hasContent = tab === "teams"
+    ? teams.length > 0
+    : tab === "players"
+      ? players.length > 0
+      : games.length > 0;
 
   return <View className="page data-page">
     <View className="data-sticky">
       <View className="data-tabs">
         {(["teams", "players", "games"] as Tab[]).map((value) => <Button
           className={tab === value ? "data-tab active" : "data-tab"} key={value}
-          onClick={() => { setTab(value); setSelected(null); setOrder("desc"); setPlayerPage(1); }}
+          onClick={() => { setTab(value); setOrder("desc"); setPlayerPage(1); }}
         >{value === "teams" ? "球队" : value === "players" ? "球员" : "单场"}</Button>)}
       </View>
       <ScrollView className="division-strip" scrollX showScrollbar={false}>
@@ -151,10 +136,12 @@ export default function DataPage() {
         </Button>;
       })}</View>
     </ScrollView>}
-    {loading && <State title="正在读取数据…" />}
-    {error && <State title={error} tone="error" />}
-    {!loading && !error && tab === "teams" && <TeamTable rows={teams} sort={teamSort} />}
-    {!loading && !error && tab === "players" && <View>
+    {loading && !hasContent && <State title="正在读取数据…" />}
+    {loading && hasContent && <View className="data-refreshing"><Text>正在更新</Text></View>}
+    {error && !hasContent && <State title={error} tone="error" />}
+    {error && hasContent && <View className="data-inline-error"><Text>{error}</Text></View>}
+    {(!loading || hasContent) && tab === "teams" && <TeamTable rows={teams} sort={teamSort} />}
+    {(!loading || hasContent) && tab === "players" && <View>
       <PlayerTable rows={players} sort={playerSort} />
       <PlayerPager
         page={playerPage}
@@ -162,9 +149,9 @@ export default function DataPage() {
         onPageChange={setPlayerPage}
       />
     </View>}
-    {!loading && !error && tab === "games" && (selected
-      ? <GameDetail game={selected} onBack={() => setSelected(null)} />
-      : <GameList games={games} onOpen={(id) => void openGame(id)} />)}
+    {(!loading || hasContent) && tab === "games" && (
+      <GameList games={games} onOpen={(id) => void navigateToOnce(`/pages/game-media/index?id=${id}`)} />
+    )}
   </View>;
 }
 
@@ -233,20 +220,6 @@ function GameList({ games, onOpen }: { games: PublishedGameSummary[]; onOpen: (i
   ><View><Text>{game.date.slice(5)} · {game.start_time}</Text><Text>{game.division_name}</Text></View>
     <View className="game-matchup"><Text>{game.home_name}</Text><Text className="game-score">{game.home_score}:{game.away_score}</Text><Text>{game.away_name}</Text></View>
     <Text className="chevron">›</Text></Button>)}</View>;
-}
-
-function GameDetail({ game, onBack }: { game: PublicScoresheetStat; onBack: () => void }) {
-  const players = game.player_stats.filter((row) => row.appeared || row.points || row.personal_fouls);
-  return <View className="game-detail">
-    <Button className="back-button" onClick={onBack}>‹ 返回场次</Button>
-    <View className="detail-score"><Text>{game.home_name}</Text><Text>{game.home_score}:{game.away_score}</Text><Text>{game.away_name}</Text></View>
-    <Text className="detail-meta">{game.date} · {game.start_time} · {game.division_name}</Text>
-    <View className="player-detail-head"><Text>球员</Text><Text>得分</Text><Text>1/2/3分</Text><Text>犯规</Text></View>
-    {players.map((player) => <View className="player-detail-row" key={`${player.team_id}-${player.player_id ?? player.player_name}`}>
-      <View><Text>#{player.jersey_number || "–"} {player.player_name}</Text><Text>{player.team_name}{player.starter ? " · 首发" : ""}</Text></View>
-      <Text>{player.points}</Text><Text>{player.one_point_events}/{player.two_point_events}/{player.three_point_events}</Text><Text>{player.personal_fouls}</Text>
-    </View>)}
-  </View>;
 }
 
 function State({ title, tone = "" }: { title: string; tone?: string }) {

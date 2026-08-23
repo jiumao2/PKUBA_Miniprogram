@@ -1,42 +1,55 @@
 import { Text, View } from "@tarojs/components";
-import Taro, { useDidShow } from "@tarojs/taro";
+import { useDidShow } from "@tarojs/taro";
 import { useRef, useState } from "react";
-import type { Brackets, Game } from "@pkuba/api-client";
+import type { Brackets } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { BracketView } from "../../components/bracket-view";
-import { GameTimeline } from "../../components/game-timeline";
+import { ScheduleDayScroller } from "../../components/schedule-day-scroller";
+import { navigateToOnce } from "../../navigation";
 import { syncTabBar } from "../../tabbar";
-import { loadBracketState, loadScheduleState } from "./load";
 import "./index.css";
 
 export default function SchedulePage() {
-  const [games, setGames] = useState<Game[]>([]);
   const [brackets, setBrackets] = useState<Brackets | null>(null);
   const [view, setView] = useState<"schedule" | "bracket">("schedule");
-  const [scheduleMessage, setScheduleMessage] = useState("正在读取赛程…");
-  const [bracketMessage, setBracketMessage] = useState("正在读取淘汰赛…");
-  const loadIdRef = useRef(0);
+  const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
+  const [bracketLoading, setBracketLoading] = useState(false);
+  const [bracketMessage, setBracketMessage] = useState("");
+  const bracketLoadIdRef = useRef(0);
+  const bracketBusyRef = useRef(false);
+
+  const loadBrackets = async () => {
+    if (bracketBusyRef.current) return;
+    bracketBusyRef.current = true;
+    const loadId = ++bracketLoadIdRef.current;
+    setBracketLoading(true);
+    setBracketMessage("");
+    try {
+      const result = await api.getBrackets();
+      if (loadId === bracketLoadIdRef.current) setBrackets(result);
+    } catch (reason: unknown) {
+      if (loadId === bracketLoadIdRef.current) {
+        setBracketMessage(reason instanceof Error ? reason.message : "淘汰赛读取失败");
+      }
+    } finally {
+      if (loadId === bracketLoadIdRef.current) setBracketLoading(false);
+      bracketBusyRef.current = false;
+    }
+  };
 
   useDidShow(() => {
     syncTabBar(1);
-    const loadId = ++loadIdRef.current;
-    setGames([]);
-    setBrackets(null);
-    setScheduleMessage("正在读取赛程…");
-    setBracketMessage("正在读取淘汰赛…");
-
-    void loadScheduleState(api).then((result) => {
-      if (loadId !== loadIdRef.current) return;
-      setGames(result.games);
-      setScheduleMessage(result.message);
-    });
-    void loadBracketState(api).then((result) => {
-      if (loadId !== loadIdRef.current) return;
-      setBrackets(result.brackets);
-      setBracketMessage(result.message);
-    });
+    if (view === "schedule") setScheduleRefreshKey((value) => value + 1);
+    else void loadBrackets();
   });
+
+  const selectView = (next: "schedule" | "bracket") => {
+    if (next === view) return;
+    setView(next);
+    if (next === "bracket") void loadBrackets();
+    else setScheduleRefreshKey((value) => value + 1);
+  };
 
   return (
     <View className="page schedule-page">
@@ -44,31 +57,41 @@ export default function SchedulePage() {
         <View className="schedule-view-tabs">
           <View
             className={`schedule-view-tab ${view === "schedule" ? "is-active" : ""}`}
-            onClick={() => setView("schedule")}
+            onClick={() => selectView("schedule")}
           >
             <Text>赛程赛果</Text>
           </View>
           <View
             className={`schedule-view-tab ${view === "bracket" ? "is-active" : ""}`}
-            onClick={() => setView("bracket")}
+            onClick={() => selectView("bracket")}
           >
             <Text>淘汰赛</Text>
           </View>
         </View>
       </View>
-      {scheduleMessage && view === "schedule" && (
-        <View className="state"><Text className="state-detail">{scheduleMessage}</Text></View>
-      )}
-      {view === "schedule" && !!games.length && (
-        <GameTimeline
-          games={games}
-          onGameClick={(game) => Taro.navigateTo({ url: `/pages/game-media/index?id=${game.id}` })}
+      {view === "schedule" && (
+        <ScheduleDayScroller
+          refreshKey={scheduleRefreshKey}
+          onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
         />
       )}
-      {bracketMessage && view === "bracket" && (
+      {bracketLoading && view === "bracket" && !brackets && (
+        <View className="bracket-loading">
+          <View /><View /><View />
+        </View>
+      )}
+      {bracketMessage && view === "bracket" && !brackets && (
         <View className="state"><Text className="state-detail">{bracketMessage}</Text></View>
       )}
-      {view === "bracket" && !bracketMessage && brackets && <BracketView data={brackets} />}
+      {view === "bracket" && brackets && (
+        <View className="bracket-content">
+          {bracketLoading && <Text className="bracket-refreshing">正在更新</Text>}
+          <BracketView
+            data={brackets}
+            onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
+          />
+        </View>
+      )}
     </View>
   );
 }

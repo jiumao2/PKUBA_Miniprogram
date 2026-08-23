@@ -1041,7 +1041,9 @@ def download_season_scoresheet_xlsx(request: HttpRequest, season_id: UUID):
         return _error(error)
 
 
-def _public_stat(publication: ScoresheetPublication) -> dict[str, Any]:
+def serialize_public_scoresheet_stat(
+    publication: ScoresheetPublication,
+) -> dict[str, Any]:
     game = publication.scoresheet.game
     snapshot = publication.snapshot if isinstance(publication.snapshot, dict) else {}
     published_game = snapshot.get("header") if isinstance(snapshot.get("header"), dict) else {}
@@ -1135,4 +1137,4 @@ def list_public_scoresheet_stats(request: HttpRequest, game_id: UUID | None = No
     )
     if game_id:
         publications = publications.filter(scoresheet__game_id=game_id)
-    return [_public_stat(publication) for publication in publications]
+    return [serialize_public_scoresheet_stat(publication) for publication in publications]

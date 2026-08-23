@@ -105,6 +105,7 @@
   background: #faf9f6;
   box-shadow: 0 5rpx 16rpx rgba(31, 28, 24, 0.055);
 }
+.bracket-match.is-clickable:active { opacity: .72; }
 
 .bracket-match.gender-men { border-left-color: #272421; }
 .bracket-match.gender-women { border-left-color: #c91f26; background: #fff6f5; }

@@ -1,11 +1,12 @@
 import { Button, Text, View } from "@tarojs/components";
-import Taro, { useDidShow } from "@tarojs/taro";
+import { useDidShow } from "@tarojs/taro";
 import { useState } from "react";
 import type { Game, MiniAppMe, RescheduleGame, RescheduleRequest } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
 import { GameTimeline } from "../../components/game-timeline";
+import { navigateToOnce } from "../../navigation";
 import "../../role-workspace.css";
 import "./index.css";
 
@@ -65,21 +66,21 @@ export default function LeaderWorkspacePage() {
           <View className="workspace-actions">
             <Button
               className="workspace-action primary"
-              onClick={() => Taro.navigateTo({ url: "/pages/reschedule-create/index" })}
+              onClick={() => void navigateToOnce("/pages/reschedule-create/index")}
             >
               发起调赛
               <Text className="workspace-count">{eligible.length} 场可申请</Text>
             </Button>
             <Button
               className="workspace-action"
-              onClick={() => Taro.navigateTo({ url: "/pages/reschedule-requests/index" })}
+              onClick={() => void navigateToOnce("/pages/reschedule-requests/index")}
             >
               调赛申请
               <Text className="workspace-count">{activeRequests.length} 项进行中</Text>
             </Button>
             <Button
               className="workspace-action wide"
-              onClick={() => Taro.navigateTo({ url: "/pages/special-reschedule/index" })}
+              onClick={() => void navigateToOnce("/pages/special-reschedule/index")}
             >
               特殊原因调赛与抽签说明
             </Button>
@@ -92,7 +93,7 @@ export default function LeaderWorkspacePage() {
           {games.length ? (
             <GameTimeline
               games={games}
-              onGameClick={(game) => Taro.navigateTo({ url: `/pages/game-media/index?id=${game.id}` })}
+              onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
             />
           ) : (
             <View className="state"><Text className="state-detail">当前赛季没有本队比赛。</Text></View>

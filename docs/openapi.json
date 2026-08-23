@@ -203,6 +203,127 @@
         ]
       }
     },
+    "/api/v1/public/schedule-days": {
+      "get": {
+        "operationId": "core_api_schedule_days",
+        "summary": "Schedule Days",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "division_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Division Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "default": "initial",
+              "title": "Direction",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "day_count",
+            "schema": {
+              "default": 5,
+              "title": "Day Count",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleDaysOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
     "/api/v1/public/standings": {
       "get": {
         "operationId": "core_api_standings",
@@ -290,6 +411,49 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GameOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/api/v1/public/games/{game_id}/detail": {
+      "get": {
+        "operationId": "core_api_get_game_detail",
+        "summary": "Get Game Detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicGameDetailOut"
                 }
               }
             }
@@ -5573,6 +5737,43 @@
         ]
       }
     },
+    "/api/v1/admin/mobile/dashboard": {
+      "get": {
+        "operationId": "core_api_mobile_admin_mobile_dashboard",
+        "summary": "Mobile Dashboard",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileDashboardOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "mobile-admin"
+        ],
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/mobile/schedule-options": {
       "get": {
         "operationId": "core_api_mobile_admin_schedule_options",
@@ -7437,6 +7638,263 @@
                   "scoresheet_complete_confirmed",
                   "image"
                 ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/game-media/assets/{asset_id}/review": {
+      "post": {
+        "operationId": "core_api_game_media_review_miniapp_game_media",
+        "summary": "Review Miniapp Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaAssetOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewGameMediaIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/game-media/assets/{asset_id}": {
+      "delete": {
+        "operationId": "core_api_game_media_delete_miniapp_game_media",
+        "summary": "Delete Miniapp Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteGameMediaIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/game-media/games/{game_id}/reorder": {
+      "post": {
+        "operationId": "core_api_game_media_reorder_miniapp_game_media",
+        "summary": "Reorder Miniapp Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaCollectionOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderGameMediaIn"
               }
             }
           },
@@ -10205,6 +10663,104 @@
         "title": "GamePageOut",
         "type": "object"
       },
+      "ScheduleDayOut": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "games": {
+            "items": {
+              "$ref": "#/components/schemas/GameOut"
+            },
+            "title": "Games",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "games"
+        ],
+        "title": "ScheduleDayOut",
+        "type": "object"
+      },
+      "ScheduleDaysOut": {
+        "properties": {
+          "today": {
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          },
+          "focus_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Date"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "previous_cursor": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Cursor"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "has_previous": {
+            "title": "Has Previous",
+            "type": "boolean"
+          },
+          "has_next": {
+            "title": "Has Next",
+            "type": "boolean"
+          },
+          "total_games": {
+            "title": "Total Games",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "today",
+          "focus_date",
+          "days",
+          "previous_cursor",
+          "next_cursor",
+          "has_previous",
+          "has_next",
+          "total_games"
+        ],
+        "title": "ScheduleDaysOut",
+        "type": "object"
+      },
       "DivisionStandingsOut": {
         "properties": {
           "id": {
@@ -10730,6 +11286,160 @@
           "champion_review_required"
         ],
         "title": "DivisionBracketOut",
+        "type": "object"
+      },
+      "PublicGameDetailOut": {
+        "properties": {
+          "game": {
+            "$ref": "#/components/schemas/GameOut"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicScoresheetStatOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_photos": {
+            "items": {
+              "$ref": "#/components/schemas/PublicGroupPhotoOut"
+            },
+            "title": "Group Photos",
+            "type": "array"
+          }
+        },
+        "required": [
+          "game",
+          "stats",
+          "group_photos"
+        ],
+        "title": "PublicGameDetailOut",
+        "type": "object"
+      },
+      "PublicGroupPhotoOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "content_url": {
+            "title": "Content Url",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "content_url",
+          "width",
+          "height",
+          "sort_order"
+        ],
+        "title": "PublicGroupPhotoOut",
+        "type": "object"
+      },
+      "PublicScoresheetStatOut": {
+        "properties": {
+          "publication_id": {
+            "format": "uuid",
+            "title": "Publication Id",
+            "type": "string"
+          },
+          "publication_number": {
+            "title": "Publication Number",
+            "type": "integer"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "game_code": {
+            "title": "Game Code",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "home_score": {
+            "title": "Home Score",
+            "type": "integer"
+          },
+          "away_score": {
+            "title": "Away Score",
+            "type": "integer"
+          },
+          "team_stats": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Team Stats",
+            "type": "array"
+          },
+          "player_stats": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Player Stats",
+            "type": "array"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "publication_id",
+          "publication_number",
+          "game_id",
+          "game_code",
+          "date",
+          "start_time",
+          "division_name",
+          "home_name",
+          "away_name",
+          "home_score",
+          "away_score",
+          "team_stats",
+          "player_stats",
+          "published_at"
+        ],
+        "title": "PublicScoresheetStatOut",
         "type": "object"
       },
       "TeamLeaderboardItemOut": {
@@ -18338,6 +19048,245 @@
         "title": "SaveTeamRosterIn",
         "type": "object"
       },
+      "MobileDashboardGameOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "division_id": {
+            "format": "uuid",
+            "title": "Division Id",
+            "type": "string"
+          },
+          "division_name": {
+            "title": "Division Name",
+            "type": "string"
+          },
+          "division_gender": {
+            "title": "Division Gender",
+            "type": "string"
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "round_number": {
+            "title": "Round Number",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "slot_code": {
+            "title": "Slot Code",
+            "type": "string"
+          },
+          "slot_name": {
+            "title": "Slot Name",
+            "type": "string"
+          },
+          "period_code": {
+            "title": "Period Code",
+            "type": "string"
+          },
+          "period_name": {
+            "title": "Period Name",
+            "type": "string"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "home_name": {
+            "title": "Home Name",
+            "type": "string"
+          },
+          "away_name": {
+            "title": "Away Name",
+            "type": "string"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "participants_resolved": {
+            "title": "Participants Resolved",
+            "type": "boolean"
+          },
+          "leader_adjustable": {
+            "title": "Leader Adjustable",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "division_id",
+          "division_name",
+          "division_gender",
+          "group_name",
+          "stage",
+          "round_number",
+          "date",
+          "slot_code",
+          "slot_name",
+          "period_code",
+          "period_name",
+          "start_time",
+          "venue_name",
+          "home_team_id",
+          "away_team_id",
+          "home_name",
+          "away_name",
+          "home_score",
+          "away_score",
+          "participants_resolved",
+          "leader_adjustable",
+          "status",
+          "version"
+        ],
+        "title": "MobileDashboardGameOut",
+        "type": "object"
+      },
+      "MobileDashboardOut": {
+        "properties": {
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "admin_role": {
+            "title": "Admin Role",
+            "type": "string"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MobileDashboardSeasonOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "active_reschedule_count": {
+            "title": "Active Reschedule Count",
+            "type": "integer"
+          },
+          "recent_games": {
+            "items": {
+              "$ref": "#/components/schemas/MobileDashboardGameOut"
+            },
+            "title": "Recent Games",
+            "type": "array"
+          }
+        },
+        "required": [
+          "username",
+          "admin_role",
+          "season",
+          "active_reschedule_count",
+          "recent_games"
+        ],
+        "title": "MobileDashboardOut",
+        "type": "object"
+      },
+      "MobileDashboardSeasonOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "year"
+        ],
+        "title": "MobileDashboardSeasonOut",
+        "type": "object"
+      },
       "GameMediaAssetOut": {
         "properties": {
           "id": {
@@ -18911,6 +19860,51 @@
           "assets"
         ],
         "title": "GameMediaCollectionOut",
+        "type": "object"
+      },
+      "ReorderGameMediaIn": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "SCORESHEET",
+              "GROUP_PHOTO",
+              "GAME_PHOTO"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReorderGameMediaItemIn"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "items"
+        ],
+        "title": "ReorderGameMediaIn",
+        "type": "object"
+      },
+      "ReorderGameMediaItemIn": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "expected_version"
+        ],
+        "title": "ReorderGameMediaItemIn",
         "type": "object"
       },
       "InboxSummaryOut": {
@@ -19952,95 +20946,6 @@
           "regions"
         ],
         "title": "ApplyRecognitionIn",
-        "type": "object"
-      },
-      "PublicScoresheetStatOut": {
-        "properties": {
-          "publication_id": {
-            "format": "uuid",
-            "title": "Publication Id",
-            "type": "string"
-          },
-          "publication_number": {
-            "title": "Publication Number",
-            "type": "integer"
-          },
-          "game_id": {
-            "format": "uuid",
-            "title": "Game Id",
-            "type": "string"
-          },
-          "game_code": {
-            "title": "Game Code",
-            "type": "string"
-          },
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "start_time": {
-            "title": "Start Time",
-            "type": "string"
-          },
-          "division_name": {
-            "title": "Division Name",
-            "type": "string"
-          },
-          "home_name": {
-            "title": "Home Name",
-            "type": "string"
-          },
-          "away_name": {
-            "title": "Away Name",
-            "type": "string"
-          },
-          "home_score": {
-            "title": "Home Score",
-            "type": "integer"
-          },
-          "away_score": {
-            "title": "Away Score",
-            "type": "integer"
-          },
-          "team_stats": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Team Stats",
-            "type": "array"
-          },
-          "player_stats": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Player Stats",
-            "type": "array"
-          },
-          "published_at": {
-            "format": "date-time",
-            "title": "Published At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "publication_id",
-          "publication_number",
-          "game_id",
-          "game_code",
-          "date",
-          "start_time",
-          "division_name",
-          "home_name",
-          "away_name",
-          "home_score",
-          "away_score",
-          "team_stats",
-          "player_stats",
-          "published_at"
-        ],
-        "title": "PublicScoresheetStatOut",
         "type": "object"
       }
     },

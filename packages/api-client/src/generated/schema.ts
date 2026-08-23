@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/schedule-days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Schedule Days */
+        get: operations["core_api_schedule_days"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/standings": {
         parameters: {
             query?: never;
@@ -115,6 +132,23 @@ export interface paths {
         };
         /** Get Game */
         get: operations["core_api_get_game"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/games/{game_id}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Game Detail */
+        get: operations["core_api_get_game_detail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1475,6 +1509,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/mobile/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mobile Dashboard */
+        get: operations["core_api_mobile_admin_mobile_dashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/mobile/schedule-options": {
         parameters: {
             query?: never;
@@ -1812,6 +1863,57 @@ export interface paths {
         put?: never;
         /** Replace Miniapp Game Media */
         post: operations["core_api_game_media_replace_miniapp_game_media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/game-media/assets/{asset_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Miniapp Game Media */
+        post: operations["core_api_game_media_review_miniapp_game_media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/game-media/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Miniapp Game Media */
+        delete: operations["core_api_game_media_delete_miniapp_game_media"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/game-media/games/{game_id}/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reorder Miniapp Game Media */
+        post: operations["core_api_game_media_reorder_miniapp_game_media"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2461,6 +2563,38 @@ export interface components {
             /** Page Size */
             page_size: number;
         };
+        /** ScheduleDayOut */
+        ScheduleDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Games */
+            games: components["schemas"]["GameOut"][];
+        };
+        /** ScheduleDaysOut */
+        ScheduleDaysOut: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** Focus Date */
+            focus_date: string | null;
+            /** Days */
+            days: components["schemas"]["ScheduleDayOut"][];
+            /** Previous Cursor */
+            previous_cursor: string | null;
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Has Previous */
+            has_previous: boolean;
+            /** Has Next */
+            has_next: boolean;
+            /** Total Games */
+            total_games: number;
+        };
         /** DivisionStandingsOut */
         DivisionStandingsOut: {
             /**
@@ -2656,6 +2790,73 @@ export interface components {
             champion_name: string | null;
             /** Champion Review Required */
             champion_review_required: boolean;
+        };
+        /** PublicGameDetailOut */
+        PublicGameDetailOut: {
+            game: components["schemas"]["GameOut"];
+            stats: components["schemas"]["PublicScoresheetStatOut"] | null;
+            /** Group Photos */
+            group_photos: components["schemas"]["PublicGroupPhotoOut"][];
+        };
+        /** PublicGroupPhotoOut */
+        PublicGroupPhotoOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Content Url */
+            content_url: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Sort Order */
+            sort_order: number;
+        };
+        /** PublicScoresheetStatOut */
+        PublicScoresheetStatOut: {
+            /**
+             * Publication Id
+             * Format: uuid
+             */
+            publication_id: string;
+            /** Publication Number */
+            publication_number: number;
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Game Code */
+            game_code: string;
+            /** Date */
+            date: string;
+            /** Start Time */
+            start_time: string;
+            /** Division Name */
+            division_name: string;
+            /** Home Name */
+            home_name: string;
+            /** Away Name */
+            away_name: string;
+            /** Home Score */
+            home_score: number;
+            /** Away Score */
+            away_score: number;
+            /** Team Stats */
+            team_stats: {
+                [key: string]: unknown;
+            }[];
+            /** Player Stats */
+            player_stats: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
         };
         /** TeamLeaderboardItemOut */
         TeamLeaderboardItemOut: {
@@ -5769,6 +5970,92 @@ export interface components {
              */
             maintenance_token: string;
         };
+        /** MobileDashboardGameOut */
+        MobileDashboardGameOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /**
+             * Division Id
+             * Format: uuid
+             */
+            division_id: string;
+            /** Division Name */
+            division_name: string;
+            /** Division Gender */
+            division_gender: string;
+            /** Group Name */
+            group_name: string | null;
+            /** Stage */
+            stage: string;
+            /** Round Number */
+            round_number: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Slot Code */
+            slot_code: string;
+            /** Slot Name */
+            slot_name: string;
+            /** Period Code */
+            period_code: string;
+            /** Period Name */
+            period_name: string;
+            /** Start Time */
+            start_time: string;
+            /** Venue Name */
+            venue_name: string;
+            /** Home Team Id */
+            home_team_id: string | null;
+            /** Away Team Id */
+            away_team_id: string | null;
+            /** Home Name */
+            home_name: string;
+            /** Away Name */
+            away_name: string;
+            /** Home Score */
+            home_score: number | null;
+            /** Away Score */
+            away_score: number | null;
+            /** Participants Resolved */
+            participants_resolved: boolean;
+            /** Leader Adjustable */
+            leader_adjustable: boolean;
+            /** Status */
+            status: string;
+            /** Version */
+            version: number;
+        };
+        /** MobileDashboardOut */
+        MobileDashboardOut: {
+            /** Username */
+            username: string;
+            /** Admin Role */
+            admin_role: string;
+            season: components["schemas"]["MobileDashboardSeasonOut"] | null;
+            /** Active Reschedule Count */
+            active_reschedule_count: number;
+            /** Recent Games */
+            recent_games: components["schemas"]["MobileDashboardGameOut"][];
+        };
+        /** MobileDashboardSeasonOut */
+        MobileDashboardSeasonOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Year */
+            year: number;
+        };
         /** GameMediaAssetOut */
         GameMediaAssetOut: {
             /**
@@ -6041,6 +6328,26 @@ export interface components {
             can_review: boolean;
             /** Assets */
             assets: components["schemas"]["GameMediaAssetOut"][];
+        };
+        /** ReorderGameMediaIn */
+        ReorderGameMediaIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "SCORESHEET" | "GROUP_PHOTO" | "GAME_PHOTO";
+            /** Items */
+            items: components["schemas"]["ReorderGameMediaItemIn"][];
+        };
+        /** ReorderGameMediaItemIn */
+        ReorderGameMediaItemIn: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Expected Version */
+            expected_version: number;
         };
         /** InboxSummaryOut */
         InboxSummaryOut: {
@@ -6455,50 +6762,6 @@ export interface components {
             /** Regions */
             regions: string[];
         };
-        /** PublicScoresheetStatOut */
-        PublicScoresheetStatOut: {
-            /**
-             * Publication Id
-             * Format: uuid
-             */
-            publication_id: string;
-            /** Publication Number */
-            publication_number: number;
-            /**
-             * Game Id
-             * Format: uuid
-             */
-            game_id: string;
-            /** Game Code */
-            game_code: string;
-            /** Date */
-            date: string;
-            /** Start Time */
-            start_time: string;
-            /** Division Name */
-            division_name: string;
-            /** Home Name */
-            home_name: string;
-            /** Away Name */
-            away_name: string;
-            /** Home Score */
-            home_score: number;
-            /** Away Score */
-            away_score: number;
-            /** Team Stats */
-            team_stats: {
-                [key: string]: unknown;
-            }[];
-            /** Player Stats */
-            player_stats: {
-                [key: string]: unknown;
-            }[];
-            /**
-             * Published At
-             * Format: date-time
-             */
-            published_at: string;
-        };
     };
     responses: never;
     parameters: never;
@@ -6613,6 +6876,42 @@ export interface operations {
             };
         };
     };
+    core_api_schedule_days: {
+        parameters: {
+            query?: {
+                division_id?: string | null;
+                direction?: string;
+                cursor?: string | null;
+                day_count?: number;
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleDaysOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     core_api_standings: {
         parameters: {
             query?: never;
@@ -6689,6 +6988,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GameOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_get_game_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicGameDetailOut"];
                 };
             };
             /** @description Not Found */
@@ -10072,6 +10402,35 @@ export interface operations {
             };
         };
     };
+    core_api_mobile_admin_mobile_dashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileDashboardOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAdminErrorOut"];
+                };
+            };
+        };
+    };
     core_api_mobile_admin_schedule_options: {
         parameters: {
             query?: never;
@@ -11259,6 +11618,190 @@ export interface operations {
             };
             /** @description Content Too Large */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_review_miniapp_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewGameMediaIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaAssetOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_delete_miniapp_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteGameMediaIn"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_reorder_miniapp_game_media: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderGameMediaIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaCollectionOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

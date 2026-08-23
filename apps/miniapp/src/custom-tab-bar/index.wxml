@@ -3,7 +3,7 @@
     <cover-view
       wx:for="{{list}}"
       wx:key="pagePath"
-      class="tabbar-item {{selected === index ? 'is-selected' : ''}}"
+      class="tabbar-item {{selected === index ? 'is-selected' : ''}} {{switching && selected === index ? 'is-switching' : ''}}"
       data-index="{{index}}"
       data-path="{{item.pagePath}}"
       bindtap="switchTab"

@@ -19,6 +19,7 @@ from core.services.game_media import (
     delete_game_media,
     issue_media_ticket,
     media_permissions,
+    reorder_game_media,
     replace_game_media,
     review_game_media,
     upload_game_media,
@@ -80,6 +81,16 @@ class DeleteGameMediaIn(Schema):
     expected_version: int
 
 
+class ReorderGameMediaItemIn(Schema):
+    id: UUID
+    expected_version: int
+
+
+class ReorderGameMediaIn(Schema):
+    kind: Literal["SCORESHEET", "GROUP_PHOTO", "GAME_PHOTO"]
+    items: list[ReorderGameMediaItemIn]
+
+
 def _error_response(error: GameMediaError):
     if error.code in {"MEDIA_UPLOAD_FORBIDDEN", "ADMIN_REQUIRED", "SUPERADMIN_REQUIRED"}:
         status = 403
@@ -87,10 +98,13 @@ def _error_response(error: GameMediaError):
         status = 404
     elif error.code in {
         "DUPLICATE_MEDIA",
+        "MEDIA_ORDER_STALE",
         "SCORESHEET_SOURCE_EXISTS",
         "VERSION_CONFLICT",
     }:
         status = 409
+    elif error.code == "GAME_NOT_FOUND":
+        status = 404
     elif error.code == "IMAGE_DECOMPRESSION_BOMB":
         status = 413
     else:
@@ -337,6 +351,100 @@ def replace_miniapp_game_media(
     except GameMediaError as error:
         return _error_response(error)
     return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
+
+
+@router.post(
+    "/assets/{asset_id}/review",
+    auth=miniapp_bearer_auth,
+    response={
+        200: GameMediaAssetOut,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+    },
+)
+def review_miniapp_game_media(
+    request: HttpRequest,
+    asset_id: UUID,
+    payload: ReviewGameMediaIn,
+):
+    try:
+        asset = review_game_media(
+            actor=request.auth,
+            asset_id=asset_id,
+            expected_version=payload.expected_version,
+            approve=payload.approve,
+            note=payload.note,
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    return _serialize_asset(_asset_queryset().get(id=asset.id))
+
+
+@router.delete(
+    "/assets/{asset_id}",
+    auth=miniapp_bearer_auth,
+    response={
+        204: None,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+    },
+)
+def delete_miniapp_game_media(
+    request: HttpRequest,
+    asset_id: UUID,
+    payload: DeleteGameMediaIn,
+):
+    try:
+        delete_game_media(
+            actor=request.auth,
+            asset_id=asset_id,
+            expected_version=payload.expected_version,
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    return Status(204, None)
+
+
+@router.post(
+    "/games/{game_id}/reorder",
+    auth=miniapp_bearer_auth,
+    response={
+        200: GameMediaCollectionOut,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+    },
+)
+def reorder_miniapp_game_media(
+    request: HttpRequest,
+    game_id: UUID,
+    payload: ReorderGameMediaIn,
+):
+    try:
+        reorder_game_media(
+            actor=request.auth,
+            game_id=game_id,
+            kind=payload.kind,
+            ordered_assets=[(item.id, item.expected_version) for item in payload.items],
+        )
+    except GameMediaError as error:
+        return _error_response(error)
+    game = _game_queryset().get(id=game_id)
+    permissions = media_permissions(request.auth, game)
+    return {
+        "game_id": game.id,
+        "can_upload": permissions.can_upload,
+        "can_review": permissions.can_review,
+        "assets": [
+            _serialize_asset(asset)
+            for asset in _asset_queryset().filter(game=game)
+        ],
+    }
 
 
 @admin_router.post(
