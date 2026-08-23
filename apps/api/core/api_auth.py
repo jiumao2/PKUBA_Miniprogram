@@ -722,7 +722,6 @@ def admin_web_login_consume(request: HttpRequest, payload: AdminWebLoginConsumeI
 
     request.session.pop(ADMIN_WEB_LOGIN_SESSION_KEY, None)
     login(request, account)
-    request.session.set_expiry(settings.SESSION_COOKIE_AGE)
     AdminAuditLog.objects.create(
         actor=account,
         action="ADMIN_WEB_LOGIN_SUCCEEDED",
@@ -790,7 +789,6 @@ def admin_password_login(request: HttpRequest, payload: AdminLoginIn):
         )
 
     login(request, account)
-    request.session.set_expiry(settings.SESSION_COOKIE_AGE)
     _record_login_attempt(account=account, client_key=client_key, success=True)
     return _serialize_account(account)
 

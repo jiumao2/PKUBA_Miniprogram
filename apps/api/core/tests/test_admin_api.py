@@ -41,6 +41,7 @@ def test_admin_password_login_uses_one_time_challenge_and_session():
 
     csrf_token = login_admin(client, setup["admin"])
     me = client.get("/api/v1/auth/admin/me")
+    expires_with_browser = client.session.get_expire_at_browser_close()
     logout = client.post(
         "/api/v1/auth/admin/logout",
         HTTP_X_CSRFTOKEN=csrf_token,
@@ -48,6 +49,7 @@ def test_admin_password_login_uses_one_time_challenge_and_session():
 
     assert me.status_code == 200
     assert me.json()["role"] == Account.Role.ADMIN
+    assert expires_with_browser is True
     assert logout.status_code == 204
     assert client.get("/api/v1/auth/admin/me").status_code == 401
 
@@ -227,6 +229,7 @@ def test_admin_web_login_is_session_bound_confirmed_by_miniapp_and_one_time():
     )
     assert consumed.status_code == 200
     assert browser.get("/api/v1/auth/admin/me").status_code == 200
+    assert browser.session.get_expire_at_browser_close() is True
     challenge.refresh_from_db()
     assert challenge.consumed_at is not None
     assert AdminAuditLog.objects.filter(
