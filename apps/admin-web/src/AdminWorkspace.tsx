@@ -73,7 +73,6 @@ const superadminPages: PageId[] = [
   "schedule-edit",
   "draw",
   "reschedule",
-  "media",
   "admins",
   "archives",
   "advanced",
@@ -123,7 +122,10 @@ export function AdminWorkspace() {
     }
   }, []);
 
-  const loadAdminData = useCallback(async (preferredSeasonId?: string) => {
+  const loadAdminData = useCallback(async (
+    preferredSeasonId?: string,
+    includeScheduleGames = true,
+  ) => {
     const nextSeasons = await adminClient.listAdminSeasons();
     setAdminSeasons(nextSeasons);
     const selected = selectAdminSeason(nextSeasons, preferredSeasonId);
@@ -133,7 +135,11 @@ export function AdminWorkspace() {
       return;
     }
     setSelectedAdminSeasonId(selected.id);
-    setAdminGames(await adminClient.listAdminScheduleGames(selected.id));
+    setAdminGames(
+      includeScheduleGames
+        ? await adminClient.listAdminScheduleGames(selected.id)
+        : [],
+    );
   }, []);
 
   const refreshPublicData = useCallback(async () => {
@@ -177,15 +183,12 @@ export function AdminWorkspace() {
   useEffect(() => {
     if (account) {
       void loadPublicData();
-      if (account.role === "SUPERADMIN") {
-        void loadAdminData(initialRoute.seasonId).catch((reason: unknown) => {
-          setError(reason instanceof Error ? reason.message : "无法读取管理赛季");
-        });
-      } else {
-        setAdminSeasons([]);
-        setSelectedAdminSeasonId("");
-        setAdminGames([]);
-      }
+      void loadAdminData(
+        initialRoute.seasonId,
+        account.role === "SUPERADMIN",
+      ).catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : "无法读取管理赛季");
+      });
     }
   }, [account, initialRoute.seasonId, loadAdminData, loadPublicData]);
 
@@ -200,14 +203,14 @@ export function AdminWorkspace() {
   }, [account, page]);
 
   useEffect(() => {
-    if (!selectedAdminSeasonId) return;
+    if (!selectedAdminSeasonId || account?.role !== "SUPERADMIN") return;
     void adminClient
       .listAdminScheduleGames(selectedAdminSeasonId)
       .then(setAdminGames)
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "无法读取管理赛程");
       });
-  }, [selectedAdminSeasonId]);
+  }, [account?.role, selectedAdminSeasonId]);
 
   const gameDays = useMemo(() => groupGamesByDate(games), [games]);
   const selectedAdminSeason = adminSeasons.find(
@@ -392,7 +395,6 @@ export function AdminWorkspace() {
         )}
         {!loading && !error && page === "media" && (
           <CompetitionMediaPage
-            accountRole={account.role}
             client={adminClient}
             seasons={adminSeasons}
             seasonId={selectedAdminSeasonId || season?.id || ""}

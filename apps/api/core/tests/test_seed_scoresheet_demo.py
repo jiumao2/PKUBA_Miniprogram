@@ -76,7 +76,7 @@ def test_scoresheet_demo_is_published_visible_and_idempotent(tmp_path):
     )
     assert demo_player["license_number"] == "101"
     assert scoresheet.draft["teams"][0]["coach_post_foul_markers"][0]["code"] == "GD"
-    assert scoresheet.draft["officials"][6]["signature"] == "unclear"
+    assert all(row["signature"] == "absent" for row in scoresheet.draft["officials"])
     assert report["errors"] == []
     assert run.status == ScoresheetRecognitionRun.Status.SUCCEEDED
     assert run.attempt_count == 1

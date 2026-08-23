@@ -29,6 +29,7 @@ from core.models import (
     ScoresheetPublication,
     ScoresheetRecognitionRun,
 )
+from core.scoresheet_schema_v2 import ScoresheetDocumentError
 from core.scoresheet_v2.recognition import (
     QWEN_DATA_URI_MAX_BYTES,
     RecognitionImageError,
@@ -330,7 +331,7 @@ def test_field_change_invalidates_region_and_is_available_to_sync(tmp_path):
         lease_token=token,
         client_id="web-1",
         surface=ScoresheetEditLease.Surface.WEB,
-        region="SOURCE_GAME",
+        region="OFFICIALS",
         reviewed=True,
     )
     scoresheet.refresh_from_db()
@@ -343,14 +344,14 @@ def test_field_change_invalidates_region_and_is_available_to_sync(tmp_path):
         lease_token=token,
         client_id="web-1",
         surface=ScoresheetEditLease.Surface.WEB,
-        changes=[{"path": "/header/game_number", "value": "TEST-UPDATED"}],
+        changes=[{"path": "/officials/0/name", "value": "同步测试记录员"}],
     )
     scoresheet.refresh_from_db()
     assert scoresheet.draft_version == old_version + 1
-    assert "SOURCE_GAME" not in scoresheet.reviewed_regions
+    assert "OFFICIALS" not in scoresheet.reviewed_regions
     events = sync_scoresheet(scoresheet, after_event)
     assert [event.event_type for event in events] == ["FIELD_EDIT"]
-    assert events[0].changed_fields[0]["path"] == "/header/game_number"
+    assert events[0].changed_fields[0]["path"] == "/officials/scorer/name"
     with pytest.raises(ScoresheetError) as stale:
         save_draft_changes(
             scoresheet_id=scoresheet.id,
@@ -364,6 +365,48 @@ def test_field_change_invalidates_region_and_is_available_to_sync(tmp_path):
     assert stale.value.code == "VERSION_CONFLICT"
 
 
+def test_game_prior_fields_are_locked_and_final_result_is_derived(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    token = obtain_lease(scoresheet, setup["admin"])
+
+    with pytest.raises(ScoresheetDocumentError) as locked:
+        save_draft_changes(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=token,
+            client_id="web-1",
+            surface=ScoresheetEditLease.Surface.WEB,
+            changes=[{"path": "/header/game_number", "value": "不可修改"}],
+        )
+    assert locked.value.code == "SCORESHEET_FIELD_LOCKED"
+
+    replacement = copy.deepcopy(scoresheet.draft)
+    replacement["header"]["game_number"] = "也不可通过整表覆盖"
+    replacement["stated_period_scores"] = [
+        {"period": 1, "team_a": 12, "team_b": 10},
+        {"period": 2, "team_a": 8, "team_b": 11},
+    ]
+    replacement["final_score"].update(team_a=99, team_b=98, winner_name="伪造胜队")
+    saved = save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=scoresheet.draft_version,
+        lease_token=token,
+        client_id="web-1",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/", "operation": "SET", "value": replacement}],
+    )
+    assert saved.draft["header"]["game_number"] == scoresheet.draft["header"]["game_number"]
+    assert saved.draft["final_score"] == {
+        "team_a": 20,
+        "team_b": 21,
+        "winner_name": saved.draft["teams"][1]["name"],
+        "ended_at": "",
+    }
+
+
 def test_publish_does_not_require_region_reviews_and_keeps_field_change_log(tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path):
         setup, _, _, _, scoresheet = create_scoresheet()
@@ -371,7 +414,7 @@ def test_publish_does_not_require_region_reviews_and_keeps_field_change_log(tmp_
     scoresheet = make_ready(scoresheet, setup["admin"], token)
 
     updated = copy.deepcopy(scoresheet.draft)
-    updated["header"]["game_number"] = "只重核比赛信息"
+    updated["header"]["crew_chief"] = "只重核工作人员"
     save_draft_changes(
         scoresheet_id=scoresheet.id,
         actor=setup["admin"],
@@ -385,7 +428,7 @@ def test_publish_does_not_require_region_reviews_and_keeps_field_change_log(tmp_
     assert scoresheet.reviewed_regions == {}
     latest_change = scoresheet.change_logs.order_by("-event_sequence").first()
     assert latest_change is not None
-    assert [row["path"] for row in latest_change.changed_fields] == ["/header/game_number"]
+    assert [row["path"] for row in latest_change.changed_fields] == ["/header/crew_chief"]
 
     validate_scoresheet(
         scoresheet_id=scoresheet.id,
@@ -485,7 +528,7 @@ def test_web_edit_is_returned_by_miniapp_sync_endpoint(tmp_path):
                 "lease_token": lease_token,
                 "client_id": "web-sync",
                 "surface": "WEB",
-                "changes": [{"path": "/header/game_number", "value": "跨端同步编号"}],
+                    "changes": [{"path": "/header/crew_chief", "value": "跨端同步裁判"}],
             }
         ),
         content_type="application/json",
@@ -500,7 +543,7 @@ def test_web_edit_is_returned_by_miniapp_sync_endpoint(tmp_path):
     )
     assert synced.status_code == 200
     assert synced.json()["current_version"] == scoresheet.draft_version + 1
-    assert synced.json()["events"][-1]["changed_fields"][0]["after"] == "跨端同步编号"
+    assert synced.json()["events"][-1]["changed_fields"][0]["after"] == "跨端同步裁判"
     assert synced.json()["lease"]["surface"] == "WEB"
 
 
@@ -528,7 +571,7 @@ def test_miniapp_bearer_can_write_without_csrf_cookie(tmp_path):
                 "lease_token": lease_token,
                 "client_id": "mini-csrf",
                 "surface": "MINIAPP",
-                "changes": [{"path": "/header/game_number", "value": "MINI-NO-CSRF"}],
+                "changes": [{"path": "/header/crew_chief", "value": "MINI-NO-CSRF"}],
             }
         ),
         content_type="application/json",
@@ -536,7 +579,7 @@ def test_miniapp_bearer_can_write_without_csrf_cookie(tmp_path):
     )
 
     assert saved.status_code == 200
-    assert saved.json()["draft"]["header"]["game_number"] == "MINI-NO-CSRF"
+    assert saved.json()["draft"]["header"]["crew_chief"] == "MINI-NO-CSRF"
 
 
 def test_retryable_recognition_uses_initial_call_plus_three_retries(tmp_path, monkeypatch):
@@ -616,7 +659,7 @@ def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, mon
             lease_token=token,
             client_id="web-1",
             surface=ScoresheetEditLease.Surface.WEB,
-            changes=[{"path": "/header/game_number", "value": "人工确认编号"}],
+            changes=[{"path": "/header/crew_chief", "value": "人工确认裁判"}],
         )
         scoresheet.refresh_from_db()
         with override_settings(QWEN_API_KEY="test-key"):
@@ -643,7 +686,7 @@ def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, mon
         .first()
     )
     assert run is not None
-    assert scoresheet.draft["header"]["game_number"] == "人工确认编号"
+    assert scoresheet.draft["header"]["crew_chief"] == "人工确认裁判"
     assert run.status == ScoresheetRecognitionRun.Status.SUCCEEDED
     assert run.provider_result["game"]["venue"] == "模型错误场地"
     assert scoresheet.change_logs.filter(
@@ -797,8 +840,8 @@ def test_published_source_correction_is_superadmin_only_and_old_publication_stay
         )
         assert blocked_replace.status_code == 403
         assert blocked_replace.json()["code"] == "SUPERADMIN_REQUIRED"
-        assert blocked_delete.status_code == 403
-        assert blocked_delete.json()["code"] == "SUPERADMIN_REQUIRED"
+        assert blocked_delete.status_code == 400
+        assert blocked_delete.json()["code"] == "SCORESHEET_DELETE_FORBIDDEN"
 
         superadmin = Account.objects.create_user(
             username="scoresheet-correction-root",
@@ -1161,7 +1204,7 @@ def test_same_tab_resumes_exact_lease_token_without_log_noise(tmp_path):
 def test_changes_endpoint_only_returns_chinese_human_events_with_true_values(tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path):
         setup, _, _, _, scoresheet = create_scoresheet()
-    before = scoresheet.draft["header"]["game_number"]
+    before = scoresheet.draft["header"]["crew_chief"]
     token = obtain_lease(scoresheet, setup["admin"], "human-log-tab")
     save_draft_changes(
         scoresheet_id=scoresheet.id,
@@ -1170,7 +1213,7 @@ def test_changes_endpoint_only_returns_chinese_human_events_with_true_values(tmp
         lease_token=token,
         client_id="human-log-tab",
         surface=ScoresheetEditLease.Surface.WEB,
-        changes=[{"path": "/header/game_number", "value": "人工日志-42"}],
+        changes=[{"path": "/header/crew_chief", "value": "人工日志-42"}],
     )
     release_edit_lease(
         scoresheet_id=scoresheet.id,
@@ -1190,7 +1233,7 @@ def test_changes_endpoint_only_returns_chinese_human_events_with_true_values(tmp
     assert entry["summary"] == "人工编辑 · 1 项"
     assert entry["changes"] == [
         {
-            "path": "/header/game_number",
+            "path": "/header/crew_chief",
             "before": before,
             "after": "人工日志-42",
         }
@@ -1210,7 +1253,7 @@ def test_recognition_capability_and_removed_stop_endpoint(tmp_path):
         "configured": False,
         "provider": "QWEN",
         "model": "qwen3.8-max",
-        "prompt_version": "scoresheet-2026-08-20-v24-cn",
+            "prompt_version": "scoresheet-2026-08-24-v25-cn",
         "max_attempts": 4,
         "retry_delays_seconds": [30, 30, 30],
     }

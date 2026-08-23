@@ -78,6 +78,7 @@ export type CanonicalScoresheetDocument = Record<string, unknown> & {
     ended_at: string;
   };
   officials: CanonicalOfficial[];
+  recognition: null | (Record<string, unknown> & { table_personnel: string[] });
   source: Record<string, unknown> & {
     rotation: number;
     corners: number[][] | null;
@@ -100,6 +101,10 @@ const PERIOD_LABELS: Record<number, ScorePeriod> = {
   2: "2",
   3: "3",
   4: "4",
+  5: "5",
+  6: "6",
+  7: "7",
+  8: "8",
 };
 
 const FOUL_CODES = new Set(["P", "T", "U", "D", "C", "B", "GD", "F", "DI", "FL", "BD"]);
@@ -153,7 +158,9 @@ function toMobilePlayer(side: TeamSide, player: CanonicalPlayer): ScoresheetPlay
     appeared: player.participation !== "none",
     starter: player.participation === "starter",
     captain: player.captain,
+    license_number: player.license_number,
     fouls: clone(player.fouls),
+    post_foul_markers: clone(player.post_foul_markers),
   };
 }
 
@@ -175,15 +182,17 @@ function toMobileTeam(document: CanonicalScoresheetDocument, side: TeamSide): Sc
     team_fouls: teamFouls,
     head_coach: { name: team.head_coach, fouls: clone(team.coach_fouls) },
     assistant_coach: { name: team.assistant_coach, fouls: clone(team.assistant_coach_fouls) },
+    coach_post_foul_markers: clone(team.coach_post_foul_markers),
+    assistant_coach_post_foul_markers: clone(team.assistant_coach_post_foul_markers),
   };
 }
 
 function mobilePeriod(period: number): ScorePeriod {
-  return PERIOD_LABELS[period] ?? "OT";
+  return PERIOD_LABELS[period] ?? "5";
 }
 
-function mobileValue(points: number | null): 1 | 2 | 3 {
-  return points === 2 || points === 3 ? points : 1;
+function mobileValue(points: number | null): number {
+  return points ?? 1;
 }
 
 function toMobileScoreEvent(document: CanonicalScoresheetDocument, event: CanonicalScoreEvent): MobileScoreEvent {
@@ -208,26 +217,18 @@ function toMobileScoreEvent(document: CanonicalScoresheetDocument, event: Canoni
   };
 }
 
-function officialByRole(document: CanonicalScoresheetDocument, role: string): CanonicalOfficial | undefined {
-  return document.officials.find((official) => official.role === role);
-}
-
 function toMobileDocument(document: CanonicalScoresheetDocument): ScoresheetDocument {
   const periodScores = Object.fromEntries(
-    (["1", "2", "3", "4", "OT"] as ScorePeriod[]).map((period) => [period, { A: null, B: null }]),
+    (["1", "2", "3", "4", "5", "6", "7", "8"] as ScorePeriod[]).map((period) => [period, { A: null, B: null }]),
   ) as ScoresheetDocument["summary"]["period_scores"];
   for (const row of document.stated_period_scores) {
     const period = mobilePeriod(row.period);
-    if (row.period <= 5) periodScores[period] = { A: row.team_a, B: row.team_b };
+    if (row.period <= 8) periodScores[period] = { A: row.team_a, B: row.team_b };
   }
   const teamA = canonicalTeam(document, "A");
   const teamB = canonicalTeam(document, "B");
   const officials: Record<string, string | boolean> = {};
   for (const official of document.officials) officials[official.role] = official.name;
-  officials.crew_chief_signature = officialByRole(document, "crew_chief")?.signature === "present";
-  officials.umpire_1_signature = officialByRole(document, "umpire_1")?.signature === "present";
-  officials.umpire_2_signature = officialByRole(document, "umpire_2")?.signature === "present";
-  officials.captain_protest_signature = officialByRole(document, "protest_captain")?.signature === "present";
   return {
     schema_version: 1,
     template_id: document.template_id ? String(document.template_id) : "pku-basketball-2019-v1",
@@ -258,6 +259,7 @@ function toMobileDocument(document: CanonicalScoresheetDocument): ScoresheetDocu
       ended_at: document.final_score.ended_at,
     },
     officials,
+    table_personnel: clone(document.recognition?.table_personnel ?? []),
     source_alignment: {
       corners: Array.isArray(document.source.corners)
         ? document.source.corners.map((point) => ({ x: Number(point[0] ?? 0), y: Number(point[1] ?? 0) }))
@@ -360,7 +362,7 @@ function mergePlayer(player: ScoresheetPlayer, original: CanonicalPlayer | undef
     captain: player.captain,
     participation: player.starter ? "starter" : player.appeared ? "substitute" : "none",
     fouls: mergeFouls(player.fouls),
-    post_foul_markers: clone(original?.post_foul_markers ?? []),
+    post_foul_markers: mergeFouls(player.post_foul_markers ?? original?.post_foul_markers ?? []),
   };
 }
 
@@ -372,18 +374,17 @@ function mergeTeam(mobile: ScoresheetTeam, original: CanonicalTeam): CanonicalTe
     timeouts: mergeTimeouts(mobile),
     team_fouls: mergeTeamFouls(mobile),
     coach_fouls: mergeFouls(mobile.head_coach.fouls),
-    coach_post_foul_markers: clone(original.coach_post_foul_markers),
+    coach_post_foul_markers: mergeFouls(mobile.coach_post_foul_markers ?? original.coach_post_foul_markers),
     assistant_coach_fouls: mergeFouls(mobile.assistant_coach.fouls),
-    assistant_coach_post_foul_markers: clone(original.assistant_coach_post_foul_markers),
+    assistant_coach_post_foul_markers: mergeFouls(mobile.assistant_coach_post_foul_markers ?? original.assistant_coach_post_foul_markers),
     head_coach: mobile.head_coach.name,
     assistant_coach: mobile.assistant_coach.name,
   };
 }
 
 function canonicalPeriod(event: MobileScoreEvent, original: CanonicalScoreEvent | undefined): number {
-  if (event.period !== "OT") return Number(event.period);
-  if (original && original.period >= 5 && event.__canonical_period === original.period) return original.period;
-  return 5;
+  if (original && event.__canonical_period === original.period && Number(event.period) === original.period) return original.period;
+  return Number(event.period);
 }
 
 function mergeScoreEvent(event: MobileScoreEvent, original: CanonicalScoreEvent | undefined, index: number): CanonicalScoreEvent {
@@ -410,22 +411,11 @@ function mergeScoreEvent(event: MobileScoreEvent, original: CanonicalScoreEvent 
   };
 }
 
-function updateOfficial(
-  original: CanonicalOfficial,
-  mobile: ScoresheetDocument["officials"],
-): CanonicalOfficial {
-  const signatureKey = original.role === "protest_captain"
-    ? "captain_protest_signature"
-    : `${original.role}_signature`;
-  const visibleSignature = signatureKey in mobile;
-  const nextPresent = Boolean(mobile[signatureKey]);
-  const originalPresent = original.signature === "present";
+function updateOfficial(original: CanonicalOfficial, mobile: ScoresheetDocument["officials"]): CanonicalOfficial {
   return {
     ...clone(original),
     name: typeof mobile[original.role] === "string" ? String(mobile[original.role]) : original.name,
-    signature: visibleSignature && nextPresent !== originalPresent
-      ? nextPresent ? "present" : "absent"
-      : original.signature,
+    signature: original.signature,
   };
 }
 
@@ -448,7 +438,7 @@ export function mergeMobileDocument(
     return mergeScoreEvent(event, originals.get(event.__canonical_sequence ?? -1), index);
   });
   const byPeriod = new Map(canonical.stated_period_scores.map((row) => [row.period, clone(row)]));
-  for (const [label, period] of [["1", 1], ["2", 2], ["3", 3], ["4", 4], ["OT", 5]] as const) {
+  for (const [label, period] of [["1", 1], ["2", 2], ["3", 3], ["4", 4], ["5", 5], ["6", 6], ["7", 7], ["8", 8]] as const) {
     const row = mobile.summary.period_scores[label];
     if (row.A === null || row.B === null) byPeriod.delete(period);
     else byPeriod.set(period, { ...(byPeriod.get(period) ?? {}), period, team_a: row.A, team_b: row.B });
@@ -466,6 +456,12 @@ export function mergeMobileDocument(
     ended_at: mobile.summary.ended_at,
   };
   merged.officials = canonical.officials.map((official) => updateOfficial(official, mobile.officials));
+  if (isRecord(merged.recognition)) {
+    merged.recognition = {
+      ...merged.recognition,
+      table_personnel: clone(mobile.table_personnel),
+    };
+  }
   merged.source = {
     ...merged.source,
     rotation: mobile.source_alignment.rotation,

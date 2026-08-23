@@ -1612,23 +1612,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/game-media/{asset_id}/review": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Review Admin Game Media */
-        post: operations["core_api_game_media_review_admin_game_media"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/game-media/{asset_id}": {
         parameters: {
             query?: never;
@@ -1869,23 +1852,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/game-media/assets/{asset_id}/review": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Review Miniapp Game Media */
-        post: operations["core_api_game_media_review_miniapp_game_media"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/game-media/assets/{asset_id}": {
         parameters: {
             query?: never;
@@ -1898,23 +1864,6 @@ export interface paths {
         post?: never;
         /** Delete Miniapp Game Media */
         delete: operations["core_api_game_media_delete_miniapp_game_media"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/game-media/games/{game_id}/reorder": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reorder Miniapp Game Media */
-        post: operations["core_api_game_media_reorder_miniapp_game_media"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -6098,10 +6047,6 @@ export interface components {
             sort_order: number;
             /** Scoresheet Complete Confirmed */
             scoresheet_complete_confirmed: boolean;
-            /** Review Status */
-            review_status: string;
-            /** Review Note */
-            review_note: string;
             /** Uploaded By */
             uploaded_by: string;
             /**
@@ -6111,6 +6056,10 @@ export interface components {
             created_at: string;
             /** Version */
             version: number;
+            /** Can Replace */
+            can_replace: boolean;
+            /** Can Delete */
+            can_delete: boolean;
         };
         /** GameMediaErrorOut */
         GameMediaErrorOut: {
@@ -6129,18 +6078,6 @@ export interface components {
             page: number;
             /** Page Size */
             page_size: number;
-        };
-        /** ReviewGameMediaIn */
-        ReviewGameMediaIn: {
-            /** Expected Version */
-            expected_version: number;
-            /** Approve */
-            approve: boolean;
-            /**
-             * Note
-             * @default
-             */
-            note: string;
         };
         /** DeleteGameMediaIn */
         DeleteGameMediaIn: {
@@ -6324,30 +6261,8 @@ export interface components {
             game_id: string;
             /** Can Upload */
             can_upload: boolean;
-            /** Can Review */
-            can_review: boolean;
             /** Assets */
             assets: components["schemas"]["GameMediaAssetOut"][];
-        };
-        /** ReorderGameMediaIn */
-        ReorderGameMediaIn: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "SCORESHEET" | "GROUP_PHOTO" | "GAME_PHOTO";
-            /** Items */
-            items: components["schemas"]["ReorderGameMediaItemIn"][];
-        };
-        /** ReorderGameMediaItemIn */
-        ReorderGameMediaItemIn: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Expected Version */
-            expected_version: number;
         };
         /** InboxSummaryOut */
         InboxSummaryOut: {
@@ -10652,7 +10567,6 @@ export interface operations {
     core_api_game_media_list_admin_game_media: {
         parameters: {
             query?: {
-                review_status?: string | null;
                 kind?: string | null;
                 season_id?: string | null;
                 game_id?: string | null;
@@ -10748,59 +10662,6 @@ export interface operations {
             };
             /** @description Content Too Large */
             413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-        };
-    };
-    core_api_game_media_review_admin_game_media: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                asset_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReviewGameMediaIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaAssetOut"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11627,68 +11488,6 @@ export interface operations {
             };
         };
     };
-    core_api_game_media_review_miniapp_game_media: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                asset_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReviewGameMediaIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaAssetOut"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-        };
-    };
     core_api_game_media_delete_miniapp_game_media: {
         parameters: {
             query?: never;
@@ -11710,68 +11509,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaErrorOut"];
-                };
-            };
-        };
-    };
-    core_api_game_media_reorder_miniapp_game_media: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReorderGameMediaIn"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GameMediaCollectionOut"];
-                };
             };
             /** @description Bad Request */
             400: {

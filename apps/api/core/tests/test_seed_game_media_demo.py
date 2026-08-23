@@ -73,3 +73,29 @@ def test_seed_game_media_demo_refuses_non_debug_environment(tmp_path):
                 actor=setup["superadmin"].username,
                 confirm_local_demo=True,
             )
+
+
+def test_public_data_check_rejects_multiple_current_group_photos(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    rows = [
+        GameMediaAsset(
+            game=game,
+            kind=GameMediaAsset.Kind.GROUP_PHOTO,
+            file_key=f"private/game-media/{game.id}/group-{index}.jpg",
+            original_filename=f"group-{index}.jpg",
+            mime_type="image/jpeg",
+            byte_size=128,
+            file_sha256=f"{index:064x}",
+            width=20,
+            height=20,
+            review_status=GameMediaAsset.ReviewStatus.APPROVED,
+            uploaded_by=setup["superadmin"],
+        )
+        for index in range(2)
+    ]
+    GameMediaAsset.objects.bulk_create(rows)
+
+    with override_settings(DEBUG=False, MEDIA_ROOT=tmp_path):
+        with pytest.raises(CommandError, match="多张当前比赛合照"):
+            call_command("check_no_synthetic_public_data")

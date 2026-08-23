@@ -49,7 +49,6 @@ class GameMediaError(Exception):
 class MediaPermissions:
     can_view: bool
     can_upload: bool
-    can_review: bool
 
 
 @dataclass(frozen=True)
@@ -97,12 +96,12 @@ def media_permissions(account: Account, game: Game) -> MediaPermissions:
         mutable = game.season.status == game.season.Status.PUBLISHED and bool(
             game.home_team_id and game.away_team_id
         )
-        return MediaPermissions(can_view=True, can_upload=mutable, can_review=mutable)
+        return MediaPermissions(can_view=True, can_upload=mutable)
     if account.is_pkuba_admin:
         mutable = game.season.status == game.season.Status.PUBLISHED and bool(
             game.home_team_id and game.away_team_id
         )
-        return MediaPermissions(can_view=True, can_upload=mutable, can_review=False)
+        return MediaPermissions(can_view=True, can_upload=mutable)
     binding = (
         SeasonLeaderBinding.objects.filter(
             season=game.season,
@@ -113,9 +112,30 @@ def media_permissions(account: Account, game: Game) -> MediaPermissions:
         .first()
     )
     if binding is None:
-        return MediaPermissions(can_view=False, can_upload=False, can_review=False)
+        return MediaPermissions(can_view=False, can_upload=False)
     participates = binding.team_id in {game.home_team_id, game.away_team_id}
-    return MediaPermissions(can_view=participates, can_upload=False, can_review=False)
+    return MediaPermissions(can_view=participates, can_upload=False)
+
+
+def media_asset_permissions(
+    account: Account,
+    asset: GameMediaAsset,
+    *,
+    is_published_source: bool | None = None,
+) -> tuple[bool, bool]:
+    permissions = media_permissions(account, asset.game)
+    if not permissions.can_upload:
+        return False, False
+    if asset.kind != GameMediaAsset.Kind.SCORESHEET:
+        return True, True
+    published = (
+        GameScoresheet.objects.filter(
+            current_publication__source_asset_id=asset.id
+        ).exists()
+        if is_published_source is None
+        else is_published_source
+    )
+    return bool(account.is_pkuba_superadmin or not published), False
 
 
 @contextmanager
@@ -248,9 +268,30 @@ def upload_game_media(
         stored_key = _store_validated_image(file_key, image)
     try:
         with transaction.atomic():
+            try:
+                locked_game = (
+                    Game.objects.select_for_update()
+                    .select_related("season")
+                    .get(id=game.id)
+                )
+            except Game.DoesNotExist as error:
+                raise GameMediaError("GAME_NOT_FOUND", "比赛不存在。") from error
+            _assert_media_mutable(locked_game)
+            if (
+                kind == GameMediaAsset.Kind.GROUP_PHOTO
+                and GameMediaAsset.objects.filter(
+                    game=locked_game,
+                    kind=GameMediaAsset.Kind.GROUP_PHOTO,
+                    deleted_at__isnull=True,
+                ).exists()
+            ):
+                raise GameMediaError(
+                    "GROUP_PHOTO_EXISTS",
+                    "该比赛已有当前比赛合照，请使用重新上传。",
+                )
             sort_order = (
                 GameMediaAsset.objects.filter(
-                    game=game,
+                    game=locked_game,
                     kind=kind,
                     deleted_at__isnull=True,
                 ).aggregate(maximum=Max("sort_order"))["maximum"]
@@ -258,7 +299,7 @@ def upload_game_media(
             ) + 1
             asset = GameMediaAsset.objects.create(
                 id=asset_id,
-                game=game,
+                game=locked_game,
                 kind=kind,
                 file_key=stored_key,
                 original_filename=original_filename,
@@ -273,10 +314,19 @@ def upload_game_media(
                     if kind == GameMediaAsset.Kind.SCORESHEET
                     else False
                 ),
+                review_status=(
+                    GameMediaAsset.ReviewStatus.PENDING
+                    if kind == GameMediaAsset.Kind.SCORESHEET
+                    else GameMediaAsset.ReviewStatus.APPROVED
+                ),
                 uploaded_by=actor,
             )
             if kind == GameMediaAsset.Kind.SCORESHEET:
-                _register_scoresheet_source(actor=actor, game=game, asset=asset)
+                _register_scoresheet_source(
+                    actor=actor,
+                    game=locked_game,
+                    asset=asset,
+                )
             AdminAuditLog.objects.create(
                 actor=actor,
                 action="GAME_MEDIA_UPLOADED",
@@ -303,75 +353,6 @@ def upload_game_media(
     except Exception:
         _discard_storage_object(stored_key)
         raise
-    return asset
-
-
-def review_game_media(
-    *,
-    actor: Account,
-    asset_id,
-    expected_version: int,
-    approve: bool,
-    note: str,
-) -> GameMediaAsset:
-    if not actor.is_pkuba_superadmin:
-        raise GameMediaError("SUPERADMIN_REQUIRED", "比赛资料审核仅限超级管理员。")
-    normalized_note = note.strip()[:300]
-    if not approve and not normalized_note:
-        raise GameMediaError("REVIEW_NOTE_REQUIRED", "未通过时必须填写原因。")
-    with transaction.atomic():
-        try:
-            asset = GameMediaAsset.objects.select_for_update().select_related("game").get(
-                id=asset_id,
-                deleted_at__isnull=True,
-            )
-        except GameMediaAsset.DoesNotExist as error:
-            raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。") from error
-        _assert_media_mutable(asset.game)
-        if asset.version != expected_version:
-            raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
-        if asset.kind == GameMediaAsset.Kind.SCORESHEET:
-            raise GameMediaError(
-                "SCORESHEET_REVIEW_IN_EDITOR",
-                "记录表必须在专用编辑器中完成人工检查并通过服务端校验后一次发布，不能在图片审核处直接通过。",
-            )
-        before = {
-            "review_status": asset.review_status,
-            "review_note": asset.review_note,
-            "version": asset.version,
-        }
-        asset.review_status = (
-            GameMediaAsset.ReviewStatus.APPROVED
-            if approve
-            else GameMediaAsset.ReviewStatus.REJECTED
-        )
-        asset.review_note = normalized_note
-        asset.reviewed_by = actor
-        asset.reviewed_at = timezone.now()
-        asset.version += 1
-        asset.save(
-            update_fields=[
-                "review_status",
-                "review_note",
-                "reviewed_by",
-                "reviewed_at",
-                "version",
-                "updated_at",
-            ]
-        )
-        AdminAuditLog.objects.create(
-            actor=actor,
-            action="GAME_MEDIA_REVIEWED",
-            object_type="GameMediaAsset",
-            object_id=asset.id,
-            before=before,
-            after={
-                "review_status": asset.review_status,
-                "review_note": asset.review_note,
-                "version": asset.version,
-            },
-            metadata={"game_id": str(asset.game_id)},
-        )
     return asset
 
 
@@ -468,6 +449,11 @@ def replace_game_media(
                     if replaced.kind == GameMediaAsset.Kind.SCORESHEET
                     else False
                 ),
+                review_status=(
+                    GameMediaAsset.ReviewStatus.PENDING
+                    if replaced.kind == GameMediaAsset.Kind.SCORESHEET
+                    else GameMediaAsset.ReviewStatus.APPROVED
+                ),
                 uploaded_by=actor,
             )
             if replacement.kind == GameMediaAsset.Kind.SCORESHEET:
@@ -510,29 +496,24 @@ def replace_game_media(
 def delete_game_media(
     *, actor: Account, asset_id, expected_version: int
 ) -> GameMediaAsset:
-    if not actor.is_pkuba_superadmin:
-        raise GameMediaError("SUPERADMIN_REQUIRED", "比赛资料删除仅限超级管理员。")
     with transaction.atomic():
         try:
-            asset = GameMediaAsset.objects.select_for_update().get(
-                id=asset_id,
-                deleted_at__isnull=True,
+            asset = (
+                GameMediaAsset.objects.select_for_update()
+                .select_related("game", "game__season")
+                .get(id=asset_id, deleted_at__isnull=True)
             )
         except GameMediaAsset.DoesNotExist as error:
             raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。") from error
         _assert_media_mutable(asset.game)
+        if not media_permissions(actor, asset.game).can_upload:
+            raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料删除仅限管理员。")
         if asset.version != expected_version:
             raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
-        if (
-            asset.kind == GameMediaAsset.Kind.SCORESHEET
-            and GameScoresheet.objects.filter(
-                current_publication__source_asset_id=asset.id
-            ).exists()
-            and not actor.is_pkuba_superadmin
-        ):
+        if asset.kind == GameMediaAsset.Kind.SCORESHEET:
             raise GameMediaError(
-                "SUPERADMIN_REQUIRED",
-                "已发布记录表的删除和纠错仅限超级管理员。",
+                "SCORESHEET_DELETE_FORBIDDEN",
+                "记录表原图必须永久保留，不能删除；如需纠错请重新上传。",
             )
         before = {
             "game_id": str(asset.game_id),
@@ -545,10 +526,6 @@ def delete_game_media(
         asset.deleted_at = timezone.now()
         asset.version += 1
         asset.save(update_fields=["deleted_by", "deleted_at", "version", "updated_at"])
-        if asset.kind == GameMediaAsset.Kind.SCORESHEET:
-            from core.services.scoresheets import mark_source_deleted
-
-            mark_source_deleted(actor=actor, asset=asset)
         AdminAuditLog.objects.create(
             actor=actor,
             action="GAME_MEDIA_DELETED",
@@ -558,72 +535,6 @@ def delete_game_media(
             after={"deleted_at": asset.deleted_at.isoformat(), "version": asset.version},
         )
     return asset
-
-
-def reorder_game_media(
-    *,
-    actor: Account,
-    game_id,
-    kind: str,
-    ordered_assets: list[tuple[object, int]],
-) -> list[GameMediaAsset]:
-    if kind not in GameMediaAsset.Kind.values:
-        raise GameMediaError("MEDIA_KIND_INVALID", "图片类型不合法。")
-    if not ordered_assets:
-        raise GameMediaError("MEDIA_ORDER_EMPTY", "图片排序不能为空。")
-    requested_ids = [asset_id for asset_id, _ in ordered_assets]
-    if len(requested_ids) != len(set(requested_ids)):
-        raise GameMediaError("MEDIA_ORDER_DUPLICATE", "图片排序中存在重复项目。")
-
-    with transaction.atomic():
-        try:
-            game = Game.objects.select_for_update().get(id=game_id)
-        except Game.DoesNotExist as error:
-            raise GameMediaError("GAME_NOT_FOUND", "比赛不存在。") from error
-        _assert_media_mutable(game)
-        if not media_permissions(actor, game).can_upload:
-            raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料排序仅限管理员。")
-        assets = list(
-            GameMediaAsset.objects.select_for_update()
-            .filter(game=game, kind=kind, deleted_at__isnull=True)
-            .order_by("sort_order", "created_at")
-        )
-        assets_by_id = {asset.id: asset for asset in assets}
-        if set(requested_ids) != set(assets_by_id):
-            raise GameMediaError("MEDIA_ORDER_STALE", "图片列表已变化，请刷新后重试。")
-
-        before = [
-            {"id": str(asset.id), "sort_order": asset.sort_order, "version": asset.version}
-            for asset in assets
-        ]
-        reordered: list[GameMediaAsset] = []
-        for sort_order, (asset_id, expected_version) in enumerate(ordered_assets, start=1):
-            asset = assets_by_id[asset_id]
-            if asset.version != expected_version:
-                raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
-            asset.sort_order = sort_order
-            asset.version += 1
-            asset.save(update_fields=["sort_order", "version", "updated_at"])
-            reordered.append(asset)
-        AdminAuditLog.objects.create(
-            actor=actor,
-            action="GAME_MEDIA_REORDERED",
-            object_type="Game",
-            object_id=game.id,
-            before={"kind": kind, "assets": before},
-            after={
-                "kind": kind,
-                "assets": [
-                    {
-                        "id": str(asset.id),
-                        "sort_order": asset.sort_order,
-                        "version": asset.version,
-                    }
-                    for asset in reordered
-                ],
-            },
-        )
-    return reordered
 
 
 def issue_media_ticket(asset: GameMediaAsset) -> str:

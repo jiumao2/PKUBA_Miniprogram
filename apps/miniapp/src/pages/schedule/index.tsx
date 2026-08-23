@@ -7,6 +7,7 @@ import { api } from "../../api";
 import { BracketView } from "../../components/bracket-view";
 import { ScheduleDayScroller } from "../../components/schedule-day-scroller";
 import { navigateToOnce } from "../../navigation";
+import { gameDetailRoute } from "../../routes";
 import { syncTabBar } from "../../tabbar";
 import "./index.css";
 
@@ -72,7 +73,7 @@ export default function SchedulePage() {
       {view === "schedule" && (
         <ScheduleDayScroller
           refreshKey={scheduleRefreshKey}
-          onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
+          onGameClick={(game) => void navigateToOnce(gameDetailRoute(game.id))}
         />
       )}
       {bracketLoading && view === "bracket" && !brackets && (
@@ -88,7 +89,7 @@ export default function SchedulePage() {
           {bracketLoading && <Text className="bracket-refreshing">正在更新</Text>}
           <BracketView
             data={brackets}
-            onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
+            onGameClick={(game) => void navigateToOnce(gameDetailRoute(game.id))}
           />
         </View>
       )}

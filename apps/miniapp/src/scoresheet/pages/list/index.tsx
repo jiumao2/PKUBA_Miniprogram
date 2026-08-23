@@ -134,8 +134,13 @@ export default function ScoresheetListPage() {
               <Text className="sheet-list-label">{item.game_label}</Text>
               {item.recognition_status && (
                 <Text className="sheet-list-recognition">
-                  识别第 {item.recognition_attempt}/{item.recognition_max_attempts} 次
-                  {item.next_attempt_at ? ` · ${countdown(item.next_attempt_at)}` : ""}
+                  {item.recognition_status === "SUCCEEDED"
+                    ? "识别完成"
+                    : item.recognition_status === "FAILED"
+                      ? "识别未完成，可手工录入"
+                      : item.next_attempt_at
+                        ? `等待自动继续 · ${countdown(item.next_attempt_at)}`
+                        : "正在识别"}
                 </Text>
               )}
             </View>
@@ -145,7 +150,7 @@ export default function ScoresheetListPage() {
                 onClick={() => Taro.navigateTo({ url: `/scoresheet/pages/editor/index?id=${item.scoresheet_id}` })}
               >
                 {item.publication_number
-                  ? `${adminRole === "SUPERADMIN" ? "查看 / 纠错" : "查看"} v${item.publication_number}`
+                  ? adminRole === "SUPERADMIN" ? "查看 / 纠错" : "查看记录表"
                   : "打开核对"}
               </Button>
             ) : (

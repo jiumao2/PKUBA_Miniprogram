@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type {
   AdminSeason,
   GameMediaAsset,
@@ -20,7 +21,7 @@ import type {
 import "./competition-media.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
-type ProcessingFilter = "" | "UPLOAD" | "SCORESHEET_REVIEW" | "PHOTO_REVIEW" | "COMPLETE";
+type ProcessingFilter = "" | "UPLOAD" | "SCORESHEET_REVIEW" | "COMPLETE";
 
 const scoresheetStatusLabels: Record<string, string> = {
   NO_SOURCE: "待上传",
@@ -38,14 +39,12 @@ export function GameMediaWorkbench({
   client,
   seasons,
   seasonId,
-  accountRole,
   initialGameId = "",
   onSeasonChange,
 }: {
   client: AdminClient;
   seasons: AdminSeason[];
   seasonId: string;
-  accountRole: string;
   initialGameId?: string;
   onSeasonChange: (seasonId: string) => void;
 }) {
@@ -60,7 +59,6 @@ export function GameMediaWorkbench({
   const [processing, setProcessing] = useState<ProcessingFilter>("");
   const [selectedGameId, setSelectedGameId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
-  const [reviewNote, setReviewNote] = useState("");
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -141,8 +139,6 @@ export function GameMediaWorkbench({
   );
   const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
   const visibleGames = useMemo(() => games.filter((game) => {
-    const photoAssets = (assetsByGame.get(game.game_id) ?? []).filter((asset) => asset.kind !== "SCORESHEET");
-    const pendingPhotos = photoAssets.filter((asset) => asset.review_status === "PENDING").length;
     const matchesQuery = !normalizedQuery || [
       game.game_label,
       game.home_name,
@@ -156,8 +152,7 @@ export function GameMediaWorkbench({
     if (processing === "SCORESHEET_REVIEW") {
       return Boolean(game.source_asset_id) && game.status !== "PUBLISHED" && !recognitionStatuses.has(game.status);
     }
-    if (processing === "PHOTO_REVIEW") return pendingPhotos > 0;
-    if (processing === "COMPLETE") return game.status === "PUBLISHED" && pendingPhotos === 0;
+    if (processing === "COMPLETE") return game.status === "PUBLISHED";
     return true;
   }), [assetsByGame, division, games, normalizedQuery, processing]);
 
@@ -186,10 +181,9 @@ export function GameMediaWorkbench({
   const selectedAssetOnline = selectedAsset?.storage_status === "ONLINE" && Boolean(selectedAsset.content_url);
 
   useEffect(() => {
-    setReviewNote(selectedAsset?.review_note ?? "");
     setReplacementFile(null);
     setMessage("");
-  }, [selectedAsset?.id, selectedAsset?.review_note]);
+  }, [selectedAsset?.id]);
 
   useEffect(() => {
     if (!seasonId || !selectedGameId) return;
@@ -201,48 +195,42 @@ export function GameMediaWorkbench({
   const scoresheetReviewCount = games.filter((game) => (
     Boolean(game.source_asset_id) && game.status !== "PUBLISHED" && !recognitionStatuses.has(game.status)
   )).length;
-  const pendingPhotoCount = assets.filter((asset) => (
-    asset.kind !== "SCORESHEET" && asset.review_status === "PENDING"
-  )).length;
-
-  const review = async (approve: boolean) => {
-    if (!selectedAsset) return;
-    if (!approve && !reviewNote.trim()) {
-      setMessage("退回照片时必须填写原因。");
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    try {
-      await client.reviewAdminGameMedia(selectedAsset.id, {
-        expected_version: selectedAsset.version,
-        approve,
-        note: reviewNote.trim(),
-      });
-      setMessage(approve ? "照片已通过审核。" : "照片已退回，原因已记录。");
-      await loadAssets();
-    } catch (reason: unknown) {
-      setMessage(reason instanceof Error ? reason.message : "审核失败");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const replace = async () => {
     if (!selectedAsset || !replacementFile) {
       setMessage("请先选择新的图片文件。");
       return;
     }
-    if (!window.confirm("确认替换当前照片？旧文件会保留审计记录，新照片需要重新审核。")) return;
+    if (!window.confirm("确认替换当前照片？旧文件会保留审计记录。")) return;
     setBusy(true);
     setMessage("");
     try {
       await client.replaceAdminGameMedia(selectedAsset.id, selectedAsset.version, false, replacementFile);
       setReplacementFile(null);
-      setMessage("替换照片已上传，并进入待审核状态。");
+      setMessage("照片已重新上传，旧文件已保留审计记录。");
       await loadAssets();
     } catch (reason: unknown) {
       setMessage(reason instanceof Error ? reason.message : "替换失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadPhotos = async (
+    kind: "GROUP_PHOTO" | "GAME_PHOTO",
+    files: File[],
+  ) => {
+    if (!selectedGame || files.length === 0) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      for (const file of files) {
+        await client.uploadAdminGameMedia(selectedGame.game_id, kind, false, file);
+      }
+      setMessage(kind === "GROUP_PHOTO" ? "比赛合照已上传并公开。" : `已添加 ${files.length} 张其他照片。`);
+      await loadAssets();
+    } catch (reason: unknown) {
+      setMessage(reason instanceof Error ? reason.message : "上传失败");
     } finally {
       setBusy(false);
     }
@@ -292,7 +280,6 @@ export function GameMediaWorkbench({
               <option value="">全部状态</option>
               <option value="UPLOAD">待上传记录表</option>
               <option value="SCORESHEET_REVIEW">待核对记录表</option>
-              <option value="PHOTO_REVIEW">待审核照片</option>
               <option value="COMPLETE">资料已完成</option>
             </select>
           </label>
@@ -301,7 +288,6 @@ export function GameMediaWorkbench({
           <span><strong>{games.length}</strong> 场比赛</span>
           <span><strong>{pendingUploadCount}</strong> 场待上传记录表</span>
           <span><strong>{scoresheetReviewCount}</strong> 场待核对记录表</span>
-          <span><strong>{pendingPhotoCount}</strong> 张照片待审核</span>
           <button type="button" onClick={() => { void loadGames(); void loadAssets(); }} disabled={gamesLoading || assetsLoading}>
             <RefreshCw size={14} className={gamesLoading || assetsLoading ? "spin" : undefined} />刷新
           </button>
@@ -311,7 +297,7 @@ export function GameMediaWorkbench({
       {archived && (
         <div className="media-archive-notice" role="status">
           <Archive size={17} />
-          <span><strong>已归档赛季</strong>　资料元数据可查阅，上传、替换、审核与删除操作均已关闭。</span>
+          <span><strong>已归档赛季</strong>　资料元数据可查阅，上传、替换与删除操作均已关闭。</span>
         </div>
       )}
 
@@ -327,7 +313,6 @@ export function GameMediaWorkbench({
             <div className="media-game-list">
               {visibleGames.map((game) => {
                 const photos = (assetsByGame.get(game.game_id) ?? []).filter((asset) => asset.kind !== "SCORESHEET");
-                const pending = photos.filter((asset) => asset.review_status === "PENDING").length;
                 return (
                   <button
                     type="button"
@@ -340,7 +325,6 @@ export function GameMediaWorkbench({
                     <span className="media-game-meta">
                       <span className={`scoresheet-state state-${game.status.toLocaleLowerCase()}`}>{scoresheetStatusLabels[game.status] ?? game.status}</span>
                       <span><ImageIcon size={13} />{photos.length}</span>
-                      {pending > 0 && <b>{pending} 待审</b>}
                     </span>
                   </button>
                 );
@@ -397,14 +381,31 @@ export function GameMediaWorkbench({
 
               <section className="media-detail-section photos-section">
                 <div className="media-section-heading">
-                  <div><span>02</span><div><h3>比赛照片</h3><p>合照与其他照片按比赛归档，审核操作只影响当前所选图片。</p></div></div>
-                  <strong>{selectedPhotos.length} 张</strong>
+                  <div><span>02</span><div><h3>比赛照片</h3><p>比赛合照上传后立即公开，其他照片仅供内部查阅。</p></div></div>
                 </div>
                 {assetsError && <div className="media-inline-error"><AlertTriangle size={17} /><span>{assetsError}。记录表状态仍可继续处理。</span></div>}
                 {!assetsError && (
                   <>
-                    <PhotoStrip title="比赛合照" assets={selectedPhotos.filter((asset) => asset.kind === "GROUP_PHOTO")} selectedId={selectedAssetId} onSelect={setSelectedAssetId} />
-                    <PhotoStrip title="其他照片" assets={selectedPhotos.filter((asset) => asset.kind === "GAME_PHOTO")} selectedId={selectedAssetId} onSelect={setSelectedAssetId} />
+                    <PhotoCategory
+                      title="比赛合照"
+                      emptyCopy="尚未上传比赛合照"
+                      assets={selectedPhotos.filter((asset) => asset.kind === "GROUP_PHOTO")}
+                      selectedId={selectedAssetId}
+                      onSelect={setSelectedAssetId}
+                      action={!archived && !selectedPhotos.some((asset) => asset.kind === "GROUP_PHOTO") ? (
+                        <PhotoUploadButton disabled={busy} label="上传比赛合照" onFiles={(files) => void uploadPhotos("GROUP_PHOTO", files.slice(0, 1))} />
+                      ) : null}
+                    />
+                    <PhotoCategory
+                      title="其他照片"
+                      emptyCopy="尚未添加其他照片"
+                      assets={selectedPhotos.filter((asset) => asset.kind === "GAME_PHOTO")}
+                      selectedId={selectedAssetId}
+                      onSelect={setSelectedAssetId}
+                      action={!archived ? (
+                        <PhotoUploadButton multiple disabled={busy} label="添加其他照片" onFiles={(files) => void uploadPhotos("GAME_PHOTO", files)} />
+                      ) : null}
+                    />
                     {!selectedPhotos.length && !assetsLoading && <div className="media-empty-state compact"><ImageIcon size={21} /><strong>尚无比赛照片</strong><span>领队或管理员上传后会显示在这里。</span></div>}
                   </>
                 )}
@@ -419,33 +420,24 @@ export function GameMediaWorkbench({
                       )}
                     </div>
                     <div className="photo-inspector-panel">
-                      <div className="photo-status-line"><strong>{mediaKindLabel(selectedAsset.kind)}</strong><span className={`photo-review-state ${selectedAsset.review_status.toLocaleLowerCase()}`}>{reviewLabel(selectedAsset.review_status)}</span></div>
+                      <div className="photo-status-line"><strong>{mediaKindLabel(selectedAsset.kind)}</strong></div>
                       <dl className="photo-metadata">
-                        <div><dt>尺寸</dt><dd>{selectedAsset.width} × {selectedAsset.height}</dd></div>
-                        <div><dt>大小</dt><dd>{formatBytes(selectedAsset.byte_size)}</dd></div>
                         <div><dt>上传者</dt><dd>{selectedAsset.uploaded_by}</dd></div>
                         <div><dt>存储</dt><dd>{selectedAssetOnline ? "在线原图" : "离线归档"}</dd></div>
                       </dl>
-                      {!archived && selectedAssetOnline && (
+                      {!archived && selectedAssetOnline && selectedAsset.can_replace && (
                         <div className="photo-replacement-control">
                           <label>替换照片<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => setReplacementFile(event.target.files?.[0] ?? null)} /></label>
                           <button type="button" disabled={busy || !replacementFile} onClick={() => void replace()}>上传替换</button>
                         </div>
                       )}
-                      {!archived && selectedAssetOnline && accountRole === "SUPERADMIN" && (
-                        <>
-                          <label className="photo-review-note">审核说明<textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="退回时说明模糊、缺失或内容问题" /></label>
-                          <div className="photo-review-actions">
-                            <button type="button" className="approve" disabled={busy} onClick={() => void review(true)}>通过</button>
-                            <button type="button" className="reject" disabled={busy} onClick={() => void review(false)}>退回</button>
-                            <button type="button" className="delete" disabled={busy} onClick={() => void remove()}>删除</button>
-                          </div>
-                        </>
-                      )}
-                      {message && <p className="media-operation-message" role="status">{message}</p>}
+                      {!archived && selectedAsset.can_delete && <div className="photo-delete-actions">
+                        <button type="button" className="delete" disabled={busy} onClick={() => void remove()}>删除照片</button>
+                      </div>}
                     </div>
                   </div>
                 )}
+                {message && <p className="media-operation-message" role="status">{message}</p>}
               </section>
             </>
           )}
@@ -455,25 +447,54 @@ export function GameMediaWorkbench({
   );
 }
 
-function PhotoStrip({ title, assets, selectedId, onSelect }: {
+function PhotoCategory({ title, emptyCopy, assets, selectedId, onSelect, action }: {
   title: string;
+  emptyCopy: string;
   assets: GameMediaAsset[];
   selectedId: string;
   onSelect: (assetId: string) => void;
+  action: ReactNode;
 }) {
-  if (!assets.length) return null;
   return (
     <div className="photo-strip-group">
-      <h4>{title}<span>{assets.length}</span></h4>
-      <div className="photo-thumbnail-strip">
-        {assets.map((asset) => (
-          <button type="button" className={asset.id === selectedId ? "active" : ""} key={asset.id} onClick={() => onSelect(asset.id)}>
-            {asset.storage_status === "ONLINE" && asset.content_url ? <img src={asset.content_url} alt="" /> : <span><Archive size={18} />已归档</span>}
-            <small>{reviewLabel(asset.review_status)}</small>
-          </button>
-        ))}
+      <div className="photo-category-heading">
+        <h4>{title}</h4>
+        {action}
       </div>
+      {assets.length ? (
+        <div className="photo-thumbnail-strip">
+          {assets.map((asset) => (
+            <button type="button" className={asset.id === selectedId ? "active" : ""} key={asset.id} onClick={() => onSelect(asset.id)}>
+              {asset.storage_status === "ONLINE" && asset.content_url ? <img src={asset.content_url} alt="" /> : <span><Archive size={18} />已归档</span>}
+            </button>
+          ))}
+        </div>
+      ) : <p className="photo-category-empty">{emptyCopy}</p>}
     </div>
+  );
+}
+
+function PhotoUploadButton({ label, disabled, multiple = false, onFiles }: {
+  label: string;
+  disabled: boolean;
+  multiple?: boolean;
+  onFiles: (files: File[]) => void;
+}) {
+  return (
+    <label className={disabled ? "photo-add-button disabled" : "photo-add-button"}>
+      {label}
+      <input
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        multiple={multiple}
+        disabled={disabled}
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          onFiles(files);
+        }}
+      />
+    </label>
   );
 }
 
@@ -529,10 +550,6 @@ function seasonStatusLabel(status: string) {
   return ({ SETUP: "准备中", PUBLISHED: "已公开", ARCHIVED: "已归档" } as Record<string, string>)[status] ?? status;
 }
 
-function reviewLabel(status: string) {
-  return ({ PENDING: "待审核", APPROVED: "已通过", REJECTED: "已退回" } as Record<string, string>)[status] ?? status;
-}
-
 function mediaKindLabel(kind: string) {
   return ({ GROUP_PHOTO: "比赛合照", GAME_PHOTO: "其他照片" } as Record<string, string>)[kind] ?? kind;
 }
@@ -540,8 +557,4 @@ function mediaKindLabel(kind: string) {
 function formatDate(value: string) {
   const [, month, day] = value.split("-");
   return month && day ? `${Number(month)}月${Number(day)}日` : value;
-}
-
-function formatBytes(value: number) {
-  return value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(value / 1024)} KB`;
 }

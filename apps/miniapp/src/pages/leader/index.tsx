@@ -7,6 +7,7 @@ import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
 import { GameTimeline } from "../../components/game-timeline";
 import { navigateToOnce } from "../../navigation";
+import { gameDetailRoute } from "../../routes";
 import "../../role-workspace.css";
 import "./index.css";
 
@@ -93,7 +94,7 @@ export default function LeaderWorkspacePage() {
           {games.length ? (
             <GameTimeline
               games={games}
-              onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
+              onGameClick={(game) => void navigateToOnce(gameDetailRoute(game.id))}
             />
           ) : (
             <View className="state"><Text className="state-detail">当前赛季没有本队比赛。</Text></View>

@@ -10,6 +10,7 @@ import type {
 
 import { api } from "../../api";
 import { navigateToOnce } from "../../navigation";
+import { gameDetailRoute } from "../../routes";
 import { syncTabBar } from "../../tabbar";
 import {
   loadCompleteList,
@@ -150,7 +151,7 @@ export default function DataPage() {
       />
     </View>}
     {(!loading || hasContent) && tab === "games" && (
-      <GameList games={games} onOpen={(id) => void navigateToOnce(`/pages/game-media/index?id=${id}`)} />
+      <GameList games={games} onOpen={(id) => void navigateToOnce(gameDetailRoute(id))} />
     )}
   </View>;
 }

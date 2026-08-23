@@ -18,10 +18,9 @@ from core.services.game_media import (
     asset_from_ticket,
     delete_game_media,
     issue_media_ticket,
+    media_asset_permissions,
     media_permissions,
-    reorder_game_media,
     replace_game_media,
-    review_game_media,
     upload_game_media,
 )
 from core.services.idempotency import IdempotencyError, execute_idempotent
@@ -50,17 +49,16 @@ class GameMediaAssetOut(Schema):
     height: int
     sort_order: int
     scoresheet_complete_confirmed: bool
-    review_status: str
-    review_note: str
     uploaded_by: str
     created_at: datetime
     version: int
+    can_replace: bool
+    can_delete: bool
 
 
 class GameMediaCollectionOut(Schema):
     game_id: UUID
     can_upload: bool
-    can_review: bool
     assets: list[GameMediaAssetOut]
 
 
@@ -71,24 +69,8 @@ class GameMediaPageOut(Schema):
     page_size: int
 
 
-class ReviewGameMediaIn(Schema):
-    expected_version: int
-    approve: bool
-    note: str = ""
-
-
 class DeleteGameMediaIn(Schema):
     expected_version: int
-
-
-class ReorderGameMediaItemIn(Schema):
-    id: UUID
-    expected_version: int
-
-
-class ReorderGameMediaIn(Schema):
-    kind: Literal["SCORESHEET", "GROUP_PHOTO", "GAME_PHOTO"]
-    items: list[ReorderGameMediaItemIn]
 
 
 def _error_response(error: GameMediaError):
@@ -98,7 +80,7 @@ def _error_response(error: GameMediaError):
         status = 404
     elif error.code in {
         "DUPLICATE_MEDIA",
-        "MEDIA_ORDER_STALE",
+        "GROUP_PHOTO_EXISTS",
         "SCORESHEET_SOURCE_EXISTS",
         "VERSION_CONFLICT",
     }:
@@ -136,11 +118,25 @@ def _asset_queryset(*, include_deleted: bool = False):
     return assets if include_deleted else assets.filter(deleted_at__isnull=True)
 
 
-def _serialize_asset(asset: GameMediaAsset) -> dict[str, object]:
+def _serialize_asset(
+    asset: GameMediaAsset,
+    *,
+    actor=None,
+    is_published_source: bool | None = None,
+) -> dict[str, object]:
     content_url = ""
     if asset.storage_status == GameMediaAsset.StorageStatus.ONLINE:
         ticket = quote(issue_media_ticket(asset), safe="")
         content_url = f"/api/v1/game-media/assets/{asset.id}/content?ticket={ticket}"
+    can_replace, can_delete = (
+        media_asset_permissions(
+            actor,
+            asset,
+            is_published_source=is_published_source,
+        )
+        if actor is not None
+        else (False, False)
+    )
     return {
         "id": asset.id,
         "game_id": asset.game_id,
@@ -159,12 +155,29 @@ def _serialize_asset(asset: GameMediaAsset) -> dict[str, object]:
         "height": asset.height,
         "sort_order": asset.sort_order,
         "scoresheet_complete_confirmed": asset.scoresheet_complete_confirmed,
-        "review_status": asset.review_status,
-        "review_note": asset.review_note,
         "uploaded_by": asset.uploaded_by.username,
         "created_at": asset.created_at,
         "version": asset.version,
+        "can_replace": can_replace,
+        "can_delete": can_delete,
     }
+
+
+def _serialize_assets(assets, *, actor) -> list[dict[str, object]]:
+    rows = list(assets)
+    published_source_ids = set(
+        GameScoresheet.objects.filter(
+            current_publication__source_asset_id__in=[asset.id for asset in rows]
+        ).values_list("current_publication__source_asset_id", flat=True)
+    )
+    return [
+        _serialize_asset(
+            asset,
+            actor=actor,
+            is_published_source=asset.id in published_source_ids,
+        )
+        for asset in rows
+    ]
 
 
 def _upload_fingerprint(uploaded_file: UploadedFile) -> dict[str, object]:
@@ -211,8 +224,7 @@ def list_game_media(request: HttpRequest, game_id: UUID):
     return {
         "game_id": game.id,
         "can_upload": permissions.can_upload,
-        "can_review": permissions.can_review,
-        "assets": [_serialize_asset(asset) for asset in assets],
+        "assets": _serialize_assets(assets, actor=request.auth),
     }
 
 
@@ -268,7 +280,7 @@ def create_game_media(
     except GameMediaError as error:
         return _error_response(error)
     asset = _asset_queryset().get(id=UUID(str(body["asset_id"])))
-    return Status(status, _serialize_asset(asset))
+    return Status(status, _serialize_asset(asset, actor=request.auth))
 
 
 @router.get(
@@ -350,36 +362,13 @@ def replace_miniapp_game_media(
         )
     except GameMediaError as error:
         return _error_response(error)
-    return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
-
-
-@router.post(
-    "/assets/{asset_id}/review",
-    auth=miniapp_bearer_auth,
-    response={
-        200: GameMediaAssetOut,
-        400: GameMediaErrorOut,
-        403: GameMediaErrorOut,
-        404: GameMediaErrorOut,
-        409: GameMediaErrorOut,
-    },
-)
-def review_miniapp_game_media(
-    request: HttpRequest,
-    asset_id: UUID,
-    payload: ReviewGameMediaIn,
-):
-    try:
-        asset = review_game_media(
+    return Status(
+        201,
+        _serialize_asset(
+            _asset_queryset().get(id=asset.id),
             actor=request.auth,
-            asset_id=asset_id,
-            expected_version=payload.expected_version,
-            approve=payload.approve,
-            note=payload.note,
-        )
-    except GameMediaError as error:
-        return _error_response(error)
-    return _serialize_asset(_asset_queryset().get(id=asset.id))
+        ),
+    )
 
 
 @router.delete(
@@ -407,44 +396,6 @@ def delete_miniapp_game_media(
     except GameMediaError as error:
         return _error_response(error)
     return Status(204, None)
-
-
-@router.post(
-    "/games/{game_id}/reorder",
-    auth=miniapp_bearer_auth,
-    response={
-        200: GameMediaCollectionOut,
-        400: GameMediaErrorOut,
-        403: GameMediaErrorOut,
-        404: GameMediaErrorOut,
-        409: GameMediaErrorOut,
-    },
-)
-def reorder_miniapp_game_media(
-    request: HttpRequest,
-    game_id: UUID,
-    payload: ReorderGameMediaIn,
-):
-    try:
-        reorder_game_media(
-            actor=request.auth,
-            game_id=game_id,
-            kind=payload.kind,
-            ordered_assets=[(item.id, item.expected_version) for item in payload.items],
-        )
-    except GameMediaError as error:
-        return _error_response(error)
-    game = _game_queryset().get(id=game_id)
-    permissions = media_permissions(request.auth, game)
-    return {
-        "game_id": game.id,
-        "can_upload": permissions.can_upload,
-        "can_review": permissions.can_review,
-        "assets": [
-            _serialize_asset(asset)
-            for asset in _asset_queryset().filter(game=game)
-        ],
-    }
 
 
 @admin_router.post(
@@ -498,20 +449,18 @@ def create_admin_game_media(
     except GameMediaError as error:
         return _error_response(error)
     asset = _asset_queryset().get(id=UUID(str(body["asset_id"])))
-    return Status(status, _serialize_asset(asset))
+    return Status(status, _serialize_asset(asset, actor=request.auth))
 
 
 @admin_router.get("/", response=GameMediaPageOut)
 def list_admin_game_media(
     request: HttpRequest,
-    review_status: str | None = None,
     kind: str | None = None,
     season_id: UUID | None = None,
     game_id: UUID | None = None,
     page: int = 1,
     page_size: int = 100,
 ):
-    del request
     assets = _asset_queryset()
     if season_id:
         assets = assets.filter(game__season_id=season_id)
@@ -519,17 +468,18 @@ def list_admin_game_media(
         assets = assets.filter(game__season__status=Season.Status.PUBLISHED)
     if game_id:
         assets = assets.filter(game_id=game_id)
-    if review_status:
-        assets = assets.filter(review_status=review_status)
     if kind:
         assets = assets.filter(kind=kind)
-    assets = assets.order_by("review_status", "-created_at")
+    assets = assets.order_by("-created_at")
     page = max(page, 1)
     page_size = min(max(page_size, 1), 100)
     total = assets.count()
     start = (page - 1) * page_size
     return {
-        "items": [_serialize_asset(asset) for asset in assets[start : start + page_size]],
+        "items": _serialize_assets(
+            assets[start : start + page_size],
+            actor=request.auth,
+        ),
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -564,30 +514,13 @@ def replace_admin_game_media(
         )
     except GameMediaError as error:
         return _error_response(error)
-    return Status(201, _serialize_asset(_asset_queryset().get(id=asset.id)))
-
-
-@admin_router.post(
-    "/{asset_id}/review",
-    response={
-        200: GameMediaAssetOut,
-        400: GameMediaErrorOut,
-        404: GameMediaErrorOut,
-        409: GameMediaErrorOut,
-    },
-)
-def review_admin_game_media(request: HttpRequest, asset_id: UUID, payload: ReviewGameMediaIn):
-    try:
-        asset = review_game_media(
+    return Status(
+        201,
+        _serialize_asset(
+            _asset_queryset().get(id=asset.id),
             actor=request.auth,
-            asset_id=asset_id,
-            expected_version=payload.expected_version,
-            approve=payload.approve,
-            note=payload.note,
-        )
-    except GameMediaError as error:
-        return _error_response(error)
-    return _serialize_asset(_asset_queryset().get(id=asset.id))
+        ),
+    )
 
 
 @admin_router.delete(

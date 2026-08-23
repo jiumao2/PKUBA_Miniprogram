@@ -105,7 +105,6 @@ export type GameMediaAsset = components["schemas"]["GameMediaAssetOut"];
 export type GameMediaCollection = components["schemas"]["GameMediaCollectionOut"];
 
 export interface AdminGameMediaFilters {
-  reviewStatus?: string;
   kind?: string;
   seasonId?: string;
   gameId?: string;
@@ -596,20 +595,6 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       send<PublishedGamePage>(`/api/v1/public/scoresheet-games${query}`),
     getGameMedia: (gameId: string, token: string) =>
       send<GameMediaCollection>(`/api/v1/game-media/games/${gameId}`, bearer(token)),
-    reviewGameMedia: (
-      assetId: string,
-      expectedVersion: number,
-      approve: boolean,
-      note: string,
-      token: string,
-    ) => send<GameMediaAsset>(
-      `/api/v1/game-media/assets/${assetId}/review`,
-      json("POST", {
-        expected_version: expectedVersion,
-        approve,
-        note,
-      }, token),
-    ),
     deleteGameMedia: (assetId: string, expectedVersion: number, token: string) =>
       send<void>(`/api/v1/game-media/assets/${assetId}`, {
         method: "DELETE",
@@ -619,15 +604,6 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
         },
         body: JSON.stringify({ expected_version: expectedVersion }),
       }),
-    reorderGameMedia: (
-      gameId: string,
-      kind: GameMediaAsset["kind"],
-      items: Array<{ id: string; expected_version: number }>,
-      token: string,
-    ) => send<GameMediaCollection>(
-      `/api/v1/game-media/games/${gameId}/reorder`,
-      json("POST", { kind, items }, token),
-    ),
     listScoresheets: (token: string, seasonId?: string) =>
       collectPages<ScoresheetQueueItem>(
         "/api/v1/scoresheets/",
@@ -1657,15 +1633,8 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           },
         ),
       ),
-    listAdminGameMedia: async (
-      reviewStatusOrFilters: string | AdminGameMediaFilters = "",
-      legacyKind = "",
-    ) => {
-      const filters = typeof reviewStatusOrFilters === "string"
-        ? { reviewStatus: reviewStatusOrFilters, kind: legacyKind }
-        : reviewStatusOrFilters;
+    listAdminGameMedia: async (filters: AdminGameMediaFilters = {}) => {
       const params = new URLSearchParams();
-      if (filters.reviewStatus) params.set("review_status", filters.reviewStatus);
       if (filters.kind) params.set("kind", filters.kind);
       if (filters.seasonId) params.set("season_id", filters.seasonId);
       if (filters.gameId) params.set("game_id", filters.gameId);
@@ -1693,17 +1662,6 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
         }),
       );
     },
-    reviewAdminGameMedia: async (
-      assetId: string,
-      payload: { expected_version: number; approve: boolean; note: string },
-    ) =>
-      parseAdminResponse<GameMediaAsset>(
-        await fetchAdmin(`/api/v1/admin/game-media/${assetId}/review`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
-          body: JSON.stringify(payload),
-        }),
-      ),
     replaceAdminGameMedia: async (
       assetId: string,
       expectedVersion: number,

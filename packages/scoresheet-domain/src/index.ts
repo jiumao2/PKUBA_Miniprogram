@@ -10,8 +10,8 @@ export const SCORESHEET_REGIONS = [
 export type ScoresheetRegion = (typeof SCORESHEET_REGIONS)[number];
 export type ScoresheetSurface = "WEB" | "MINIAPP";
 export type TeamSide = "A" | "B";
-export type ScoreValue = 1 | 2 | 3;
-export type ScorePeriod = "1" | "2" | "3" | "4" | "OT";
+export type ScoreValue = number;
+export type ScorePeriod = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8";
 
 export const REGION_LABELS: Record<ScoresheetRegion, string> = {
   SOURCE_GAME: "原图与比赛信息",
@@ -19,7 +19,7 @@ export const REGION_LABELS: Record<ScoresheetRegion, string> = {
   TEAM_B: "B 队",
   RUNNING_SCORE: "逐次得分",
   SUMMARY: "节比分与最终结果",
-  OFFICIALS: "工作人员与签名",
+  OFFICIALS: "工作人员",
 };
 
 export const TEMPLATE_REGION_BOUNDS: Record<
@@ -41,7 +41,9 @@ export interface ScoresheetPlayer {
   appeared: boolean;
   starter: boolean;
   captain: boolean;
+  license_number?: string;
   fouls: Array<string | { code: string }>;
+  post_foul_markers?: Array<string | { code: string }>;
 }
 
 export interface ScoresheetTeam {
@@ -52,6 +54,8 @@ export interface ScoresheetTeam {
   team_fouls: Record<string, unknown[]>;
   head_coach: { name: string; fouls: unknown[] };
   assistant_coach: { name: string; fouls: unknown[] };
+  coach_post_foul_markers?: unknown[];
+  assistant_coach_post_foul_markers?: unknown[];
 }
 
 export interface ScoreEvent {
@@ -82,6 +86,7 @@ export interface ScoresheetDocument {
     ended_at: string;
   };
   officials: Record<string, string | boolean>;
+  table_personnel: string[];
   source_alignment: {
     corners: Array<{ x: number; y: number }>;
     rotation: number;
@@ -253,6 +258,52 @@ export function normalizeScoreEvents(events: ScoreEvent[]): ScoreEvent[] {
       mark: event.value === 1 ? "dot" : event.value === 3 ? "circle" : "slash",
     };
   });
+}
+
+function scoreMark(value: number): ScoreEvent["mark"] {
+  return value === 1 ? "dot" : value === 3 ? "circle" : "slash";
+}
+
+function resequenceWithoutMovingCells(events: ScoreEvent[]): ScoreEvent[] {
+  return events.map((event, index) => ({ ...event, sequence: index + 1 }));
+}
+
+export function insertScoreAt(
+  events: ScoreEvent[],
+  input: Omit<ScoreEvent, "sequence" | "value" | "mark"> & { cumulative: number },
+): ScoreEvent[] {
+  if (events.some((event) => event.team === input.team && event.cumulative === input.cumulative)) {
+    throw new Error("该累计分格已经填写");
+  }
+  const sameSide = events
+    .filter((event) => event.team === input.team)
+    .sort((left, right) => left.cumulative - right.cumulative);
+  const previous = [...sameSide].reverse().find((event) => event.cumulative < input.cumulative);
+  const next = sameSide.find((event) => event.cumulative > input.cumulative);
+  const value = input.cumulative - (previous?.cumulative ?? 0);
+  const inserted: ScoreEvent = { ...input, sequence: 0, value, mark: scoreMark(value) };
+  const result = events.map((event) => event.id === next?.id
+    ? { ...event, value: event.cumulative - input.cumulative, mark: scoreMark(event.cumulative - input.cumulative) }
+    : event);
+  const insertIndex = next ? result.findIndex((event) => event.id === next.id) : result.length;
+  result.splice(insertIndex < 0 ? result.length : insertIndex, 0, inserted);
+  return resequenceWithoutMovingCells(result);
+}
+
+export function deleteScoreAt(events: ScoreEvent[], eventId: string): ScoreEvent[] {
+  const removed = events.find((event) => event.id === eventId);
+  if (!removed) return events;
+  const previous = events
+    .filter((event) => event.team === removed.team && event.cumulative < removed.cumulative)
+    .sort((left, right) => right.cumulative - left.cumulative)[0];
+  const next = events
+    .filter((event) => event.team === removed.team && event.cumulative > removed.cumulative)
+    .sort((left, right) => left.cumulative - right.cumulative)[0];
+  return resequenceWithoutMovingCells(events
+    .filter((event) => event.id !== eventId)
+    .map((event) => event.id === next?.id
+      ? { ...event, value: event.cumulative - (previous?.cumulative ?? 0), mark: scoreMark(event.cumulative - (previous?.cumulative ?? 0)) }
+      : event));
 }
 
 export function deleteScoreEvent(events: ScoreEvent[], eventId: string): ScoreEvent[] {

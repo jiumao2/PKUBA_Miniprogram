@@ -887,15 +887,19 @@ function SummaryEditor({
   onMutate,
   selectedField,
 }: Pick<InspectorProps, 'document' | 'onMutate' | 'selectedField'>) {
-  const canonicalWinners = Array.from(new Set([
-    document.game_prior?.team_a.name ?? teamBySide(document, 'A').name,
-    document.game_prior?.team_b.name ?? teamBySide(document, 'B').name,
-  ].filter(Boolean)));
-  const winnerIsStandard = canonicalWinners.includes(document.final_score.winner_name);
+  const deriveResult = (draft: ScoresheetDocument) => {
+    const teamA = draft.stated_period_scores.reduce((total, row) => total + row.team_a, 0);
+    const teamB = draft.stated_period_scores.reduce((total, row) => total + row.team_b, 0);
+    const nameA = draft.game_prior?.team_a.name ?? teamBySide(draft, 'A').name;
+    const nameB = draft.game_prior?.team_b.name ?? teamBySide(draft, 'B').name;
+    draft.final_score.team_a = teamA;
+    draft.final_score.team_b = teamB;
+    draft.final_score.winner_name = teamA > teamB ? nameA : teamB > teamA ? nameB : '';
+  };
   return (
     <div className="inspector-section">
       <h3>书面汇总</h3>
-      <p className="section-note">这里保留纸面填写值；与累计分不一致时由校验器报告，不自动覆盖。</p>
+      <p className="section-note">各节比分按纸面填写；最终比分与胜队由各节比分自动计算。</p>
       <div className="period-score-grid">
         <span /> <b>A</b> <b>B</b>
         {[1, 2, 3, 4, 5].map((period) => {
@@ -909,6 +913,7 @@ function SummaryEditor({
                 draft.stated_period_scores.sort((a, b) => a.period - b.period);
               }
               draftScore[side] = value;
+              deriveResult(draft);
             });
           return (
             <div className="period-score-row" key={period}>
@@ -937,27 +942,20 @@ function SummaryEditor({
       </div>
       <div className="form-grid two-columns summary-form">
         <LabeledField label="A 队最终比分">
-          <input data-precise-focus={selectedField === 'summary.final.A' || undefined} autoFocus={selectedField === 'summary.final.A'} type="number" min="0" value={document.final_score.team_a} onChange={(event) => onMutate((draft) => { draft.final_score.team_a = Number(event.target.value); })} />
+          <input aria-label="A 队最终比分" data-precise-focus={selectedField === 'summary.final.A' || undefined} autoFocus={selectedField === 'summary.final.A'} type="number" value={document.final_score.team_a} readOnly />
         </LabeledField>
         <LabeledField label="B 队最终比分">
-          <input data-precise-focus={selectedField === 'summary.final.B' || undefined} autoFocus={selectedField === 'summary.final.B'} type="number" min="0" value={document.final_score.team_b} onChange={(event) => onMutate((draft) => { draft.final_score.team_b = Number(event.target.value); })} />
+          <input aria-label="B 队最终比分" data-precise-focus={selectedField === 'summary.final.B' || undefined} autoFocus={selectedField === 'summary.final.B'} type="number" value={document.final_score.team_b} readOnly />
         </LabeledField>
         <LabeledField label="胜队" className="span-two">
-          <select
+          <input
             aria-label="胜队"
             data-precise-focus={selectedField === 'summary.winner' || undefined}
             autoFocus={selectedField === 'summary.winner'}
             value={document.final_score.winner_name}
-            onChange={(event) => onMutate((draft) => { draft.final_score.winner_name = event.target.value; })}
-          >
-            <option value="">未填写</option>
-            {!winnerIsStandard && document.final_score.winner_name ? (
-              <option value={document.final_score.winner_name} disabled>
-                当前非标准值：{document.final_score.winner_name}
-              </option>
-            ) : null}
-            {canonicalWinners.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
+            placeholder="比分相同时不产生胜队"
+            readOnly
+          />
         </LabeledField>
         <LabeledField label="比赛结束时间" className="span-two">
           <input data-precise-focus={selectedField === 'summary.ended_at' || undefined} autoFocus={selectedField === 'summary.ended_at'} type="time" step="60" value={document.final_score.ended_at} onChange={(event) => onMutate((draft) => { draft.final_score.ended_at = event.target.value; })} />
@@ -986,7 +984,7 @@ function OfficialsEditor({
   const tablePersonnel = document.recognition?.table_personnel ?? [];
   return (
     <div className="inspector-section">
-      <h3>工作人员与签名</h3>
+      <h3>工作人员</h3>
       <p className="section-note">模型只识别记录台人员姓名，不根据纸面位置猜测岗位。</p>
       {document.recognition ? (
         <>
@@ -1043,18 +1041,13 @@ function OfficialsEditor({
         <small>人工可选</small>
       </div>
       <p className="field-help role-assignment-help">
-        以下岗位不会由模型自动填写；同一姓名可以用于多个岗位，一个岗位也可填写多人。签名只记录存在性。
+        以下岗位不会由模型自动猜测；没有填写或看不清时保持为空。
       </p>
       <div className="official-list">
         {document.officials.map((official) => (
           <div className="official-row" key={official.role}>
             <span>{officialLabels[official.role]}</span>
             <input aria-label={`${officialLabels[official.role]}姓名`} data-precise-focus={selectedField === `official.${official.role}.name` || undefined} autoFocus={selectedField === `official.${official.role}.name`} value={official.name} onChange={(event) => onMutate((draft) => { const target = draft.officials.find((entry) => entry.role === official.role)!; target.name = event.target.value; })} />
-            <select aria-label={`${officialLabels[official.role]}签名状态`} value={official.signature} onChange={(event) => onMutate((draft) => { const target = draft.officials.find((entry) => entry.role === official.role)!; target.signature = event.target.value as OfficialEntry['signature']; })}>
-              <option value="absent">无签名</option>
-              <option value="present">有签名</option>
-              <option value="unclear">不清晰</option>
-            </select>
           </div>
         ))}
       </div>
@@ -1103,7 +1096,7 @@ function selectionLabel(field: string): string {
   if (field.startsWith('summary')) return '书面比分与比赛结果';
   const official = field.match(/^official\.([^.]+)\.name$/);
   if (official) return `工作人员 · ${officialLabels[official[1] as OfficialEntry['role']] ?? official[1]}`;
-  if (field.startsWith('official')) return '工作人员与裁判签名';
+  if (field.startsWith('official')) return '工作人员';
   return '比赛基本信息';
 }
 

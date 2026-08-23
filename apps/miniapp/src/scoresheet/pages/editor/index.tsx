@@ -17,21 +17,17 @@ import {
   type ScoresheetMutationContext,
 } from "@pkuba/api-client";
 import {
-  addScoreEvent,
-  canPlaceScore,
-  deleteScoreEvent,
-  normalizeScoreEvents,
+  deleteScoreAt,
+  insertScoreAt,
   REGION_LABELS,
   SCORE_BLOCKS,
   SCORESHEET_REGIONS,
   scoreGridRow,
   TEMPLATE_REGION_BOUNDS,
-  teamTotal,
   type ScoreEvent,
   type ScorePeriod,
   type ScoresheetDocument,
   type ScoresheetRegion,
-  type ScoreValue,
   type TeamSide,
 } from "@pkuba/scoresheet-domain";
 
@@ -44,16 +40,15 @@ import {
 } from "../../mobileDocument";
 import "./index.css";
 
-type StepKey = "SOURCE" | ScoresheetRegion | "CLOSING" | "PUBLISH";
+type StepKey = ScoresheetRegion | "CLOSING" | "PUBLISH";
 
 const STEPS: Array<{ key: StepKey; label: string }> = [
-  { key: "SOURCE", label: "原图" },
-  { key: "SOURCE_GAME", label: "比赛信息" },
+  { key: "SOURCE_GAME", label: "比赛" },
   { key: "TEAM_A", label: "A 队" },
   { key: "TEAM_B", label: "B 队" },
-  { key: "RUNNING_SCORE", label: "逐次得分" },
-  { key: "CLOSING", label: "结表信息" },
-  { key: "PUBLISH", label: "校验发布" },
+  { key: "RUNNING_SCORE", label: "得分" },
+  { key: "CLOSING", label: "结表" },
+  { key: "PUBLISH", label: "发布" },
 ];
 
 const CLIENT_KEY = "pkuba-scoresheet-miniapp-client";
@@ -503,25 +498,6 @@ export default function ScoresheetEditorPage() {
     }
   });
 
-  const exitEditor = async () => {
-    if (!(await drainPending())) {
-      setError("仍有未保存输入，暂未退出。请恢复网络后重试。");
-      return;
-    }
-    if (leaseRef.current) {
-      await api.releaseScoresheetLease(
-        scoresheetId,
-        leaseRef.current,
-        clientIdRef.current,
-        "MINIAPP",
-        token,
-      ).catch(() => undefined);
-      leaseRef.current = "";
-      clearStoredLease(scoresheetId);
-    }
-    await Taro.navigateBack();
-  };
-
   const validate = async () => {
     if (!context()) return;
     if (!(await drainPending())) return;
@@ -605,14 +581,12 @@ export default function ScoresheetEditorPage() {
 
   return (
     <View className="mini-sheet-page">
-      <View className="mini-sheet-safe-top" />
-      <View className="mini-sheet-topbar">
-        <Button className="mini-sheet-back" onClick={() => void exitEditor()}>‹</Button>
-        <View className="mini-sheet-title-block">
+      <View className="mini-sheet-context">
+        <View>
           <Text className="mini-sheet-title">{String(sheet.game.label)}</Text>
-          <Text className={`mini-sheet-save ${readOnly ? "readonly" : ""}`}>{saveState}</Text>
+          <View className="mini-sheet-state-row"><Text className={`mini-sheet-save ${readOnly ? "readonly" : ""}`}>{saveState}</Text>{sheet.recognition?.status === "SUCCEEDED" && <Text className="mini-recognition-chip">识别完成</Text>}</View>
         </View>
-        <Text className={readOnly ? "mini-sheet-mode readonly" : "mini-sheet-mode"}>{readOnly ? "只读" : "编辑中"}</Text>
+        <Text className={readOnly ? "mini-sheet-mode readonly" : "mini-sheet-mode"}>{readOnly ? "只读查看" : "可编辑"}</Text>
       </View>
 
       <ScrollView className="mini-sheet-steps" scrollX enhanced showScrollbar={false}>
@@ -643,7 +617,7 @@ export default function ScoresheetEditorPage() {
       </View>
 
       <ScrollView className="mini-sheet-content" scrollY enhanced showScrollbar={false}>
-        {sheet.recognition && (
+        {sheet.recognition && sheet.recognition.status !== "SUCCEEDED" && (
           <RecognitionBanner
             onRetry={async () => {
               try {
@@ -701,13 +675,6 @@ export default function ScoresheetEditorPage() {
         {error && <View className="mini-sheet-error">{error}</View>}
       </ScrollView>
 
-      {currentKey === "RUNNING_SCORE" && view === "STANDARD" && !readOnly && online && (
-        <MiniScoreQuickBar
-          document={sheet.draft}
-          onChange={(events) => changePath("/running_score", events, true)}
-        />
-      )}
-
       <View className="mini-sheet-footer">
         <Button disabled={stepIndex === 0} onClick={() => setStepIndex((value) => Math.max(0, value - 1))}>上一步</Button>
         {currentKey === "PUBLISH" ? (
@@ -732,7 +699,7 @@ export default function ScoresheetEditorPage() {
 }
 
 function stepKey(index: number): StepKey {
-  return STEPS[index]?.key ?? "SOURCE";
+  return STEPS[index]?.key ?? "SOURCE_GAME";
 }
 
 function RecognitionBanner({ recognition, readOnly, onRetry }: {
@@ -752,8 +719,8 @@ function RecognitionBanner({ recognition, readOnly, onRetry }: {
   return (
     <View className={`mini-recognition-banner ${recognition.status.toLowerCase()}`}>
       <View>
-        <Text>自动识别 · 第 {Math.max(1, recognition.attempt_count || 1)}/{recognition.max_attempts} 次</Text>
-        <Text>{recognition.status === "RETRY_WAIT" && retrySeconds !== null ? `${retrySeconds} 秒后自动重试` : recognition.status === "RUNNING" ? "正在读取整表" : recognition.status === "FAILED" ? "识别已耗尽，可完整手工录入或重传" : recognition.status}</Text>
+        <Text>{recognition.status === "FAILED" ? "识别未完成" : "正在识别记录表"}</Text>
+        <Text>{recognition.status === "RETRY_WAIT" && retrySeconds !== null ? `${retrySeconds} 秒后自动继续` : recognition.status === "FAILED" ? "可以手工录入，或重新识别" : "完成后会自动显示核对内容"}</Text>
       </View>
       {recognition.status === "FAILED" && (
         <Button disabled={readOnly} onClick={() => void onRetry()}>重新识别</Button>
@@ -872,11 +839,8 @@ function StandardView({ document, step, readOnly, changePath, issues, selectedSc
   selectedScoreId: string;
   onSelectScore: (eventId: string) => void;
 }) {
-  if (step === "SOURCE") {
-    return <View className="mini-standard-state"><Text>切换到“原图”查看或对齐当前记录表照片。</Text></View>;
-  }
   if (step === "SOURCE_GAME") {
-    return <MiniForm>{["competition", "date", "scheduled_time", "game_number", "venue", "crew_chief", "umpire_1", "umpire_2"].map((key) => <MiniInput disabled={readOnly} key={key} label={gameLabel(key)} onChange={(value) => changePath(`/game/${key}`, value)} value={document.game[key] ?? ""} />)}</MiniForm>;
+    return <MiniForm>{["competition", "date", "scheduled_time", "venue"].map((key) => <MiniReadOnlyRow key={key} label={gameLabel(key)} value={document.game[key] ?? ""} />)}</MiniForm>;
   }
   if (step === "TEAM_A" || step === "TEAM_B") {
     const side = step.endsWith("A") ? "A" : "B";
@@ -896,41 +860,42 @@ function MiniClosingEditor({ document, readOnly, changePath }: {
   readOnly: boolean;
   changePath: (path: string, value: unknown, immediate?: boolean) => void;
 }) {
-  const computed = computedScoreSummary(document.running_score);
-  const winnerOptions = ["未填写", "A 队", "B 队"];
-  const winnerIndex = document.summary.winner_side === "A" ? 1 : document.summary.winner_side === "B" ? 2 : 0;
+  const periods = (["1", "2", "3", "4", "5", "6", "7", "8"] as ScorePeriod[]);
+  const final = periods.reduce((total, period) => ({
+    A: total.A + (document.summary.period_scores[period].A ?? 0),
+    B: total.B + (document.summary.period_scores[period].B ?? 0),
+  }), { A: 0, B: 0 });
+  const winner = final.A > final.B ? document.teams.A.name : final.B > final.A ? document.teams.B.name : "平分（不能发布）";
+  const updatePeriod = (period: ScorePeriod, side: TeamSide, value: number) => {
+    const next = { ...document.summary.period_scores[period], [side]: value };
+    const all = { ...document.summary.period_scores, [period]: next };
+    const nextFinal = periods.reduce((total, key) => ({ A: total.A + (all[key].A ?? 0), B: total.B + (all[key].B ?? 0) }), { A: 0, B: 0 });
+    changePath("/summary", {
+      ...document.summary,
+      period_scores: all,
+      final_score: nextFinal,
+      winner_side: nextFinal.A > nextFinal.B ? "A" : nextFinal.B > nextFinal.A ? "B" : "",
+    }, true);
+  };
   return (
     <View className="mini-closing-editor">
       <View className="mini-section-heading"><Text>节比分与最终结果</Text></View>
-      <View className="mini-computed-summary"><Text>系统按逐次得分计算</Text><Text>A {computed.final.A} : {computed.final.B} B</Text></View>
-      {(["1", "2", "3", "4", "OT"] as ScorePeriod[]).map((period) => (
+      {periods.map((period) => (
         <View className="mini-period-row" key={period}>
-          <Text>{period === "OT" ? "加时" : `第 ${period} 节`} · 计算 {computed.periods[period].A}:{computed.periods[period].B}</Text>
-          {(["A", "B"] as TeamSide[]).map((side) => <View className="mini-number-field" key={side}><Text>{side}</Text><Input disabled={readOnly} onInput={(event) => changePath(`/summary/period_scores/${period}/${side}`, event.detail.value === "" ? null : Number(event.detail.value))} type="number" value={String(document.summary.period_scores[period][side] ?? "")} /></View>)}
+          <Text>{Number(period) <= 4 ? `第 ${period} 节` : `加时 ${Number(period) - 4}`}</Text>
+          {(["A", "B"] as TeamSide[]).map((side) => <MiniStepper disabled={readOnly} key={side} label={side} max={160} onChange={(value) => updatePeriod(period, side, value)} value={document.summary.period_scores[period][side] ?? 0} />)}
         </View>
       ))}
-      <View className="mini-period-row final"><Text>最终 · 计算 {computed.final.A}:{computed.final.B}</Text>{(["A", "B"] as TeamSide[]).map((side) => <View className="mini-number-field" key={side}><Text>{side}</Text><Input disabled={readOnly} onInput={(event) => changePath(`/summary/final_score/${side}`, event.detail.value === "" ? null : Number(event.detail.value))} type="number" value={String(document.summary.final_score[side] ?? "")} /></View>)}</View>
-      <Picker disabled={readOnly} mode="selector" onChange={(event) => changePath("/summary/winner_side", (["", "A", "B"] as const)[Number(event.detail.value)], true)} range={winnerOptions} value={winnerIndex}><View className="mini-input-row"><Text>纸面胜队</Text><Text>{winnerOptions[winnerIndex]}</Text></View></Picker>
-      <MiniInput disabled={readOnly} label="比赛结束时间" onChange={(value) => changePath("/summary/ended_at", value)} value={document.summary.ended_at} />
-      <View className="mini-section-heading"><Text>工作人员与签名</Text></View>
+      <View className="mini-derived-result"><Text>最终比分</Text><Text>{document.teams.A.name} {final.A} : {final.B} {document.teams.B.name}</Text><Text>胜队：{winner}</Text></View>
+      <Picker disabled={readOnly} mode="time" onChange={(event) => changePath("/summary/ended_at", String(event.detail.value), true)} value={document.summary.ended_at || "00:00"}><View className="mini-input-row"><Text>比赛结束时间</Text><Text>{document.summary.ended_at || "请选择"}</Text></View></Picker>
+      <View className="mini-section-heading"><Text>工作人员</Text><Text>没有或看不清时留空</Text></View>
       <MiniForm>
-        {["scorer", "assistant_scorer", "timer", "shot_clock_operator"].map((key) => <MiniInput disabled={readOnly} key={key} label={officialLabel(key)} onChange={(value) => changePath(`/officials/${key}`, value)} value={String(document.officials[key] ?? "")} />)}
-        {["crew_chief_signature", "umpire_1_signature", "umpire_2_signature", "captain_protest_signature"].map((key) => <View className="mini-signature-row" key={key}><Text>{officialLabel(key)}</Text><Switch checked={Boolean(document.officials[key])} color="#b52d28" disabled={readOnly} onChange={(event) => changePath(`/officials/${key}`, event.detail.value, true)} /></View>)}
+        {document.table_personnel.map((name, index) => <View className="mini-personnel-row" key={index}><MiniInput disabled={readOnly} label={`记录台人员 ${index + 1}`} onChange={(value) => changePath("/table_personnel", document.table_personnel.map((item, itemIndex) => itemIndex === index ? value : item))} value={name} /><Button disabled={readOnly} onClick={() => changePath("/table_personnel", document.table_personnel.filter((_, itemIndex) => itemIndex !== index), true)}>删除</Button></View>)}
+        <Button className="mini-personnel-add" disabled={readOnly} onClick={() => changePath("/table_personnel", [...document.table_personnel, ""], true)}>添加记录台人员</Button>
+        {["scorer", "assistant_scorer", "timer", "shot_clock_operator", "crew_chief", "umpire_1", "umpire_2", "protest_captain"].map((key) => <MiniInput disabled={readOnly} key={key} label={officialLabel(key)} onChange={(value) => changePath(`/officials/${key}`, value)} value={String(document.officials[key] ?? "")} />)}
       </MiniForm>
     </View>
   );
-}
-
-function computedScoreSummary(events: ScoreEvent[]) {
-  const periods = Object.fromEntries(
-    (["1", "2", "3", "4", "OT"] as ScorePeriod[]).map((period) => [period, { A: 0, B: 0 }]),
-  ) as Record<ScorePeriod, Record<TeamSide, number>>;
-  const final: Record<TeamSide, number> = { A: 0, B: 0 };
-  for (const event of events) {
-    periods[event.period][event.team] += event.value;
-    final[event.team] += event.value;
-  }
-  return { periods, final };
 }
 
 function MiniForm({ children }: { children: React.ReactNode }) {
@@ -941,6 +906,14 @@ function MiniInput({ label, value, disabled, onChange }: { label: string; value:
   return <View className="mini-input-row"><Text>{label}</Text><Input disabled={disabled} onInput={(event) => onChange(event.detail.value)} value={value} /></View>;
 }
 
+function MiniReadOnlyRow({ label, value }: { label: string; value: string }) {
+  return <View className="mini-input-row locked"><View><Text>{label}</Text><Text className="mini-lock-label">由赛程确定</Text></View><Text>{value || "—"}</Text></View>;
+}
+
+function MiniStepper({ label, value, disabled, max, onChange }: { label: string; value: number; disabled: boolean; max: number; onChange: (value: number) => void }) {
+  return <View className="mini-stepper"><Text>{label}</Text><Button disabled={disabled || value <= 0} onClick={() => onChange(Math.max(0, value - 1))}>−</Button><Text>{value}</Text><Button disabled={disabled || value >= max} onClick={() => onChange(Math.min(max, value + 1))}>＋</Button></View>;
+}
+
 function MiniTeamEditor({ document, side, readOnly, changePath }: {
   document: ScoresheetDocument;
   side: TeamSide;
@@ -948,50 +921,81 @@ function MiniTeamEditor({ document, side, readOnly, changePath }: {
   changePath: (path: string, value: unknown, immediate?: boolean) => void;
 }) {
   const team = document.teams[side];
+  const resizeMarks = (values: unknown[], count: number, factory: (slot: number) => unknown) => [
+    ...values.slice(0, count),
+    ...Array.from({ length: Math.max(0, count - values.length) }, (_, index) => factory(values.length + index + 1)),
+  ];
   return (
     <View className="mini-team-editor">
       <View className="mini-section-heading"><Text>球队 {side}</Text><Text>{team.name}</Text></View>
       <View className="mini-team-paper-fields">
         {(["H1", "H2", "OT"] as const).map((scope) => (
-          <View className="mini-team-field" key={scope}>
-            <Text>暂停 {scope}</Text>
-            <Input disabled={readOnly} onInput={(event) => changePath(`/teams/${side}/timeouts/${scope}`, miniSplitMarks(event.detail.value))} placeholder="分钟，以空格分隔" value={miniMarkText(team.timeouts[scope] ?? [])} />
-          </View>
+          <MiniStepper disabled={readOnly} key={scope} label={`暂停 ${scope}`} max={3} onChange={(count) => changePath(`/teams/${side}/timeouts/${scope}`, resizeMarks(team.timeouts[scope] ?? [], count, (slot) => ({ slot, minute: 0 })))} value={(team.timeouts[scope] ?? []).length} />
         ))}
         {(["1", "2", "3", "4"] as const).map((period) => (
-          <View className="mini-team-field compact" key={period}>
-            <Text>第 {period} 节全队犯规</Text>
-            <Input disabled={readOnly} maxlength={1} onInput={(event) => { const count = Math.max(0, Math.min(4, Number(event.detail.value) || 0)); changePath(`/teams/${side}/team_fouls/${period}`, Array(count).fill("X")); }} type="number" value={String((team.team_fouls[period] ?? []).length)} />
-          </View>
+          <MiniStepper disabled={readOnly} key={period} label={`第 ${period} 节全队犯规`} max={4} onChange={(count) => changePath(`/teams/${side}/team_fouls/${period}`, Array(count).fill("X"))} value={(team.team_fouls[period] ?? []).length} />
         ))}
         {(["head_coach", "assistant_coach"] as const).map((role) => (
           <View className="mini-coach-row" key={role}>
             <View className="mini-team-field"><Text>{role === "head_coach" ? "教练员" : "助理教练员"}</Text><Input disabled={readOnly} onInput={(event) => changePath(`/teams/${side}/${role}/name`, event.detail.value)} value={team[role].name} /></View>
-            <View className="mini-team-field compact"><Text>犯规</Text><Input disabled={readOnly} onInput={(event) => changePath(`/teams/${side}/${role}/fouls`, miniSplitMarks(event.detail.value.toUpperCase()))} placeholder="C B D" value={miniMarkText(team[role].fouls)} /></View>
+            <View className="mini-foul-strip"><Text>犯规</Text>{Array.from({ length: 3 }, (_, index) => <FoulSlotPicker disabled={readOnly || (index > 0 && !team[role].fouls[index - 1])} group="coach" key={index} onChange={(value) => changePath(`/teams/${side}/${role}/fouls`, replaceFoulSlot(team[role].fouls, index, value), true)} value={team[role].fouls[index]} />)}<Text className="mini-post-label">附加</Text>{Array.from({ length: 2 }, (_, slot) => {
+              const markers = role === "head_coach" ? team.coach_post_foul_markers ?? [] : team.assistant_coach_post_foul_markers ?? [];
+              const field = role === "head_coach" ? "coach_post_foul_markers" : "assistant_coach_post_foul_markers";
+              return <FoulSlotPicker disabled={readOnly || team[role].fouls.length < 3 || (slot > 0 && !markers[slot - 1])} group="post" key={`post-${slot}`} onChange={(value) => changePath(`/teams/${side}/${field}`, replaceFoulSlot(markers, slot, value), true)} value={markers[slot]} />;
+            })}</View>
           </View>
         ))}
       </View>
       {team.players.map((player, index) => (
         <View className="mini-player-row" key={player.player_id}>
           <View className="mini-player-name"><Text className="mini-player-number">{player.jersey_number || "–"}</Text><Text>{player.name}</Text></View>
-          <View className="mini-player-switches">
-            <View><Text>出场</Text><Switch checked={player.appeared} color="#b52d28" disabled={readOnly} onChange={(event) => changePath(`/teams/${side}/players/${index}/appeared`, event.detail.value, true)} /></View>
-            <View><Text>首发</Text><Switch checked={player.starter} color="#b52d28" disabled={readOnly} onChange={(event) => changePath(`/teams/${side}/players/${index}/starter`, event.detail.value, true)} /></View>
-            <View><Text>队长</Text><Switch checked={player.captain} color="#b52d28" disabled={readOnly} onChange={(event) => changePath(`/teams/${side}/players/${index}/captain`, event.detail.value, true)} /></View>
+          <View className="mini-player-state">
+            <Picker disabled={readOnly} mode="selector" range={["未上场", "替补", "首发"]} value={player.starter ? 2 : player.appeared ? 1 : 0} onChange={(event) => { const state = Number(event.detail.value); changePath(`/teams/${side}/players/${index}`, { ...player, appeared: state > 0, starter: state === 2 }, true); }}><Text>{player.starter ? "首发" : player.appeared ? "替补" : "未上场"}</Text></Picker>
+            <View><Text>队长</Text><Switch checked={player.captain} color="#07c160" disabled={readOnly} onChange={(event) => changePath(`/teams/${side}/players/${index}/captain`, event.detail.value, true)} /></View>
           </View>
-          <Input className="mini-foul-input" disabled={readOnly} onInput={(event) => changePath(`/teams/${side}/players/${index}/fouls`, miniSplitMarks(event.detail.value.toUpperCase()))} placeholder="犯规：P T U D F" value={miniMarkText(player.fouls)} />
+          <View className="mini-foul-strip"><Text>犯规</Text>{Array.from({ length: 5 }, (_, slot) => <FoulSlotPicker disabled={readOnly || (slot > 0 && !player.fouls[slot - 1])} group="player" key={slot} onChange={(value) => changePath(`/teams/${side}/players/${index}/fouls`, replaceFoulSlot(player.fouls, slot, value), true)} value={player.fouls[slot]} />)}<Text className="mini-post-label">附加</Text>{Array.from({ length: 2 }, (_, slot) => <FoulSlotPicker disabled={readOnly || player.fouls.length < 5 || (slot > 0 && !player.post_foul_markers?.[slot - 1])} group="post" key={`post-${slot}`} onChange={(value) => changePath(`/teams/${side}/players/${index}/post_foul_markers`, replaceFoulSlot(player.post_foul_markers ?? [], slot, value), true)} value={player.post_foul_markers?.[slot]} />)}</View>
         </View>
       ))}
     </View>
   );
 }
 
-function miniSplitMarks(value: string): string[] {
-  return value.trim() ? value.trim().split(/\s+/).filter(Boolean) : [];
+type MiniFoul = { code: string; free_throws?: number | null; cancelled?: boolean; slot?: number; catalog_id?: string | null; mark_style?: string; period?: number | null };
+
+const SUBSCRIPT: Record<string, string> = { "1": "₁", "2": "₂", "3": "₃", c: "c" };
+
+function foulChoices(group: "player" | "coach" | "post") {
+  const codes = group === "player" ? ["P", "T", "U", "D"] : group === "coach" ? ["C", "B", "D", "F"] : ["D", "GD", "F"];
+  const result: Array<{ label: string; value: MiniFoul | null }> = [{ label: "空", value: null }];
+  for (const code of codes) {
+    const suffixes = ["", ...(code === "F" || code === "GD" ? [] : ["1", "2", "3", "c"])];
+    for (const suffix of suffixes) result.push({
+      label: `${code}${SUBSCRIPT[suffix] ?? ""}`,
+      value: { code, free_throws: /^[123]$/.test(suffix) ? Number(suffix) : null, cancelled: suffix === "c", catalog_id: null, mark_style: "plain", period: null },
+    });
+  }
+  return result;
 }
 
-function miniMarkText(values: unknown[]): string {
-  return values.map((value) => typeof value === "object" && value ? String((value as { code?: unknown; minute?: unknown }).code ?? (value as { minute?: unknown }).minute ?? "") : String(value)).filter(Boolean).join(" ");
+function foulLabel(value: unknown) {
+  if (!value || typeof value !== "object") return String(value || "＋");
+  const foul = value as MiniFoul;
+  const suffix = foul.cancelled ? "c" : foul.free_throws ? String(foul.free_throws) : "";
+  return `${foul.code}${SUBSCRIPT[suffix] ?? ""}`;
+}
+
+function replaceFoulSlot(values: unknown[], index: number, value: MiniFoul | null) {
+  if (!value) return values.slice(0, index);
+  const next = values.slice(0, index + 1);
+  next[index] = { ...value, slot: index + 1 };
+  return next.map((row, slot) => typeof row === "object" && row ? { ...row as object, slot: slot + 1 } : row);
+}
+
+function FoulSlotPicker({ group, value, disabled, onChange }: { group: "player" | "coach" | "post"; value: unknown; disabled: boolean; onChange: (value: MiniFoul | null) => void }) {
+  const choices = foulChoices(group);
+  const current = foulLabel(value);
+  const selected = Math.max(0, choices.findIndex((choice) => choice.label === current));
+  return <Picker disabled={disabled} mode="selector" range={choices.map((choice) => choice.label)} value={selected} onChange={(event) => onChange(choices[Number(event.detail.value)]?.value ?? null)}><View className={value ? "mini-foul-cell filled" : "mini-foul-cell"}><Text>{current}</Text></View></Picker>;
 }
 
 function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, onSelect }: {
@@ -1004,6 +1008,8 @@ function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, 
 }) {
   const [blockIndex, setBlockIndex] = useState(0);
   const [issueCursor, setIssueCursor] = useState(-1);
+  const [period, setPeriod] = useState<ScorePeriod>("1");
+  const [pendingCell, setPendingCell] = useState<{ side: TeamSide; cumulative: number } | null>(null);
   const block = SCORE_BLOCKS[blockIndex];
   const selected = document.running_score.find((event) => event.id === selectedId) ?? null;
   const scrollEvent = selected ?? document.running_score[document.running_score.length - 1];
@@ -1047,26 +1053,9 @@ function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, 
     if (location) setBlockIndex(location.block);
   };
 
-  const tapEmpty = (side: TeamSide, cumulative: number) => {
-    if (readOnly) return;
-    const delta = cumulative - teamTotal(document.running_score, side);
-    if (![1, 2, 3].includes(delta)) return;
-    const value = delta as ScoreValue;
-    if (!canPlaceScore(document.running_score, side, value, cumulative)) return;
-    const player = document.teams[side].players.find((row) => row.appeared) ?? document.teams[side].players[0];
-    onChange(addScoreEvent(document.running_score, {
-      id: `mini-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      team: side,
-      value,
-      period: document.running_score[document.running_score.length - 1]?.period ?? "1",
-      player_id: player?.player_id,
-      player_name: player?.name,
-      player_number: player?.jersey_number,
-    }));
-  };
-
   return (
     <View className="mini-paper-score">
+      <View className="mini-score-period-picker"><Text>当前节次</Text><Picker disabled={readOnly} mode="selector" range={["第1节", "第2节", "第3节", "第4节", "加时1", "加时2", "加时3", "加时4"]} value={Number(period) - 1} onChange={(event) => setPeriod(String(Number(event.detail.value) + 1) as ScorePeriod)}><Text>{Number(period) <= 4 ? `第 ${period} 节` : `加时 ${Number(period) - 4}`}</Text></Picker><Text>点空格后选球员号码</Text></View>
       {issueEvents.length > 0 && <View className="mini-score-issue-nav"><Text>{issueEvents.length} 处得分格问题</Text><View><Button onClick={() => jumpIssue(-1)}>上一处</Button><Button onClick={() => jumpIssue(1)}>下一处</Button></View></View>}
       <ScrollView className="mini-score-block-tabs" scrollX>
         <View>{SCORE_BLOCKS.map((item, index) => <Button className={index === blockIndex ? "active" : ""} key={item.key} onClick={() => setBlockIndex(index)}>{item.key}</Button>)}</View>
@@ -1079,12 +1068,13 @@ function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, 
             {(["A", "B"] as TeamSide[]).map((side) => {
               const event = byCell.get(`${side}-${score}`);
               const invalid = event && issues.some((issue) => scoreIssueMatches(issue.path, event));
-              return <View className={`mini-score-cell ${invalid ? "invalid" : ""} ${event?.id === selectedId ? "selected" : ""}`} key={side} onClick={() => event ? onSelect(event.id) : tapEmpty(side, score)}>{event ? <><Text className="mini-score-player">#{event.player_number || "?"}</Text><Text className="mini-score-mark">{event.value === 1 ? "●" : event.value === 3 ? "◯" : "╱"}</Text><Text className="mini-score-period">{event.period}</Text></> : <Text className="mini-score-empty">{canPlaceScore(document.running_score, side, 1, score) || canPlaceScore(document.running_score, side, 2, score) || canPlaceScore(document.running_score, side, 3, score) ? "＋" : ""}</Text>}</View>;
+              const unusual = Boolean(event && event.value >= 4);
+              return <View className={`mini-score-cell ${invalid || unusual ? "invalid" : ""} ${event?.id === selectedId ? "selected" : ""}`} key={side} onClick={() => { if (event) onSelect(event.id); else if (!readOnly) setPendingCell({ side, cumulative: score }); }}>{event ? <><Text className="mini-score-player">{event.player_number || "?"}</Text><Text className="mini-score-mark">{event.value === 1 ? "●" : event.value === 3 ? "◯" : "╱"}</Text><Text className="mini-score-period">{event.value >= 4 ? `+${event.value}` : Number(event.period) <= 4 ? event.period : `OT${Number(event.period) - 4}`}</Text></> : <Text className="mini-score-empty">＋</Text>}</View>;
             })}
           </View>
         ))}
       </ScrollView>
-      {selected && <ScoreEventDrawer document={document} event={selected} onChange={onChange} onClose={() => onSelect("")} />}
+      {(selected || pendingCell) && <ScoreEventDrawer cell={pendingCell} document={document} event={selected} initialPeriod={period} onChange={onChange} onClose={() => { onSelect(""); setPendingCell(null); }} />}
     </View>
   );
 }
@@ -1095,22 +1085,23 @@ function scoreIssueMatches(path: string, event: ScoreEvent) {
   return Boolean(match && Number(match[1]) === event.sequence - 1);
 }
 
-function ScoreEventDrawer({ document, event, onChange, onClose }: { document: ScoresheetDocument; event: ScoreEvent; onChange: (events: ScoreEvent[]) => void; onClose: () => void }) {
-  const players = document.teams[event.team].players;
+function ScoreEventDrawer({ document, event, cell, initialPeriod, onChange, onClose }: { document: ScoresheetDocument; event: ScoreEvent | null; cell: { side: TeamSide; cumulative: number } | null; initialPeriod: ScorePeriod; onChange: (events: ScoreEvent[]) => void; onClose: () => void }) {
+  const side = event?.team ?? cell?.side ?? "A";
+  const cumulative = event?.cumulative ?? cell?.cumulative ?? 0;
+  const players = document.teams[side].players.filter((player) => player.jersey_number);
   const update = (patch: Partial<ScoreEvent>) => {
-    onChange(normalizeScoreEvents(document.running_score.map((row) => row.id === event.id ? { ...row, ...patch } : row)));
+    if (!event) return;
+    onChange(document.running_score.map((row) => row.id === event.id ? { ...row, ...patch } : row));
   };
-  const playerIndex = Math.max(0, players.findIndex((player) => player.player_id === event.player_id));
-  return <View className="mini-score-drawer-mask" onClick={onClose}><View className="mini-score-drawer" onClick={(click) => click.stopPropagation()}><View className="mini-drawer-heading"><Text>{event.team} 队累计 {event.cumulative} 分</Text><Button onClick={onClose}>完成</Button></View><Picker mode="selector" range={players.map((player) => `${player.jersey_number || "–"} ${player.name}`)} value={playerIndex} onChange={(change) => { const player = players[Number(change.detail.value)]; if (player) update({ player_id: player.player_id, player_name: player.name, player_number: player.jersey_number }); }}><View className="mini-drawer-field"><Text>球员</Text><Text>{players[playerIndex]?.name ?? "未关联"}</Text></View></Picker><Picker mode="selector" range={["1 分", "2 分", "3 分"]} value={event.value - 1} onChange={(change) => update({ value: (Number(change.detail.value) + 1) as ScoreValue })}><View className="mini-drawer-field"><Text>分值</Text><Text>{event.value} 分</Text></View></Picker><Picker mode="selector" range={["1", "2", "3", "4", "OT"]} value={["1", "2", "3", "4", "OT"].indexOf(event.period)} onChange={(change) => update({ period: (["1", "2", "3", "4", "OT"] as ScorePeriod[])[Number(change.detail.value)] })}><View className="mini-drawer-field"><Text>节次</Text><Text>{event.period}</Text></View></Picker><Picker mode="selector" range={["普通", "节末", "终场"]} value={["none", "period", "game"].indexOf(event.boundary ?? "none")} onChange={(change) => update({ boundary: (["none", "period", "game"] as const)[Number(change.detail.value)] })}><View className="mini-drawer-field"><Text>标记</Text><Text>{event.boundary === "game" ? "终场" : event.boundary === "period" ? "节末" : "普通"}</Text></View></Picker><Button className="mini-drawer-delete" onClick={() => { onChange(deleteScoreEvent(document.running_score, event.id)); onClose(); }}>删除得分事件</Button></View></View>;
-}
-
-function MiniScoreQuickBar({ document, onChange }: { document: ScoresheetDocument; onChange: (events: ScoreEvent[]) => void }) {
-  const [period, setPeriod] = useState<ScorePeriod>("1");
-  const add = (side: TeamSide, value: ScoreValue) => {
-    const player = document.teams[side].players.find((row) => row.appeared) ?? document.teams[side].players[0];
-    onChange(addScoreEvent(document.running_score, { id: `quick-${Date.now()}-${Math.random().toString(36).slice(2)}`, team: side, value, period, player_id: player?.player_id, player_name: player?.name, player_number: player?.jersey_number }));
+  const playerIndex = Math.max(0, players.findIndex((player) => player.player_id === event?.player_id));
+  const choosePlayer = (index: number) => {
+    const player = players[index];
+    if (!player) return;
+    if (event) update({ player_id: player.player_id, player_name: player.name, player_number: player.jersey_number });
+    else if (cell) onChange(insertScoreAt(document.running_score, { id: `cell-${Date.now()}-${Math.random().toString(36).slice(2)}`, team: cell.side, cumulative: cell.cumulative, period: initialPeriod, player_id: player.player_id, player_name: player.name, player_number: player.jersey_number, boundary: "none" }));
+    if (!event) onClose();
   };
-  return <View className="mini-quick-bar"><Picker mode="selector" range={["1", "2", "3", "4", "OT"]} value={["1", "2", "3", "4", "OT"].indexOf(period)} onChange={(event) => setPeriod((["1", "2", "3", "4", "OT"] as ScorePeriod[])[Number(event.detail.value)])}><View className="mini-quick-period">{period} 节</View></Picker><ScrollView scrollX><View className="mini-quick-buttons">{(["A", "B"] as TeamSide[]).flatMap((side) => ([1, 2, 3] as ScoreValue[]).map((value) => <Button disabled={teamTotal(document.running_score, side) + value > 160} key={`${side}-${value}`} onClick={() => add(side, value)}>{side} +{value}</Button>))}</View></ScrollView></View>;
+  return <View className="mini-score-drawer-mask" onClick={onClose}><View className="mini-score-drawer" onClick={(click) => click.stopPropagation()}><View className="mini-drawer-heading"><Text>{side} 队累计 {cumulative} 分</Text><Button onClick={onClose}>完成</Button></View><Picker mode="selector" range={players.map((player) => `${player.jersey_number} ${player.name}`)} value={playerIndex} onChange={(change) => choosePlayer(Number(change.detail.value))}><View className="mini-drawer-field"><Text>球员号码</Text><Text>{event ? event.player_number || "请选择" : "点击选择后插入"}</Text></View></Picker>{event && <><View className={event.value >= 4 ? "mini-score-derived invalid" : "mini-score-derived"}><Text>本次得分</Text><Text>{event.value} 分（由累计格自动推导）</Text></View><Picker mode="selector" range={["第1节", "第2节", "第3节", "第4节", "加时1", "加时2", "加时3", "加时4"]} value={Number(event.period) - 1} onChange={(change) => update({ period: String(Number(change.detail.value) + 1) as ScorePeriod })}><View className="mini-drawer-field"><Text>节次</Text><Text>{Number(event.period) <= 4 ? `第 ${event.period} 节` : `加时 ${Number(event.period) - 4}`}</Text></View></Picker><Picker mode="selector" range={["普通", "节末", "终场"]} value={["none", "period", "game"].indexOf(event.boundary ?? "none")} onChange={(change) => update({ boundary: (["none", "period", "game"] as const)[Number(change.detail.value)] })}><View className="mini-drawer-field"><Text>标记</Text><Text>{event.boundary === "game" ? "终场" : event.boundary === "period" ? "节末" : "普通"}</Text></View></Picker><Button className="mini-drawer-delete" onClick={() => { onChange(deleteScoreAt(document.running_score, event.id)); onClose(); }}>清空此格号码</Button></>}</View></View>;
 }
 
 function PublishPanel({ errors, warnings, validationReady, readOnly, publish }: { errors: Array<{ id: string; message: string; region: ScoresheetRegion }>; warnings: Array<{ id: string; message: string; region: ScoresheetRegion }>; validationReady: boolean; readOnly: boolean; publish: () => void }) {

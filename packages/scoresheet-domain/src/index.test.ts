@@ -4,6 +4,8 @@ import {
   addScoreEvent,
   canPlaceScore,
   deleteScoreEvent,
+  deleteScoreAt,
+  insertScoreAt,
   nextLegalCumulative,
   scoreGridRow,
   type ScoreEvent,
@@ -69,11 +71,27 @@ describe("paper running score", () => {
         sequence: index + 1,
         team: "A",
         value: 2,
-        period: "OT",
+        period: "8",
         player_id: "",
         player_number: "",
         cumulative: (index + 1) * 2,
       }));
     expect(nextLegalCumulative(events, "A", 1)).toBeNull();
+  });
+
+  it("inserts and clears a jersey in the middle without moving cumulative cells", () => {
+    const events: ScoreEvent[] = [{
+      id: "five", sequence: 1, team: "A", value: 5, period: "1", player_id: "p1", player_number: "7", cumulative: 5,
+    }];
+    const inserted = insertScoreAt(events, {
+      id: "two", team: "A", period: "1", player_id: "p2", player_number: "9", cumulative: 2,
+    });
+    expect(inserted).toMatchObject([
+      { id: "two", value: 2, cumulative: 2, mark: "slash" },
+      { id: "five", value: 3, cumulative: 5, mark: "circle" },
+    ]);
+    expect(deleteScoreAt(inserted, "two")).toMatchObject([
+      { id: "five", value: 5, cumulative: 5 },
+    ]);
   });
 });

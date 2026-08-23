@@ -35,8 +35,8 @@ const photo = {
   kind: "GROUP_PHOTO", storage_status: "ONLINE", content_url: "/photo-one.jpg",
   original_filename: "group.jpg", mime_type: "image/jpeg", byte_size: 2048,
   width: 1200, height: 800, sort_order: 0, scoresheet_complete_confirmed: false,
-  review_status: "PENDING", review_note: "", uploaded_by: "admin",
-  created_at: "2026-08-20T20:00:00+08:00", version: 1,
+  uploaded_by: "admin", created_at: "2026-08-20T20:00:00+08:00", version: 1,
+  can_replace: true, can_delete: true,
 } as GameMediaAsset;
 
 afterEach(() => {
@@ -49,7 +49,7 @@ function clientWith(overrides: Partial<AdminClient> = {}) {
   return {
     listScoresheets: vi.fn().mockResolvedValue(games),
     listAdminGameMedia: vi.fn().mockResolvedValue([photo]),
-    reviewAdminGameMedia: vi.fn().mockResolvedValue({ ...photo, review_status: "APPROVED" }),
+    uploadAdminGameMedia: vi.fn().mockResolvedValue(photo),
     replaceAdminGameMedia: vi.fn(),
     deleteAdminGameMedia: vi.fn(),
     ...overrides,
@@ -66,7 +66,6 @@ describe("GameMediaWorkbench", () => {
         seasons={seasons}
         seasonId="season-live"
         initialGameId="game-one"
-        accountRole="SUPERADMIN"
         onSeasonChange={vi.fn()}
       />,
     );
@@ -75,21 +74,37 @@ describe("GameMediaWorkbench", () => {
     const summary = screen.getByLabelText("比赛资料摘要");
     expect(summary).toHaveTextContent("1 场待上传记录表");
     expect(summary).toHaveTextContent("1 场待核对记录表");
-    expect(summary).toHaveTextContent("1 张照片待审核");
     expect(screen.getByRole("button", { name: /继续核对/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: "删除照片" })).toBeVisible();
+    expect(screen.getByText("添加其他照片")).toBeVisible();
+    expect(screen.queryByText("上传比赛合照")).not.toBeInTheDocument();
+    expect(screen.queryByText(/待审核|待审/)).not.toBeInTheDocument();
     expect(screen.queryByText("LEGACY-851a630369b794bd067aa399222b4f76")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("搜索球队、日期或场地")).toBeVisible();
     await waitFor(() => expect(window.location.search).toContain("game_id=game-one"));
-
-    await user.click(screen.getByRole("button", { name: "通过" }));
-    expect(client.reviewAdminGameMedia).toHaveBeenCalledWith("photo-one", {
-      expected_version: 1, approve: true, note: "",
-    });
 
     await user.selectOptions(screen.getByLabelText("处理状态"), "UPLOAD");
     expect(await screen.findByText("尚未上传记录表原图")).toBeVisible();
     expect(screen.getByRole("button", { name: /上传并识别/ })).toBeVisible();
     expect(screen.queryByText("数学")).not.toBeInTheDocument();
+  });
+
+  it("offers one group-photo upload and a multi-file other-photo upload when empty", async () => {
+    const client = clientWith({ listAdminGameMedia: vi.fn().mockResolvedValue([]) });
+    render(
+      <GameMediaWorkbench
+        client={client}
+        seasons={seasons}
+        seasonId="season-live"
+        initialGameId="game-one"
+        onSeasonChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("尚未上传比赛合照")).toBeVisible();
+    expect(screen.getByText("上传比赛合照")).toBeVisible();
+    expect(screen.getByText("添加其他照片")).toBeVisible();
+    expect(screen.queryByText(/待审核|通过|未通过/)).not.toBeInTheDocument();
   });
 
   it("keeps archived media readable while hiding every mutation control", async () => {
@@ -105,7 +120,6 @@ describe("GameMediaWorkbench", () => {
         client={client}
         seasons={archivedSeasons}
         seasonId="season-live"
-        accountRole="SUPERADMIN"
         onSeasonChange={vi.fn()}
       />,
     );
@@ -113,9 +127,7 @@ describe("GameMediaWorkbench", () => {
     expect(await screen.findByText("已归档赛季")).toBeVisible();
     expect(await screen.findByText("原图已离线归档")).toBeVisible();
     expect(screen.getByRole("button", { name: /查看记录表/ })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "退回" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "删除照片" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "上传替换" })).not.toBeInTheDocument();
   });
 
@@ -127,7 +139,6 @@ describe("GameMediaWorkbench", () => {
         seasons={seasons}
         seasonId="season-live"
         initialGameId="game-two"
-        accountRole="SUPERADMIN"
         onSeasonChange={vi.fn()}
       />,
     );
@@ -145,7 +156,6 @@ describe("GameMediaWorkbench", () => {
         seasons={seasons}
         seasonId="season-live"
         initialGameId="missing-game"
-        accountRole="SUPERADMIN"
         onSeasonChange={vi.fn()}
       />,
     );

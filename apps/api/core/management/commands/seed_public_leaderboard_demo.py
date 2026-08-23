@@ -345,9 +345,7 @@ def _recognition_result(
             {
                 "role": role,
                 "name": "",
-                "signature": (
-                    "present" if role in {"crew_chief", "umpire_1"} else "absent"
-                ),
+                "signature": "absent",
             }
             for role in (
                 "scorer", "assistant_scorer", "timer", "shot_clock_operator",

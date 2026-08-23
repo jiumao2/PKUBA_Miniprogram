@@ -1,5 +1,5 @@
 export default definePageConfig({
-  navigationStyle: "custom",
-  disableScroll: true,
-  backgroundColor: "#f2f0eb",
+  navigationBarTitleText: "记录表核对",
+  backgroundColor: "#f7f8f7",
+  backgroundTextStyle: "dark",
 });

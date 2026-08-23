@@ -381,7 +381,7 @@ body.is-resizing-panes, body.is-resizing-panes * { cursor: col-resize !important
 .summary-form { margin-top: 16px; }
 
 .official-list { display: grid; gap: 7px; }
-.official-row { display: grid; grid-template-columns: 74px 1fr 78px; gap: 6px; align-items: center; }
+.official-row { display: grid; grid-template-columns: 74px 1fr; gap: 6px; align-items: center; }
 .official-row > span { color: var(--muted); font-size: 9px; }
 .official-row input, .official-row select { height: 29px; padding: 0 6px; font-size: 9px; }
 .table-personnel-heading { margin-top: 4px; }

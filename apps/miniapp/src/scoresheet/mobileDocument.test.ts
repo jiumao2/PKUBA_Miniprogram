@@ -173,6 +173,8 @@ describe("mobile scoresheet projection", () => {
     expect(merged.score_events[0].points).toBeNull();
     expect(merged.stated_period_scores.find((row) => row.period === 6)).toMatchObject({ team_a: 3, team_b: 1 });
     expect(merged.officials.find((row) => row.role === "crew_chief")?.signature).toBe("unclear");
-    expect((merged.recognition as { notes: string }).notes).toBe("keep me");
+    expect(merged.recognition?.notes).toBe("keep me");
+    expect(merged.table_personnel).toBeUndefined();
+    expect(merged.recognition?.table_personnel).toEqual(["记录员甲"]);
   });
 });

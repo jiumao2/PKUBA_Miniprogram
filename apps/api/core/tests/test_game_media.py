@@ -4,11 +4,13 @@ import hashlib
 import io
 import json
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile, TemporaryUploadedFile
+from django.db import close_old_connections
 from django.test import Client, override_settings
 from PIL import Image
 
@@ -16,6 +18,7 @@ from core.models import (
     Account,
     AdminAuditLog,
     ApiIdempotencyRecord,
+    Game,
     GameMediaAsset,
     Season,
 )
@@ -236,7 +239,8 @@ def test_scoresheet_upload_is_admin_only_and_requires_confirmation(tmp_path):
         assert duplicate.json()["code"] == "SCORESHEET_SOURCE_EXISTS"
         assert created.json()["width"] == 640
         assert created.json()["height"] == 900
-        assert created.json()["review_status"] == GameMediaAsset.ReviewStatus.PENDING
+        assert created.json()["can_replace"] is True
+        assert created.json()["can_delete"] is False
         assert listed.status_code == 200
         assert listed.json()["can_upload"] is False
         assert listed.json()["assets"] == []
@@ -245,7 +249,7 @@ def test_scoresheet_upload_is_admin_only_and_requires_confirmation(tmp_path):
         assert (tmp_path / asset.file_key).exists()
 
 
-def test_ordinary_admin_can_upload_media_but_cannot_review(tmp_path):
+def test_ordinary_admin_can_upload_and_delete_non_scoresheet_media(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
     token = issue_session(setup["admin"])
@@ -264,14 +268,63 @@ def test_ordinary_admin_can_upload_media_but_cannot_review(tmp_path):
             f"/api/v1/game-media/games/{game.id}",
             HTTP_AUTHORIZATION=f"Bearer {token}",
         )
+        deleted = client.delete(
+            f"/api/v1/game-media/assets/{created.json()['id']}",
+            data=json.dumps({"expected_version": created.json()["version"]}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
 
     assert created.status_code == 201
+    assert created.json()["can_replace"] is True
+    assert created.json()["can_delete"] is True
+    assert "review_status" not in created.json()
     assert collection.status_code == 200
     assert collection.json()["can_upload"] is True
-    assert collection.json()["can_review"] is False
+    assert "can_review" not in collection.json()
+    assert deleted.status_code == 204
+    asset = GameMediaAsset.objects.get(id=created.json()["id"])
+    assert asset.review_status == GameMediaAsset.ReviewStatus.APPROVED
+    assert asset.deleted_at is not None
 
 
-def test_admin_can_replace_wrong_upload_and_new_asset_requires_review(tmp_path):
+def test_scoresheet_cannot_be_deleted_by_any_admin(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    ordinary_token = issue_session(setup["admin"])
+    superadmin_token = issue_session(setup["superadmin"])
+    client = Client()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        created = upload(
+            client,
+            game.id,
+            ordinary_token,
+            kind=GameMediaAsset.Kind.SCORESHEET,
+            confirmed=True,
+            file=image_file("protected-sheet.jpg", (640, 900)),
+        ).json()
+        ordinary_delete = client.delete(
+            f"/api/v1/game-media/assets/{created['id']}",
+            data=json.dumps({"expected_version": created["version"]}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {ordinary_token}",
+        )
+        superadmin_delete = client.delete(
+            f"/api/v1/game-media/assets/{created['id']}",
+            data=json.dumps({"expected_version": created["version"]}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {superadmin_token}",
+        )
+
+    assert ordinary_delete.status_code == 400
+    assert ordinary_delete.json()["code"] == "SCORESHEET_DELETE_FORBIDDEN"
+    assert superadmin_delete.status_code == 400
+    assert superadmin_delete.json()["code"] == "SCORESHEET_DELETE_FORBIDDEN"
+    assert GameMediaAsset.objects.get(id=created["id"]).deleted_at is None
+
+
+def test_admin_can_replace_wrong_scoresheet_upload_with_permission_flags(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
     admin_token = issue_session(setup["admin"])
@@ -313,11 +366,14 @@ def test_admin_can_replace_wrong_upload_and_new_asset_requires_review(tmp_path):
     assert missing_confirmation.json()["code"] == "SCORESHEET_CONFIRMATION_REQUIRED"
     assert replacement.status_code == 201
     assert replacement.json()["id"] != old_id
-    assert replacement.json()["review_status"] == GameMediaAsset.ReviewStatus.PENDING
+    assert replacement.json()["can_replace"] is True
+    assert replacement.json()["can_delete"] is False
     assert [asset["id"] for asset in listed.json()["items"]] == [replacement.json()["id"]]
     assert old_content.status_code == 400
     old_asset = GameMediaAsset.objects.get(id=old_id)
+    new_asset = GameMediaAsset.objects.get(id=replacement.json()["id"])
     assert old_asset.deleted_at is not None
+    assert new_asset.review_status == GameMediaAsset.ReviewStatus.PENDING
     assert (tmp_path / old_asset.file_key).exists()
     assert AdminAuditLog.objects.filter(
         action="GAME_MEDIA_REPLACED",
@@ -429,7 +485,7 @@ def test_ordinary_admin_can_reupload_group_photo_and_public_detail_updates(tmp_p
     ]
 
 
-def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):
+def test_media_permissions_and_soft_delete_are_audited_without_review(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
     participant_token = issue_session(setup["accounts"][0])
@@ -464,42 +520,24 @@ def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):
         )
         asset_id = created.json()["id"]
 
-        client.force_login(setup["superadmin"])
-        rejected_without_note = client.post(
-            f"/api/v1/admin/game-media/{asset_id}/review",
-            data=json.dumps({
-                "expected_version": created.json()["version"],
-                "approve": False,
-                "note": "",
-            }),
-            content_type="application/json",
-        )
-        approved = client.post(
-            f"/api/v1/admin/game-media/{asset_id}/review",
-            data=json.dumps({
-                "expected_version": created.json()["version"],
-                "approve": True,
-                "note": "画面清晰",
-            }),
-            content_type="application/json",
-        )
+        client.force_login(setup["admin"])
         deleted = client.delete(
             f"/api/v1/admin/game-media/{asset_id}",
-            data=json.dumps({"expected_version": approved.json()["version"]}),
+            data=json.dumps({"expected_version": created.json()["version"]}),
             content_type="application/json",
         )
 
     assert forbidden.status_code == 403
     assert participant_forbidden.status_code == 403
     assert created.status_code == 201
-    assert rejected_without_note.status_code == 400
-    assert approved.status_code == 200
-    assert approved.json()["review_status"] == GameMediaAsset.ReviewStatus.APPROVED
     assert deleted.status_code == 204
     asset = GameMediaAsset.objects.get(id=asset_id)
+    assert asset.review_status == GameMediaAsset.ReviewStatus.APPROVED
     assert asset.deleted_at is not None
     assert AdminAuditLog.objects.filter(action="GAME_MEDIA_UPLOADED", object_id=asset.id).exists()
-    assert AdminAuditLog.objects.filter(action="GAME_MEDIA_REVIEWED", object_id=asset.id).exists()
+    assert not AdminAuditLog.objects.filter(
+        action="GAME_MEDIA_REVIEWED", object_id=asset.id
+    ).exists()
     assert AdminAuditLog.objects.filter(action="GAME_MEDIA_DELETED", object_id=asset.id).exists()
 
 
@@ -762,7 +800,10 @@ def test_public_game_detail_exposes_only_online_group_photos_without_review_gate
         )
         detail = client.get(f"/api/v1/public/games/{game.id}/detail")
 
-    assert group_photo.json()["review_status"] == GameMediaAsset.ReviewStatus.PENDING
+    assert "review_status" not in group_photo.json()
+    assert GameMediaAsset.objects.get(id=group_photo.json()["id"]).review_status == (
+        GameMediaAsset.ReviewStatus.APPROVED
+    )
     assert detail.status_code == 200
     assert detail.json()["game"]["id"] == str(game.id)
     assert detail.json()["stats"] is None
@@ -778,7 +819,7 @@ def test_public_game_detail_exposes_only_online_group_photos_without_review_gate
     }
 
 
-def test_superadmin_can_review_delete_and_reorder_media_from_miniapp(tmp_path):
+def test_group_photo_is_single_and_non_scoresheet_media_can_be_deleted(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]
     token = issue_session(setup["superadmin"])
@@ -794,71 +835,94 @@ def test_superadmin_can_review_delete_and_reorder_media_from_miniapp(tmp_path):
             confirmed=False,
             file=image_file("first.jpg", (1200, 800)),
         ).json()
-        second = upload(
+        duplicate_group = upload(
             client,
             game.id,
             token,
             kind=GameMediaAsset.Kind.GROUP_PHOTO,
             confirmed=False,
             file=image_file("second.jpg", (1201, 800)),
-        ).json()
-        reordered = client.post(
-            f"/api/v1/game-media/games/{game.id}/reorder",
-            data=json.dumps(
-                {
-                    "kind": GameMediaAsset.Kind.GROUP_PHOTO,
-                    "items": [
-                        {"id": second["id"], "expected_version": second["version"]},
-                        {"id": first["id"], "expected_version": first["version"]},
-                    ],
-                }
-            ),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {token}",
         )
-        rows = [
-            row
-            for row in reordered.json()["assets"]
-            if row["kind"] == GameMediaAsset.Kind.GROUP_PHOTO
-        ]
-        ordinary_review = client.post(
-            f"/api/v1/game-media/assets/{rows[0]['id']}/review",
-            data=json.dumps(
-                {
-                    "expected_version": rows[0]["version"],
-                    "approve": True,
-                    "note": "",
-                }
-            ),
+        first_other = upload(
+            client,
+            game.id,
+            ordinary_token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("other-one.jpg", (900, 700)),
+        ).json()
+        second_other = upload(
+            client,
+            game.id,
+            ordinary_token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("other-two.jpg", (901, 700)),
+        ).json()
+        delete_group = client.delete(
+            f"/api/v1/game-media/assets/{first['id']}",
+            data=json.dumps({"expected_version": first["version"]}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {ordinary_token}",
         )
-        reviewed = client.post(
-            f"/api/v1/game-media/assets/{rows[0]['id']}/review",
-            data=json.dumps(
-                {
-                    "expected_version": rows[0]["version"],
-                    "approve": True,
-                    "note": "",
-                }
-            ),
+        delete_other = client.delete(
+            f"/api/v1/game-media/assets/{first_other['id']}",
+            data=json.dumps({"expected_version": first_other["version"]}),
             content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {token}",
-        )
-        deleted = client.delete(
-            f"/api/v1/game-media/assets/{rows[1]['id']}",
-            data=json.dumps({"expected_version": rows[1]["version"]}),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_AUTHORIZATION=f"Bearer {ordinary_token}",
         )
 
-    assert reordered.status_code == 200
-    assert [row["id"] for row in rows] == [second["id"], first["id"]]
-    assert [row["sort_order"] for row in rows] == [1, 2]
-    assert ordinary_review.status_code == 403
-    assert reviewed.status_code == 200
-    assert reviewed.json()["review_status"] == GameMediaAsset.ReviewStatus.APPROVED
-    assert deleted.status_code == 204
-    assert AdminAuditLog.objects.filter(
-        action="GAME_MEDIA_REORDERED", object_id=game.id
-    ).exists()
+    assert duplicate_group.status_code == 409
+    assert duplicate_group.json()["code"] == "GROUP_PHOTO_EXISTS"
+    assert first_other["can_delete"] is True
+    assert second_other["can_delete"] is True
+    assert delete_group.status_code == 204
+    assert delete_other.status_code == 204
+    assert GameMediaAsset.objects.filter(
+        game=game,
+        kind=GameMediaAsset.Kind.GROUP_PHOTO,
+        deleted_at__isnull=True,
+    ).count() == 0
+    assert GameMediaAsset.objects.filter(
+        game=game,
+        kind=GameMediaAsset.Kind.GAME_PHOTO,
+        deleted_at__isnull=True,
+    ).count() == 1
+
+
+def test_concurrent_group_photo_uploads_create_only_one_current_asset(tmp_path):
+    setup = reschedule_setup()
+    game_id = setup["games"][0].id
+    actor_id = setup["admin"].id
+
+    def submit(index: int) -> str:
+        close_old_connections()
+        try:
+            game = Game.objects.select_related("season").get(id=game_id)
+            actor = Account.objects.get(id=actor_id)
+            upload_game_media(
+                actor=actor,
+                game=game,
+                kind=GameMediaAsset.Kind.GROUP_PHOTO,
+                scoresheet_complete_confirmed=False,
+                uploaded_file=image_file(
+                    f"concurrent-{index}.jpg",
+                    (800 + index, 600),
+                ),
+            )
+            return "CREATED"
+        except GameMediaError as error:
+            return error.code
+        finally:
+            close_old_connections()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(executor.map(submit, [1, 2]))
+
+    assert sorted(outcomes) == ["CREATED", "GROUP_PHOTO_EXISTS"]
+    assert GameMediaAsset.objects.filter(
+        game_id=game_id,
+        kind=GameMediaAsset.Kind.GROUP_PHOTO,
+        deleted_at__isnull=True,
+    ).count() == 1

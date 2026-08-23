@@ -6117,22 +6117,6 @@
         "parameters": [
           {
             "in": "query",
-            "name": "review_status",
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Review Status"
-            },
-            "required": false
-          },
-          {
-            "in": "query",
             "name": "kind",
             "schema": {
               "anyOf": [
@@ -6331,84 +6315,6 @@
                   "scoresheet_complete_confirmed",
                   "image"
                 ]
-              }
-            }
-          },
-          "required": true
-        },
-        "security": [
-          {
-            "AdminSessionAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/game-media/{asset_id}/review": {
-      "post": {
-        "operationId": "core_api_game_media_review_admin_game_media",
-        "summary": "Review Admin Game Media",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "asset_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Asset Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaAssetOut"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "admin-game-media"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewGameMediaIn"
               }
             }
           },
@@ -7650,94 +7556,6 @@
         ]
       }
     },
-    "/api/v1/game-media/assets/{asset_id}/review": {
-      "post": {
-        "operationId": "core_api_game_media_review_miniapp_game_media",
-        "summary": "Review Miniapp Game Media",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "asset_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Asset Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaAssetOut"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "game-media"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewGameMediaIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "security": [
-          {
-            "MiniAppBearerAuth": []
-          }
-        ]
-      }
-    },
     "/api/v1/game-media/assets/{asset_id}": {
       "delete": {
         "operationId": "core_api_game_media_delete_miniapp_game_media",
@@ -7807,94 +7625,6 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DeleteGameMediaIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "security": [
-          {
-            "MiniAppBearerAuth": []
-          }
-        ]
-      }
-    },
-    "/api/v1/game-media/games/{game_id}/reorder": {
-      "post": {
-        "operationId": "core_api_game_media_reorder_miniapp_game_media",
-        "summary": "Reorder Miniapp Game Media",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "game_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Game Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaCollectionOut"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GameMediaErrorOut"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "game-media"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReorderGameMediaIn"
               }
             }
           },
@@ -19358,14 +19088,6 @@
             "title": "Scoresheet Complete Confirmed",
             "type": "boolean"
           },
-          "review_status": {
-            "title": "Review Status",
-            "type": "string"
-          },
-          "review_note": {
-            "title": "Review Note",
-            "type": "string"
-          },
           "uploaded_by": {
             "title": "Uploaded By",
             "type": "string"
@@ -19378,6 +19100,14 @@
           "version": {
             "title": "Version",
             "type": "integer"
+          },
+          "can_replace": {
+            "title": "Can Replace",
+            "type": "boolean"
+          },
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
           }
         },
         "required": [
@@ -19395,11 +19125,11 @@
           "height",
           "sort_order",
           "scoresheet_complete_confirmed",
-          "review_status",
-          "review_note",
           "uploaded_by",
           "created_at",
-          "version"
+          "version",
+          "can_replace",
+          "can_delete"
         ],
         "title": "GameMediaAssetOut",
         "type": "object"
@@ -19451,29 +19181,6 @@
           "page_size"
         ],
         "title": "GameMediaPageOut",
-        "type": "object"
-      },
-      "ReviewGameMediaIn": {
-        "properties": {
-          "expected_version": {
-            "title": "Expected Version",
-            "type": "integer"
-          },
-          "approve": {
-            "title": "Approve",
-            "type": "boolean"
-          },
-          "note": {
-            "default": "",
-            "title": "Note",
-            "type": "string"
-          }
-        },
-        "required": [
-          "expected_version",
-          "approve"
-        ],
-        "title": "ReviewGameMediaIn",
         "type": "object"
       },
       "DeleteGameMediaIn": {
@@ -19841,10 +19548,6 @@
             "title": "Can Upload",
             "type": "boolean"
           },
-          "can_review": {
-            "title": "Can Review",
-            "type": "boolean"
-          },
           "assets": {
             "items": {
               "$ref": "#/components/schemas/GameMediaAssetOut"
@@ -19856,55 +19559,9 @@
         "required": [
           "game_id",
           "can_upload",
-          "can_review",
           "assets"
         ],
         "title": "GameMediaCollectionOut",
-        "type": "object"
-      },
-      "ReorderGameMediaIn": {
-        "properties": {
-          "kind": {
-            "enum": [
-              "SCORESHEET",
-              "GROUP_PHOTO",
-              "GAME_PHOTO"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ReorderGameMediaItemIn"
-            },
-            "title": "Items",
-            "type": "array"
-          }
-        },
-        "required": [
-          "kind",
-          "items"
-        ],
-        "title": "ReorderGameMediaIn",
-        "type": "object"
-      },
-      "ReorderGameMediaItemIn": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "expected_version": {
-            "title": "Expected Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "expected_version"
-        ],
-        "title": "ReorderGameMediaItemIn",
         "type": "object"
       },
       "InboxSummaryOut": {

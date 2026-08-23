@@ -7,6 +7,7 @@ import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
 import { ScheduleDayScroller } from "../../components/schedule-day-scroller";
 import { navigateToOnce } from "../../navigation";
+import { gameDetailRoute } from "../../routes";
 import "./index.css";
 
 export default function AdminGamesPage() {
@@ -74,7 +75,7 @@ export default function AdminGamesPage() {
           divisionId={divisionId === "all" ? "" : divisionId}
           mode="admin"
           refreshKey={refreshKey}
-          onGameClick={(game) => void navigateToOnce(`/pages/game-media/index?id=${game.id}`)}
+          onGameClick={(game) => void navigateToOnce(gameDetailRoute(game.id))}
         />
       )}
     </View>

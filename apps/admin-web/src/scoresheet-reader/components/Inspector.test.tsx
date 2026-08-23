@@ -176,7 +176,8 @@ describe('semantic inspector', () => {
     await user.click(screen.getByRole('button', { name: '删除记录台人员 2' }));
     await user.click(screen.getByRole('button', { name: '添加人员' }));
 
-    expect(screen.getByText(/同一姓名可以用于多个岗位/)).toBeVisible();
+    expect(screen.getByText(/没有填写或看不清时保持为空/)).toBeVisible();
+    expect(screen.queryByLabelText(/签名状态/)).not.toBeInTheDocument();
     const document = JSON.parse(screen.getByTestId('document-json').textContent ?? '{}');
     expect(document.recognition.table_personnel).toEqual(['王五', '']);
     expect(document.officials.find((official: { role: string }) => official.role === 'scorer').name)

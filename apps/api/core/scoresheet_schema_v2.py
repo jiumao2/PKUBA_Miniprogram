@@ -107,6 +107,7 @@ def _source_prior(prior: dict[str, Any], roster: dict[str, list[dict[str, Any]]]
         },
         "source_hash": source_hash,
         "locked_paths": [
+            "/header/game_number",
             "/header/competition",
             "/header/date",
             "/header/scheduled_time",
@@ -481,7 +482,7 @@ def _preserve_server_fields(current: dict[str, Any], incoming: dict[str, Any]) -
         row.get("side"): row for row in current.get("teams", []) if isinstance(row, dict)
     }
     if current.get("game_prior"):
-        for key in ("competition", "date", "scheduled_time", "venue"):
+        for key in ("game_number", "competition", "date", "scheduled_time", "venue"):
             prepared["header"][key] = current["header"][key]
         for team in prepared.get("teams", []):
             if isinstance(team, dict) and team.get("side") in current_teams:
@@ -489,6 +490,42 @@ def _preserve_server_fields(current: dict[str, Any], incoming: dict[str, Any]) -
     prepared["acknowledged_warnings"] = []
     prepared["status"] = "needs_review" if prepared.get("recognition") else "draft"
     return prepared
+
+
+def _derive_final_score(document: dict[str, Any]) -> None:
+    """Keep the canonical result tied to the paper's stated period scores."""
+    scores = document.get("stated_period_scores") or []
+    team_a = sum(int(row.get("team_a") or 0) for row in scores if isinstance(row, dict))
+    team_b = sum(int(row.get("team_b") or 0) for row in scores if isinstance(row, dict))
+    teams = {
+        row.get("side"): str(row.get("name") or "")
+        for row in document.get("teams", [])
+        if isinstance(row, dict)
+    }
+    final = document.setdefault("final_score", {})
+    final["team_a"] = team_a
+    final["team_b"] = team_b
+    final["winner_name"] = (
+        teams.get("A", "")
+        if team_a > team_b
+        else teams.get("B", "")
+        if team_b > team_a
+        else ""
+    )
+
+
+def _assert_editable_path(document: dict[str, Any], path: str) -> None:
+    locked_paths = set((document.get("game_prior") or {}).get("locked_paths") or [])
+    if path in locked_paths:
+        raise ScoresheetDocumentError(
+            "SCORESHEET_FIELD_LOCKED",
+            "该比赛资料由赛程和名单确定，不能在记录表中修改。",
+        )
+    if path in {"/final_score/team_a", "/final_score/team_b", "/final_score/winner_name"}:
+        raise ScoresheetDocumentError(
+            "SCORESHEET_FIELD_LOCKED",
+            "最终比分和胜队由各节比分自动计算，不能直接修改。",
+        )
 
 
 def apply_changes(
@@ -508,6 +545,7 @@ def apply_changes(
             if operation != "SET" or not isinstance(value, dict):
                 raise ScoresheetDocumentError("DRAFT_ROOT_INVALID", "整表替换必须提交 JSON 对象。")
             candidate = _preserve_server_fields(document, value)
+            _derive_final_score(candidate)
             try:
                 updated = ScoresheetDocument.model_validate(candidate).model_dump(mode="json")
             except ValidationError as error:
@@ -523,6 +561,7 @@ def apply_changes(
             normalized_changes.extend(root_changes)
             continue
         parts = [_decode_pointer_part(part) for part in path.lstrip("/").split("/")]
+        _assert_editable_path(document, path)
         cursor: Any = updated
         for part in parts[:-1]:
             if isinstance(cursor, list):
@@ -564,6 +603,11 @@ def apply_changes(
             raise ScoresheetDocumentError("DRAFT_PATH_INVALID", f"字段不存在：{path}")
         changed_regions.add(region)
         normalized_changes.append({"path": path, "operation": operation, "value": value})
+    before_derived = copy.deepcopy(updated)
+    _derive_final_score(updated)
+    for derived_change in _json_changes(before_derived, updated):
+        changed_regions.add(region_for_path(derived_change["path"]))
+        normalized_changes.append(derived_change)
     try:
         updated = ScoresheetDocument.model_validate(updated).model_dump(mode="json")
     except ValidationError as error:

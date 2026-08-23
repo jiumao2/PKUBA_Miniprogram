@@ -6,8 +6,8 @@ import type { MiniAppMe } from "@pkuba/api-client";
 import { api } from "../../api";
 import {
   clearMiniAppSession,
-  exchangeCurrentWeChat,
   getMiniAppSession,
+  resolveMiniAppIdentity,
 } from "../../auth";
 import { refreshInboxBadge, syncTabBar } from "../../tabbar";
 import { navigateToOnce } from "../../navigation";
@@ -34,24 +34,9 @@ export default function MinePage() {
     setLoading(true);
     setError(null);
     try {
-      const savedToken = getMiniAppSession();
-      if (!savedToken) {
-        const exchanged = await exchangeCurrentWeChat();
-        setMe(exchanged.requires_profile ? null : exchanged.me);
-        const token = getMiniAppSession();
-        if (token && !exchanged.requires_profile) await loadInboxCount(token);
-        return;
-      }
-      try {
-        setMe(await api.getMiniAppMe(savedToken));
-        await loadInboxCount(savedToken);
-      } catch {
-        clearMiniAppSession();
-        const exchanged = await exchangeCurrentWeChat();
-        setMe(exchanged.requires_profile ? null : exchanged.me);
-        const token = getMiniAppSession();
-        if (token && !exchanged.requires_profile) await loadInboxCount(token);
-      }
+      const identity = await resolveMiniAppIdentity();
+      setMe(identity.me);
+      if (identity.token && !identity.requiresProfile) await loadInboxCount(identity.token);
     } catch (reason: unknown) {
       clearMiniAppSession();
       setMe(null);

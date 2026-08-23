@@ -40,7 +40,7 @@ from .models import (
     TimeoutEntry,
 )
 
-PROMPT_VERSION = "scoresheet-2026-08-20-v24-cn"
+PROMPT_VERSION = "scoresheet-2026-08-24-v25-cn"
 QWEN_DATA_URI_MAX_BYTES = 20_000_000
 QWEN_WEBP_MAX_LONG_EDGE = 3840
 QWEN_WEBP_MAX_SHORT_EDGE = 2160
@@ -220,9 +220,6 @@ class RecognizedOfficial(OutputModel):
         "protest_captain",
     ]
     name: str | None = Field(description="图片中的裁判员姓名；无法确定时返回null。")
-    signature: Literal["present", "absent", "unclear"] = Field(
-        description="只记录签名是否存在，不要根据签名辨认签署人。"
-    )
 
 
 @dataclass(frozen=True)
@@ -1157,9 +1154,37 @@ def map_payload_to_document(
             problems.append("/final_score/winner_name")
         if final.ended_at is None:
             problems.append("/final_score/ended_at")
-        result.final_score.team_a = final.team_a or 0
-        result.final_score.team_b = final.team_b or 0
-        result.final_score.winner_name = final.winner_name or ""
+        derived_a = sum(item.team_a for item in scores)
+        derived_b = sum(item.team_b for item in scores)
+        if final.team_a is not None and final.team_a != derived_a:
+            recognition_issues.append(
+                RecognitionIssue(
+                    code="WRITTEN_FINAL_SCORE_MISMATCH",
+                    path="/final_score/team_a",
+                    message="纸面最终比分与各节比分之和不一致；草稿已采用各节比分之和。",
+                    observed=final.team_a,
+                    expected=derived_a,
+                )
+            )
+        if final.team_b is not None and final.team_b != derived_b:
+            recognition_issues.append(
+                RecognitionIssue(
+                    code="WRITTEN_FINAL_SCORE_MISMATCH",
+                    path="/final_score/team_b",
+                    message="纸面最终比分与各节比分之和不一致；草稿已采用各节比分之和。",
+                    observed=final.team_b,
+                    expected=derived_b,
+                )
+            )
+        result.final_score.team_a = derived_a
+        result.final_score.team_b = derived_b
+        result.final_score.winner_name = (
+            result.teams[0].name
+            if derived_a > derived_b
+            else result.teams[1].name
+            if derived_b > derived_a
+            else ""
+        )
         result.final_score.ended_at = final.ended_at or ""
 
     existing_table_personnel = (
@@ -1181,7 +1206,7 @@ def map_payload_to_document(
             by_role[item.role] = OfficialEntry(
                 role=item.role,
                 name=item.name or "",
-                signature=SignaturePresence(item.signature),
+                signature=SignaturePresence.ABSENT,
             )
         result.officials = list(by_role.values())
         for role in ("crew_chief", "umpire_1", "umpire_2"):
