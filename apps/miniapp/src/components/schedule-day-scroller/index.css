@@ -4,23 +4,17 @@
 .schedule-scroll-content { box-sizing: border-box; min-height: 100%; padding: 18rpx 28rpx 160rpx; }
 .schedule-day-section { padding: 18rpx 0 30rpx; }
 .schedule-day-section + .schedule-day-section { border-top: 1rpx solid #ddd8d1; }
-.schedule-day-section.is-today { margin: 8rpx -12rpx 20rpx; padding: 24rpx 12rpx 32rpx; border: 3rpx solid #c91f26; border-radius: 16rpx; }
 .schedule-day-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8rpx; }
-.schedule-day-title-line { display: flex; align-items: center; gap: 12rpx; }
 .schedule-day-title { color: #191715; font-size: 34rpx; font-weight: 850; }
 .schedule-day-count { color: #77716a; font-size: 26rpx; font-weight: 700; }
-.schedule-today-badge { display: grid; place-items: center; width: 44rpx; height: 44rpx; border-radius: 50%; background: #c91f26; color: #fff; font-size: 26rpx; font-weight: 900; line-height: 44rpx; text-align: center; }
 .schedule-day-section .game-timeline { margin-top: 0; }
-.today-no-game { display: flex; align-items: center; justify-content: center; gap: 14rpx; margin: 22rpx 0; padding: 18rpx 24rpx; border-top: 2rpx solid #c91f26; border-bottom: 2rpx solid #c91f26; color: #9f2428; font-size: 28rpx; font-weight: 850; }
-.today-no-game text + text { color: #6e6861; font-weight: 700; }
 .return-today { position: fixed; right: 28rpx; bottom: calc(132rpx + env(safe-area-inset-bottom)); z-index: 30; width: auto; height: 68rpx; margin: 0; padding: 0 24rpx; border: 1rpx solid #c91f26; border-radius: 34rpx; background: rgba(255, 255, 255, .96); color: #a92227; font-size: 27rpx; font-weight: 800; line-height: 66rpx; box-shadow: 0 8rpx 24rpx rgba(40, 29, 24, .15); }
 .schedule-window.is-admin .return-today { bottom: 34rpx; }
 .return-today::after, .direction-retry::after { border: 0; }
 .schedule-refreshing { position: absolute; z-index: 4; top: 12rpx; left: 50%; padding: 9rpx 18rpx; border-radius: 999rpx; background: rgba(35, 32, 29, .84); color: #fff; font-size: 26rpx; transform: translateX(-50%); }
-.direction-state, .direction-retry, .direction-finished { display: block; box-sizing: border-box; width: 100%; min-height: 56rpx; margin: 0; color: #817b74; font-size: 26rpx; line-height: 56rpx; text-align: center; }
+.direction-state, .direction-retry { display: block; box-sizing: border-box; width: 100%; min-height: 56rpx; margin: 0; color: #817b74; font-size: 26rpx; line-height: 56rpx; text-align: center; }
 .direction-retry { padding: 0 18rpx; border: 0; background: transparent; color: #a92227; }
 .direction-state.pulse { animation: schedule-pulse 1.1s ease-in-out infinite; }
-.schedule-total { display: block; margin-top: 16rpx; color: #938d85; font-size: 26rpx; text-align: center; }
 .schedule-window-state { margin-top: 34rpx; padding: 34rpx 22rpx; border: 1rpx solid #ded9d1; background: #faf9f6; color: #67615a; font-size: 28rpx; text-align: center; }
 .schedule-window-state button { width: auto; margin-top: 18rpx; color: #a92227; background: transparent; font-size: 27rpx; }
 .schedule-window-skeleton { padding-top: 26rpx; }

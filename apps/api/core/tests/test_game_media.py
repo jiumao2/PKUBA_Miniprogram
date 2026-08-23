@@ -393,6 +393,42 @@ def test_group_photo_is_separate_from_other_photos_and_can_be_filtered(tmp_path)
     assert [asset["id"] for asset in filtered.json()["items"]] == [group_photo.json()["id"]]
 
 
+def test_ordinary_admin_can_reupload_group_photo_and_public_detail_updates(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["admin"])
+    client = Client()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        original = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GROUP_PHOTO,
+            confirmed=False,
+            file=image_file("group-original.jpg", (1200, 800)),
+        ).json()
+        replacement = client.post(
+            f"/api/v1/game-media/assets/{original['id']}/replace",
+            data={
+                "expected_version": original["version"],
+                "scoresheet_complete_confirmed": "false",
+                "image": image_file("group-reuploaded.jpg", (1600, 1000)),
+            },
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        detail = client.get(f"/api/v1/public/games/{game.id}/detail")
+
+    assert replacement.status_code == 201
+    assert replacement.json()["kind"] == GameMediaAsset.Kind.GROUP_PHOTO
+    assert replacement.json()["width"] == 1600
+    assert replacement.json()["height"] == 1000
+    assert GameMediaAsset.objects.get(id=original["id"]).deleted_at is not None
+    assert [photo["id"] for photo in detail.json()["group_photos"]] == [
+        replacement.json()["id"]
+    ]
+
+
 def test_media_permissions_review_and_soft_delete_are_audited(tmp_path):
     setup = reschedule_setup()
     game = setup["games"][0]

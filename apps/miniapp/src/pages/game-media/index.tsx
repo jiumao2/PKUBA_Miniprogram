@@ -336,20 +336,37 @@ function PublishedGameStats({ stats }: { stats: PublicScoresheetStat }) {
     (row) => row.appeared || row.points || row.personal_fouls,
   );
   if (!players.length) return <Text className="detail-empty">本场暂无球员数据。</Text>;
+  const sideStats = new Map(stats.team_stats.map((row) => [String(row.side ?? ""), row]));
+  const teams = [
+    { side: "A", name: stats.home_name, score: stats.home_score },
+    { side: "B", name: stats.away_name, score: stats.away_score },
+  ];
   return <View className="published-stats">
-    <View className="player-detail-head"><Text>球员</Text><Text>得分</Text><Text>1/2/3分</Text><Text>犯规</Text></View>
-    {players.map((player) => <View
-      className="player-detail-row"
-      key={`${player.team_id}-${player.player_id ?? player.player_name}`}
-    >
-      <View>
-        <Text>#{player.jersey_number || "–"} {player.player_name}</Text>
-        <Text>{player.team_name}{player.starter ? " · 首发" : ""}</Text>
-      </View>
-      <Text>{player.points}</Text>
-      <Text>{player.one_point_events}/{player.two_point_events}/{player.three_point_events}</Text>
-      <Text>{player.personal_fouls}</Text>
-    </View>)}
+    {teams.map((team) => {
+      const teamId = String(sideStats.get(team.side)?.team_id ?? "");
+      const teamPlayers = players.filter((player) => (
+        teamId ? player.team_id === teamId : player.team_name === team.name
+      ));
+      return <View className={`team-stat-table side-${team.side.toLowerCase()}`} key={team.side}>
+        <View className="team-stat-heading">
+          <Text>{team.name}</Text>
+          <Text>{team.score} 分</Text>
+        </View>
+        <View className="player-detail-head"><Text>球员</Text><Text>得分</Text><Text>1/2/3分</Text><Text>犯规</Text></View>
+        {teamPlayers.length ? teamPlayers.map((player) => <View
+          className="player-detail-row"
+          key={`${player.team_id}-${player.player_id ?? player.player_name}`}
+        >
+          <View>
+            <Text>#{player.jersey_number || "–"} {player.player_name}</Text>
+            {player.starter && <Text>首发</Text>}
+          </View>
+          <Text>{player.points}</Text>
+          <Text>{player.one_point_events}/{player.two_point_events}/{player.three_point_events}</Text>
+          <Text>{player.personal_fouls}</Text>
+        </View>) : <Text className="team-stat-empty">本队暂无球员数据</Text>}
+      </View>;
+    })}
   </View>;
 }
 
@@ -425,7 +442,7 @@ function AdminMediaLibrary({
           <View className="media-order-row">
             {collection.can_upload && <Button disabled={index === 0} onClick={() => onMove(asset, -1)}>上移</Button>}
             {collection.can_upload && <Button disabled={index === assets.length - 1} onClick={() => onMove(asset, 1)}>下移</Button>}
-            {collection.can_upload && online && <Button onClick={() => onReplace(asset)}>替换</Button>}
+            {collection.can_upload && online && <Button onClick={() => onReplace(asset)}>重新上传</Button>}
           </View>
           {collection.can_review && asset.kind !== "SCORESHEET" && <View className="media-review-row">
             <Button onClick={() => onReview(asset, true)}>通过</Button>

@@ -1,5 +1,5 @@
 import { Button, ScrollView, Text, View } from "@tarojs/components";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Game, ScheduleDay, ScheduleDays } from "@pkuba/api-client";
 
 import { api } from "../../api";
@@ -9,8 +9,6 @@ import {
   mergeScheduleDays,
   replaceScheduleRange,
   scheduleDayAnchor,
-  scheduleRenderItems,
-  TODAY_MARKER_ANCHOR,
 } from "./model";
 import "./index.css";
 
@@ -26,8 +24,7 @@ export function ScheduleDayScroller({
   onGameClick: (game: Game) => void;
 }) {
   const [days, setDays] = useState<ScheduleDay[]>([]);
-  const [today, setToday] = useState("");
-  const [totalGames, setTotalGames] = useState(0);
+  const [focusDate, setFocusDate] = useState("");
   const [hasPrevious, setHasPrevious] = useState(false);
   const [hasNext, setHasNext] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -52,8 +49,7 @@ export function ScheduleDayScroller({
   }
 
   function applyMetadata(result: ScheduleDays) {
-    setToday(result.today);
-    setTotalGames(result.total_games);
+    setFocusDate(result.focus_date ?? "");
     setHasPrevious(result.has_previous);
     setHasNext(result.has_next);
   }
@@ -133,7 +129,6 @@ export function ScheduleDayScroller({
       if (requestVersion !== requestVersionRef.current) return;
       commitDays(mergeScheduleDays(daysRef.current, result.days));
       setHasPrevious(result.has_previous);
-      setTotalGames(result.total_games);
       setScrollTarget("");
       setTimeout(() => setScrollTarget(scheduleDayAnchor(anchor)), 0);
     } catch (reason: unknown) {
@@ -160,7 +155,6 @@ export function ScheduleDayScroller({
       if (requestVersion !== requestVersionRef.current) return;
       commitDays(mergeScheduleDays(daysRef.current, result.days));
       setHasNext(result.has_next);
-      setTotalGames(result.total_games);
     } catch (reason: unknown) {
       if (requestVersion === requestVersionRef.current) setAfterError(messageOf(reason));
     } finally {
@@ -174,6 +168,7 @@ export function ScheduleDayScroller({
     if (divisionChanged) {
       divisionRef.current = divisionId;
       commitDays([]);
+      setFocusDate("");
       setScrollTarget("");
       setInitialError("");
       setBeforeError("");
@@ -188,17 +183,6 @@ export function ScheduleDayScroller({
     else void revalidateLoadedRange();
     // refreshKey deliberately revalidates on every page show without expanding the window.
   }, [divisionId, refreshKey]);
-
-  const renderItems = useMemo(
-    () => scheduleRenderItems(days, today, hasPrevious, hasNext),
-    [days, hasNext, hasPrevious, today],
-  );
-  const todayHasGame = days.some((day) => day.date === today);
-  const returnToToday = () => {
-    const target = todayHasGame ? scheduleDayAnchor(today) : TODAY_MARKER_ANCHOR;
-    setScrollTarget("");
-    setTimeout(() => setScrollTarget(target), 0);
-  };
 
   if (initialLoading && !days.length) {
     return <View className="schedule-window-skeleton" aria-label="正在读取赛程">
@@ -233,40 +217,36 @@ export function ScheduleDayScroller({
           loading={beforeLoading}
           error={beforeError}
           finished={!hasPrevious}
-          direction="before"
           onRetry={() => void loadBefore()}
         />
-        {renderItems.map((item) => item.kind === "today-marker" ? (
-          <View className="today-no-game" id={TODAY_MARKER_ANCHOR} key="today-marker">
-            <Text>今天</Text><Text>无比赛</Text>
-          </View>
-        ) : (
+        {days.map((day) => (
           <View
-            className={`schedule-day-section ${item.day.date === today ? "is-today" : ""}`}
-            id={scheduleDayAnchor(item.day.date)}
-            key={item.day.date}
+            className="schedule-day-section"
+            id={scheduleDayAnchor(day.date)}
+            key={day.date}
           >
             <View className="schedule-day-heading">
-              <View className="schedule-day-title-line">
-                <Text className="schedule-day-title">{formatDate(item.day.date)}</Text>
-                {item.day.date === today && <Text className="schedule-today-badge">今</Text>}
-              </View>
-              <Text className="schedule-day-count">{item.day.games.length} 场</Text>
+              <Text className="schedule-day-title">{formatDate(day.date)}</Text>
+              <Text className="schedule-day-count">{day.games.length} 场</Text>
             </View>
-            <GameTimeline games={item.day.games} showDates={false} onGameClick={onGameClick} />
+            <GameTimeline games={day.games} showDates={false} onGameClick={onGameClick} />
           </View>
         ))}
         <DirectionalState
           loading={afterLoading}
           error={afterError}
           finished={!hasNext}
-          direction="after"
           onRetry={() => void loadAfter()}
         />
-        <Text className="schedule-total">本赛季共 {totalGames} 场</Text>
       </View>
     </ScrollView>
-    <Button className="return-today" onClick={returnToToday}>回到今天</Button>
+    {focusDate && <Button
+      className="return-today"
+      onClick={() => {
+        setScrollTarget("");
+        setTimeout(() => setScrollTarget(scheduleDayAnchor(focusDate)), 0);
+      }}
+    >回到今天</Button>}
   </View>;
 }
 
@@ -274,20 +254,16 @@ function DirectionalState({
   loading,
   error,
   finished,
-  direction,
   onRetry,
 }: {
   loading: boolean;
   error: string;
   finished: boolean;
-  direction: "before" | "after";
   onRetry: () => void;
 }) {
   if (loading) return <View className="direction-state pulse"><Text>正在加载</Text></View>;
   if (error) return <Button className="direction-retry" onClick={onRetry}>{error} · 重新加载</Button>;
-  if (finished) return <Text className="direction-finished">
-    {direction === "before" ? "已到赛季首个比赛日" : "已到赛季最后一个比赛日"}
-  </Text>;
+  if (finished) return null;
   return null;
 }
 

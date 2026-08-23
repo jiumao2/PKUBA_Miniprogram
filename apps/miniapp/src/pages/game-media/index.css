@@ -10,7 +10,11 @@
 .public-photo-list { margin-top: 22rpx; }
 .public-group-photo { display: block; width: 100%; border-radius: 12rpx; background: #e8e4de; }
 .public-group-photo + .public-group-photo { margin-top: 20rpx; }
-.published-stats { overflow: hidden; margin-top: 22rpx; border: 1rpx solid #ded8d0; border-radius: 12rpx; background: #fff; }
+.published-stats { display: grid; gap: 28rpx; margin-top: 22rpx; }
+.team-stat-table { overflow: hidden; border: 1rpx solid #ded8d0; border-top: 6rpx solid #2b2926; border-radius: 12rpx; background: #fff; }
+.team-stat-table.side-b { border-top-color: #c91f26; }
+.team-stat-heading { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; padding: 18rpx 16rpx; color: #24211e; font-size: 29rpx; font-weight: 900; }
+.team-stat-heading text:last-child { color: #a92227; font-variant-numeric: tabular-nums; }
 .player-detail-head, .player-detail-row { display: grid; grid-template-columns: minmax(0, 1fr) 66rpx 106rpx 66rpx; align-items: center; gap: 6rpx; padding: 13rpx 16rpx; border-bottom: 1rpx solid #ebe7e1; font-size: 26rpx; text-align: center; }
 .player-detail-head { background: #efebe5; color: #716b64; font-weight: 800; }
 .player-detail-row:last-child { border-bottom: 0; }
@@ -18,6 +22,7 @@
 .player-detail-row > view text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-detail-row > view text:first-child { font-weight: 800; }
 .player-detail-row > view text:last-child { margin-top: 3rpx; color: #817a72; font-size: 26rpx; }
+.team-stat-empty { display: block; padding: 24rpx 16rpx; color: #817a72; font-size: 26rpx; text-align: center; }
 .private-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18rpx; margin-top: 20rpx; }
 .private-media-card, .admin-media-card { min-width: 0; }
 .private-media-image, .admin-media-image { display: block; width: 100%; height: 250rpx; border-radius: 10rpx; background: #e7e3dc; }
