@@ -16,6 +16,7 @@ function deferred<T>() {
 beforeEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
+  window.history.replaceState(null, '', '/scoresheet.html');
   vi.spyOn(api, 'changes').mockResolvedValue({ items: [], next_before_id: null });
   useEditorStore.setState({
     document: makeDocument(),
@@ -42,6 +43,7 @@ beforeEach(() => {
     autoAcquireLease: true,
     online: true,
     leaseHolder: null,
+    seasonId: '',
   });
 });
 
@@ -213,6 +215,36 @@ describe('editor persistence and history', () => {
 
     expect(useEditorStore.getState().document?.id).toBe('real-document');
     expect(useEditorStore.getState().saveState).toBe('saved');
+  });
+
+  it('prioritizes the season and game supplied by the competition media deep link', async () => {
+    const document = makeDocument('linked-document');
+    document.game_prior = {
+      game_id: 'linked-game', competition: '正式比赛', division: '女篮', date: '2026-08-22',
+      scheduled_time: '20:00', venue: '第一体育馆', source_hash: 'hash', locked_paths: [],
+      team_a: { team_id: 'a', name: '物院', player_names: [] },
+      team_b: { team_id: 'b', name: '化院', player_names: [] },
+    };
+    document.source.original_url = '/api/v1/documents/linked-document/source';
+    localStorage.setItem('scoresheet-reader:last-document-id', 'unrelated-document');
+    window.history.replaceState(null, '', '/scoresheet.html?season_id=season-2026&game_id=linked-game');
+    vi.spyOn(api, 'template').mockResolvedValue(makeTemplate());
+    const gamesSpy = vi.spyOn(api, 'games').mockResolvedValue([{
+      id: 'linked-game', competition: '正式比赛', division: '女篮', date: '2026-08-22',
+      scheduled_time: '20:00', venue: '第一体育馆', team_a_name: '物院', team_b_name: '化院',
+      ready: true, unavailable_reason: '', document_id: 'linked-document', scoresheet_state: 'recognized',
+    }]);
+    vi.spyOn(api, 'health').mockResolvedValue({ status: 'ok', recognition: 'mock', master_data: 'ready' });
+    const documentSpy = vi.spyOn(api, 'document').mockResolvedValue(document);
+    vi.spyOn(api, 'latestRecognition').mockResolvedValue(null);
+    useEditorStore.setState({ document: null, template: null, loading: true });
+
+    await useEditorStore.getState().initialize();
+
+    expect(gamesSpy).toHaveBeenCalledWith('season-2026');
+    expect(documentSpy).toHaveBeenCalledWith('linked-document');
+    expect(useEditorStore.getState().document?.id).toBe('linked-document');
+    expect(useEditorStore.getState().seasonId).toBe('season-2026');
   });
 
   it('clears an old synthetic last-document id and shows the blank template', async () => {

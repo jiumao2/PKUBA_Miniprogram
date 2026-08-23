@@ -85,6 +85,7 @@ interface EditorState {
   autoAcquireLease: boolean;
   online: boolean;
   leaseHolder: { username: string; surface: 'WEB' | 'MINIAPP'; expires_at: string } | null;
+  seasonId: string;
   initialize: () => Promise<void>;
   loadGames: () => Promise<void>;
   openDocument: (documentId: string) => Promise<void>;
@@ -139,16 +140,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   autoAcquireLease: true,
   online: navigator.onLine,
   leaseHolder: null,
+  seasonId: '',
 
   initialize: async () => {
     set({ loading: true, error: '', autoAcquireLease: true });
     try {
+      const params = new URLSearchParams(window.location.search);
+      const seasonId = params.get('season_id') ?? '';
+      const requestedGameId = params.get('game_id') ?? '';
       const [template, games, health] = await Promise.all([
         api.template(),
-        api.games().catch(() => [] as GameSummary[]),
+        api.games(seasonId).catch(() => [] as GameSummary[]),
         api.health().catch(() => ({ status: 'ok', recognition: 'automatic', master_data: 'empty' })),
       ]);
-      const lastId = localStorage.getItem(LAST_DOCUMENT_KEY);
+      const requestedDocumentId = games.find((game) => game.id === requestedGameId)?.document_id;
+      const lastId = requestedGameId ? requestedDocumentId : localStorage.getItem(LAST_DOCUMENT_KEY);
       let document: ScoresheetDocument | null = null;
       if (lastId) {
         try {
@@ -180,6 +186,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         readOnly: Boolean(document && (!lease?.token || lease.readOnly)),
         readOnlyReason: lease?.reason ?? '',
         leaseHolder: lease?.holder ?? null,
+        seasonId,
       });
       if (recognitionRun && (
         activeRecognitionStatuses.has(recognitionRun.status)
@@ -195,7 +202,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   loadGames: async () => {
     set({ gamesLoading: true });
     try {
-      set({ games: await api.games(), gamesLoading: false });
+      set({ games: await api.games(get().seasonId), gamesLoading: false });
     } catch (error) {
       set({
         gamesLoading: false,

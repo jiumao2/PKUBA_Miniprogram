@@ -100,6 +100,13 @@ export type UpdateMobileAdminGame = components["schemas"]["UpdateAdminGameIn"];
 export type GameMediaAsset = components["schemas"]["GameMediaAssetOut"];
 export type GameMediaCollection = components["schemas"]["GameMediaCollectionOut"];
 
+export interface AdminGameMediaFilters {
+  reviewStatus?: string;
+  kind?: string;
+  seasonId?: string;
+  gameId?: string;
+}
+
 export type ArchiveKind = "SEASON_DATA" | "SEASON_PHOTOS" | "SYSTEM_RAW";
 export type ArchiveStatus = "QUEUED" | "BUILDING" | "READY" | "FAILED" | "EXPIRED" | "DISCARDED";
 
@@ -1608,10 +1615,18 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           },
         ),
       ),
-    listAdminGameMedia: async (reviewStatus = "", kind = "") => {
+    listAdminGameMedia: async (
+      reviewStatusOrFilters: string | AdminGameMediaFilters = "",
+      legacyKind = "",
+    ) => {
+      const filters = typeof reviewStatusOrFilters === "string"
+        ? { reviewStatus: reviewStatusOrFilters, kind: legacyKind }
+        : reviewStatusOrFilters;
       const params = new URLSearchParams();
-      if (reviewStatus) params.set("review_status", reviewStatus);
-      if (kind) params.set("kind", kind);
+      if (filters.reviewStatus) params.set("review_status", filters.reviewStatus);
+      if (filters.kind) params.set("kind", filters.kind);
+      if (filters.seasonId) params.set("season_id", filters.seasonId);
+      if (filters.gameId) params.set("game_id", filters.gameId);
       return collectAdminPages<GameMediaAsset>("/api/v1/admin/game-media/", params);
     },
     uploadAdminGameMedia: async (

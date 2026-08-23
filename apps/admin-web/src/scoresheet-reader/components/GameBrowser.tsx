@@ -10,6 +10,7 @@ interface GameBrowserProps {
   onOpen: (documentId: string) => Promise<void>;
   onUpload: (gameId: string, file: File) => Promise<void>;
   onReupload: (documentId: string, file: File) => Promise<void>;
+  initialGameId?: string;
 }
 
 const stateLabels: Record<GameSummary['scoresheet_state'], string> = {
@@ -28,6 +29,7 @@ export function GameBrowser({
   onOpen,
   onUpload,
   onReupload,
+  initialGameId = '',
 }: GameBrowserProps) {
   const [query, setQuery] = useState('');
   const [selectedGame, setSelectedGame] = useState<GameSummary | null>(null);
@@ -47,6 +49,13 @@ export function GameBrowser({
       game.venue,
     ].some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedQuery));
   }), [games, normalizedQuery]);
+
+  useEffect(() => {
+    if (!initialGameId) return;
+    setSelectedGame((current) => current && games.some((game) => game.id === current.id)
+      ? current
+      : (games.find((game) => game.id === initialGameId) ?? games[0] ?? null));
+  }, [games, initialGameId]);
 
   useEffect(() => {
     if (!games.some((game) => game.scoresheet_state === 'recognizing')) return undefined;

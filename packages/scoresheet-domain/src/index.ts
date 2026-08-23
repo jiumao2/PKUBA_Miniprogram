@@ -153,6 +153,11 @@ export interface ScoresheetQueueItem {
   game_id: string;
   game_code: string;
   game_label: string;
+  competition: string;
+  division_name: string;
+  venue: string;
+  home_name: string;
+  away_name: string;
   date: string;
   start_time: string;
   scoresheet_id: string | null;

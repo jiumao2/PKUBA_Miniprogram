@@ -10295,6 +10295,8 @@ export interface operations {
             query?: {
                 review_status?: string | null;
                 kind?: string | null;
+                season_id?: string | null;
+                game_id?: string | null;
                 page?: number;
                 page_size?: number;
             };

@@ -398,18 +398,24 @@ def list_admin_game_media(
     request: HttpRequest,
     review_status: str | None = None,
     kind: str | None = None,
+    season_id: UUID | None = None,
+    game_id: UUID | None = None,
     page: int = 1,
     page_size: int = 100,
 ):
     del request
-    assets = _asset_queryset().filter(game__season__status=Season.Status.PUBLISHED).order_by(
-        "review_status",
-        "-created_at",
-    )
+    assets = _asset_queryset()
+    if season_id:
+        assets = assets.filter(game__season_id=season_id)
+    else:
+        assets = assets.filter(game__season__status=Season.Status.PUBLISHED)
+    if game_id:
+        assets = assets.filter(game_id=game_id)
     if review_status:
         assets = assets.filter(review_status=review_status)
     if kind:
         assets = assets.filter(kind=kind)
+    assets = assets.order_by("review_status", "-created_at")
     page = max(page, 1)
     page_size = min(max(page_size, 1), 100)
     total = assets.count()

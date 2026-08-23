@@ -25,6 +25,24 @@ const games: GameSummary[] = [
 ];
 
 describe('game browser', () => {
+  it('preselects the game supplied by the competition media deep link', async () => {
+    render(
+      <GameBrowser
+        games={games}
+        loading={false}
+        initialGameId="ready"
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onOpen={vi.fn()}
+        onUpload={vi.fn()}
+        onReupload={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('数学 vs 外院')).toBeVisible();
+    expect(screen.getByRole('button', { name: /上传并识别/ })).toBeEnabled();
+  });
+
   it('filters games and prevents uploads for unresolved placeholders', async () => {
     const user = userEvent.setup();
     render(<GameBrowser games={games} loading={false} onClose={vi.fn()} onRefresh={vi.fn()} onOpen={vi.fn()} onUpload={vi.fn()} onReupload={vi.fn()} />);

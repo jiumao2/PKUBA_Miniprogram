@@ -84,12 +84,21 @@ function normalizePaneLayout(
 
 export default function App() {
   const state = useEditorStore();
+  const editorRoute = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      seasonId: params.get('season_id') ?? '',
+      gameId: params.get('game_id') ?? '',
+    };
+  }, []);
   const [sourceOpen, setSourceOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [paneLayout, setPaneLayout] = useState<PaneLayout>(readPaneLayout);
   const [activeResizer, setActiveResizer] = useState<PaneKind | null>(null);
   const [gameBrowserOpen, setGameBrowserOpen] = useState(false);
   const workspaceRef = useRef<HTMLElement>(null);
+  const confirmedDepartureRef = useRef(false);
+  const initialGameAppliedRef = useRef(false);
   const resizeSession = useRef<{
     kind: PaneKind;
     startX: number;
@@ -134,12 +143,20 @@ export default function App() {
   useEffect(() => {
     if (!state.dirty) return;
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (confirmedDepartureRef.current) return;
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', warnBeforeUnload);
     return () => window.removeEventListener('beforeunload', warnBeforeUnload);
   }, [state.dirty]);
+
+  useEffect(() => {
+    if (state.loading || !editorRoute.gameId || initialGameAppliedRef.current) return;
+    initialGameAppliedRef.current = true;
+    const requestedGame = state.games.find((game) => game.id === editorRoute.gameId);
+    if (!requestedGame?.document_id) setGameBrowserOpen(true);
+  }, [editorRoute.gameId, state.games, state.loading]);
 
   useEffect(() => {
     if (!state.document) return;
@@ -242,6 +259,20 @@ export default function App() {
     '--inspector-pane-size': `${paneLayout.inspector * 100}%`,
   } as CSSProperties;
   const effectiveReadOnly = state.readOnly || !state.online;
+  const returnHref = useMemo(() => {
+    const gameId = state.document?.game_prior?.game_id || editorRoute.gameId;
+    const params = new URLSearchParams({ page: 'media' });
+    if (state.seasonId || editorRoute.seasonId) params.set('season_id', state.seasonId || editorRoute.seasonId);
+    if (gameId) params.set('game_id', gameId);
+    return `/?${params.toString()}`;
+  }, [editorRoute.gameId, editorRoute.seasonId, state.document?.game_prior?.game_id, state.seasonId]);
+
+  const returnToMedia = async () => {
+    if (state.dirty && !window.confirm('当前记录表还有未保存修改，确认离开并返回比赛资料吗？')) return;
+    confirmedDepartureRef.current = true;
+    await state.releaseLease();
+    window.location.assign(returnHref);
+  };
 
   const anomalyFields = useMemo(() => {
     const fields = new Set<string>();
@@ -300,6 +331,7 @@ export default function App() {
         readOnlyReason={state.online ? state.readOnlyReason : '网络已断开；恢复后会先同步服务器版本。'}
         online={state.online}
         leaseHolder={state.leaseHolder}
+        onReturn={() => void returnToMedia()}
       />
       <main
         ref={workspaceRef}
@@ -387,6 +419,7 @@ export default function App() {
           onOpen={state.openDocument}
           onUpload={state.uploadForGame}
           onReupload={state.reupload}
+          initialGameId={editorRoute.gameId}
         />
       ) : null}
       {state.error ? (

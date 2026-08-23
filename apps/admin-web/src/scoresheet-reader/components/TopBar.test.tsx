@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { makeDocument } from '../test/fixtures';
 import { TopBar } from './TopBar';
@@ -7,10 +8,12 @@ const handlers = {
   onChooseGame: vi.fn(), onRecognize: vi.fn(), onUndo: vi.fn(), onRedo: vi.fn(),
   onSave: vi.fn(), onValidate: vi.fn(), onConfirm: vi.fn(),
   onToggleSource: vi.fn(), onToggleInspector: vi.fn(),
+  onReturn: vi.fn(),
 };
 
 describe('formal top bar', () => {
-  it('shows an empty product state without synthetic controls or visible revisions', () => {
+  it('shows an empty product state with an explicit return to competition media', async () => {
+    const user = userEvent.setup();
     render(
       <TopBar
         document={null}
@@ -27,6 +30,9 @@ describe('formal top bar', () => {
     );
 
     expect(screen.getByTestId('scoresheet-logo')).toBeVisible();
+    expect(screen.getByRole('button', { name: /返回比赛资料/ })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: /返回比赛资料/ }));
+    expect(handlers.onReturn).toHaveBeenCalledOnce();
     expect(screen.getAllByText('尚未选择比赛').length).toBeGreaterThan(0);
     expect(screen.queryByText('合成样表')).not.toBeInTheDocument();
     expect(screen.queryByText(/^v\d+/)).not.toBeInTheDocument();

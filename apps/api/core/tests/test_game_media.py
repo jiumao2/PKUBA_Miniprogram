@@ -12,10 +12,16 @@ from django.core.files.uploadedfile import SimpleUploadedFile, TemporaryUploaded
 from django.test import Client, override_settings
 from PIL import Image
 
-from core.models import Account, AdminAuditLog, ApiIdempotencyRecord, GameMediaAsset
+from core.models import (
+    Account,
+    AdminAuditLog,
+    ApiIdempotencyRecord,
+    GameMediaAsset,
+    Season,
+)
 from core.services.game_media import GameMediaError, replace_game_media, upload_game_media
 from core.services.wechat import issue_session
-from core.tests.factories import reschedule_setup
+from core.tests.factories import placeholder_game, reschedule_setup, season
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -66,6 +72,65 @@ def upload(
         HTTP_AUTHORIZATION=f"Bearer {token}",
         **extra,
     )
+
+
+def metadata_asset(*, game, uploader, key: str) -> GameMediaAsset:
+    return GameMediaAsset.objects.create(
+        game=game,
+        kind=GameMediaAsset.Kind.GAME_PHOTO,
+        file_key=f"archived/{key}.jpg",
+        original_filename=f"{key}.jpg",
+        mime_type="image/jpeg",
+        file_sha256=key.ljust(64, "0")[:64],
+        byte_size=1024,
+        width=1200,
+        height=800,
+        uploaded_by=uploader,
+        storage_status=GameMediaAsset.StorageStatus.PURGED,
+    )
+
+
+def test_admin_media_filters_by_season_and_game_without_changing_default_scope():
+    setup = reschedule_setup()
+    public_first = metadata_asset(
+        game=setup["games"][0], uploader=setup["superadmin"], key="public-first"
+    )
+    public_second = metadata_asset(
+        game=setup["games"][1], uploader=setup["superadmin"], key="public-second"
+    )
+    archived_season = season(status=Season.Status.ARCHIVED, name="已归档资料赛季")
+    archived_game = placeholder_game(archived_season)
+    archived = metadata_asset(
+        game=archived_game, uploader=setup["superadmin"], key="archived-only"
+    )
+
+    client = Client()
+    client.force_login(setup["superadmin"])
+    default = client.get("/api/v1/admin/game-media/")
+    by_public_game = client.get(
+        "/api/v1/admin/game-media/",
+        data={"season_id": setup["season"].id, "game_id": setup["games"][1].id},
+    )
+    by_archived_season = client.get(
+        "/api/v1/admin/game-media/", data={"season_id": archived_season.id}
+    )
+    crossed = client.get(
+        "/api/v1/admin/game-media/",
+        data={"season_id": archived_season.id, "game_id": setup["games"][0].id},
+    )
+
+    assert default.status_code == 200
+    assert {item["id"] for item in default.json()["items"]} == {
+        str(public_first.id),
+        str(public_second.id),
+    }
+    assert [item["id"] for item in by_public_game.json()["items"]] == [
+        str(public_second.id)
+    ]
+    assert [item["id"] for item in by_archived_season.json()["items"]] == [
+        str(archived.id)
+    ]
+    assert crossed.json()["items"] == []
 
 
 def test_media_upload_replays_same_key_and_rejects_different_file(tmp_path):

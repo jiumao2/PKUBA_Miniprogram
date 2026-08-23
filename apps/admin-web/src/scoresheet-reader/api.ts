@@ -352,8 +352,8 @@ export const api = {
     return response.json() as Promise<TemplateDefinition>;
   },
 
-  async games(): Promise<GameSummary[]> {
-    const rows = (await admin.listScoresheets()) as unknown as RawQueue[];
+  async games(seasonId = ""): Promise<GameSummary[]> {
+    const rows = (await admin.listScoresheets(seasonId || undefined)) as unknown as RawQueue[];
     return rows.map(gameFromQueue);
   },
 

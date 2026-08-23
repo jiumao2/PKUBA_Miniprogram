@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   CheckCircle2,
   Download,
   ListFilter,
@@ -38,6 +39,7 @@ interface TopBarProps {
   readOnlyReason?: string;
   online?: boolean;
   leaseHolder?: { username: string; surface: 'WEB' | 'MINIAPP' } | null;
+  onReturn: () => void;
 }
 
 const saveLabels = {
@@ -72,6 +74,7 @@ export function TopBar({
   readOnlyReason = '',
   online = true,
   leaseHolder = null,
+  onReturn,
 }: TopBarProps) {
   const persisted = Boolean(document);
   const recognitionActive = recognitionState === 'starting' || recognitionState === 'running';
@@ -96,13 +99,17 @@ export function TopBar({
 
   return (
     <header className="topbar">
-      <a className="brand-block" href="/" title="返回 PKUBA 赛事后台">
+      <button className="return-to-media" type="button" onClick={onReturn}>
+        <ArrowLeft size={16} />
+        <span>返回比赛资料</span>
+      </button>
+      <div className="brand-block">
         <ScoresheetLogo className="scoresheet-logo brand-logo" title="ScoresheetReader 记录表" />
         <div>
           <strong>ScoresheetReader</strong>
           <span>语义记录表工作台</span>
         </div>
-      </a>
+      </div>
 
       <div className="document-state">
         <span className={`state-dot ${document?.status ?? 'empty'}`} />

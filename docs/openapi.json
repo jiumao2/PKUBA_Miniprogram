@@ -5948,6 +5948,40 @@
           },
           {
             "in": "query",
+            "name": "season_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "game_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Game Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
             "name": "page",
             "schema": {
               "default": 1,

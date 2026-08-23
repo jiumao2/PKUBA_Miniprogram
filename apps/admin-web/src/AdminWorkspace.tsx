@@ -31,9 +31,8 @@ const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 const client = createPkubaClient(baseUrl);
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-const navigation = [
+export const navigation = [
   { id: "overview", label: "总览", available: true },
-  { id: "scoresheets", label: "记录表核对", available: true },
   { id: "season", label: "赛季与组别", available: true },
   { id: "teams", label: "球队与名单", available: true },
   { id: "schedule-import", label: "赛程编排", available: true },
@@ -47,6 +46,26 @@ const navigation = [
 ] as const;
 
 type PageId = (typeof navigation)[number]["id"];
+
+export function readInitialAdminRoute(): { page: PageId; seasonId: string; gameId: string } {
+  const params = new URLSearchParams(window.location.search);
+  const requestedPage = params.get("page") ?? "overview";
+  const page = navigation.some((item) => item.id === requestedPage)
+    ? requestedPage as PageId
+    : "overview";
+  return {
+    page,
+    seasonId: params.get("season_id") ?? "",
+    gameId: params.get("game_id") ?? "",
+  };
+}
+
+export function selectAdminSeason(seasons: AdminSeason[], preferredSeasonId = "") {
+  return seasons.find((item) => item.id === preferredSeasonId)
+    ?? seasons.find((item) => item.status === "SETUP")
+    ?? seasons[0];
+}
+
 const superadminPages: PageId[] = [
   "season",
   "teams",
@@ -61,6 +80,7 @@ const superadminPages: PageId[] = [
 ];
 
 export function AdminWorkspace() {
+  const [initialRoute] = useState(readInitialAdminRoute);
   const [account, setAccount] = useState<AdminAccount | null>();
   const [season, setSeason] = useState<Season | null>(null);
   const [games, setGames] = useState<Game[]>([]);
@@ -68,7 +88,7 @@ export function AdminWorkspace() {
   const [selectedAdminSeasonId, setSelectedAdminSeasonId] = useState("");
   const [adminGames, setAdminGames] = useState<MobileAdminGame[]>([]);
   const [capacityLedger, setCapacityLedger] = useState<CapacityLedgerRow[]>([]);
-  const [page, setPage] = useState<PageId>("overview");
+  const [page, setPage] = useState<PageId>(initialRoute.page);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -106,10 +126,7 @@ export function AdminWorkspace() {
   const loadAdminData = useCallback(async (preferredSeasonId?: string) => {
     const nextSeasons = await adminClient.listAdminSeasons();
     setAdminSeasons(nextSeasons);
-    const selected =
-      nextSeasons.find((item) => item.id === preferredSeasonId) ??
-      nextSeasons.find((item) => item.status === "SETUP") ??
-      nextSeasons[0];
+    const selected = selectAdminSeason(nextSeasons, preferredSeasonId);
     if (!selected) {
       setSelectedAdminSeasonId("");
       setAdminGames([]);
@@ -161,7 +178,7 @@ export function AdminWorkspace() {
     if (account) {
       void loadPublicData();
       if (account.role === "SUPERADMIN") {
-        void loadAdminData().catch((reason: unknown) => {
+        void loadAdminData(initialRoute.seasonId).catch((reason: unknown) => {
           setError(reason instanceof Error ? reason.message : "无法读取管理赛季");
         });
       } else {
@@ -170,7 +187,7 @@ export function AdminWorkspace() {
         setAdminGames([]);
       }
     }
-  }, [account, loadAdminData, loadPublicData]);
+  }, [account, initialRoute.seasonId, loadAdminData, loadPublicData]);
 
   useEffect(() => {
     if (
@@ -216,6 +233,17 @@ export function AdminWorkspace() {
     setAccount(null);
   };
 
+  const openPage = (nextPage: PageId) => {
+    setPage(nextPage);
+    const params = new URLSearchParams();
+    if (nextPage !== "overview") params.set("page", nextPage);
+    if (nextPage === "media" && selectedAdminSeasonId) {
+      params.set("season_id", selectedAdminSeasonId);
+    }
+    const query = params.toString();
+    window.history.replaceState(null, "", query ? `/?${query}` : "/");
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -226,13 +254,7 @@ export function AdminWorkspace() {
               className={page === item.id ? "nav-item active" : "nav-item"}
               disabled={!canOpenPage(item.id, item.available)}
               key={item.id}
-              onClick={() => {
-                if (item.id === "scoresheets") {
-                  window.location.assign("/scoresheet.html");
-                  return;
-                }
-                setPage(item.id);
-              }}
+              onClick={() => openPage(item.id)}
               type="button"
             >
               <span>{item.label}</span>
@@ -372,7 +394,10 @@ export function AdminWorkspace() {
           <CompetitionMediaPage
             accountRole={account.role}
             client={adminClient}
+            seasons={adminSeasons}
             seasonId={selectedAdminSeasonId || season?.id || ""}
+            initialGameId={initialRoute.gameId}
+            onSeasonChange={setSelectedAdminSeasonId}
           />
         )}
         {!loading && !error && page === "reschedule" && (
