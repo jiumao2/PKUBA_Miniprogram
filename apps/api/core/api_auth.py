@@ -9,7 +9,6 @@ from uuid import UUID
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.hashers import check_password
-from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -43,8 +42,6 @@ from core.services.wechat import (
 router = Router(tags=["auth"])
 LOGIN_CHALLENGE_SESSION_KEY = "pkuba_admin_login_challenge"
 LOGIN_CHALLENGE_TTL_SECONDS = 5 * 60
-LOGIN_FAILURE_LIMIT = 5
-LOGIN_FAILURE_WINDOW = timedelta(minutes=15)
 ADMIN_WEB_LOGIN_SESSION_KEY = "pkuba_admin_web_login"
 ADMIN_WEB_LOGIN_TTL_SECONDS = 5 * 60
 ADMIN_WEB_LOGIN_SCAN_PREFIX = "PKUBA_ADMIN_WEB_LOGIN:1"
@@ -253,18 +250,6 @@ def _record_login_attempt(
         object_type="Account",
         object_id=account.id if success and account else None,
         metadata={"client_key": client_key},
-    )
-
-
-def _is_rate_limited(client_key: str) -> bool:
-    cutoff = timezone.now() - LOGIN_FAILURE_WINDOW
-    return (
-        AdminAuditLog.objects.filter(
-            action="ADMIN_LOGIN_FAILED",
-            created_at__gte=cutoff,
-            metadata__client_key=client_key,
-        ).count()
-        >= LOGIN_FAILURE_LIMIT
     )
 
 
@@ -510,24 +495,13 @@ def claim_leader_team(request: HttpRequest, payload: LeaderClaimIn):
 @router.post(
     "/admin/register",
     auth=miniapp_bearer_auth,
-    response={200: MiniAppMeOut, 400: AuthErrorOut, 401: AuthErrorOut, 429: AuthErrorOut},
+    response={200: MiniAppMeOut, 400: AuthErrorOut, 401: AuthErrorOut},
 )
 def register_admin(request: HttpRequest, payload: AdminRegisterIn):
     account = request.auth
     if account.is_pkuba_admin:
         return _serialize_miniapp_me(account)
     client_key = _client_key(request, f"admin-register:{account.id}")
-    cutoff = timezone.now() - LOGIN_FAILURE_WINDOW
-    failures = AdminAuditLog.objects.filter(
-        action="ADMIN_REGISTRATION_FAILED",
-        created_at__gte=cutoff,
-        metadata__client_key=client_key,
-    ).count()
-    if failures >= LOGIN_FAILURE_LIMIT:
-        return Status(
-            429,
-            {"code": "REGISTRATION_RATE_LIMITED", "message": "邀请码尝试次数过多，请稍后重试。"},
-        )
     try:
         season = Season.objects.get(id=payload.season_id, status=Season.Status.PUBLISHED)
     except Season.DoesNotExist:
@@ -782,7 +756,7 @@ def admin_session(request: HttpRequest):
 
 @router.post(
     "/admin/password-login",
-    response={200: AccountOut, 400: AuthErrorOut, 401: AuthErrorOut, 429: AuthErrorOut},
+    response={200: AccountOut, 400: AuthErrorOut, 401: AuthErrorOut},
 )
 def admin_password_login(request: HttpRequest, payload: AdminLoginIn):
     stored = request.session.pop(LOGIN_CHALLENGE_SESSION_KEY, None)
@@ -807,11 +781,6 @@ def admin_password_login(request: HttpRequest, payload: AdminLoginIn):
         )
 
     client_key = _client_key(request, payload.username)
-    if _is_rate_limited(client_key):
-        return Status(
-            429,
-            {"code": "LOGIN_RATE_LIMITED", "message": "登录失败次数过多，请稍后再试。"},
-        )
     account = authenticate(request, username=payload.username, password=payload.password)
     if not isinstance(account, Account) or not account.is_pkuba_admin:
         _record_login_attempt(account=None, client_key=client_key, success=False)
@@ -843,15 +812,11 @@ def admin_change_password(request: HttpRequest, payload: AdminPasswordChangeIn):
             400,
             {"code": "CURRENT_PASSWORD_INVALID", "message": "当前密码不正确。"},
         )
-    if payload.current_password == payload.new_password:
+    if len(payload.new_password) < 4:
         return Status(
             400,
-            {"code": "PASSWORD_UNCHANGED", "message": "新密码不能与当前密码相同。"},
+            {"code": "PASSWORD_TOO_SHORT", "message": "新密码至少需要 4 个字符。"},
         )
-    try:
-        validate_password(payload.new_password, user=account)
-    except ValidationError as exc:
-        return Status(400, {"code": "PASSWORD_INVALID", "message": "；".join(exc.messages)})
 
     with transaction.atomic():
         account = Account.objects.select_for_update().get(id=account.id)

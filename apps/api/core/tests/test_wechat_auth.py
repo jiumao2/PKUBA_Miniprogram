@@ -241,7 +241,7 @@ def test_archived_season_invite_cannot_be_rotated():
     assert response.json()["code"] == "SEASON_ARCHIVED"
 
 
-def test_wrong_invite_code_is_rate_limited():
+def test_wrong_invite_code_never_locks_and_keeps_redacted_audit():
     season, _ = active_season_with_team()
     client = Client()
     token = onboard(client, openid="openid-rate", username="邀请码测试")
@@ -249,7 +249,21 @@ def test_wrong_invite_code_is_rate_limited():
         "season_id": str(season.id),
         "invite_code": "wrong-code",
     }
-    for _ in range(5):
-        assert post_json(client, "/api/v1/auth/admin/register", payload, token).status_code == 401
-    limited = post_json(client, "/api/v1/auth/admin/register", payload, token)
-    assert limited.status_code == 429
+    for _ in range(10):
+        response = post_json(client, "/api/v1/auth/admin/register", payload, token)
+        assert response.status_code == 401
+        assert response.json()["code"] == "INVITE_CODE_INVALID"
+
+    success = post_json(
+        client,
+        "/api/v1/auth/admin/register",
+        {"season_id": str(season.id), "invite_code": "PKUBA1997"},
+        token,
+    )
+    failures = AdminAuditLog.objects.filter(action="ADMIN_REGISTRATION_FAILED")
+    assert success.status_code == 200
+    assert failures.count() == 10
+    assert all(set(item.metadata) == {"client_key"} for item in failures)
+    serialized_metadata = json.dumps([item.metadata for item in failures])
+    assert "wrong-code" not in serialized_metadata
+    assert "PKUBA1997" not in serialized_metadata

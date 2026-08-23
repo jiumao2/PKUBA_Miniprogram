@@ -60,14 +60,14 @@ def test_admin_can_change_password_without_losing_current_session():
     missing_csrf = client.post(
         "/api/v1/auth/admin/change-password",
         data=json.dumps(
-            {"current_password": "test-password", "new_password": "ChangedPass!2026"}
+            {"current_password": "test-password", "new_password": "1234"}
         ),
         content_type="application/json",
     )
     wrong_current = client.post(
         "/api/v1/auth/admin/change-password",
         data=json.dumps(
-            {"current_password": "wrong-password", "new_password": "ChangedPass!2026"}
+            {"current_password": "wrong-password", "new_password": "1234"}
         ),
         content_type="application/json",
         HTTP_X_CSRFTOKEN=csrf_token,
@@ -75,7 +75,7 @@ def test_admin_can_change_password_without_losing_current_session():
     changed = client.post(
         "/api/v1/auth/admin/change-password",
         data=json.dumps(
-            {"current_password": "test-password", "new_password": "ChangedPass!2026"}
+            {"current_password": "test-password", "new_password": "1234"}
         ),
         content_type="application/json",
         HTTP_X_CSRFTOKEN=csrf_token,
@@ -86,16 +86,44 @@ def test_admin_can_change_password_without_losing_current_session():
     assert changed.status_code == 200
     assert client.get("/api/v1/auth/admin/me").status_code == 200
     setup["admin"].refresh_from_db()
-    assert setup["admin"].check_password("ChangedPass!2026")
+    assert setup["admin"].check_password("1234")
     assert AdminAuditLog.objects.filter(
         action="ADMIN_PASSWORD_CHANGED", actor_id=setup["admin"].id
     ).exists()
 
 
-def test_failed_admin_login_is_rate_limited_without_storing_username():
+def test_admin_password_change_requires_four_characters_and_allows_same_password():
+    setup = reschedule_setup()
+    client = Client(enforce_csrf_checks=True)
+    csrf_token = login_admin(client, setup["admin"])
+
+    too_short = client.post(
+        "/api/v1/auth/admin/change-password",
+        data=json.dumps({"current_password": "test-password", "new_password": "123"}),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+    unchanged = client.post(
+        "/api/v1/auth/admin/change-password",
+        data=json.dumps(
+            {"current_password": "test-password", "new_password": "test-password"}
+        ),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+
+    assert too_short.status_code == 400
+    assert too_short.json()["code"] == "PASSWORD_TOO_SHORT"
+    assert unchanged.status_code == 200
+    assert client.get("/api/v1/auth/admin/me").status_code == 200
+    setup["admin"].refresh_from_db()
+    assert setup["admin"].check_password("test-password")
+
+
+def test_failed_admin_login_never_locks_and_keeps_redacted_audit():
     setup = reschedule_setup()
     client = Client()
-    for attempt in range(6):
+    for _ in range(10):
         challenge = client.get("/api/v1/auth/admin/login-challenge").json()["challenge"]
         response = client.post(
             "/api/v1/auth/admin/password-login",
@@ -108,11 +136,29 @@ def test_failed_admin_login_is_rate_limited_without_storing_username():
             ),
             content_type="application/json",
         )
-        assert response.status_code == (401 if attempt < 5 else 429)
+        assert response.status_code == 401
+        assert response.json()["code"] == "INVALID_ADMIN_CREDENTIALS"
+
+    challenge = client.get("/api/v1/auth/admin/login-challenge").json()["challenge"]
+    success = client.post(
+        "/api/v1/auth/admin/password-login",
+        data=json.dumps(
+            {
+                "username": setup["admin"].username,
+                "password": "test-password",
+                "challenge": challenge,
+            }
+        ),
+        content_type="application/json",
+    )
 
     failures = AdminAuditLog.objects.filter(action="ADMIN_LOGIN_FAILED")
-    assert failures.count() == 5
+    assert success.status_code == 200
+    assert failures.count() == 10
     assert all(set(item.metadata) == {"client_key"} for item in failures)
+    serialized_metadata = json.dumps([item.metadata for item in failures])
+    assert setup["admin"].username not in serialized_metadata
+    assert "wrong-password" not in serialized_metadata
 
 
 def _web_login_token(scan_payload: str) -> str:

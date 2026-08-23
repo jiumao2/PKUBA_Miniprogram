@@ -449,6 +449,10 @@ function PasswordChangeDialog({
       setError("请填写当前密码和新密码。");
       return;
     }
+    if (Array.from(newPassword).length < 4) {
+      setError("新密码至少需要 4 个字符。");
+      return;
+    }
     if (newPassword !== newPasswordAgain) {
       setError("两次输入的新密码不一致。");
       return;
@@ -479,7 +483,7 @@ function PasswordChangeDialog({
           </div>
           <button className="dialog-close" type="button" onClick={onClose} aria-label="关闭">×</button>
         </div>
-        <p className="dialog-detail">首次注册时，初始密码与当时的邀请码相同。修改密码不会改变赛季邀请码。</p>
+        <p className="dialog-detail">首次注册时，初始密码与当时的邀请码相同。新密码只需至少 4 个字符，可以与当前密码相同；修改密码不会改变赛季邀请码。</p>
         <form className="password-form" onSubmit={(event) => void submit(event)}>
           <label>
             当前密码
