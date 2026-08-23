@@ -4,6 +4,7 @@ import json
 import zipfile
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from django.test import Client, override_settings
@@ -29,6 +30,15 @@ from core.services.archive_exports import (
 from core.tests.factories import reschedule_setup
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+def _allow_archive_space(monkeypatch):
+    capacity = 20 * 1024**3
+    monkeypatch.setattr(
+        archive_exports.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(total=capacity, used=0, free=capacity),
+    )
 
 
 def _asset(setup, media_root: Path, *, kind=GameMediaAsset.Kind.SCORESHEET):
@@ -63,8 +73,9 @@ def _job(setup, kind: str):
     )
 
 
-def test_create_archive_job_persists_json_safe_preview(tmp_path):
+def test_create_archive_job_persists_json_safe_preview(tmp_path, monkeypatch):
     setup = reschedule_setup()
+    _allow_archive_space(monkeypatch)
 
     with override_settings(
         MEDIA_ROOT=tmp_path / "media",
@@ -80,8 +91,9 @@ def test_create_archive_job_persists_json_safe_preview(tmp_path):
     assert job.summary["preview"]["season_id"] == str(setup["season"].id)
 
 
-def test_season_export_api_creates_json_safe_job(tmp_path):
+def test_season_export_api_creates_json_safe_job(tmp_path, monkeypatch):
     setup = reschedule_setup()
+    _allow_archive_space(monkeypatch)
     client = Client()
     client.force_login(setup["superadmin"])
     payload = json.dumps(
