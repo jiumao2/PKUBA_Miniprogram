@@ -3020,6 +3020,8 @@ export interface components {
             season_id: string;
             /** Invite Code */
             invite_code: string;
+            /** Password */
+            password: string;
         };
         /** AdminWebLoginChallengeOut */
         AdminWebLoginChallengeOut: {

@@ -762,7 +762,7 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       token: string,
     ) => send<MiniAppMe>("/api/v1/auth/leader/claims", json("POST", payload, token)),
     registerAdmin: (
-      payload: { season_id: string; invite_code: string },
+      payload: { season_id: string; invite_code: string; password: string },
       token: string,
     ) => send<MiniAppMe>("/api/v1/auth/admin/register", json("POST", payload, token)),
     confirmAdminWebLogin: (challengeToken: string, token: string) =>

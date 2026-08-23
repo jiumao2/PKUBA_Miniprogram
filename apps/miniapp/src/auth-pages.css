@@ -71,6 +71,35 @@
   box-sizing: border-box;
 }
 
+.auth-password-row {
+  position: relative;
+}
+
+.auth-password-input {
+  padding-right: 118rpx;
+}
+
+.auth-password-toggle {
+  position: absolute;
+  top: 18rpx;
+  right: 8rpx;
+  min-width: 92rpx;
+  height: 88rpx;
+  color: #c91f26;
+  font-size: 26rpx;
+  font-weight: 800;
+  line-height: 88rpx;
+  text-align: center;
+}
+
+.auth-field-error {
+  display: block;
+  margin-top: 10rpx;
+  color: #b51f25;
+  font-size: 25rpx;
+  line-height: 1.5;
+}
+
 .auth-primary,
 .auth-secondary {
   margin: 26rpx 0 0;

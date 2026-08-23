@@ -483,7 +483,7 @@ function PasswordChangeDialog({
           </div>
           <button className="dialog-close" type="button" onClick={onClose} aria-label="关闭">×</button>
         </div>
-        <p className="dialog-detail">首次注册时，初始密码与当时的邀请码相同。新密码只需至少 4 个字符，可以与当前密码相同；修改密码不会改变赛季邀请码。</p>
+        <p className="dialog-detail">网页密码由管理员在小程序注册时自行设置。新密码只需至少 4 个字符，可以与当前密码相同；修改密码不会改变赛季邀请码。</p>
         <form className="password-form" onSubmit={(event) => void submit(event)}>
           <label>
             当前密码

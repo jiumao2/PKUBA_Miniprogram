@@ -11542,11 +11542,16 @@
           "invite_code": {
             "title": "Invite Code",
             "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
           }
         },
         "required": [
           "season_id",
-          "invite_code"
+          "invite_code",
+          "password"
         ],
         "title": "AdminRegisterIn",
         "type": "object"

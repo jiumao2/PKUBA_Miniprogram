@@ -264,7 +264,7 @@ export function LoginScreen({
                 {submitting ? "正在验证…" : "登录"}
               </button>
               <p className="login-footnote">
-                首次注册后的初始密码与当时的赛季邀请码相同；登录后可在右上角修改。
+                网页密码由管理员在小程序注册时自行设置；登录后可在右上角修改。
               </p>
             </form>
           )}

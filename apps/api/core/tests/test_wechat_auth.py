@@ -13,6 +13,7 @@ from django.utils import timezone
 from core.models import (
     Account,
     AdminAuditLog,
+    AdminProfile,
     CompetitionGroup,
     Division,
     DrawAssignment,
@@ -165,6 +166,7 @@ def test_same_account_can_claim_team_and_register_as_admin():
         {
             "season_id": str(season.id),
             "invite_code": "PKUBA1997",
+            "password": "2468",
         },
         token,
     )
@@ -173,7 +175,13 @@ def test_same_account_can_claim_team_and_register_as_admin():
     assert payload["admin_role"] == Account.Role.ADMIN
     assert payload["leader_binding"]["team_id"] == str(team.id)
     assert SeasonLeaderBinding.objects.filter(account__username="双重身份", team=team).exists()
-    assert authenticate(username="双重身份", password="PKUBA1997") is not None
+    assert authenticate(username="双重身份", password="2468") is not None
+    assert authenticate(username="双重身份", password="PKUBA1997") is None
+    registration_audit = AdminAuditLog.objects.get(action="ADMIN_REGISTERED_FROM_MINIAPP")
+    assert registration_audit.after["password_set_at_registration"] is True
+    serialized_audit = json.dumps(registration_audit.after, ensure_ascii=False)
+    assert "2468" not in serialized_audit
+    assert "PKUBA1997" not in serialized_audit
 
 
 def test_team_can_only_be_claimed_once():
@@ -248,6 +256,7 @@ def test_wrong_invite_code_never_locks_and_keeps_redacted_audit():
     payload = {
         "season_id": str(season.id),
         "invite_code": "wrong-code",
+        "password": "2468",
     }
     for _ in range(10):
         response = post_json(client, "/api/v1/auth/admin/register", payload, token)
@@ -257,7 +266,11 @@ def test_wrong_invite_code_never_locks_and_keeps_redacted_audit():
     success = post_json(
         client,
         "/api/v1/auth/admin/register",
-        {"season_id": str(season.id), "invite_code": "PKUBA1997"},
+        {
+            "season_id": str(season.id),
+            "invite_code": "PKUBA1997",
+            "password": "2468",
+        },
         token,
     )
     failures = AdminAuditLog.objects.filter(action="ADMIN_REGISTRATION_FAILED")
@@ -267,3 +280,28 @@ def test_wrong_invite_code_never_locks_and_keeps_redacted_audit():
     serialized_metadata = json.dumps([item.metadata for item in failures])
     assert "wrong-code" not in serialized_metadata
     assert "PKUBA1997" not in serialized_metadata
+    assert "2468" not in serialized_metadata
+
+
+def test_admin_registration_requires_four_character_user_password():
+    season, _ = active_season_with_team()
+    client = Client()
+    token = onboard(client, openid="openid-short-password", username="短密码测试")
+
+    response = post_json(
+        client,
+        "/api/v1/auth/admin/register",
+        {
+            "season_id": str(season.id),
+            "invite_code": "PKUBA1997",
+            "password": "123",
+        },
+        token,
+    )
+
+    account = Account.objects.get(username="短密码测试")
+    assert response.status_code == 400
+    assert response.json()["code"] == "PASSWORD_TOO_SHORT"
+    assert account.role == Account.Role.USER
+    assert not AdminProfile.objects.filter(account=account).exists()
+    assert not AdminAuditLog.objects.filter(action="ADMIN_REGISTERED_FROM_MINIAPP").exists()

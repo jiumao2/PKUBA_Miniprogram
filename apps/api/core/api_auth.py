@@ -143,6 +143,7 @@ class LeaderClaimIn(Schema):
 class AdminRegisterIn(Schema):
     season_id: UUID
     invite_code: str
+    password: str
 
 
 class AdminPasswordChangeIn(Schema):
@@ -515,10 +516,15 @@ def register_admin(request: HttpRequest, payload: AdminRegisterIn):
             metadata={"client_key": client_key},
         )
         return Status(401, {"code": "INVITE_CODE_INVALID", "message": "赛季邀请码不正确。"})
+    if len(payload.password) < 4:
+        return Status(
+            400,
+            {"code": "PASSWORD_TOO_SHORT", "message": "网页密码至少需要 4 个字符。"},
+        )
     with transaction.atomic():
         account = Account.objects.select_for_update().get(id=account.id)
         account.role = Account.Role.ADMIN
-        account.set_password(payload.invite_code)
+        account.set_password(payload.password)
         account.version += 1
         account.save(update_fields=["role", "password", "version"])
         AdminProfile.objects.update_or_create(
@@ -533,7 +539,7 @@ def register_admin(request: HttpRequest, payload: AdminRegisterIn):
             after={
                 "role": account.role,
                 "season_id": str(season.id),
-                "initial_password_source": "season_invite",
+                "password_set_at_registration": True,
             },
         )
     return _serialize_miniapp_me(account)

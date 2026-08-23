@@ -6,11 +6,16 @@ import type { MiniAppMe, Season } from "@pkuba/api-client";
 import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
 import "../../auth-pages.css";
+import { passwordCharacterCount, validateAdminRegistration } from "./validation";
 
 export default function AdminRegisterPage() {
   const [season, setSeason] = useState<Season | null>(null);
   const [me, setMe] = useState<MiniAppMe | null>(null);
   const [inviteCode, setInviteCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,16 +38,20 @@ export default function AdminRegisterPage() {
   const register = async () => {
     const token = getMiniAppSession();
     if (!season || !token) return;
-    if (!inviteCode.trim()) return setError("请填写当前赛季邀请码。");
+    const validationError = validateAdminRegistration(inviteCode, password, passwordConfirmation);
+    if (validationError) return setError(validationError);
     setBusy(true);
     setError(null);
     try {
       const updated = await api.registerAdmin({
         season_id: season.id,
         invite_code: inviteCode.trim(),
+        password,
       }, token);
       setMe(updated);
       setInviteCode("");
+      setPassword("");
+      setPasswordConfirmation("");
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "管理员注册失败");
     } finally {
@@ -53,7 +62,7 @@ export default function AdminRegisterPage() {
   return (
     <View className="page auth-flow-page">
       <Text className="auth-title">注册管理员</Text>
-      <Text className="auth-intro">填写当前赛季邀请码；首次网页登录密码与邀请码相同。</Text>
+      <Text className="auth-intro">填写当前赛季邀请码，并设置个人网页登录密码。</Text>
 
       {loading && <View className="auth-panel"><Text className="auth-detail">正在读取账号…</Text></View>}
       {!loading && !getMiniAppSession() && (
@@ -66,7 +75,7 @@ export default function AdminRegisterPage() {
         <View className="auth-panel auth-success-panel">
           <Text className="auth-panel-title">管理员身份已生效</Text>
           <Text className="auth-detail">网页登录名：{me.account.username}</Text>
-          <Text className="auth-detail">请登录管理网站后，在“修改密码”中设置个人密码。</Text>
+          <Text className="auth-detail">可使用注册时设置的密码直接登录管理网站。</Text>
           <Button className="auth-secondary" onClick={() => Taro.switchTab({ url: "/pages/mine/index" })}>返回我的</Button>
         </View>
       )}
@@ -74,7 +83,58 @@ export default function AdminRegisterPage() {
         <View className="auth-panel">
           <Text className="auth-panel-title">填写注册信息</Text>
           <Text className="auth-detail">网页登录名将使用当前昵称：{me.account.username}</Text>
-          <Input className="auth-field" password placeholder="当前赛季邀请码" value={inviteCode} onInput={(event) => setInviteCode(event.detail.value)} />
+          <Input
+            className="auth-field"
+            password
+            placeholder="当前赛季邀请码"
+            value={inviteCode}
+            onInput={(event) => {
+              setInviteCode(event.detail.value);
+              setError(null);
+            }}
+          />
+          <View className="auth-password-row">
+            <Input
+              className="auth-field auth-password-input"
+              password={!showPassword}
+              placeholder="设置网页密码（至少 4 个字符）"
+              value={password}
+              onInput={(event) => {
+                setPassword(event.detail.value);
+                setError(null);
+              }}
+            />
+            <Text
+              className="auth-password-toggle"
+              onClick={() => setShowPassword((value) => !value)}
+            >
+              {showPassword ? "隐藏" : "显示"}
+            </Text>
+          </View>
+          {password && passwordCharacterCount(password) < 4 && (
+            <Text className="auth-field-error">网页密码至少需要 4 个字符。</Text>
+          )}
+          <View className="auth-password-row">
+            <Input
+              className="auth-field auth-password-input"
+              password={!showPasswordConfirmation}
+              placeholder="再次输入网页密码"
+              value={passwordConfirmation}
+              onInput={(event) => {
+                setPasswordConfirmation(event.detail.value);
+                setError(null);
+              }}
+            />
+            <Text
+              className="auth-password-toggle"
+              onClick={() => setShowPasswordConfirmation((value) => !value)}
+            >
+              {showPasswordConfirmation ? "隐藏" : "显示"}
+            </Text>
+          </View>
+          {passwordConfirmation && password !== passwordConfirmation && (
+            <Text className="auth-field-error">两次输入的网页密码不一致。</Text>
+          )}
           <Button className="auth-primary" disabled={busy} onClick={() => void register()}>
             {busy ? "正在注册…" : "确认注册"}
           </Button>

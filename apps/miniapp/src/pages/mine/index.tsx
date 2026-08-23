@@ -203,7 +203,7 @@ export default function MinePage() {
               </>
             ) : (
               <>
-                <Text className="section-detail">邀请码属于当前赛季；初始网页登录密码与邀请码相同，可在后台修改。</Text>
+                <Text className="section-detail">邀请码属于当前赛季；注册时需要自行设置个人网页登录密码。</Text>
                 <Button
                   className="secondary-action"
                   onClick={() => Taro.navigateTo({ url: "/pages/admin-register/index" })}
