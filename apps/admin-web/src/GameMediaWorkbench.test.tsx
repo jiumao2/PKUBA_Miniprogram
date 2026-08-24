@@ -75,7 +75,7 @@ describe("GameMediaWorkbench", () => {
     expect(summary).toHaveTextContent("1 场待上传记录表");
     expect(summary).toHaveTextContent("1 场待核对记录表");
     expect(screen.getByRole("button", { name: /继续核对/ })).toBeVisible();
-    expect(screen.getByRole("button", { name: "删除照片" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "删除照片" })).toBeVisible();
     expect(screen.getByText("添加其他照片")).toBeVisible();
     expect(screen.queryByText("上传比赛合照")).not.toBeInTheDocument();
     expect(screen.queryByText(/待审核|待审/)).not.toBeInTheDocument();
@@ -105,6 +105,30 @@ describe("GameMediaWorkbench", () => {
     expect(screen.getByText("上传比赛合照")).toBeVisible();
     expect(screen.getByText("添加其他照片")).toBeVisible();
     expect(screen.queryByText(/待审核|通过|未通过/)).not.toBeInTheDocument();
+  });
+
+  it("never exposes the scoresheet source through photo deletion controls", async () => {
+    const scoresheetAsset = {
+      ...photo,
+      id: "source-one",
+      kind: "SCORESHEET",
+      can_delete: true,
+    } as GameMediaAsset;
+    const client = clientWith({
+      listAdminGameMedia: vi.fn().mockResolvedValue([scoresheetAsset]),
+    });
+    render(
+      <GameMediaWorkbench
+        client={client}
+        seasons={seasons}
+        seasonId="season-live"
+        initialGameId="game-one"
+        onSeasonChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("尚无比赛照片")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "删除照片" })).not.toBeInTheDocument();
   });
 
   it("keeps archived media readable while hiding every mutation control", async () => {

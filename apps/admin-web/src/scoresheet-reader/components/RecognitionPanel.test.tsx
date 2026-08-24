@@ -22,6 +22,25 @@ const diff: RecognitionDiff = {
 };
 
 describe('recognition result panel', () => {
+  it('does not label manually entered personnel as a recognition result', () => {
+    render(
+      <RecognitionPanel
+        run={null}
+        diff={null}
+        state="idle"
+        document={makeDocument()}
+        problemPaths={[]}
+        tablePersonnel={['人工填写姓名']}
+        onApply={vi.fn()}
+        onDismissDiff={vi.fn()}
+        onLocateProblem={vi.fn()}
+        onResolveProblem={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText('大模型识别结果')).not.toBeInTheDocument();
+  });
+
   it('shows exact API usage and applies only selected changed regions', async () => {
     const user = userEvent.setup();
     const apply = vi.fn().mockResolvedValue(undefined);

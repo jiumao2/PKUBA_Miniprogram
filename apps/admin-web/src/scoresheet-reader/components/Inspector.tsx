@@ -6,6 +6,7 @@ import {
   OFFICIAL_LABELS,
   setOrderedFormalFoul,
   setOrderedPostFoul,
+  setTablePersonnel,
   TIMEOUT_SCOPE_LABELS,
   TIMEOUT_SLOT_COUNTS,
 } from '@pkuba/scoresheet-domain';
@@ -872,60 +873,94 @@ function OfficialsEditor({
   selectedField,
 }: Pick<InspectorProps, 'document' | 'onMutate' | 'selectedField'>) {
   const tablePersonnel = document.recognition?.table_personnel ?? [];
+  const [newPersonnelName, setNewPersonnelName] = useState<string | null>(null);
+  const normalizedNewPersonnelName = newPersonnelName?.trim() ?? '';
+  useEffect(() => setNewPersonnelName(null), [document.id]);
+  const finishAddingPersonnel = () => {
+    if (newPersonnelName === null) return;
+    if (!normalizedNewPersonnelName) {
+      setNewPersonnelName(null);
+      return;
+    }
+    onMutate((draft) => {
+      setTablePersonnel(
+        draft,
+        [...(draft.recognition?.table_personnel ?? []), normalizedNewPersonnelName],
+      );
+    });
+    setNewPersonnelName(null);
+  };
   return (
     <div className="inspector-section">
       <h3>工作人员</h3>
-      <p className="section-note">模型只识别记录台人员姓名，不根据纸面位置猜测岗位。</p>
-      {document.recognition ? (
-        <>
-          <div className="subsection-heading compact table-personnel-heading">
-            <span>识别到的记录台人员</span>
-            <small>不分岗位</small>
-          </div>
-          <div className="table-personnel-list">
-            {tablePersonnel.map((name, index) => (
-              <div className="table-personnel-row" key={index}>
-                <span>{index + 1}</span>
-                <input
-                  aria-label={`记录台人员 ${index + 1}`}
-                  value={name}
-                  onChange={(event) => onMutate((draft) => {
-                    if (draft.recognition) {
-                      draft.recognition.table_personnel ??= [];
-                      draft.recognition.table_personnel[index] = event.target.value;
-                    }
-                  })}
-                />
-                <button
-                  type="button"
-                  className="destructive-icon"
-                  aria-label={`删除记录台人员 ${index + 1}`}
-                  onClick={() => onMutate((draft) => {
-                    draft.recognition?.table_personnel?.splice(index, 1);
-                  })}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-            {tablePersonnel.length === 0 ? (
-              <p className="table-personnel-empty">模型没有辨认出记录台人员，可在此人工补充。</p>
-            ) : null}
+      <div className="subsection-heading compact table-personnel-heading">
+        <span>记录台人员</span>
+        <small>不分岗位</small>
+      </div>
+      <div className="table-personnel-list">
+        {tablePersonnel.map((name, index) => (
+          <div className="table-personnel-row" key={index}>
+            <span>{index + 1}</span>
+            <input
+              aria-label={`记录台人员 ${index + 1}`}
+              value={name}
+              onChange={(event) => onMutate((draft) => {
+                setTablePersonnel(
+                  draft,
+                  tablePersonnel.map((current, currentIndex) => (
+                    currentIndex === index ? event.target.value : current
+                  )),
+                );
+              })}
+            />
             <button
               type="button"
-              className="secondary-action table-personnel-add"
+              className="destructive-icon"
+              aria-label={`删除记录台人员 ${index + 1}`}
               onClick={() => onMutate((draft) => {
-                if (draft.recognition) {
-                  draft.recognition.table_personnel ??= [];
-                  draft.recognition.table_personnel.push('');
-                }
+                setTablePersonnel(draft, tablePersonnel.filter((_, currentIndex) => currentIndex !== index));
               })}
             >
-              <Plus size={13} />添加人员
+              <Trash2 size={13} />
             </button>
           </div>
-        </>
-      ) : null}
+        ))}
+        {newPersonnelName !== null ? (
+          <div className="table-personnel-row">
+            <span>{tablePersonnel.length + 1}</span>
+            <input
+              aria-label="新增记录台人员"
+              autoFocus
+              placeholder="输入姓名"
+              value={newPersonnelName}
+              onChange={(event) => setNewPersonnelName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') finishAddingPersonnel();
+                if (event.key === 'Escape') setNewPersonnelName(null);
+              }}
+            />
+            <button
+              type="button"
+              className={`table-personnel-draft-action${normalizedNewPersonnelName ? ' ready' : ''}`}
+              aria-label={normalizedNewPersonnelName ? '确认添加记录台人员' : '取消添加记录台人员'}
+              onClick={finishAddingPersonnel}
+            >
+              {normalizedNewPersonnelName ? <CheckCircle2 size={13} /> : <Trash2 size={13} />}
+            </button>
+          </div>
+        ) : null}
+        {tablePersonnel.length === 0 && newPersonnelName === null ? (
+          <p className="table-personnel-empty">无法确定岗位的姓名可填在这里。</p>
+        ) : null}
+        <button
+          type="button"
+          className="secondary-action table-personnel-add"
+          disabled={newPersonnelName !== null}
+          onClick={() => setNewPersonnelName('')}
+        >
+          <Plus size={13} />添加人员
+        </button>
+      </div>
       <div className="subsection-heading compact optional-role-heading">
         <span>纸面岗位填写</span>
         <small>人工可选</small>

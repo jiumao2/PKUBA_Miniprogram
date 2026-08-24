@@ -258,6 +258,14 @@ export interface RecognitionDocumentState {
   applied_at: string;
 }
 
+/**
+ * A draft may contain manually entered, unassigned table personnel before any
+ * recognition result exists.  Keep that compatibility state distinguishable
+ * from an applied Qwen result so the editor does not report recognition as
+ * completed merely because an administrator entered a name.
+ */
+export const MANUAL_TABLE_PERSONNEL_RUN_ID = "manual-table-personnel";
+
 /** Authoritative scoresheet v1.4 document shared by API, web, and miniapp. */
 export interface ScoresheetDocument {
   schema_version: "1.0.0" | "1.1.0" | "1.2.0" | "1.3.0" | "1.4.0";
@@ -382,6 +390,34 @@ export function regionForPath(path: string): ScoresheetRegion | "ALL" {
 
 export function deepCloneDocument(document: ScoresheetDocument): ScoresheetDocument {
   return JSON.parse(JSON.stringify(document)) as ScoresheetDocument;
+}
+
+export function hasRecognitionResult(document: ScoresheetDocument): boolean {
+  return Boolean(
+    document.recognition
+    && document.recognition.run_id !== MANUAL_TABLE_PERSONNEL_RUN_ID,
+  );
+}
+
+export function setTablePersonnel(
+  document: ScoresheetDocument,
+  names: string[],
+): ScoresheetDocument {
+  const nextNames = [...names];
+  if (!document.recognition) {
+    if (nextNames.length === 0) return document;
+    document.recognition = {
+      run_id: MANUAL_TABLE_PERSONNEL_RUN_ID,
+      notes: "",
+      table_personnel: nextNames,
+      problem_paths: [],
+      issues: [],
+      applied_at: new Date().toISOString(),
+    };
+    return document;
+  }
+  document.recognition.table_personnel = nextNames;
+  return document;
 }
 
 export function teamBySide(document: ScoresheetDocument, side: TeamSide): TeamEntry {
@@ -557,7 +593,10 @@ export function semanticScoresheetPath(path: string, document?: ScoresheetDocume
     const role = document?.officials[index]?.role;
     return role ? OFFICIAL_LABELS[role] : "工作人员";
   }
-  if (parts[0] === "recognition" && parts[1] === "table_personnel") return "记录台人员";
+  if (
+    parts[0] === "table_personnel"
+    || (parts[0] === "recognition" && parts[1] === "table_personnel")
+  ) return "记录台人员";
   return "记录表字段";
 }
 

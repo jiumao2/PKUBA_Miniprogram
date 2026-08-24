@@ -175,13 +175,35 @@ describe('semantic inspector', () => {
     await user.type(first, '王五');
     await user.click(screen.getByRole('button', { name: '删除记录台人员 2' }));
     await user.click(screen.getByRole('button', { name: '添加人员' }));
+    await user.type(screen.getByLabelText('新增记录台人员'), '赵六');
+    await user.click(screen.getByRole('button', { name: '确认添加记录台人员' }));
 
     expect(screen.getByText(/没有填写或看不清时保持为空/)).toBeVisible();
     expect(screen.queryByLabelText(/签名状态/)).not.toBeInTheDocument();
     const document = JSON.parse(screen.getByTestId('document-json').textContent ?? '{}');
-    expect(document.recognition.table_personnel).toEqual(['王五', '']);
+    expect(document.recognition.table_personnel).toEqual(['王五', '赵六']);
     expect(document.officials.find((official: { role: string }) => official.role === 'scorer').name)
       .toBe('示例scorer');
+  });
+
+  it('allows unassigned table personnel before recognition exists', async () => {
+    const user = userEvent.setup();
+    const initialDocument = makeDocument();
+    initialDocument.recognition = null;
+    render(<Harness selectedField="officials" initialDocument={initialDocument} />);
+
+    expect(screen.getByText('无法确定岗位的姓名可填在这里。')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '添加人员' }));
+    expect(screen.getByLabelText('新增记录台人员')).toBeVisible();
+    expect(JSON.parse(screen.getByTestId('document-json').textContent ?? '{}').recognition).toBeNull();
+    await user.type(screen.getByLabelText('新增记录台人员'), '待确认姓名');
+    await user.keyboard('{Enter}');
+
+    const document = JSON.parse(screen.getByTestId('document-json').textContent ?? '{}');
+    expect(document.recognition).toMatchObject({
+      run_id: 'manual-table-personnel',
+      table_personnel: ['待确认姓名'],
+    });
   });
 
   it('edits only the scorer number in a fixed cumulative-score cell', async () => {

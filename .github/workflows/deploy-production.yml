@@ -1,0 +1,108 @@
+name: Reusable production deployment
+
+on:
+  workflow_call:
+    inputs:
+      version_tag:
+        required: true
+        type: string
+      release_commit:
+        required: true
+        type: string
+      api_digest:
+        required: true
+        type: string
+      web_digest:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pkuba-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.version_tag }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+    steps:
+      - name: Validate immutable deployment inputs
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          API_DIGEST: ${{ inputs.api_digest }}
+          WEB_DIGEST: ${{ inputs.web_digest }}
+        run: |
+          [[ "$VERSION_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$API_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+      - name: Configure the restricted production SSH key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/pkuba-production
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/pkuba-production ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/pkuba-production >/dev/null
+          [[ -s ~/.ssh/known_hosts ]]
+
+      - name: Run the atomic server deployment
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          API_DIGEST: ${{ inputs.api_digest }}
+          WEB_DIGEST: ${{ inputs.web_digest }}
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          [[ -n "$PROD_SSH_HOST" && -n "$PROD_SSH_PORT" && -n "$PROD_SSH_USER" ]]
+          api_image="ghcr.io/jiumao2/pkuba-api@$API_DIGEST"
+          web_image="ghcr.io/jiumao2/pkuba-web@$WEB_DIGEST"
+          ssh \
+            -i ~/.ssh/pkuba-production \
+            -p "$PROD_SSH_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 \
+            "$PROD_SSH_USER@$PROD_SSH_HOST" \
+            "deploy $VERSION_TAG $RELEASE_COMMIT $api_image $web_image" \
+            | tee deployment.log
+          grep -Fx "PKUBA_DEPLOYMENT_RESULT=success" deployment.log
+
+      - name: Write deployment summary
+        if: always()
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+          API_DIGEST: ${{ inputs.api_digest }}
+          WEB_DIGEST: ${{ inputs.web_digest }}
+        run: |
+          {
+            echo "## PKUBA production deployment"
+            echo
+            echo "- Version: \`$VERSION_TAG\`"
+            echo "- Commit: \`$RELEASE_COMMIT\`"
+            echo "- API: \`$API_DIGEST\`"
+            echo "- Web: \`$WEB_DIGEST\`"
+            if [[ -f deployment.log ]]; then
+              echo
+              echo "### Server result"
+              echo '```text'
+              tail -n 30 deployment.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the ephemeral SSH key
+        if: always()
+        run: rm -f ~/.ssh/pkuba-production

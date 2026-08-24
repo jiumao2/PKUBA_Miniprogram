@@ -6,6 +6,60 @@
     "description": "PKUBA authoritative API. Clients submit commands; the server owns all rules."
   },
   "paths": {
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "core_api_health_live",
+        "summary": "Health Live",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivenessOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "core_api_health_ready",
+        "summary": "Health Ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "core_api_health",
@@ -14,6 +68,16 @@
         "responses": {
           "200": {
             "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -9967,6 +10031,35 @@
   },
   "components": {
     "schemas": {
+      "LivenessOut": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          },
+          "release_tag": {
+            "title": "Release Tag",
+            "type": "string"
+          },
+          "git_commit": {
+            "title": "Git Commit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checked_at",
+          "release_tag",
+          "git_commit"
+        ],
+        "title": "LivenessOut",
+        "type": "object"
+      },
       "HealthOut": {
         "properties": {
           "status": {
@@ -9977,11 +10070,36 @@
             "format": "date-time",
             "title": "Checked At",
             "type": "string"
+          },
+          "release_tag": {
+            "title": "Release Tag",
+            "type": "string"
+          },
+          "git_commit": {
+            "title": "Git Commit",
+            "type": "string"
+          },
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "media": {
+            "title": "Media",
+            "type": "string"
+          },
+          "archive": {
+            "title": "Archive",
+            "type": "string"
           }
         },
         "required": [
           "status",
-          "checked_at"
+          "checked_at",
+          "release_tag",
+          "git_commit",
+          "database",
+          "media",
+          "archive"
         ],
         "title": "HealthOut",
         "type": "object"

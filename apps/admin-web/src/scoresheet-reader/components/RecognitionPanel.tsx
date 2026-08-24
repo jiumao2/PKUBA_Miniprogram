@@ -66,7 +66,7 @@ export function RecognitionPanel({
         message: describeRecognitionProblem(path, document),
       })),
   ];
-  if (!run && state === 'idle' && reviewItems.length === 0 && tablePersonnel.length === 0) return null;
+  if (!run && state === 'idle' && reviewItems.length === 0) return null;
   const active = state === 'starting' || state === 'running';
   return (
     <section className={`recognition-panel ${state}`} aria-label="大模型识别结果">
@@ -98,7 +98,7 @@ export function RecognitionPanel({
       {run?.recognition_notes ? (
         <div className="recognition-note"><AlertTriangle size={15} /><span>{run.recognition_notes}</span></div>
       ) : null}
-      {!active && tablePersonnel.length > 0 ? (
+      {!active && state !== 'idle' && tablePersonnel.length > 0 ? (
         <div className="recognition-personnel" aria-label="识别到的记录台人员">
           <span>记录台人员 · 不分岗位</span>
           <div>{tablePersonnel.map((name) => <b key={name}>{name}</b>)}</div>

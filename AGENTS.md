@@ -29,6 +29,8 @@
 - 公开球队榜只聚合正式比分并完整展示所选组别；球员榜只聚合当前 publication 且绑定稳定名单 ID 的纸面统计，每页 20 人、最多 5 页，仅展示前 100 名。合成榜单数据必须带审计标记，生产上线前由 `check_no_synthetic_public_data` 阻断并整批清除。
 - 旧 Backup 导入只允许读取 Private/Team/Schedule 三份公开骨架，禁止导入 OpenID、人员、申请、照片或秘密。
 - 生产媒体只存 Ubuntu 私有 Docker volume，不接入 COS。赛季数据包不得包含 OpenID、密码/令牌摘要或部署密钥；未加密全系统备份属于敏感文件，只能由超级管理员在 HTTPS/localhost 生成和下载。
+- 生产发布只接受属于 `main` 的 `vX.Y.Z` 标签和 GHCR digest；保留 Compose project `pkuba-ip-test` 及既有数据库/媒体/归档卷。迁移前必须停写并生成最终 PostgreSQL dump，失败时恢复 dump 与上一 digest；禁止并行迁移、可变镜像、`down -v` 或全局 Docker 清理。
+- `deploy-wsl.ps1` 只负责本地容器、迁移、readiness、端口代理和小程序构建，绝不导入数据、生成演示赛季或创建/重置管理员；本地数据初始化与管理员创建必须使用独立显式命令，且不得用于生产。
 - 归档包最多暂存 24 小时，确认下载并外部保存后立即删除。只有 `ARCHIVED` 赛季且最终数据包、照片包完整时才能清理照片；只删物理文件，媒体行、哈希、publication 引用和审计永久保留。
 - `restore_system_backup` 只允许空的 `pkuba_restore_*` 隔离数据库和空媒体目录；禁止指向当前环境或生产卷。
 - V1 暂不实现裁判、公众历史、实时计分、微信订阅消息、Redis/Celery 或微服务；记录表识别使用独立 PostgreSQL worker。

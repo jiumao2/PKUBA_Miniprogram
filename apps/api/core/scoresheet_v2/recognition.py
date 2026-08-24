@@ -16,6 +16,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
 from .models import (
+    MANUAL_TABLE_PERSONNEL_RUN_ID,
     DocumentStatus,
     FoulCode,
     FoulEntry,
@@ -1195,6 +1196,15 @@ def map_payload_to_document(
     if "officials" in selected:
         table_personnel = []
         seen_personnel: set[str] = set()
+        if (
+            document.recognition
+            and document.recognition.run_id == MANUAL_TABLE_PERSONNEL_RUN_ID
+        ):
+            for raw_name in existing_table_personnel:
+                name = " ".join(raw_name.strip().split())
+                if name and name not in seen_personnel:
+                    table_personnel.append(name)
+                    seen_personnel.add(name)
         for raw_name in payload.table_personnel:
             name = " ".join(raw_name.strip().split())
             if name and name not in seen_personnel:

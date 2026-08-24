@@ -21,7 +21,7 @@ from core.models import (
     ScoresheetRecognitionRun,
     Season,
 )
-from core.scoresheet_schema_v2 import ensure_v2_document
+from core.scoresheet_schema_v2 import ensure_v2_document, has_recognition_result
 from core.scoresheet_v2.models import ScoresheetDocument
 from core.scoresheet_v2.recognition import PROMPT_VERSION
 from core.scoresheet_v2.template import load_template_definition
@@ -373,7 +373,7 @@ def _detail(scoresheet: GameScoresheet) -> dict[str, Any]:
     elif scoresheet.status == GameScoresheet.Status.READY:
         draft["status"] = "validated"
     else:
-        draft["status"] = "needs_review" if draft.get("recognition") else "draft"
+        draft["status"] = "needs_review" if has_recognition_result(draft) else "draft"
     if source:
         draft["source"].update(
             {

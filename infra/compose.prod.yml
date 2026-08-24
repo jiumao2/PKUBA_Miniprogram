@@ -11,8 +11,11 @@ services:
     environment:
       PKUBA_DOMAIN: ${PKUBA_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
     volumes:
       - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${PKUBA_DEPLOY_STATE_DIR:-/opt/pkuba/deploy/state}:/srv/deployment-state:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
@@ -23,6 +26,9 @@ services:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     restart: unless-stopped
     env_file: ${PKUBA_ENV_FILE:-./.env.production}
+    environment:
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
     command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 600
     expose:
       - "8000"
@@ -32,57 +38,76 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # healthcheck:
-    #   test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 12
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import http.client,sys; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=3); c.request('GET','/api/v1/health',headers={'Host':'api','X-Forwarded-Proto':'https'}); r=c.getresponse(); status=r.status; c.close(); sys.exit(0 if status == 200 else 1)",
+          "import http.client,sys; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=3); c.request('GET','/api/v1/health/ready',headers={'Host':'api','X-Forwarded-Proto':'https'}); r=c.getresponse(); status=r.status; c.close(); sys.exit(0 if status == 200 else 1)",
         ]
       interval: 10s
       timeout: 5s
-      retries: 12  
+      retries: 12
 
   outbox:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     restart: unless-stopped
     profiles: ["email"]
     env_file: ${PKUBA_ENV_FILE:-./.env.production}
+    environment: &release-metadata
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
     command: python manage.py process_outbox --loop
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,sys; sys.exit(0 if b'process_outbox' in pathlib.Path('/proc/1/cmdline').read_bytes() else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   expiry:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     restart: unless-stopped
     env_file: ${PKUBA_ENV_FILE:-./.env.production}
+    environment: *release-metadata
     command: python manage.py expire_reschedules --loop
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,sys; sys.exit(0 if b'expire_reschedules' in pathlib.Path('/proc/1/cmdline').read_bytes() else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   scoresheet-worker:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     restart: unless-stopped
     env_file: ${PKUBA_ENV_FILE:-./.env.production}
+    environment: *release-metadata
     command: python manage.py process_scoresheets --poll-seconds 2
     volumes:
       - private-media:/app/.local/media
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,sys; sys.exit(0 if b'process_scoresheets' in pathlib.Path('/proc/1/cmdline').read_bytes() else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   archive-worker:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     restart: unless-stopped
     env_file: ${PKUBA_ENV_FILE:-./.env.production}
+    environment: *release-metadata
     command: python manage.py process_archives --loop --poll-seconds 2
     volumes:
       - private-media:/app/.local/media
@@ -90,6 +115,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,sys; sys.exit(0 if b'process_archives' in pathlib.Path('/proc/1/cmdline').read_bytes() else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   db:
     image: postgres:17-alpine

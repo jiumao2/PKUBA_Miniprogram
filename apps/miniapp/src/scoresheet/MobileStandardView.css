@@ -675,6 +675,12 @@
   font-size: 26rpx;
 }
 
+.personnel-draft-row button.confirm {
+  border-color: #b52d28;
+  background: #b52d28;
+  color: #fff;
+}
+
 .personnel-add {
   width: calc(100% - 36rpx);
   margin: 14rpx 18rpx;

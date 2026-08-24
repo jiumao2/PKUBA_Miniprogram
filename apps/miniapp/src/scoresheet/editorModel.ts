@@ -3,6 +3,7 @@ import {
   deriveScoreEvents,
   OFFICIAL_ROLES,
   paperPlayerRows,
+  setTablePersonnel,
   setTimeoutMinute,
   sparsePlayerRows,
   teamBySide,
@@ -95,8 +96,41 @@ export function setRecognitionPersonnel(
   names: string[],
 ): ScoresheetDocument {
   return mutateScoresheet(document, (draft) => {
-    if (draft.recognition) draft.recognition.table_personnel = [...names];
+    setTablePersonnel(draft, names);
   });
+}
+
+export function addRecognitionPersonnel(
+  document: ScoresheetDocument,
+  rawName: string,
+): ScoresheetDocument {
+  const name = rawName.trim();
+  if (!name) return deepCloneDocument(document);
+  return setRecognitionPersonnel(
+    document,
+    [...(document.recognition?.table_personnel ?? []), name],
+  );
+}
+
+export function updateRecognitionPersonnel(
+  document: ScoresheetDocument,
+  index: number,
+  name: string,
+): ScoresheetDocument {
+  const names = [...(document.recognition?.table_personnel ?? [])];
+  if (index < 0 || index >= names.length) return deepCloneDocument(document);
+  names[index] = name;
+  return setRecognitionPersonnel(document, names);
+}
+
+export function removeRecognitionPersonnel(
+  document: ScoresheetDocument,
+  index: number,
+): ScoresheetDocument {
+  const names = [...(document.recognition?.table_personnel ?? [])];
+  if (index < 0 || index >= names.length) return deepCloneDocument(document);
+  names.splice(index, 1);
+  return setRecognitionPersonnel(document, names);
 }
 
 export function priorPlayerNames(document: ScoresheetDocument, side: TeamSide): string[] {

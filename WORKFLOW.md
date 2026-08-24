@@ -37,12 +37,16 @@ npm --workspace @pkuba/miniapp run build:weapp
 
 `main` 不自动发布。
 
-1. 确认本地检查与 GitHub Actions 通过。
+服务器完成 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) 的一次性接入后：
+
+1. 确认本地 `main` 工作区干净，且所有提交已经推送。
 2. 更新版本号和 `Plan.md` 状态。
-3. 创建带说明的 `vX.Y.Z` 标签。
-4. 手动触发发布工作流。
-5. 发布程序先备份 PostgreSQL，再拉取标签对应镜像并执行迁移。
-6. 健康检查失败时恢复上一镜像；迁移不可逆时按发布说明恢复备份。
-7. 在管理网站完成登录、当前赛季、赛程和待办冒烟检查。
+3. 运行 `./scripts/release.ps1 -Version vX.Y.Z`；脚本会复核本地 `main` 与 `origin/main` 完全一致，并创建带说明标签。
+4. 标签自动触发完整 CI。任何后端、OpenAPI、前端、测试或构建失败都会在连接生产服务器前终止。
+5. CI 全绿后发布 digest 镜像、小程序 artifact，并通过受限 SSH 自动执行备份、停写、迁移、内部/外部验收和失败回滚。
+6. 只有服务器验收成功才创建 GitHub Release；日常流程不需要人工 SSH。
+7. 微信小程序仍需在微信平台人工上传、审核和发布，并完成真机登录、上传和调赛冒烟检查。
+
+重新部署已经存在的版本时，只能在 GitHub Actions 手工运行“Redeploy an existing production release”，输入标签和确认词 `DEPLOY`；该流程重新解析原镜像 digest，不重新构建。首次服务器配置、失败诊断、回滚自身失败和灾难恢复仍允许使用个人 SSH 密钥。
 
 第二名稳定开发者加入后再启用短分支、Pull Request、至少一人审核和 `main` 保护。

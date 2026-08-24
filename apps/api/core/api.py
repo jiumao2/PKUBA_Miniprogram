@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from urllib.parse import quote
 from uuid import UUID
 
+from django.conf import settings
+from django.db import connection
 from django.db.models import Count, Max, Min, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
@@ -52,6 +56,18 @@ class ErrorOut(Schema):
 class HealthOut(Schema):
     status: str
     checked_at: datetime
+    release_tag: str
+    git_commit: str
+    database: str
+    media: str
+    archive: str
+
+
+class LivenessOut(Schema):
+    status: str
+    checked_at: datetime
+    release_tag: str
+    git_commit: str
 
 
 class DivisionOut(Schema):
@@ -334,10 +350,63 @@ def _serialize_public_group_photo(asset: GameMediaAsset) -> dict[str, object]:
     }
 
 
-@api.get("/health", response=HealthOut, tags=["system"])
+def _release_metadata() -> dict[str, str]:
+    return {
+        "release_tag": os.getenv("PKUBA_RELEASE_TAG", "development"),
+        "git_commit": os.getenv("PKUBA_GIT_COMMIT", "unknown"),
+    }
+
+
+def _path_dependency_status(path_value: object) -> str:
+    path = Path(path_value)
+    if not path.is_dir():
+        return "unavailable"
+    required = os.R_OK | os.W_OK | os.X_OK
+    return "ok" if os.access(path, required) else "unavailable"
+
+
+def _readiness_payload() -> tuple[int, dict[str, object]]:
+    dependencies = {
+        "database": "unavailable",
+        "media": _path_dependency_status(settings.MEDIA_ROOT),
+        "archive": _path_dependency_status(settings.ARCHIVE_ROOT),
+    }
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            if cursor.fetchone() == (1,):
+                dependencies["database"] = "ok"
+    except Exception:  # noqa: BLE001 - readiness must convert dependency failures to 503.
+        connection.close()
+
+    ready = all(value == "ok" for value in dependencies.values())
+    payload: dict[str, object] = {
+        "status": "ok" if ready else "unavailable",
+        "checked_at": timezone.now(),
+        **_release_metadata(),
+        **dependencies,
+    }
+    return (200 if ready else 503), payload
+
+
+@api.get("/health/live", response=LivenessOut, tags=["system"])
+def health_live(request: HttpRequest):
+    del request
+    return {"status": "ok", "checked_at": timezone.now(), **_release_metadata()}
+
+
+@api.get("/health/ready", response={200: HealthOut, 503: HealthOut}, tags=["system"])
+def health_ready(request: HttpRequest):
+    del request
+    status_code, payload = _readiness_payload()
+    return payload if status_code == 200 else Status(status_code, payload)
+
+
+@api.get("/health", response={200: HealthOut, 503: HealthOut}, tags=["system"])
 def health(request: HttpRequest):
     del request
-    return {"status": "ok", "checked_at": datetime.now().astimezone()}
+    status_code, payload = _readiness_payload()
+    return payload if status_code == 200 else Status(status_code, payload)
 
 
 @public.get("/season", response={200: SeasonOut, 404: ErrorOut})

@@ -34,6 +34,7 @@ from core.scoresheet_schema_v2 import (
     apply_changes,
     document_digest,
     game_prior_snapshot,
+    has_recognition_result,
     merge_recognition_result,
     new_document,
     region_digest,
@@ -799,7 +800,7 @@ def save_draft_changes(
         scoresheet.draft_version += 1
         updated["revision"] = scoresheet.draft_version
         updated["updated_at"] = timezone.now().isoformat()
-        updated["status"] = "needs_review" if updated.get("recognition") else "draft"
+        updated["status"] = "needs_review" if has_recognition_result(updated) else "draft"
         updated["acknowledged_warnings"] = []
         scoresheet.draft = updated
         reviewed = dict(scoresheet.reviewed_regions or {})

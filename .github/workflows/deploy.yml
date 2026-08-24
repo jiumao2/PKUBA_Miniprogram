@@ -1,20 +1,76 @@
-name: Deploy production
+name: Redeploy an existing production release
 
 on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: Existing version tag to deploy
+        description: Existing immutable version tag, for example v0.3.0
         required: true
+        type: string
+      confirmation:
+        description: Type DEPLOY to confirm a production redeployment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
-  validate-tag:
+  resolve:
     runs-on: ubuntu-latest
+    outputs:
+      release_commit: ${{ steps.release.outputs.release_commit }}
+      api_digest: ${{ steps.images.outputs.api_digest }}
+      web_digest: ${{ steps.images.outputs.web_digest }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.version_tag }}
-      - name: Require an immutable version tag
-        run: git describe --tags --exact-match HEAD
-      - name: Deployment boundary
-        run: echo "Server deployment is intentionally manual until production secrets and host are configured."
+          fetch-depth: 0
+
+      - name: Validate the existing release
+        id: release
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          [[ "$CONFIRMATION" == DEPLOY ]]
+          [[ "$VERSION_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          release_commit=$(git rev-parse "$VERSION_TAG^{commit}")
+          [[ "$release_commit" == "$(git rev-parse HEAD)" ]]
+          git fetch origin main
+          git merge-base --is-ancestor "$release_commit" origin/main
+          echo "release_commit=$release_commit" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve immutable image digests
+        id: images
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+        run: |
+          api_digest=$(docker buildx imagetools inspect \
+            "ghcr.io/jiumao2/pkuba-api:$VERSION_TAG" --format '{{.Manifest.Digest}}')
+          web_digest=$(docker buildx imagetools inspect \
+            "ghcr.io/jiumao2/pkuba-web:$VERSION_TAG" --format '{{.Manifest.Digest}}')
+          [[ "$api_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$web_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "api_digest=$api_digest" >> "$GITHUB_OUTPUT"
+          echo "web_digest=$web_digest" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: resolve
+    uses: ./.github/workflows/deploy-production.yml
+    with:
+      version_tag: ${{ inputs.version_tag }}
+      release_commit: ${{ needs.resolve.outputs.release_commit }}
+      api_digest: ${{ needs.resolve.outputs.api_digest }}
+      web_digest: ${{ needs.resolve.outputs.web_digest }}
+    secrets: inherit

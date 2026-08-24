@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { hasRecognitionResult } from '@pkuba/scoresheet-domain';
 import { api } from './api';
 import type {
   DocumentChangeLogEntry,
@@ -50,7 +51,7 @@ function recognitionStateFor(
   if (run && activeRecognitionStatuses.has(run.status)) return 'running';
   if (run?.status === 'failed' || run?.status === 'interrupted') return 'failed';
   if (run?.status === 'succeeded' && !run.auto_applied) return 'diff';
-  if (document.recognition) return 'applied';
+  if (hasRecognitionResult(document)) return 'applied';
   return 'idle';
 }
 

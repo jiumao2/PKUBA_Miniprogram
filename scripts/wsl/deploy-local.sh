@@ -32,23 +32,9 @@ done
 "${compose[@]}" up -d --build
 "${compose[@]}" exec -T api python manage.py migrate --noinput
 
-if [[ -d "${PKUBA_LEGACY_SOURCE:-}" ]]; then
-  "${compose[@]}" run --rm \
-    -v "$PKUBA_LEGACY_SOURCE:/legacy:ro" \
-    api python manage.py import_legacy_2026 --source /legacy
-else
-  "${compose[@]}" exec -T api python manage.py seed_demo --if-empty
-fi
-
-"${compose[@]}" exec -T \
-  -e PKUBA_BOOTSTRAP_ADMIN_PASSWORD="$PKUBA_LOCAL_ADMIN_PASSWORD" \
-  api python manage.py create_local_admin \
-  "$PKUBA_LOCAL_ADMIN_USERNAME" \
-  --password-env PKUBA_BOOTSTRAP_ADMIN_PASSWORD
-
 for _ in $(seq 1 60); do
   if curl --fail --silent --show-error \
-    "http://localhost:${PKUBA_WEB_PORT}/api/v1/health" >/dev/null; then
+    "http://localhost:${PKUBA_WEB_PORT}/api/v1/health/ready" >/dev/null; then
     exit 0
   fi
   sleep 1

@@ -1,4 +1,5 @@
 import { createAdminClient } from '@pkuba/api-client';
+import { hasRecognitionResult } from '@pkuba/scoresheet-domain';
 
 import type {
   DocumentChangeLogPage,
@@ -223,7 +224,7 @@ function documentFromDetail(rawValue: unknown): ScoresheetDocument {
     : raw.status === 'READY'
       || (editablePublishedDraft && raw.validation_draft_version === raw.draft_version)
       ? 'validated'
-      : document.recognition
+      : hasRecognitionResult(document)
         ? 'needs_review'
         : 'draft';
   return document;

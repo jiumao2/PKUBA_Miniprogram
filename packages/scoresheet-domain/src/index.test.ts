@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   deriveScoreEvents,
   fiba2024FoulEditorOptions,
+  hasRecognitionResult,
   isBlankPlayer,
   isOrderedFoulSlotEnabled,
   isOrderedPostFoulSlotEnabled,
   isValidJerseyNumber,
+  MANUAL_TABLE_PERSONNEL_RUN_ID,
   OFFICIAL_LABELS,
   paperPlayerRows,
   periodCheckpoints,
@@ -16,6 +18,7 @@ import {
   setOrderedFormalFoul,
   setOrderedPostFoul,
   setScoreCell,
+  setTablePersonnel,
   setTimeoutMinute,
   TIMEOUT_SLOT_COUNTS,
   timeoutMinute,
@@ -178,6 +181,7 @@ describe("shared paper fields", () => {
     draft.teams[0].players = [{ ...paperPlayerRows(draft.teams[0])[4], name: "王五" }];
     expect(semanticScoresheetPath("/teams/0/players/0/name", draft)).toBe("A 队第 5 行姓名");
     expect(semanticScoresheetPath("/stated_period_scores/4/team_b", draft)).toBe("决胜期合计 · B 队");
+    expect(semanticScoresheetPath("/table_personnel/0", draft)).toBe("记录台人员");
   });
 
   it("shares the exact Chinese official labels and foul catalogue", () => {
@@ -186,5 +190,19 @@ describe("shared paper fields", () => {
       "主裁", "第一副裁", "第二副裁", "球队抗议队长",
     ]);
     expect(fiba2024FoulEditorOptions("player").map((option) => option.code)).toEqual(["P", "T", "U", "D"]);
+  });
+
+  it("stores unassigned table personnel before recognition without claiming a result", () => {
+    const draft = document();
+    expect(draft.recognition).toBeUndefined();
+
+    setTablePersonnel(draft, ["张三", ""]);
+
+    expect(draft.recognition?.table_personnel).toEqual(["张三", ""]);
+    expect(hasRecognitionResult(draft)).toBe(false);
+    setTablePersonnel(draft, []);
+    expect(draft.recognition?.run_id).toBe(MANUAL_TABLE_PERSONNEL_RUN_ID);
+    expect(draft.recognition?.table_personnel).toEqual([]);
+    expect(hasRecognitionResult(draft)).toBe(false);
   });
 });

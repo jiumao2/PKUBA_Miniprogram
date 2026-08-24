@@ -1,8 +1,6 @@
 [CmdletBinding()]
 param(
     [string]$Distro = 'Ubuntu-24.04',
-    [string]$AdminUsername = 'local-admin',
-    [string]$AdminPassword = '',
     [int]$WebPort = 8088,
     [int]$MailPort = 8089,
     [switch]$SkipInstall
@@ -11,7 +9,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $envFile = Join-Path $root '.env.wsl.local'
-$legacySource = Join-Path (Split-Path -Parent $root) '北大篮协小程序\Backup'
 
 function Read-DotEnv([string]$Path) {
     $values = @{}
@@ -25,31 +22,6 @@ function Read-DotEnv([string]$Path) {
 }
 
 $existing = Read-DotEnv $envFile
-if (-not $PSBoundParameters.ContainsKey('AdminUsername') -and $existing.PKUBA_LOCAL_ADMIN_USERNAME) {
-    $AdminUsername = $existing.PKUBA_LOCAL_ADMIN_USERNAME
-}
-if (-not $AdminPassword -and $existing.PKUBA_LOCAL_ADMIN_PASSWORD) {
-    $AdminPassword = $existing.PKUBA_LOCAL_ADMIN_PASSWORD
-}
-if (-not $AdminPassword) {
-    $securePassword = Read-Host 'WSL 本地管理员密码' -AsSecureString
-    $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
-    try {
-        $AdminPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
-    }
-    finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
-    }
-}
-if ($AdminPassword.Length -lt 8) {
-    throw '本地管理员密码至少需要 8 个字符。'
-}
-if ($AdminUsername -notmatch '^[\p{L}\p{N}_.@+-]{2,32}$') {
-    throw '管理员用户名需为 2-32 个字母、数字或 _.@+- 字符。'
-}
-if ($AdminPassword -notmatch '^[A-Za-z0-9_.@+!-]+$') {
-    throw '自动部署密码仅支持字母、数字和 _.@+!- 字符。'
-}
 
 $distros = (& wsl.exe --list --quiet) -replace "`0", '' | ForEach-Object { $_.Trim() }
 if ($Distro -notin $distros) {
@@ -75,7 +47,6 @@ function New-RandomHex([int]$ByteCount) {
 $projectEnv = Read-DotEnv (Join-Path $root '.env')
 $projectConfig = Get-Content -Raw -LiteralPath (Join-Path $root 'apps\miniapp\project.config.json') | ConvertFrom-Json
 $repoWsl = Convert-ToWslPath $root
-$legacyWsl = if (Test-Path -LiteralPath $legacySource) { Convert-ToWslPath $legacySource } else { '' }
 $dbPassword = if ($existing.PKUBA_DB_PASSWORD) { $existing.PKUBA_DB_PASSWORD } else { New-RandomHex 24 }
 $djangoSecret = if ($existing.DJANGO_SECRET_KEY) { $existing.DJANGO_SECRET_KEY } else { New-RandomHex 48 }
 $wechatAppId = if ($projectEnv.WECHAT_APP_ID) { $projectEnv.WECHAT_APP_ID } else { $projectConfig.appid }
@@ -117,9 +88,6 @@ $envLines = @(
     "SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=$scoresheetRecognitionUpscaleTargetPixels"
     "SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=$scoresheetRecognitionTimeoutSeconds"
     "PKUBA_GIT_COMMIT=$gitCommit"
-    "PKUBA_LOCAL_ADMIN_USERNAME=$AdminUsername"
-    "PKUBA_LOCAL_ADMIN_PASSWORD=$AdminPassword"
-    "PKUBA_LEGACY_SOURCE=$legacyWsl"
     "PKUBA_WEB_PORT=$WebPort"
     "PKUBA_MAIL_PORT=$MailPort"
 )
@@ -190,7 +158,7 @@ finally {
     }
 }
 
-$health = Invoke-RestMethod -Uri "http://localhost:$WebPort/api/v1/health" -TimeoutSec 10
+$health = Invoke-RestMethod -Uri "http://localhost:$WebPort/api/v1/health/ready" -TimeoutSec 10
 if ($health.status -ne 'ok') { throw 'WSL API 健康检查未通过。' }
 
 Write-Host ''
@@ -198,8 +166,7 @@ Write-Host "管理网站：http://localhost:$WebPort/"
 Write-Host "API 文档：http://localhost:$WebPort/api/v1/docs"
 Write-Host "邮件调试：http://localhost:$MailPort/"
 Write-Host "微信小程序项目：$(Join-Path $root 'apps\miniapp')"
-Write-Host "管理员用户名：$AdminUsername"
-Write-Host '管理员密码：已保存在 .env.wsl.local，不在日志输出'
+Write-Host '本次部署未导入、生成或修改任何业务数据和管理员账号。'
 if (-not $wechatSecret) {
     Write-Warning 'WECHAT_APP_SECRET 尚未配置；公开页面和网页管理员登录可用，小程序微信身份登录需补充后重新部署。'
 }

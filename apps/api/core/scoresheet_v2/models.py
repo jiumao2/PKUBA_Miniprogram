@@ -11,6 +11,9 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+MANUAL_TABLE_PERSONNEL_RUN_ID = "manual-table-personnel"
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

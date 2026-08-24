@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from core.models import Game, RosterPlayer
-from core.scoresheet_v2.models import ScoresheetDocument
+from core.scoresheet_v2.models import MANUAL_TABLE_PERSONNEL_RUN_ID, ScoresheetDocument
 from core.scoresheet_v2.scoring import derive_score_events
 from core.scoresheet_v2.validation import validate_document as validate_v2_document
 
@@ -46,6 +46,39 @@ class ScoresheetDocumentError(ValueError):
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def has_recognition_result(document: dict[str, Any]) -> bool:
+    recognition = document.get("recognition")
+    return bool(
+        isinstance(recognition, dict)
+        and recognition.get("run_id") != MANUAL_TABLE_PERSONNEL_RUN_ID
+    )
+
+
+def _manual_table_personnel_state(names: list[Any]) -> dict[str, Any]:
+    return {
+        "run_id": MANUAL_TABLE_PERSONNEL_RUN_ID,
+        "notes": "",
+        "table_personnel": copy.deepcopy(names),
+        "problem_paths": [],
+        "issues": [],
+        "applied_at": _utc_now(),
+    }
+
+
+def _merge_table_personnel(*groups: Any) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        if not isinstance(group, list):
+            continue
+        for raw_name in group:
+            name = " ".join(str(raw_name).strip().split())
+            if name and name not in seen:
+                merged.append(name)
+                seen.add(name)
+    return merged
 
 
 def game_prior_snapshot(game: Game) -> dict[str, Any]:
@@ -398,7 +431,9 @@ def region_for_path(path: str) -> str:
         return "SUMMARY"
     if path.startswith("/officials") or path.startswith("/recognition/table_personnel"):
         return "OFFICIALS"
-    if path.startswith(("/header", "/source", "/game_prior")) or path in {
+    if path.startswith(
+        ("/header", "/source", "/game_prior", "/recognition/")
+    ) or path in {
         "/schema_version",
         "/template_id",
         "/rules_profile",
@@ -451,7 +486,12 @@ def _json_changes(
     return result
 
 
-def _preserve_server_fields(current: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+def _preserve_server_fields(
+    current: dict[str, Any],
+    incoming: dict[str, Any],
+    *,
+    allow_recognition_replace: bool = False,
+) -> dict[str, Any]:
     prepared = copy.deepcopy(incoming)
     for field in (
         "id",
@@ -473,12 +513,31 @@ def _preserve_server_fields(current: dict[str, Any], incoming: dict[str, Any]) -
     current_recognition = current.get("recognition")
     incoming_recognition = incoming.get("recognition")
     if current_recognition is None:
-        prepared["recognition"] = None
+        if allow_recognition_replace and isinstance(incoming_recognition, dict):
+            prepared["recognition"] = copy.deepcopy(incoming_recognition)
+        elif (
+            isinstance(incoming_recognition, dict)
+            and isinstance(incoming_recognition.get("table_personnel"), list)
+            and incoming_recognition["table_personnel"]
+        ):
+            prepared["recognition"] = _manual_table_personnel_state(
+                incoming_recognition["table_personnel"]
+            )
+        else:
+            prepared["recognition"] = None
     elif isinstance(incoming_recognition, dict):
-        prepared["recognition"] = copy.deepcopy(current_recognition)
-        for key in ("table_personnel", "problem_paths", "issues"):
-            if key in incoming_recognition:
-                prepared["recognition"][key] = copy.deepcopy(incoming_recognition[key])
+        incoming_personnel = incoming_recognition.get("table_personnel")
+        if (
+            current_recognition.get("run_id") == MANUAL_TABLE_PERSONNEL_RUN_ID
+            and isinstance(incoming_personnel, list)
+            and not incoming_personnel
+        ):
+            prepared["recognition"] = None
+        else:
+            prepared["recognition"] = copy.deepcopy(current_recognition)
+            for key in ("table_personnel", "problem_paths", "issues"):
+                if key in incoming_recognition:
+                    prepared["recognition"][key] = copy.deepcopy(incoming_recognition[key])
     else:
         prepared["recognition"] = copy.deepcopy(current_recognition)
     current_teams = {
@@ -491,7 +550,7 @@ def _preserve_server_fields(current: dict[str, Any], incoming: dict[str, Any]) -
             if isinstance(team, dict) and team.get("side") in current_teams:
                 team["name"] = current_teams[team["side"]]["name"]
     prepared["acknowledged_warnings"] = []
-    prepared["status"] = "needs_review" if prepared.get("recognition") else "draft"
+    prepared["status"] = "needs_review" if has_recognition_result(prepared) else "draft"
     return prepared
 
 
@@ -810,6 +869,15 @@ def merge_recognition_result(
             "game_prior",
         ):
             recognized[field] = copy.deepcopy(document.get(field))
+        current_recognition = document.get("recognition")
+        if (
+            isinstance(current_recognition, dict)
+            and current_recognition.get("run_id") == MANUAL_TABLE_PERSONNEL_RUN_ID
+        ):
+            recognized["recognition"]["table_personnel"] = _merge_table_personnel(
+                current_recognition.get("table_personnel"),
+                recognized["recognition"].get("table_personnel"),
+            )
         recognized["status"] = "needs_review"
         recognized["acknowledged_warnings"] = []
         try:
@@ -866,17 +934,26 @@ def merge_recognition_result(
     for key in ("score_events", "stated_period_scores", "final_score", "officials"):
         if key in recognized:
             result[key] = copy.deepcopy(recognized[key])
+    current_recognition = document.get("recognition")
+    recognized_personnel = list(recognized.get("table_personnel") or [])
+    if (
+        isinstance(current_recognition, dict)
+        and current_recognition.get("run_id") == MANUAL_TABLE_PERSONNEL_RUN_ID
+    ):
+        recognized_personnel = _merge_table_personnel(
+            current_recognition.get("table_personnel"), recognized_personnel
+        )
     result["recognition"] = {
         "run_id": run_id or str(recognized.get("run_id") or "unknown"),
         "notes": str(recognized.get("recognition_notes") or recognized.get("notes") or ""),
-        "table_personnel": list(recognized.get("table_personnel") or []),
+        "table_personnel": recognized_personnel,
         "problem_paths": list(recognized.get("problem_paths") or []),
         "issues": list(recognized.get("issues") or []),
         "applied_at": _utc_now(),
     }
     result["status"] = "needs_review"
     result["acknowledged_warnings"] = []
-    result = _preserve_server_fields(document, result)
+    result = _preserve_server_fields(document, result, allow_recognition_replace=True)
     try:
         return _canonicalize_derived_fields(result)
     except ValidationError as error:

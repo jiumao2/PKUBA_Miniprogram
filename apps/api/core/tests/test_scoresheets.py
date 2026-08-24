@@ -31,7 +31,7 @@ from core.models import (
     ScoresheetPublication,
     ScoresheetRecognitionRun,
 )
-from core.scoresheet_schema_v2 import ScoresheetDocumentError
+from core.scoresheet_schema_v2 import ScoresheetDocumentError, merge_recognition_result
 from core.scoresheet_v2.models import FoulEntry, PeriodScore, ScoreEvent, ScoresheetDocument
 from core.scoresheet_v2.recognition import (
     QWEN_DATA_URI_MAX_BYTES,
@@ -667,6 +667,76 @@ def test_game_prior_fields_are_locked_and_final_result_is_derived(tmp_path):
     )
     error_codes = {row["code"] for row in validated.validation_report["errors"]}
     assert {"INVALID_SCORE_POINTS", "SCORE_SEQUENCE_GAP"} <= error_codes
+
+
+def test_unassigned_table_personnel_can_be_saved_before_recognition(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    assert scoresheet.draft["recognition"] is None
+    token = obtain_lease(scoresheet, setup["admin"], "manual-personnel-tab")
+    incoming = copy.deepcopy(scoresheet.draft)
+    incoming["recognition"] = {
+        "run_id": "client-forged-run",
+        "notes": "client metadata must not be trusted",
+        "table_personnel": ["无法归类人员"],
+        "problem_paths": ["/forged"],
+        "issues": [],
+        "applied_at": "not-a-date",
+    }
+
+    saved = save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=scoresheet.draft_version,
+        lease_token=token,
+        client_id="manual-personnel-tab",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/", "operation": "SET", "value": incoming}],
+    )
+
+    assert saved.draft["status"] == "draft"
+    assert saved.draft["recognition"]["run_id"] == "manual-table-personnel"
+    assert saved.draft["recognition"]["notes"] == ""
+    assert saved.draft["recognition"]["problem_paths"] == []
+    assert saved.draft["recognition"]["table_personnel"] == ["无法归类人员"]
+    assert saved.change_logs.order_by("-event_sequence").first().changed_fields == [
+        {"path": "/table_personnel/0", "before": None, "after": "无法归类人员"}
+    ]
+
+    recognized = copy.deepcopy(saved.draft)
+    recognized["recognition"] = {
+        "run_id": "real-recognition-run",
+        "notes": "",
+        "table_personnel": ["模型识别人名", "无法归类人员"],
+        "problem_paths": [],
+        "issues": [],
+        "applied_at": timezone.now().isoformat(),
+    }
+    merged = merge_recognition_result(
+        saved.draft,
+        recognized,
+        saved.roster_snapshot,
+        run_id="real-recognition-run",
+    )
+    assert merged["recognition"]["table_personnel"] == [
+        "无法归类人员",
+        "模型识别人名",
+    ]
+    assert merged["recognition"]["run_id"] == "real-recognition-run"
+
+    cleared = copy.deepcopy(saved.draft)
+    cleared["recognition"]["table_personnel"] = []
+    saved = save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=saved.draft_version,
+        lease_token=token,
+        client_id="manual-personnel-tab",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/", "operation": "SET", "value": cleared}],
+    )
+    assert saved.draft["recognition"] is None
+    assert saved.draft["status"] == "draft"
 
 
 def test_publish_does_not_require_region_reviews_and_keeps_field_change_log(tmp_path):

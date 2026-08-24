@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import type { ScoresheetDocument, TeamEntry } from "@pkuba/scoresheet-domain";
 import {
+  addRecognitionPersonnel,
   compactRoster,
+  removeRecognitionPersonnel,
   setOfficialName,
   setPlayerRow,
   setRecognitionPersonnel,
   setTeamFoulCount,
   setTeamTimeoutMinute,
+  updateRecognitionPersonnel,
 } from "./editorModel";
 
 function team(side: "A" | "B"): TeamEntry {
@@ -75,6 +78,36 @@ describe("miniapp canonical editor model", () => {
     expect(result.teams[1].team_fouls).toEqual([{ period: 4, count: 3 }]);
     expect(result.officials).toContainEqual({ role: "umpire_2", name: "李裁判", signature: "absent" });
     expect(result.recognition?.table_personnel).toEqual(["张三", "李四"]);
+  });
+
+  it("creates an editable unassigned personnel list without a recognition result", () => {
+    const source = draft();
+    source.recognition = null;
+
+    const result = setRecognitionPersonnel(source, ["无法归类人员"]);
+
+    expect(result.recognition?.table_personnel).toEqual(["无法归类人员"]);
+    expect(result.recognition?.run_id).toBe("manual-table-personnel");
+  });
+
+  it("does not persist a blank personnel row before the user enters a name", () => {
+    const source = draft();
+    source.recognition = null;
+
+    const blank = addRecognitionPersonnel(source, "   ");
+    const named = addRecognitionPersonnel(blank, "  待确认姓名  ");
+
+    expect(blank.recognition).toBeNull();
+    expect(named.recognition?.table_personnel).toEqual(["待确认姓名"]);
+  });
+
+  it("updates and removes a persisted unassigned personnel row by index", () => {
+    const source = draft();
+    const updated = updateRecognitionPersonnel(source, 0, "修改后人员");
+    const removed = removeRecognitionPersonnel(updated, 0);
+
+    expect(updated.recognition?.table_personnel).toEqual(["修改后人员"]);
+    expect(removed.recognition?.table_personnel).toEqual([]);
   });
 
   it("updates, increments, and clears a timeout minute in the canonical draft", () => {

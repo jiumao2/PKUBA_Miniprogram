@@ -44,15 +44,17 @@ import {
   type TimeoutScope,
 } from "@pkuba/scoresheet-domain";
 import {
+  addRecognitionPersonnel,
   compactRoster,
   mutateScoresheet,
   priorPlayerNames,
+  removeRecognitionPersonnel,
   replaceTeam,
   setOfficialName,
   setPlayerRow,
-  setRecognitionPersonnel,
   setTeamFoulCount,
   setTeamTimeoutMinute,
+  updateRecognitionPersonnel,
 } from "./editorModel";
 import "./MobileStandardView.css";
 
@@ -524,13 +526,23 @@ function ScoreCellDrawer({ document, event, cell, readOnly, onChange, onClose }:
 }
 
 function ClosingEditor({ document, readOnly, onChange, issues }: Pick<MobileStandardViewProps, "document" | "readOnly" | "onChange" | "issues">) {
-  const [focusPersonnel, setFocusPersonnel] = useState<number | null>(null);
+  const [newPersonnelName, setNewPersonnelName] = useState<string | null>(null);
   const updatePeriod = (period: GamePeriod, side: TeamSide, value: number) => {
     const next = deepCloneDocument(document);
     setPeriodScore(next, period, side, value);
     onChange(next, true);
   };
   const tablePersonnel = document.recognition?.table_personnel ?? [];
+  const finishAddingPersonnel = (rawName = newPersonnelName ?? "") => {
+    const name = rawName.trim();
+    if (name) {
+      onChange(addRecognitionPersonnel(document, name), true);
+    }
+    setNewPersonnelName(null);
+  };
+  useEffect(() => {
+    if (readOnly) setNewPersonnelName(null);
+  }, [readOnly]);
   return (
     <View className="closing-card">
       <View className="closing-heading"><Text>节次</Text><Text>A 队</Text><Text>B 队</Text></View>
@@ -555,18 +567,40 @@ function ClosingEditor({ document, readOnly, onChange, issues }: Pick<MobileStan
         {document.final_score.ended_at ? <Button disabled={readOnly} onClick={() => onChange(mutateScoresheet(document, (draft) => { draft.final_score.ended_at = ""; }), true)}>清空</Button> : null}
       </View>
 
-      {document.recognition ? (
-        <View className="personnel-section" id="closing-table-personnel">
-          <View className="canonical-section-title"><Text>识别到的记录台人员</Text></View>
-          {tablePersonnel.map((name, index) => (
-            <View className="personnel-row" key={index}>
-              <Input adjustPosition cursorSpacing={140} disabled={readOnly} focus={focusPersonnel === index} value={name} onFocus={() => setFocusPersonnel(null)} onInput={(event) => onChange(setRecognitionPersonnel(document, tablePersonnel.map((item, itemIndex) => itemIndex === index ? event.detail.value : item)))} />
-              <Button disabled={readOnly} onClick={() => onChange(setRecognitionPersonnel(document, tablePersonnel.filter((_, itemIndex) => itemIndex !== index)), true)}>删除</Button>
-            </View>
-          ))}
-          <Button className="personnel-add" disabled={readOnly} onClick={() => { onChange(setRecognitionPersonnel(document, [...tablePersonnel, ""]), true); setFocusPersonnel(tablePersonnel.length); }}>添加人员</Button>
-        </View>
-      ) : null}
+      <View className="personnel-section" id="closing-table-personnel">
+        <View className="canonical-section-title"><Text>记录台人员 · 不分岗位</Text></View>
+        {tablePersonnel.map((name, index) => (
+          <PersonnelRow
+            document={document}
+            index={index}
+            key={index}
+            name={name}
+            onChange={onChange}
+            readOnly={readOnly}
+          />
+        ))}
+        {newPersonnelName !== null ? (
+          <View className="personnel-row personnel-draft-row">
+            <Input
+              adjustPosition
+              confirmType="done"
+              cursorSpacing={140}
+              disabled={readOnly}
+              focus
+              placeholder="输入姓名"
+              value={newPersonnelName}
+              onConfirm={(event) => finishAddingPersonnel(event.detail.value)}
+              onInput={(event) => setNewPersonnelName(event.detail.value)}
+            />
+            <Button
+              className={newPersonnelName.trim() ? "confirm" : ""}
+              disabled={readOnly}
+              onClick={() => finishAddingPersonnel()}
+            >{newPersonnelName.trim() ? "添加" : "取消"}</Button>
+          </View>
+        ) : null}
+        <Button className="personnel-add" disabled={readOnly || newPersonnelName !== null} onClick={() => setNewPersonnelName("")}>添加人员</Button>
+      </View>
 
       <View className="personnel-section" id="closing-officials">
         <View className="canonical-section-title"><Text>工作人员</Text></View>
@@ -574,6 +608,33 @@ function ClosingEditor({ document, readOnly, onChange, issues }: Pick<MobileStan
           <LabeledInput disabled={readOnly} key={role} label={OFFICIAL_LABELS[role]} value={document.officials.find((entry) => entry.role === role)?.name ?? ""} onChange={(value) => onChange(setOfficialName(document, role, value))} />
         ))}
       </View>
+    </View>
+  );
+}
+
+function PersonnelRow({ document, index, name, onChange, readOnly }: {
+  document: ScoresheetDocument;
+  index: number;
+  name: string;
+  onChange: MobileStandardViewProps["onChange"];
+  readOnly: boolean;
+}) {
+  const update = (value: string) => {
+    onChange(updateRecognitionPersonnel(document, index, value));
+  };
+  const remove = () => {
+    onChange(removeRecognitionPersonnel(document, index), true);
+  };
+  return (
+    <View className="personnel-row" data-personnel-index={index}>
+      <Input
+        adjustPosition
+        cursorSpacing={140}
+        disabled={readOnly}
+        value={name}
+        onInput={(event) => update(event.detail.value)}
+      />
+      <Button className="personnel-remove" data-personnel-index={index} disabled={readOnly} onClick={remove}>删除</Button>
     </View>
   );
 }
