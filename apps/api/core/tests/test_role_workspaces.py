@@ -60,6 +60,8 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
         if item["date"] == setup["target_date"].isoformat()
         and item["period_id"] == str(setup["period"].id)
     )
+    assert "preview_venue_id" not in target
+    assert "preview_venue_name" not in target
     create_payload = {
         "game_id": str(setup["games"][0].id),
         "expected_game_version": setup["games"][0].version,
@@ -97,12 +99,17 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
     assert RescheduleRequest.objects.count() == 1
     request_payload = created.json()
     assert "WITHDRAW" in request_payload["actions"]
+    assert "target_venue_id" not in request_payload
+    assert "target_venue_name" not in request_payload
 
     opponent_list = client.get(
         "/api/v1/reschedule-requests/",
         HTTP_AUTHORIZATION=f"Bearer {opponent_token}",
     )
-    assert "RESPOND_OPPONENT" in opponent_list.json()["items"][0]["actions"]
+    opponent_item = opponent_list.json()["items"][0]
+    assert "RESPOND_OPPONENT" in opponent_item["actions"]
+    assert "target_venue_id" not in opponent_item
+    assert "target_venue_name" not in opponent_item
     accepted = post_json(
         client,
         f"/api/v1/reschedule-requests/{request_payload['id']}/opponent-response",
@@ -111,6 +118,9 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
     )
     assert accepted.status_code == 200
     assert accepted.json()["status"] == RescheduleRequest.Status.APPROVED
+    assert "target_venue_id" not in accepted.json()
+    assert "target_venue_name" not in accepted.json()
+    assert accepted.json()["game"]["venue_name"] == setup["venues"][0].name
 
 
 def test_mobile_game_update_is_superadmin_only_and_audited():

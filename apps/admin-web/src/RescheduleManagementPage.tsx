@@ -257,14 +257,14 @@ function RequestDetail({ item, busy, voting, candidates, selectedVoters, setSele
       <div className="reschedule-route-detail">
         <Slot title="原赛程" date={item.original_date} time={item.original_start_time} venue={item.original_venue_name} />
         <span aria-hidden="true">→</span>
-        <Slot title="目标赛程" date={item.target_date} time={item.target_start_time} venue={item.target_venue_name} />
+        <Slot title="目标赛程" date={item.target_date} time={item.target_start_time} venue={targetVenueLabel(item)} />
       </div>
       <section className="reschedule-resource-panel">
         <h3>锁与容量</h3>
         <dl>
           <div><dt>领队政策</dt><dd>{item.game.leader_adjustable ? "允许调赛" : "永久不可调"}</dd></div>
           <div><dt>原比赛活动锁</dt><dd>{item.resources.game_lock_matches ? "由本申请持有" : item.is_terminal ? "已释放" : "状态异常"}</dd></div>
-          <div><dt>目标场地预留</dt><dd>{reservationLabel(item.resources.reservation_status)} · {item.target_venue_name}</dd></div>
+          <div><dt>目标资源预留</dt><dd>{reservationLabel(item.resources.reservation_status)} · {item.status === "APPROVED" ? "场地已随正式赛程公布" : "具体场地不公开"}</dd></div>
           <div><dt>目标时段容量</dt><dd>{item.resources.used_count} / {item.resources.capacity}（比赛 {item.resources.game_count} + 预留 {item.resources.active_reservation_count}）</dd></div>
         </dl>
         {!!item.resources.issues.length && <ul>{item.resources.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
@@ -293,7 +293,7 @@ function RequestDetail({ item, busy, voting, candidates, selectedVoters, setSele
         <footer className="reschedule-actions">
           {has("ADMIN_APPROVE") && <button className="approve-action" disabled={busy} onClick={() => onAction("ADMIN_APPROVE", "直接批准跨周调赛", "比赛将立即移动到已预留的目标时段，预留原子转换为正式占用。")}>直接批准</button>}
           {has("ADMIN_START_VOTE") && <button className="secondary-action" disabled={busy} onClick={onOpenVote}>指定球队投票</button>}
-          {has("ADMIN_REJECT") && <button className="secondary-action" disabled={busy} onClick={() => onAction("ADMIN_REJECT", "拒绝跨周调赛", "申请将结束，原比赛活动锁和目标场地预留会同时释放。")}>拒绝</button>}
+          {has("ADMIN_REJECT") && <button className="secondary-action" disabled={busy} onClick={() => onAction("ADMIN_REJECT", "拒绝跨周调赛", "申请将结束，原比赛活动锁和目标资源预留会同时释放。")}>拒绝</button>}
           {has("ADMIN_FINAL_APPROVE") && <button className="approve-action" disabled={busy} onClick={() => onAction("ADMIN_FINAL_APPROVE", "终审通过", "比赛将立即移动到已预留的目标时段。")}>终审通过</button>}
           {has("ADMIN_FINAL_REJECT") && <button className="secondary-action" disabled={busy} onClick={() => onAction("ADMIN_FINAL_REJECT", "终审拒绝", "申请将结束，并释放原比赛活动锁和目标预留。")}>终审拒绝</button>}
           {has("ADMIN_CANCEL") && <button className="cancel-action" disabled={busy} onClick={() => onAction("ADMIN_CANCEL", "管理员取消申请", "该申请将进入管理员取消终态，原比赛活动锁和目标预留会同时释放。")}>管理员取消</button>}
@@ -317,6 +317,12 @@ export function statusClass(status: string) {
 
 function reservationLabel(status: string) {
   return ({ ACTIVE: "有效预留", CONVERTED: "已转正式占用", RELEASED: "已释放" } as Record<string, string>)[status] ?? status;
+}
+
+function targetVenueLabel(item: AdminRescheduleRequest) {
+  if (item.status === "APPROVED") return item.game.venue_name;
+  if (item.is_terminal) return "申请未生效，场地未公布";
+  return "场地已内部预留，调赛生效后公布";
 }
 
 function confirmationLabel(response: string) {

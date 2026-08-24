@@ -326,8 +326,6 @@ def available_reschedule_targets(
                         "period_code": period.code,
                         "period_name": period.name,
                         "start_time": period.start_time.strftime("%H:%M"),
-                        "preview_venue_id": venue.id,
-                        "preview_venue_name": venue.name,
                         "request_type": (
                             RescheduleRequest.RequestType.SAME_WEEK
                             if game.date.isocalendar()[:2] == target_date.isocalendar()[:2]

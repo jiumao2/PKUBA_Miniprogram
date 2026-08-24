@@ -660,9 +660,9 @@ def _analyze_workbook(
             issues.append(
                 _issue(
                     "VENUE_RESERVED",
-                    f"{code} 的目标场地已被活动调赛申请预留。",
-                    cell=str(item["cell"]),
-                    context={"reservation_id": str(reservation.id)},
+                    "目标时段与活动调赛资源预留冲突；"
+                    "具体场地将在调赛生效后公布。",
+                    context={"venue_hidden_until_reschedule_effective": True},
                 )
             )
         references = (

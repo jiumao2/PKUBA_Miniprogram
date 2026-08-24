@@ -12876,10 +12876,6 @@
           "game_count": {
             "title": "Game Count",
             "type": "integer"
-          },
-          "active_reservation_count": {
-            "title": "Active Reservation Count",
-            "type": "integer"
           }
         },
         "required": [
@@ -12887,8 +12883,7 @@
           "name",
           "sort_order",
           "active",
-          "game_count",
-          "active_reservation_count"
+          "game_count"
         ],
         "title": "SeasonVenueConfigurationOut",
         "type": "object"
@@ -17273,15 +17268,6 @@
             "title": "Target Start Time",
             "type": "string"
           },
-          "target_venue_id": {
-            "format": "uuid",
-            "title": "Target Venue Id",
-            "type": "string"
-          },
-          "target_venue_name": {
-            "title": "Target Venue Name",
-            "type": "string"
-          },
           "submit_deadline": {
             "format": "date-time",
             "title": "Submit Deadline",
@@ -17353,8 +17339,6 @@
           "target_period_id",
           "target_period_name",
           "target_start_time",
-          "target_venue_id",
-          "target_venue_name",
           "submit_deadline",
           "confirmation_deadline",
           "confirmations",
@@ -19270,15 +19254,6 @@
             "title": "Target Start Time",
             "type": "string"
           },
-          "target_venue_id": {
-            "format": "uuid",
-            "title": "Target Venue Id",
-            "type": "string"
-          },
-          "target_venue_name": {
-            "title": "Target Venue Name",
-            "type": "string"
-          },
           "submit_deadline": {
             "format": "date-time",
             "title": "Submit Deadline",
@@ -19347,8 +19322,6 @@
           "target_period_id",
           "target_period_name",
           "target_start_time",
-          "target_venue_id",
-          "target_venue_name",
           "submit_deadline",
           "confirmation_deadline",
           "confirmations",
@@ -19447,15 +19420,6 @@
             "title": "Start Time",
             "type": "string"
           },
-          "preview_venue_id": {
-            "format": "uuid",
-            "title": "Preview Venue Id",
-            "type": "string"
-          },
-          "preview_venue_name": {
-            "title": "Preview Venue Name",
-            "type": "string"
-          },
           "request_type": {
             "title": "Request Type",
             "type": "string"
@@ -19477,8 +19441,6 @@
           "period_code",
           "period_name",
           "start_time",
-          "preview_venue_id",
-          "preview_venue_name",
           "request_type",
           "submit_deadline",
           "confirmation_deadline"
@@ -19963,6 +19925,682 @@
         "title": "ScoresheetQueuePageOut",
         "type": "object"
       },
+      "DocumentStatus": {
+        "enum": [
+          "draft",
+          "needs_review",
+          "validated",
+          "confirmed"
+        ],
+        "title": "DocumentStatus",
+        "type": "string"
+      },
+      "FinalScore": {
+        "additionalProperties": false,
+        "properties": {
+          "team_a": {
+            "default": 0,
+            "maximum": 160,
+            "minimum": 0,
+            "title": "Team A",
+            "type": "integer"
+          },
+          "team_b": {
+            "default": 0,
+            "maximum": 160,
+            "minimum": 0,
+            "title": "Team B",
+            "type": "integer"
+          },
+          "winner_name": {
+            "default": "",
+            "title": "Winner Name",
+            "type": "string"
+          },
+          "ended_at": {
+            "default": "",
+            "title": "Ended At",
+            "type": "string"
+          }
+        },
+        "title": "FinalScore",
+        "type": "object"
+      },
+      "FoulCode": {
+        "enum": [
+          "P",
+          "T",
+          "U",
+          "D",
+          "C",
+          "B",
+          "GD",
+          "F",
+          "DI",
+          "FL",
+          "BD"
+        ],
+        "title": "FoulCode",
+        "type": "string"
+      },
+      "FoulEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "slot": {
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Slot",
+            "type": "integer"
+          },
+          "code": {
+            "$ref": "#/components/schemas/FoulCode"
+          },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Id"
+          },
+          "mark_style": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FoulMarkStyle"
+              }
+            ],
+            "default": "plain"
+          },
+          "free_throws": {
+            "anyOf": [
+              {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Throws"
+          },
+          "cancelled": {
+            "default": false,
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "maximum": 5,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period"
+          }
+        },
+        "required": [
+          "slot",
+          "code"
+        ],
+        "title": "FoulEntry",
+        "type": "object"
+      },
+      "FoulMarkStyle": {
+        "enum": [
+          "plain",
+          "circled"
+        ],
+        "title": "FoulMarkStyle",
+        "type": "string"
+      },
+      "GamePriorSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "competition": {
+            "title": "Competition",
+            "type": "string"
+          },
+          "division": {
+            "title": "Division",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "scheduled_time": {
+            "title": "Scheduled Time",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
+          "team_a": {
+            "$ref": "#/components/schemas/PriorTeam"
+          },
+          "team_b": {
+            "$ref": "#/components/schemas/PriorTeam"
+          },
+          "source_hash": {
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "locked_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Locked Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "game_id",
+          "competition",
+          "division",
+          "date",
+          "scheduled_time",
+          "venue",
+          "team_a",
+          "team_b",
+          "source_hash"
+        ],
+        "title": "GamePriorSnapshot",
+        "type": "object"
+      },
+      "Header": {
+        "additionalProperties": false,
+        "properties": {
+          "competition": {
+            "default": "",
+            "title": "Competition",
+            "type": "string"
+          },
+          "game_number": {
+            "default": "",
+            "title": "Game Number",
+            "type": "string"
+          },
+          "date": {
+            "default": "",
+            "title": "Date",
+            "type": "string"
+          },
+          "scheduled_time": {
+            "default": "",
+            "title": "Scheduled Time",
+            "type": "string"
+          },
+          "venue": {
+            "default": "",
+            "title": "Venue",
+            "type": "string"
+          },
+          "crew_chief": {
+            "default": "",
+            "title": "Crew Chief",
+            "type": "string"
+          },
+          "umpire_1": {
+            "default": "",
+            "title": "Umpire 1",
+            "type": "string"
+          },
+          "umpire_2": {
+            "default": "",
+            "title": "Umpire 2",
+            "type": "string"
+          }
+        },
+        "title": "Header",
+        "type": "object"
+      },
+      "InkRole": {
+        "enum": [
+          "q1_q3",
+          "q2_q4_ot",
+          "neutral"
+        ],
+        "title": "InkRole",
+        "type": "string"
+      },
+      "OfficialEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "scorer",
+              "assistant_scorer",
+              "timer",
+              "shot_clock_operator",
+              "crew_chief",
+              "umpire_1",
+              "umpire_2",
+              "protest_captain"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "signature": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SignaturePresence"
+              }
+            ],
+            "default": "absent"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "OfficialEntry",
+        "type": "object"
+      },
+      "ParticipationStatus": {
+        "enum": [
+          "none",
+          "starter",
+          "substitute"
+        ],
+        "title": "ParticipationStatus",
+        "type": "string"
+      },
+      "PeriodScore": {
+        "additionalProperties": false,
+        "properties": {
+          "period": {
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Period",
+            "type": "integer"
+          },
+          "team_a": {
+            "maximum": 160,
+            "minimum": 0,
+            "title": "Team A",
+            "type": "integer"
+          },
+          "team_b": {
+            "maximum": 160,
+            "minimum": 0,
+            "title": "Team B",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "team_a",
+          "team_b"
+        ],
+        "title": "PeriodScore",
+        "type": "object"
+      },
+      "PlayerEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "row": {
+            "maximum": 12,
+            "minimum": 1,
+            "title": "Row",
+            "type": "integer"
+          },
+          "license_number": {
+            "default": "",
+            "title": "License Number",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "jersey_number": {
+            "default": "",
+            "title": "Jersey Number",
+            "type": "string"
+          },
+          "captain": {
+            "default": false,
+            "title": "Captain",
+            "type": "boolean"
+          },
+          "participation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ParticipationStatus"
+              }
+            ],
+            "default": "none"
+          },
+          "fouls": {
+            "items": {
+              "$ref": "#/components/schemas/FoulEntry"
+            },
+            "title": "Fouls",
+            "type": "array"
+          },
+          "post_foul_markers": {
+            "items": {
+              "$ref": "#/components/schemas/PostFoulMarker"
+            },
+            "title": "Post Foul Markers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "row"
+        ],
+        "title": "PlayerEntry",
+        "type": "object"
+      },
+      "PostFoulMarker": {
+        "additionalProperties": false,
+        "description": "A rule marker written in the unboxed column after the last formal foul cell.",
+        "properties": {
+          "slot": {
+            "maximum": 2,
+            "minimum": 1,
+            "title": "Slot",
+            "type": "integer"
+          },
+          "code": {
+            "$ref": "#/components/schemas/FoulCode"
+          },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Id"
+          },
+          "mark_style": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FoulMarkStyle"
+              }
+            ],
+            "default": "plain"
+          },
+          "free_throws": {
+            "anyOf": [
+              {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Throws"
+          },
+          "cancelled": {
+            "default": false,
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "maximum": 5,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period"
+          }
+        },
+        "required": [
+          "slot",
+          "code"
+        ],
+        "title": "PostFoulMarker",
+        "type": "object"
+      },
+      "PriorTeam": {
+        "additionalProperties": false,
+        "properties": {
+          "team_id": {
+            "title": "Team Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "player_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Player Names",
+            "type": "array"
+          }
+        },
+        "required": [
+          "team_id",
+          "name",
+          "player_names"
+        ],
+        "title": "PriorTeam",
+        "type": "object"
+      },
+      "RecognitionDocumentState": {
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "table_personnel": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Table Personnel",
+            "type": "array"
+          },
+          "problem_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problem Paths",
+            "type": "array"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/RecognitionIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "applied_at": {
+            "format": "date-time",
+            "title": "Applied At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "RecognitionDocumentState",
+        "type": "object"
+      },
+      "RecognitionIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "observed": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed"
+          },
+          "expected": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected"
+          }
+        },
+        "required": [
+          "code",
+          "path",
+          "message"
+        ],
+        "title": "RecognitionIssue",
+        "type": "object"
+      },
+      "RuleProfileId": {
+        "enum": [
+          "fiba_2024",
+          "fiba_2026"
+        ],
+        "title": "RuleProfileId",
+        "type": "string"
+      },
+      "ScoreBoundary": {
+        "enum": [
+          "none",
+          "period_end",
+          "game_end"
+        ],
+        "title": "ScoreBoundary",
+        "type": "string"
+      },
+      "ScoreEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "minimum": 1,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "team": {
+            "$ref": "#/components/schemas/TeamSide"
+          },
+          "period": {
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Period",
+            "type": "integer"
+          },
+          "points": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points"
+          },
+          "cumulative_score": {
+            "maximum": 160,
+            "minimum": 1,
+            "title": "Cumulative Score",
+            "type": "integer"
+          },
+          "scorer_jersey": {
+            "title": "Scorer Jersey",
+            "type": "string"
+          },
+          "mark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScoreMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scorer_circled": {
+            "default": false,
+            "title": "Scorer Circled",
+            "type": "boolean"
+          },
+          "boundary": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScoreBoundary"
+              }
+            ],
+            "default": "none"
+          },
+          "ink_role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InkRole"
+              }
+            ],
+            "default": "neutral"
+          }
+        },
+        "required": [
+          "sequence",
+          "team",
+          "period",
+          "cumulative_score",
+          "scorer_jersey"
+        ],
+        "title": "ScoreEvent",
+        "type": "object"
+      },
+      "ScoreMark": {
+        "enum": [
+          "filled_dot",
+          "diagonal"
+        ],
+        "title": "ScoreMark",
+        "type": "string"
+      },
       "ScoresheetDetailOut": {
         "properties": {
           "id": {
@@ -19996,9 +20634,7 @@
             "type": "string"
           },
           "draft": {
-            "additionalProperties": true,
-            "title": "Draft",
-            "type": "object"
+            "$ref": "#/components/schemas/ScoresheetDocument"
           },
           "draft_version": {
             "title": "Draft Version",
@@ -20091,6 +20727,361 @@
           "publication"
         ],
         "title": "ScoresheetDetailOut",
+        "type": "object"
+      },
+      "ScoresheetDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "default": "1.4.0",
+            "enum": [
+              "1.0.0",
+              "1.1.0",
+              "1.2.0",
+              "1.3.0",
+              "1.4.0"
+            ],
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "rules_profile": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RuleProfileId"
+              }
+            ],
+            "default": "fiba_2024"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "revision": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "template_id": {
+            "default": "pku-basketball-2019-v1",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DocumentStatus"
+              }
+            ],
+            "default": "draft"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "source": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SourceAsset"
+              }
+            ]
+          },
+          "game_prior": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GamePriorSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recognition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionDocumentState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "header": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Header"
+              }
+            ]
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/TeamEntry"
+            },
+            "title": "Teams",
+            "type": "array"
+          },
+          "score_events": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreEvent"
+            },
+            "title": "Score Events",
+            "type": "array"
+          },
+          "stated_period_scores": {
+            "items": {
+              "$ref": "#/components/schemas/PeriodScore"
+            },
+            "title": "Stated Period Scores",
+            "type": "array"
+          },
+          "final_score": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FinalScore"
+              }
+            ]
+          },
+          "officials": {
+            "items": {
+              "$ref": "#/components/schemas/OfficialEntry"
+            },
+            "title": "Officials",
+            "type": "array"
+          },
+          "acknowledged_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Acknowledged Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "teams"
+        ],
+        "title": "ScoresheetDocument",
+        "type": "object"
+      },
+      "SignaturePresence": {
+        "enum": [
+          "present",
+          "absent",
+          "unclear"
+        ],
+        "title": "SignaturePresence",
+        "type": "string"
+      },
+      "SourceAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "original_filename": {
+            "default": "",
+            "title": "Original Filename",
+            "type": "string"
+          },
+          "original_url": {
+            "default": "",
+            "title": "Original Url",
+            "type": "string"
+          },
+          "aligned_url": {
+            "default": "",
+            "title": "Aligned Url",
+            "type": "string"
+          },
+          "version": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "content_sha256": {
+            "default": "",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "width": {
+            "default": 0,
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "default": 0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "rotation": {
+            "default": 0,
+            "title": "Rotation",
+            "type": "integer"
+          },
+          "corners": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corners"
+          }
+        },
+        "title": "SourceAsset",
+        "type": "object"
+      },
+      "TeamEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "side": {
+            "$ref": "#/components/schemas/TeamSide"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerEntry"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "timeouts": {
+            "items": {
+              "$ref": "#/components/schemas/TimeoutEntry"
+            },
+            "title": "Timeouts",
+            "type": "array"
+          },
+          "team_fouls": {
+            "items": {
+              "$ref": "#/components/schemas/TeamFoulPeriod"
+            },
+            "title": "Team Fouls",
+            "type": "array"
+          },
+          "coach_fouls": {
+            "items": {
+              "$ref": "#/components/schemas/FoulEntry"
+            },
+            "title": "Coach Fouls",
+            "type": "array"
+          },
+          "coach_post_foul_markers": {
+            "items": {
+              "$ref": "#/components/schemas/PostFoulMarker"
+            },
+            "title": "Coach Post Foul Markers",
+            "type": "array"
+          },
+          "assistant_coach_fouls": {
+            "items": {
+              "$ref": "#/components/schemas/FoulEntry"
+            },
+            "title": "Assistant Coach Fouls",
+            "type": "array"
+          },
+          "assistant_coach_post_foul_markers": {
+            "items": {
+              "$ref": "#/components/schemas/PostFoulMarker"
+            },
+            "title": "Assistant Coach Post Foul Markers",
+            "type": "array"
+          },
+          "head_coach": {
+            "default": "",
+            "title": "Head Coach",
+            "type": "string"
+          },
+          "assistant_coach": {
+            "default": "",
+            "title": "Assistant Coach",
+            "type": "string"
+          }
+        },
+        "required": [
+          "side"
+        ],
+        "title": "TeamEntry",
+        "type": "object"
+      },
+      "TeamFoulPeriod": {
+        "additionalProperties": false,
+        "properties": {
+          "period": {
+            "maximum": 4,
+            "minimum": 1,
+            "title": "Period",
+            "type": "integer"
+          },
+          "count": {
+            "maximum": 4,
+            "minimum": 0,
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "count"
+        ],
+        "title": "TeamFoulPeriod",
+        "type": "object"
+      },
+      "TeamSide": {
+        "enum": [
+          "A",
+          "B"
+        ],
+        "title": "TeamSide",
+        "type": "string"
+      },
+      "TimeoutEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "enum": [
+              "H1",
+              "H2",
+              "OT"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "slot": {
+            "maximum": 3,
+            "minimum": 1,
+            "title": "Slot",
+            "type": "integer"
+          },
+          "minute": {
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Minute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "slot",
+          "minute"
+        ],
+        "title": "TimeoutEntry",
         "type": "object"
       },
       "ScoresheetSyncOut": {

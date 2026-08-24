@@ -105,7 +105,6 @@ const configuration: SeasonConfiguration = {
     sort_order: index + 1,
     active: true,
     game_count: 0,
-    active_reservation_count: 0,
   })),
   periods: ["12:50", "14:20", "15:50"].map((startTime, index) => ({
     id: `32000000-0000-0000-0000-00000000000${index + 1}`,

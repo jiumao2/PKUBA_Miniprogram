@@ -67,8 +67,6 @@ class AdminRescheduleRequestOut(Schema):
     target_period_id: UUID
     target_period_name: str
     target_start_time: str
-    target_venue_id: UUID
-    target_venue_name: str
     submit_deadline: datetime
     confirmation_deadline: datetime
     confirmations: list[ConfirmationOut]

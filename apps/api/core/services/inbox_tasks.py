@@ -136,11 +136,20 @@ def _reschedule_summary(item: RescheduleRequest) -> tuple[str, str]:
             ).strip(),
             (
                 f"目标：{item.target_date.isoformat()} "
-                f"{item.target_start_time.strftime('%H:%M')} {item.target_venue_name}"
+                f"{item.target_start_time.strftime('%H:%M')}"
             ).strip(),
+            _target_venue_notice(item),
         ]
     )
     return title, body
+
+
+def _target_venue_notice(item: RescheduleRequest) -> str:
+    if item.status == RescheduleRequest.Status.APPROVED:
+        return f"比赛场地：{item.game.venue_name}"
+    if item.is_terminal:
+        return "申请未生效，预留场地未公开。"
+    return "具体场地已由系统内部预留，将在调赛生效并更新正式赛程后公布。"
 
 
 def _reschedule_anomaly(
@@ -189,9 +198,9 @@ def _reschedule_email_body(item: RescheduleRequest) -> str:
             (
                 f"调整后比赛：{item.target_date.isoformat()} "
                 f"{item.target_start_time.strftime('%H:%M')} "
-                f"{item.game.home_display} vs {item.game.away_display} "
-                f"{item.target_venue_name}"
+                f"{item.game.home_display} vs {item.game.away_display}"
             ).strip(),
+            _target_venue_notice(item),
             f"申请日期：{requested_at}",
             f"申请方：{item.requester_team.name}",
             f"申请类型：{item.get_request_type_display()}",

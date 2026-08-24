@@ -1,5 +1,14 @@
 import { AlertCircle, CheckCircle2, Clock3, History, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  isOrderedFoulSlotEnabled,
+  isOrderedPostFoulSlotEnabled,
+  OFFICIAL_LABELS,
+  setOrderedFormalFoul,
+  setOrderedPostFoul,
+  TIMEOUT_SCOPE_LABELS,
+  TIMEOUT_SLOT_COUNTS,
+} from '@pkuba/scoresheet-domain';
 import { pathToField } from '../lib/fieldPaths';
 import { isValidJerseyNumber } from '../lib/jersey';
 import {
@@ -264,10 +273,10 @@ function TeamEditor({
 
       <div className="subsection-heading"><span>暂停</span><small>输入比赛分钟，留空表示未使用</small></div>
       {(['H1', 'H2', 'OT'] as const).map((scope) => {
-        const slotCount = scope === 'H1' ? 2 : 3;
+        const slotCount = TIMEOUT_SLOT_COUNTS[scope];
         return (
           <div className="compact-row" key={scope}>
-            <span className="row-label">{scope}</span>
+            <span className="row-label">{TIMEOUT_SCOPE_LABELS[scope]}</span>
             {Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => {
               const timeout = team.timeouts.find((entry) => entry.scope === scope && entry.slot === slot);
               return (
@@ -324,7 +333,7 @@ function TeamEditor({
 
       <div className="subsection-heading"><span>教练员犯规</span><small>记录表只有 3 个正式格</small></div>
       {Array.from({ length: 3 }, (_, index) => index + 1).map((slot) => {
-        const disabled = slot > 1 && !(team.coach_fouls ?? []).some((entry) => entry.slot === slot - 1);
+        const disabled = !isOrderedFoulSlotEnabled(team.coach_fouls ?? [], slot);
         return (
           <FoulSlot
             key={slot}
@@ -337,14 +346,9 @@ function TeamEditor({
               updateTeam((draftTeam) => {
                 draftTeam.coach_fouls ??= [];
                 draftTeam.coach_post_foul_markers ??= [];
-                if (!entry) {
-                  draftTeam.coach_fouls = draftTeam.coach_fouls.filter((foul) => foul.slot < slot);
-                  draftTeam.coach_post_foul_markers = [];
-                } else {
-                  draftTeam.coach_fouls = draftTeam.coach_fouls.filter((foul) => foul.slot !== slot);
-                  draftTeam.coach_fouls.push(entry);
-                  draftTeam.coach_fouls.sort((a, b) => a.slot - b.slot);
-                }
+                const next = setOrderedFormalFoul(draftTeam.coach_fouls, draftTeam.coach_post_foul_markers, slot, entry);
+                draftTeam.coach_fouls = next.formalEntries;
+                draftTeam.coach_post_foul_markers = next.postEntries;
               })
             }
           />
@@ -353,8 +357,7 @@ function TeamEditor({
       <div className="subsection-heading compact"><span>第 3 格后附加标记</span><small>{foulOptionLabel(postFoulOptions)}，不计作第 4 次犯规</small></div>
       {Array.from({ length: 2 }, (_, index) => index + 1).map((slot) => {
         const markers = team.coach_post_foul_markers ?? [];
-        const disabled = !(team.coach_fouls ?? []).some((entry) => entry.slot === 3)
-          || (slot > 1 && !markers.some((entry) => entry.slot === slot - 1));
+        const disabled = !isOrderedPostFoulSlotEnabled(team.coach_fouls ?? [], markers, 3, slot);
         return (
           <FoulSlot
             key={`post-${slot}`}
@@ -366,12 +369,7 @@ function TeamEditor({
             value={markers.find((entry) => entry.slot === slot)}
             onChange={(entry) => updateTeam((draftTeam) => {
               draftTeam.coach_post_foul_markers ??= [];
-              if (!entry) draftTeam.coach_post_foul_markers = draftTeam.coach_post_foul_markers.filter((marker) => marker.slot < slot);
-              else {
-                draftTeam.coach_post_foul_markers = draftTeam.coach_post_foul_markers.filter((marker) => marker.slot !== slot);
-                draftTeam.coach_post_foul_markers.push(entry);
-                draftTeam.coach_post_foul_markers.sort((a, b) => a.slot - b.slot);
-              }
+              draftTeam.coach_post_foul_markers = setOrderedPostFoul(draftTeam.coach_fouls ?? [], draftTeam.coach_post_foul_markers, 3, slot, entry);
             })}
           />
         );
@@ -381,7 +379,7 @@ function TeamEditor({
       <p className="section-note">接任前的席位技术犯规以 B 记在主教练行；接任后可在本人行填写 {foulOptionLabel(coachFoulOptions)}。</p>
       {Array.from({ length: 3 }, (_, index) => index + 1).map((slot) => {
         const assistantFouls = team.assistant_coach_fouls ?? [];
-        const disabled = slot > 1 && !assistantFouls.some((entry) => entry.slot === slot - 1);
+        const disabled = !isOrderedFoulSlotEnabled(assistantFouls, slot);
         return (
           <FoulSlot
             key={`assistant-${slot}`}
@@ -394,14 +392,9 @@ function TeamEditor({
             onChange={(entry) => updateTeam((draftTeam) => {
               draftTeam.assistant_coach_fouls ??= [];
               draftTeam.assistant_coach_post_foul_markers ??= [];
-              if (!entry) {
-                draftTeam.assistant_coach_fouls = draftTeam.assistant_coach_fouls.filter((foul) => foul.slot < slot);
-                draftTeam.assistant_coach_post_foul_markers = [];
-                return;
-              }
-              draftTeam.assistant_coach_fouls = draftTeam.assistant_coach_fouls.filter((foul) => foul.slot !== slot);
-              draftTeam.assistant_coach_fouls.push(entry);
-              draftTeam.assistant_coach_fouls.sort((a, b) => a.slot - b.slot);
+              const next = setOrderedFormalFoul(draftTeam.assistant_coach_fouls, draftTeam.assistant_coach_post_foul_markers, slot, entry);
+              draftTeam.assistant_coach_fouls = next.formalEntries;
+              draftTeam.assistant_coach_post_foul_markers = next.postEntries;
             })}
           />
         );
@@ -409,8 +402,7 @@ function TeamEditor({
       <div className="subsection-heading compact"><span>助理教练员第 3 格后附加标记</span><small>{foulOptionLabel(postFoulOptions)}</small></div>
       {Array.from({ length: 2 }, (_, index) => index + 1).map((slot) => {
         const markers = team.assistant_coach_post_foul_markers ?? [];
-        const disabled = !(team.assistant_coach_fouls ?? []).some((entry) => entry.slot === 3)
-          || (slot > 1 && !markers.some((entry) => entry.slot === slot - 1));
+        const disabled = !isOrderedPostFoulSlotEnabled(team.assistant_coach_fouls ?? [], markers, 3, slot);
         return (
           <FoulSlot
             key={`assistant-post-${slot}`}
@@ -422,12 +414,7 @@ function TeamEditor({
             value={markers.find((entry) => entry.slot === slot)}
             onChange={(entry) => updateTeam((draftTeam) => {
               draftTeam.assistant_coach_post_foul_markers ??= [];
-              if (!entry) draftTeam.assistant_coach_post_foul_markers = draftTeam.assistant_coach_post_foul_markers.filter((marker) => marker.slot < slot);
-              else {
-                draftTeam.assistant_coach_post_foul_markers = draftTeam.assistant_coach_post_foul_markers.filter((marker) => marker.slot !== slot);
-                draftTeam.assistant_coach_post_foul_markers.push(entry);
-                draftTeam.assistant_coach_post_foul_markers.sort((a, b) => a.slot - b.slot);
-              }
+              draftTeam.assistant_coach_post_foul_markers = setOrderedPostFoul(draftTeam.assistant_coach_fouls ?? [], draftTeam.assistant_coach_post_foul_markers, 3, slot, entry);
             })}
           />
         );
@@ -546,7 +533,7 @@ function PlayerEditor({
       </div>
       <div className="subsection-heading"><span>个人犯规</span><small>字母、罚球下标、节次、抵消 c</small></div>
       {Array.from({ length: 5 }, (_, index) => index + 1).map((slot) => {
-        const disabled = slot > 1 && !player.fouls.some((foul) => foul.slot === slot - 1);
+        const disabled = !isOrderedFoulSlotEnabled(player.fouls, slot);
         return (
           <FoulSlot
             key={slot}
@@ -558,14 +545,9 @@ function PlayerEditor({
             onChange={(entry) =>
               updatePlayer((draftPlayer) => {
                 draftPlayer.post_foul_markers ??= [];
-                if (!entry) {
-                  draftPlayer.fouls = draftPlayer.fouls.filter((foul) => foul.slot < slot);
-                  draftPlayer.post_foul_markers = [];
-                } else {
-                  draftPlayer.fouls = draftPlayer.fouls.filter((foul) => foul.slot !== slot);
-                  draftPlayer.fouls.push(entry);
-                  draftPlayer.fouls.sort((a, b) => a.slot - b.slot);
-                }
+                const next = setOrderedFormalFoul(draftPlayer.fouls, draftPlayer.post_foul_markers, slot, entry);
+                draftPlayer.fouls = next.formalEntries;
+                draftPlayer.post_foul_markers = next.postEntries;
               })
             }
           />
@@ -574,8 +556,7 @@ function PlayerEditor({
       <div className="subsection-heading compact"><span>第 5 格后附加标记</span><small>{foulOptionLabel(postFoulOptions)}，使用假想列渲染</small></div>
       {Array.from({ length: 2 }, (_, index) => index + 1).map((slot) => {
         const markers = player.post_foul_markers ?? [];
-        const disabled = !player.fouls.some((foul) => foul.slot === 5)
-          || (slot > 1 && !markers.some((marker) => marker.slot === slot - 1));
+        const disabled = !isOrderedPostFoulSlotEnabled(player.fouls, markers, 5, slot);
         return (
           <FoulSlot
             key={`post-${slot}`}
@@ -587,12 +568,7 @@ function PlayerEditor({
             value={markers.find((marker) => marker.slot === slot)}
             onChange={(entry) => updatePlayer((draftPlayer) => {
               draftPlayer.post_foul_markers ??= [];
-              if (!entry) draftPlayer.post_foul_markers = draftPlayer.post_foul_markers.filter((marker) => marker.slot < slot);
-              else {
-                draftPlayer.post_foul_markers = draftPlayer.post_foul_markers.filter((marker) => marker.slot !== slot);
-                draftPlayer.post_foul_markers.push(entry);
-                draftPlayer.post_foul_markers.sort((a, b) => a.slot - b.slot);
-              }
+              draftPlayer.post_foul_markers = setOrderedPostFoul(draftPlayer.fouls, draftPlayer.post_foul_markers, 5, slot, entry);
             })}
           />
         );
@@ -888,16 +864,7 @@ function SummaryEditor({
   );
 }
 
-const officialLabels: Record<OfficialEntry['role'], string> = {
-  scorer: '记录员',
-  assistant_scorer: '助理记录员',
-  timer: '计时员',
-  shot_clock_operator: '24 秒计时员',
-  crew_chief: '主裁判员',
-  umpire_1: '副裁判员 1',
-  umpire_2: '副裁判员 2',
-  protest_captain: '申诉队长',
-};
+const officialLabels: Record<OfficialEntry['role'], string> = OFFICIAL_LABELS;
 
 function OfficialsEditor({
   document,

@@ -63,6 +63,8 @@ def test_admin_session_lists_only_current_season_with_resource_state():
     assert payload["total"] == 1
     item = payload["items"][0]
     assert item["id"] == str(request.id)
+    assert "target_venue_id" not in item
+    assert "target_venue_name" not in item
     assert item["actions"] == []
     assert item["resources"]["game_lock_matches"] is True
     assert item["resources"]["reservation_status"] == SlotReservation.Status.ACTIVE
@@ -166,11 +168,14 @@ def test_admin_can_start_vote_and_finish_after_confirmation_deadline():
     )
     assert final.status_code == 200
     assert final.json()["status"] == RescheduleRequest.Status.APPROVED
+    assert "target_venue_id" not in final.json()
+    assert "target_venue_name" not in final.json()
     setup["games"][0].refresh_from_db()
     request.reservation.refresh_from_db()
     assert setup["games"][0].active_reschedule_request_id is None
     assert setup["games"][0].leader_adjustable is True
     assert request.reservation.status == SlotReservation.Status.CONVERTED
+    assert final.json()["game"]["venue_name"] == setup["games"][0].venue_name
     log = AdminAuditLog.objects.get(action="reschedule.admin_final_approve")
     assert set(log.before) == {"request", "game", "reservation"}
     assert set(log.after) == {"request", "game", "reservation"}

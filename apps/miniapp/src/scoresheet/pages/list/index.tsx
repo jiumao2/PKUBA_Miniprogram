@@ -107,9 +107,7 @@ export default function ScoresheetListPage() {
   return (
     <View className="sheet-list-page">
       <View className="sheet-list-heading">
-        <Text className="sheet-list-eyebrow">管理员</Text>
         <Text className="sheet-list-title">记录表核对</Text>
-        <Text className="sheet-list-detail">每场一张当前原图。网页和小程序共享草稿与编辑租约。</Text>
       </View>
       <Input
         className="sheet-list-search"

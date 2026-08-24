@@ -1,11 +1,20 @@
+import importlib
 from datetime import timedelta
 
 import pytest
+from django.apps import apps as django_apps
 from django.core.management import call_command
 from django.test import Client, override_settings
 from django.utils import timezone
 
-from core.models import EmailOutbox, InboxItem, RescheduleRequest, ScoresheetRecognitionRun
+from core.models import (
+    EmailOutbox,
+    ImportIssue,
+    InboxItem,
+    RescheduleRequest,
+    ScheduleImportBatch,
+    ScoresheetRecognitionRun,
+)
 from core.services.email_outbox import PUBLIC_MAILBOX
 from core.services.inbox_tasks import (
     close_scoresheet_tasks,
@@ -36,6 +45,8 @@ def _submit(setup, *, target_date=None):
 
 def test_submit_creates_one_idempotent_opponent_task():
     setup = reschedule_setup()
+    setup["venues"][0].active = False
+    setup["venues"][0].save(update_fields=["active", "updated_at"])
     request = _submit(setup)
 
     task = InboxItem.objects.get(account=setup["accounts"][1])
@@ -45,6 +56,8 @@ def test_submit_creates_one_idempotent_opponent_task():
     assert task.route == InboxItem.Route.RESCHEDULE_REQUEST
     assert task.route_params == {"request_id": str(request.id)}
     assert task.due_at == request.confirmation_deadline
+    assert request.target_venue_name not in task.body
+    assert "调赛生效并更新正式赛程后公布" in task.body
     message = EmailOutbox.objects.get(object_id=request.id)
     assert message.recipient == PUBLIC_MAILBOX
     assert message.event_key == f"reschedule:{request.id}:status:WAITING_OPPONENT"
@@ -52,10 +65,92 @@ def test_submit_creates_one_idempotent_opponent_task():
     assert f"申请方：{request.requester_team.name}" in message.body
     assert "原比赛：" in message.body
     assert "调整后比赛：" in message.body
+    assert request.target_venue_name not in message.body
+    assert "调赛生效并更新正式赛程后公布" in message.body
 
     sync_reschedule_tasks(request)
     assert InboxItem.objects.filter(account=setup["accounts"][1]).count() == 1
     assert EmailOutbox.objects.filter(object_id=request.id).count() == 1
+
+
+def test_approved_reschedule_notification_reveals_published_game_venue():
+    setup = reschedule_setup()
+    request = _submit(setup)
+    reserved_venue = request.target_venue_name
+
+    approved = respond_to_opponent(
+        actor=setup["accounts"][1],
+        request_id=request.id,
+        expected_version=request.version,
+        accept=True,
+        now=valid_submission_time(request.game.date, request.target_date) + timedelta(hours=1),
+    )
+
+    assert approved.status == RescheduleRequest.Status.APPROVED
+    approved.game.refresh_from_db()
+    assert approved.game.venue_name == reserved_venue
+    message = EmailOutbox.objects.get(
+        event_key=f"reschedule:{request.id}:status:{RescheduleRequest.Status.APPROVED}"
+    )
+    assert f"比赛场地：{reserved_venue}" in message.body
+
+
+def test_venue_redaction_migration_cleans_existing_task_and_outbox_bodies():
+    setup = reschedule_setup()
+    setup["venues"][0].active = False
+    setup["venues"][0].save(update_fields=["active", "updated_at"])
+    request = _submit(setup)
+    original_venue = request.original_game_snapshot["venue_name"]
+    reserved_venue = request.target_venue_name
+    assert original_venue != reserved_venue
+
+    task = InboxItem.objects.get(account=setup["accounts"][1])
+    task.body = (
+        f"原赛程：{request.game.date.isoformat()} 12:50 {original_venue}\n"
+        f"目标：{request.target_date.isoformat()} 12:50 {reserved_venue}"
+    )
+    task.save(update_fields=["body", "updated_at"])
+
+    message = EmailOutbox.objects.get(object_id=request.id)
+    message.body = (
+        f"原比赛：{request.game.date.isoformat()} 12:50 {original_venue}\n"
+        f"调整后比赛：{request.target_date.isoformat()} 12:50 {reserved_venue}"
+    )
+    message.save(update_fields=["body", "updated_at"])
+
+    batch = ScheduleImportBatch.objects.create(
+        season=setup["season"],
+        template_version="3.3.0",
+        file_key="migration-test.xlsx",
+        file_sha256="c" * 64,
+        uploaded_by=setup["superadmin"],
+    )
+    issue = ImportIssue.objects.create(
+        batch=batch,
+        severity=ImportIssue.Severity.ERROR,
+        code="VENUE_OCCUPIED",
+        cell="赛程网格!C8",
+        message=f"{request.target_date.isoformat()} / P1 / {reserved_venue} 已有有效预留。",
+        context={"occupants": [str(request.reservation_id), "M-A1-A2"]},
+    )
+
+    migration = importlib.import_module(
+        "core.migrations.0025_redact_pending_reschedule_venues"
+    )
+    migration.redact_unpublished_target_venues(django_apps, None)
+
+    task.refresh_from_db()
+    message.refresh_from_db()
+    issue.refresh_from_db()
+    assert original_venue in task.body
+    assert original_venue in message.body
+    assert reserved_venue not in task.body
+    assert reserved_venue not in message.body
+    assert "调赛生效并更新正式赛程后公布" in task.body
+    assert "调赛生效并更新正式赛程后公布" in message.body
+    assert reserved_venue not in issue.message
+    assert issue.cell == ""
+    assert issue.context == {"venue_hidden_until_reschedule_effective": True}
 
 
 def test_viewing_task_does_not_reduce_badge_until_business_closes():

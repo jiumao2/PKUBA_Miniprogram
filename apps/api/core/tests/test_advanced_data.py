@@ -1,26 +1,34 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 import pytest
 from django.test import Client
+from django.utils import timezone
 
 from core.models import (
     Account,
     AdminAuditLog,
+    ApiIdempotencyRecord,
     CompetitionGroup,
     Division,
     ParticipantSlot,
+    RescheduleRequest,
     Season,
+    SlotReservation,
     WeChatIdentity,
 )
 from core.services.advanced_data import (
+    HIDDEN_RESCHEDULE_VENUE,
     AdvancedDataError,
     apply_mutation,
     get_spec,
     preview_mutation,
 )
-from core.tests.factories import season
+from core.services.rescheduling import submit_reschedule
+from core.tests.factories import reschedule_setup, season
+from core.tests.test_rescheduling import valid_submission_time
 
 pytestmark = pytest.mark.django_db
 
@@ -91,6 +99,97 @@ def test_advanced_data_can_inspect_full_identity_fields_without_environment_secr
         for model in client.get("/api/v1/admin/advanced-data/models").json()
         for field in model["fields"]
     )
+
+
+def test_advanced_data_hides_reserved_venue_until_reschedule_is_approved():
+    setup = reschedule_setup()
+    setup["venues"][0].active = False
+    setup["venues"][0].save(update_fields=["active", "updated_at"])
+    request_item = submit_reschedule(
+        actor=setup["accounts"][0],
+        game_id=setup["games"][0].id,
+        expected_game_version=setup["games"][0].version,
+        target_date=setup["target_date"],
+        target_period_id=setup["period"].id,
+        now=valid_submission_time(setup["games"][0].date, setup["target_date"]),
+    )
+    reserved_venue = request_item.target_venue_name
+    actor = _superadmin("venue-privacy-superadmin")
+    client = Client()
+    client.force_login(actor)
+
+    request_response = client.get(
+        f"/api/v1/admin/advanced-data/reschedule-requests/{request_item.id}"
+    )
+    reservation_response = client.get(
+        f"/api/v1/admin/advanced-data/slot-reservations/{request_item.reservation_id}"
+    )
+    assert request_response.status_code == 200
+    assert request_response.json()["values"]["target_venue_name"] == HIDDEN_RESCHEDULE_VENUE
+    assert reservation_response.status_code == 200
+    assert reservation_response.json()["values"]["venue"] is None
+    assert reservation_response.json()["values"]["venue_name"] == HIDDEN_RESCHEDULE_VENUE
+    assert reserved_venue not in json.dumps(request_response.json(), ensure_ascii=False)
+    assert reserved_venue not in json.dumps(reservation_response.json(), ensure_ascii=False)
+
+    audit = AdminAuditLog.objects.create(
+        actor=actor,
+        action="reschedule.admin_vote",
+        object_type="RescheduleRequest",
+        object_id=request_item.id,
+        before={
+            "reservation": {
+                "venue_id": str(request_item.reservation.venue_id),
+                "venue_name": reserved_venue,
+            }
+        },
+        after={
+            "reservation": {
+                "venue_id": str(request_item.reservation.venue_id),
+                "venue_name": reserved_venue,
+            }
+        },
+    )
+    idempotency = ApiIdempotencyRecord.objects.create(
+        actor=setup["accounts"][0],
+        operation="reschedule.create",
+        key_digest="a" * 64,
+        request_digest="b" * 64,
+        response_status=201,
+        response_body={"id": str(request_item.id), "target_venue_name": reserved_venue},
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+    audit_response = client.get(
+        f"/api/v1/admin/advanced-data/admin-audit-logs/{audit.id}"
+    )
+    idempotency_response = client.get(
+        f"/api/v1/admin/advanced-data/api-idempotency-records/{idempotency.id}"
+    )
+    assert reserved_venue not in json.dumps(audit_response.json(), ensure_ascii=False)
+    assert reserved_venue not in json.dumps(idempotency_response.json(), ensure_ascii=False)
+
+    request_item.status = RescheduleRequest.Status.APPROVED
+    request_item.save(update_fields=["status", "updated_at"])
+    reservation = SlotReservation.objects.get(pk=request_item.reservation_id)
+    reservation.status = SlotReservation.Status.CONVERTED
+    reservation.save(update_fields=["status", "updated_at"])
+
+    published_request = client.get(
+        f"/api/v1/admin/advanced-data/reschedule-requests/{request_item.id}"
+    )
+    published_reservation = client.get(
+        f"/api/v1/admin/advanced-data/slot-reservations/{request_item.reservation_id}"
+    )
+    published_audit = client.get(
+        f"/api/v1/admin/advanced-data/admin-audit-logs/{audit.id}"
+    )
+    published_idempotency = client.get(
+        f"/api/v1/admin/advanced-data/api-idempotency-records/{idempotency.id}"
+    )
+    assert published_request.json()["values"]["target_venue_name"] == reserved_venue
+    assert published_reservation.json()["values"]["venue_name"] == reserved_venue
+    assert reserved_venue in json.dumps(published_audit.json(), ensure_ascii=False)
+    assert reserved_venue in json.dumps(published_idempotency.json(), ensure_ascii=False)
 
 
 def test_domain_models_cannot_be_written_directly():

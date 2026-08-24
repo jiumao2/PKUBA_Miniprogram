@@ -40,8 +40,6 @@ const dataset: AdminReschedulePage = {
       target_period_id: "period-1",
       target_period_name: "第一时段",
       target_start_time: "12:50",
-      target_venue_id: "venue-2",
-      target_venue_name: "五四东二",
       submit_deadline: "2026-04-08T16:00:00Z",
       confirmation_deadline: "2026-04-09T16:00:00Z",
       confirmations: [{
@@ -104,7 +102,9 @@ describe("RescheduleManagementPage", () => {
     expect(html).toContain("调赛申请");
     expect(html).toContain("等待管理员决定");
     expect(html).toContain("原比赛活动锁");
-    expect(html).toContain("目标场地预留");
+    expect(html).toContain("目标资源预留");
+    expect(html).toContain("具体场地不公开");
+    expect(html).not.toContain("五四东二");
     expect(html).toContain("目标时段容量");
   });
 });

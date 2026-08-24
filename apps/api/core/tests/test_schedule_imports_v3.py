@@ -16,10 +16,12 @@ from core.models import (
     ParticipantSlot,
     Period,
     PeriodCapacity,
+    RescheduleRequest,
     ScheduleGridColumn,
     ScheduleImportBatch,
     ScheduleSlotFamily,
     Season,
+    SlotReservation,
     Team,
     Venue,
 )
@@ -178,6 +180,66 @@ def _upload(setup, tmp_path, content: bytes):
             content=content,
             source_name="schedule-v3.xlsx",
         )
+
+
+def test_active_reservation_venue_is_hidden_from_import_conflict(tmp_path):
+    setup = _setup()
+    season = setup["season"]
+    period = season.periods.get(code="p1")
+    reserved_venue = season.venues.get(name="五四东一")
+    original_venue = season.venues.get(name="五四东二")
+    teams = list(setup["men"].teams.order_by("name")[:2])
+    game = Game.objects.create(
+        season=season,
+        division=setup["men"],
+        code="ACTIVE-RESCHEDULE",
+        date=season.ends_on,
+        period=period,
+        start_time=period.start_time,
+        venue_name=original_venue.name,
+        home_team=teams[0],
+        away_team=teams[1],
+    )
+    reservation = SlotReservation.objects.create(
+        season=season,
+        date=season.starts_on,
+        period=period,
+        venue=reserved_venue,
+        venue_name=reserved_venue.name,
+    )
+    request = RescheduleRequest.objects.create(
+        game=game,
+        requester_team=teams[0],
+        requester=setup["actor"],
+        request_type=RescheduleRequest.RequestType.SAME_WEEK,
+        target_date=reservation.date,
+        target_period=period,
+        target_start_time=period.start_time,
+        target_venue_name=reserved_venue.name,
+        reservation=reservation,
+        original_game_snapshot={
+            "date": game.date.isoformat(),
+            "start_time": game.start_time.strftime("%H:%M"),
+            "venue_name": game.venue_name,
+        },
+        game_version_at_submit=game.version,
+        submit_deadline=timezone.now() + timedelta(days=1),
+        confirmation_deadline=timezone.now() + timedelta(days=2),
+    )
+    game.active_reschedule_request = request
+    game.save(update_fields=["active_reschedule_request", "updated_at"])
+
+    batch = _upload(setup, tmp_path, _filled_workbook(setup))
+    issue = batch.issues.get(code="VENUE_OCCUPIED")
+
+    assert reserved_venue.name not in issue.message
+    assert issue.cell == ""
+    assert issue.context == {
+        "date": season.starts_on.isoformat(),
+        "period_code": "P1",
+        "venue_hidden_until_reschedule_effective": True,
+    }
+    assert str(reservation.id) not in str(issue.context)
 
 
 def test_dynamic_template_uses_three_sheets_daily_rows_and_gender_namespace():

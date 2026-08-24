@@ -337,7 +337,6 @@ class SeasonVenueConfigurationOut(Schema):
     sort_order: int
     active: bool
     game_count: int
-    active_reservation_count: int
 
 
 class SeasonPeriodConfigurationOut(Schema):

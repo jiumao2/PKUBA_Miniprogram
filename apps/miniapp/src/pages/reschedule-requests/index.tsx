@@ -8,6 +8,7 @@ import { getMiniAppSession } from "../../auth";
 import { formatDate } from "../../format";
 import "../../role-workspace.css";
 import "./index.css";
+import { targetVenueLabel } from "./viewModel";
 
 export default function RescheduleRequestsPage() {
   const router = useRouter();
@@ -144,7 +145,7 @@ export default function RescheduleRequestsPage() {
             onOpenVote={() => void openVote(item)}
             onSubmitVote={() => void submitVote(item)}
             onAction={(kind) => {
-              if (kind === "WITHDRAW") void confirmAction(item, "撤回申请", "撤回后会释放原比赛锁和目标场地预留。", (token) => api.withdrawReschedule(item.id, item.version, token));
+              if (kind === "WITHDRAW") void confirmAction(item, "撤回申请", "撤回后会释放原比赛锁和目标资源预留。", (token) => api.withdrawReschedule(item.id, item.version, token));
               if (kind === "OPPONENT_ACCEPT") void confirmAction(item, "同意调赛", "同周申请会立即生效；跨周申请会进入管理员处理。", (token) => api.respondToRescheduleOpponent(item.id, { expected_version: item.version, accept: true }, token));
               if (kind === "OPPONENT_REJECT") void confirmAction(item, "拒绝调赛", "拒绝后申请结束并释放预留。", (token) => api.respondToRescheduleOpponent(item.id, { expected_version: item.version, accept: false }, token));
               if (kind === "VOTER_ACCEPT") void confirmAction(item, "同意申请", "您的球队将记录为同意。", (token) => api.respondAsSelectedTeam(item.id, { expected_version: item.version, accept: true }, token));
@@ -207,7 +208,7 @@ function RequestCard({
         <View className="request-slot target-slot">
           <Text className="request-slot-label">目标赛程</Text>
           <Text className="request-slot-main">{formatDate(item.target_date)} · {item.target_start_time}</Text>
-          <Text className="request-slot-meta">{item.target_venue_name}</Text>
+          <Text className="request-slot-meta">{targetVenueLabel(item)}</Text>
         </View>
       </View>
       <Text className="request-requester">申请方 · {item.requester_team_name}</Text>

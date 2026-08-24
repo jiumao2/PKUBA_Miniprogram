@@ -22,6 +22,7 @@ from core.models import (
     Season,
 )
 from core.scoresheet_schema_v2 import ensure_v2_document
+from core.scoresheet_v2.models import ScoresheetDocument
 from core.scoresheet_v2.recognition import PROMPT_VERSION
 from core.scoresheet_v2.template import load_template_definition
 from core.services.game_media import issue_media_ticket
@@ -137,7 +138,7 @@ class ScoresheetDetailOut(Schema):
     source: dict[str, Any] | None
     source_version: int
     status: str
-    draft: dict[str, Any]
+    draft: ScoresheetDocument
     draft_version: int
     event_sequence: int
     reviewed_regions: dict[str, Any]

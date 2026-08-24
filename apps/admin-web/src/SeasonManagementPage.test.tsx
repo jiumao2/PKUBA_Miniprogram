@@ -41,7 +41,6 @@ const historical: SeasonConfiguration = {
     sort_order: index + 1,
     active: true,
     game_count: 48,
-    active_reservation_count: 0,
   })),
   periods: [
     {

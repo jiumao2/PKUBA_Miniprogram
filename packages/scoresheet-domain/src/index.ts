@@ -10,8 +10,27 @@ export const SCORESHEET_REGIONS = [
 export type ScoresheetRegion = (typeof SCORESHEET_REGIONS)[number];
 export type ScoresheetSurface = "WEB" | "MINIAPP";
 export type TeamSide = "A" | "B";
-export type ScoreValue = number;
-export type ScorePeriod = "1" | "2" | "3" | "4" | "5";
+export type ParticipationStatus = "none" | "starter" | "substitute";
+export type FoulCode = "P" | "T" | "U" | "D" | "C" | "B" | "GD" | "F" | "DI" | "FL" | "BD";
+export type FoulMarkStyle = "plain" | "circled";
+export type RuleProfileId = "fiba_2024" | "fiba_2026";
+export type ScoreMark = "filled_dot" | "diagonal";
+export type ScoreBoundary = "none" | "period_end" | "game_end";
+export type InkRole = "q1_q3" | "q2_q4_ot" | "neutral";
+export type SignaturePresence = "present" | "absent" | "unclear";
+export type DocumentStatus = "draft" | "needs_review" | "validated" | "confirmed";
+export type GamePeriod = 1 | 2 | 3 | 4 | 5;
+export type RegulationPeriod = 1 | 2 | 3 | 4;
+export type TimeoutScope = "H1" | "H2" | "OT";
+export type OfficialRole =
+  | "scorer"
+  | "assistant_scorer"
+  | "timer"
+  | "shot_clock_operator"
+  | "crew_chief"
+  | "umpire_1"
+  | "umpire_2"
+  | "protest_captain";
 export type FoulEditorGroup = "player" | "coach" | "post_foul";
 export type FoulSuffix = "" | "1" | "2" | "3" | "c";
 
@@ -71,63 +90,194 @@ export const TEMPLATE_REGION_BOUNDS: Record<
   OFFICIALS: { x: 37.2, y: 660.6, width: 309, height: 124.8 },
 };
 
-export interface ScoresheetPlayer {
-  player_id: string;
-  name: string;
-  jersey_number: string;
-  appeared: boolean;
-  starter: boolean;
-  captain: boolean;
-  license_number?: string;
-  fouls: Array<string | { code: string }>;
-  post_foul_markers?: Array<string | { code: string }>;
+export const TIMEOUT_SLOT_COUNTS: Record<TimeoutScope, number> = { H1: 2, H2: 3, OT: 3 };
+export const TIMEOUT_SCOPE_LABELS: Record<TimeoutScope, string> = {
+  H1: "上半场",
+  H2: "下半场",
+  OT: "决胜期",
+};
+
+export const OFFICIAL_ROLES: OfficialRole[] = [
+  "scorer",
+  "assistant_scorer",
+  "timer",
+  "shot_clock_operator",
+  "crew_chief",
+  "umpire_1",
+  "umpire_2",
+  "protest_captain",
+];
+
+export const OFFICIAL_LABELS: Record<OfficialRole, string> = {
+  scorer: "记录员",
+  assistant_scorer: "助理记录员",
+  timer: "计时员",
+  shot_clock_operator: "24 秒计时员",
+  crew_chief: "主裁",
+  umpire_1: "第一副裁",
+  umpire_2: "第二副裁",
+  protest_captain: "球队抗议队长",
+};
+
+export interface Header {
+  competition: string;
+  game_number: string;
+  date: string;
+  scheduled_time: string;
+  venue: string;
+  crew_chief: string;
+  umpire_1: string;
+  umpire_2: string;
 }
 
-export interface ScoresheetTeam {
-  team_id: string;
+export interface FoulEntry {
+  slot: number;
+  code: FoulCode;
+  catalog_id?: string | null;
+  mark_style?: FoulMarkStyle;
+  free_throws: number | null;
+  cancelled: boolean;
+  period: GamePeriod | null;
+}
+
+export type PostFoulMarker = FoulEntry;
+
+export interface PlayerEntry {
+  row: number;
+  license_number: string;
   name: string;
-  players: ScoresheetPlayer[];
-  timeouts: Record<string, unknown[]>;
-  team_fouls: Record<string, unknown[]>;
-  head_coach: { name: string; fouls: unknown[] };
-  assistant_coach: { name: string; fouls: unknown[] };
-  coach_post_foul_markers?: unknown[];
-  assistant_coach_post_foul_markers?: unknown[];
+  jersey_number: string;
+  captain: boolean;
+  participation: ParticipationStatus;
+  fouls: FoulEntry[];
+  post_foul_markers: PostFoulMarker[];
+}
+
+export interface TimeoutEntry {
+  scope: TimeoutScope;
+  slot: number;
+  minute: number;
+}
+
+export interface TeamFoulPeriod {
+  period: RegulationPeriod;
+  count: number;
+}
+
+export interface TeamEntry {
+  side: TeamSide;
+  name: string;
+  players: PlayerEntry[];
+  timeouts: TimeoutEntry[];
+  team_fouls: TeamFoulPeriod[];
+  coach_fouls: FoulEntry[];
+  coach_post_foul_markers: PostFoulMarker[];
+  assistant_coach_fouls: FoulEntry[];
+  assistant_coach_post_foul_markers: PostFoulMarker[];
+  head_coach: string;
+  assistant_coach: string;
 }
 
 export interface ScoreEvent {
-  id: string;
   sequence: number;
   team: TeamSide;
-  player_id: string;
-  player_name?: string;
-  player_number: string;
-  value: ScoreValue;
-  period: ScorePeriod;
-  cumulative: number;
-  mark?: "dot" | "slash" | "circle";
-  boundary?: "none" | "period" | "game";
+  period: GamePeriod;
+  points: number | null;
+  cumulative_score: number;
+  scorer_jersey: string;
+  mark: ScoreMark | null;
+  scorer_circled: boolean;
+  boundary: ScoreBoundary;
+  ink_role: InkRole;
 }
 
-export interface ScoresheetDocument {
-  schema_version: 1;
-  template_id: string;
-  rule_profile: "fiba_2024";
-  game: Record<string, string>;
-  teams: Record<TeamSide, ScoresheetTeam>;
-  running_score: ScoreEvent[];
-  summary: {
-    period_scores: Record<ScorePeriod, Record<TeamSide, number | null>>;
-    final_score: Record<TeamSide, number | null>;
-    winner_side: "" | TeamSide;
-    ended_at: string;
-  };
-  officials: Record<string, string | boolean>;
+export interface PeriodScore {
+  period: GamePeriod;
+  team_a: number;
+  team_b: number;
+}
+
+export interface FinalScore {
+  team_a: number;
+  team_b: number;
+  winner_name: string;
+  ended_at: string;
+}
+
+export interface OfficialEntry {
+  role: OfficialRole;
+  name: string;
+  signature: SignaturePresence;
+}
+
+export interface SourceAsset {
+  original_filename: string;
+  original_url: string;
+  aligned_url: string;
+  version?: number;
+  content_sha256?: string;
+  width: number;
+  height: number;
+  rotation: number;
+  corners: number[][] | null;
+}
+
+export interface PriorTeam {
+  team_id: string;
+  name: string;
+  player_names: string[];
+}
+
+export interface GamePriorSnapshot {
+  game_id: string;
+  competition: string;
+  division: string;
+  date: string;
+  scheduled_time: string;
+  venue: string;
+  team_a: PriorTeam;
+  team_b: PriorTeam;
+  source_hash: string;
+  locked_paths: string[];
+}
+
+export interface RecognitionIssue {
+  code: string;
+  path: string;
+  message: string;
+  observed: unknown;
+  expected: unknown;
+}
+
+export interface RecognitionDocumentState {
+  run_id: string;
+  notes: string;
   table_personnel: string[];
-  source_alignment: {
-    corners: Array<{ x: number; y: number }>;
-    rotation: number;
-  };
+  problem_paths: string[];
+  issues?: RecognitionIssue[];
+  applied_at: string;
+}
+
+/** Authoritative scoresheet v1.4 document shared by API, web, and miniapp. */
+export interface ScoresheetDocument {
+  schema_version: "1.0.0" | "1.1.0" | "1.2.0" | "1.3.0" | "1.4.0";
+  rules_profile?: RuleProfileId;
+  id: string;
+  revision: number;
+  template_id: string;
+  status: DocumentStatus;
+  created_at: string;
+  updated_at: string;
+  source: SourceAsset;
+  game_prior?: GamePriorSnapshot | null;
+  recognition?: RecognitionDocumentState | null;
+  header: Header;
+  teams: TeamEntry[];
+  score_events: ScoreEvent[];
+  stated_period_scores: PeriodScore[];
+  final_score: FinalScore;
+  officials: OfficialEntry[];
+  acknowledged_warnings: string[];
 }
 
 export interface ValidationIssue {
@@ -222,133 +372,304 @@ export const SCORE_BLOCKS = [
 
 export function regionForPath(path: string): ScoresheetRegion | "ALL" {
   if (path === "" || path === "/") return "ALL";
-  if (path.startsWith("/teams/A")) return "TEAM_A";
-  if (path.startsWith("/teams/B")) return "TEAM_B";
-  if (path.startsWith("/running_score")) return "RUNNING_SCORE";
-  if (path.startsWith("/summary")) return "SUMMARY";
-  if (path.startsWith("/officials")) return "OFFICIALS";
+  if (path.startsWith("/teams/0")) return "TEAM_A";
+  if (path.startsWith("/teams/1")) return "TEAM_B";
+  if (path.startsWith("/score_events")) return "RUNNING_SCORE";
+  if (path.startsWith("/stated_period_scores") || path.startsWith("/final_score")) return "SUMMARY";
+  if (path.startsWith("/officials") || path.startsWith("/recognition/table_personnel")) return "OFFICIALS";
   return "SOURCE_GAME";
 }
 
-export function teamTotal(events: ScoreEvent[], side: TeamSide): number {
-  return events
-    .filter((event) => event.team === side)
-    .reduce((total, event) => total + event.value, 0);
+export function deepCloneDocument(document: ScoresheetDocument): ScoresheetDocument {
+  return JSON.parse(JSON.stringify(document)) as ScoresheetDocument;
 }
 
-export function nextLegalCumulative(
-  events: ScoreEvent[],
-  side: TeamSide,
-  value: ScoreValue,
-): number | null {
-  const next = teamTotal(events, side) + value;
-  return next <= 160 ? next : null;
+export function teamBySide(document: ScoresheetDocument, side: TeamSide): TeamEntry {
+  const team = document.teams.find((candidate) => candidate.side === side);
+  if (!team) throw new Error(`记录表缺少 ${side} 队`);
+  return team;
 }
 
-export function canPlaceScore(
-  events: ScoreEvent[],
-  side: TeamSide,
-  value: ScoreValue,
-  cumulative: number,
-): boolean {
-  return nextLegalCumulative(events, side, value) === cumulative;
+export function isValidJerseyNumber(value: string, allowBlank = true): boolean {
+  const normalized = value.trim();
+  if (!normalized) return allowBlank;
+  return normalized === "0" || normalized === "00" || /^(?:[1-9]|[1-9][0-9])$/.test(normalized);
 }
 
-export function addScoreEvent(
-  events: ScoreEvent[],
-  input: {
-    id: string;
-    team: TeamSide;
-    value: ScoreValue;
-    period: ScorePeriod;
-    player_id?: string;
-    player_name?: string;
-    player_number?: string;
-  },
-): ScoreEvent[] {
-  const cumulative = nextLegalCumulative(events, input.team, input.value);
-  if (cumulative === null) throw new Error("累计分不能超过 160 分");
-  const event: ScoreEvent = {
-    id: input.id,
-    sequence: events.length + 1,
-    team: input.team,
-    value: input.value,
-    period: input.period,
-    player_id: input.player_id ?? "",
-    player_name: input.player_name,
-    player_number: input.player_number ?? "",
-    cumulative,
-    mark: input.value === 1 ? "dot" : input.value === 3 ? "circle" : "slash",
-    boundary: "none",
+export function emptyPlayer(row: number): PlayerEntry {
+  return {
+    row,
+    license_number: "",
+    name: "",
+    jersey_number: "",
+    captain: false,
+    participation: "none",
+    fouls: [],
+    post_foul_markers: [],
   };
-  return [...events, event];
 }
 
-export function normalizeScoreEvents(events: ScoreEvent[]): ScoreEvent[] {
-  const totals: Record<TeamSide, number> = { A: 0, B: 0 };
-  return events.map((event, index) => {
-    totals[event.team] += event.value;
+export function paperPlayerRows(team: TeamEntry): PlayerEntry[] {
+  const byRow = new Map(team.players.map((player) => [player.row, player]));
+  return Array.from({ length: 12 }, (_, index) => byRow.get(index + 1) ?? emptyPlayer(index + 1));
+}
+
+export function isBlankPlayer(player: PlayerEntry): boolean {
+  return !player.license_number.trim()
+    && !player.name.trim()
+    && !player.jersey_number.trim()
+    && !player.captain
+    && player.participation === "none"
+    && player.fouls.length === 0
+    && player.post_foul_markers.length === 0;
+}
+
+export function sparsePlayerRows(players: PlayerEntry[]): PlayerEntry[] {
+  return players
+    .filter((player) => !isBlankPlayer(player))
+    .map((player) => ({ ...player }))
+    .sort((left, right) => left.row - right.row);
+}
+
+export function isOrderedFoulSlotEnabled(entries: FoulEntry[], slot: number): boolean {
+  return slot === 1 || entries.some((entry) => entry.slot === slot - 1);
+}
+
+export function isOrderedPostFoulSlotEnabled(
+  formalEntries: FoulEntry[],
+  postEntries: FoulEntry[],
+  requiredFormalSlot: number,
+  slot: number,
+): boolean {
+  return formalEntries.some((entry) => entry.slot === requiredFormalSlot)
+    && (slot === 1 || postEntries.some((entry) => entry.slot === slot - 1));
+}
+
+export function setOrderedFormalFoul(
+  formalEntries: FoulEntry[],
+  postEntries: FoulEntry[],
+  slot: number,
+  value: FoulEntry | null | undefined,
+): { formalEntries: FoulEntry[]; postEntries: FoulEntry[] } {
+  if (!value) {
     return {
-      ...event,
-      sequence: index + 1,
-      cumulative: totals[event.team],
-      mark: event.value === 1 ? "dot" : event.value === 3 ? "circle" : "slash",
+      formalEntries: formalEntries.filter((entry) => entry.slot < slot),
+      postEntries: [],
     };
-  });
+  }
+  if (!isOrderedFoulSlotEnabled(formalEntries, slot)) {
+    return { formalEntries: [...formalEntries], postEntries: [...postEntries] };
+  }
+  const next = formalEntries.filter((entry) => entry.slot !== slot);
+  next.push({ ...value, slot });
+  next.sort((left, right) => left.slot - right.slot);
+  return { formalEntries: next, postEntries: [...postEntries] };
 }
 
-function scoreMark(value: number): ScoreEvent["mark"] {
-  return value === 1 ? "dot" : value === 2 ? "slash" : value === 3 ? "circle" : undefined;
+export function setOrderedPostFoul(
+  formalEntries: FoulEntry[],
+  postEntries: FoulEntry[],
+  requiredFormalSlot: number,
+  slot: number,
+  value: FoulEntry | null | undefined,
+): FoulEntry[] {
+  if (!value) return postEntries.filter((entry) => entry.slot < slot);
+  if (!isOrderedPostFoulSlotEnabled(formalEntries, postEntries, requiredFormalSlot, slot)) {
+    return [...postEntries];
+  }
+  const next = postEntries.filter((entry) => entry.slot !== slot);
+  next.push({ ...value, slot });
+  return next.sort((left, right) => left.slot - right.slot);
+}
+
+export function semanticScoresheetPath(path: string, document?: ScoresheetDocument): string {
+  if (!path || path === "/") return "整份记录表";
+  const parts = path.split("/").filter(Boolean);
+  if (parts[0] === "header") {
+    const labels: Record<string, string> = {
+      competition: "赛事",
+      game_number: "比赛编号",
+      date: "比赛日期",
+      scheduled_time: "开赛时间",
+      venue: "比赛场地",
+      crew_chief: "主裁",
+      umpire_1: "第一副裁",
+      umpire_2: "第二副裁",
+    };
+    return labels[parts[1]] ?? "比赛信息";
+  }
+  if (parts[0] === "teams") {
+    const teamIndex = Number(parts[1]);
+    const side = teamIndex === 1 ? "B" : "A";
+    const team = document?.teams[teamIndex];
+    if (parts[2] === "players") {
+      const playerIndex = Number(parts[3]);
+      const row = team?.players[playerIndex]?.row ?? playerIndex + 1;
+      const labels: Record<string, string> = {
+        license_number: "证件号码",
+        name: "姓名",
+        jersey_number: "球衣号码",
+        participation: "上场状态",
+        captain: "队长",
+        fouls: "犯规格",
+        post_foul_markers: "附加标记",
+      };
+      return `${side} 队第 ${row} 行${labels[parts[4]] ?? "队员信息"}`;
+    }
+    const labels: Record<string, string> = {
+      name: "球队名称",
+      timeouts: "暂停分钟",
+      team_fouls: "全队犯规",
+      head_coach: "教练员",
+      assistant_coach: "助理教练员",
+      coach_fouls: "教练犯规",
+      coach_post_foul_markers: "教练附加标记",
+      assistant_coach_fouls: "助理教练犯规",
+      assistant_coach_post_foul_markers: "助理教练附加标记",
+    };
+    return `${side} 队${labels[parts[2]] ?? "信息"}`;
+  }
+  if (parts[0] === "score_events") {
+    const index = Number(parts[1]);
+    const event = document?.score_events[index];
+    return event
+      ? `${event.team} 队累计 ${event.cumulative_score} 分格`
+      : `逐次得分第 ${index + 1} 项`;
+  }
+  if (parts[0] === "stated_period_scores") {
+    const index = Number(parts[1]);
+    const period = document?.stated_period_scores[index]?.period ?? index + 1;
+    const periodLabel = period === 5 ? "决胜期合计" : `第 ${period} 节`;
+    const side = parts[2] === "team_b" ? "B 队" : parts[2] === "team_a" ? "A 队" : "比分";
+    return `${periodLabel} · ${side}`;
+  }
+  if (parts[0] === "final_score") {
+    const labels: Record<string, string> = {
+      team_a: "A 队最终比分",
+      team_b: "B 队最终比分",
+      winner_name: "胜队",
+      ended_at: "比赛结束时间",
+    };
+    return labels[parts[1]] ?? "最终结果";
+  }
+  if (parts[0] === "officials") {
+    const index = Number(parts[1]);
+    const role = document?.officials[index]?.role;
+    return role ? OFFICIAL_LABELS[role] : "工作人员";
+  }
+  if (parts[0] === "recognition" && parts[1] === "table_personnel") return "记录台人员";
+  return "记录表字段";
+}
+
+export function timeoutMinute(team: TeamEntry, scope: TimeoutScope, slot: number): number | null {
+  return team.timeouts.find((timeout) => timeout.scope === scope && timeout.slot === slot)?.minute ?? null;
+}
+
+export function setTimeoutMinute(
+  team: TeamEntry,
+  scope: TimeoutScope,
+  slot: number,
+  minute: number | null,
+): TeamEntry {
+  const next = { ...team, timeouts: team.timeouts.filter((entry) => !(entry.scope === scope && entry.slot === slot)) };
+  if (minute !== null) next.timeouts.push({ scope, slot, minute: Math.max(0, Math.min(10, Math.trunc(minute))) });
+  next.timeouts.sort((left, right) => left.scope.localeCompare(right.scope) || left.slot - right.slot);
+  return next;
+}
+
+export function semanticMark(points: number | null): Pick<ScoreEvent, "mark" | "scorer_circled"> {
+  if (points === 1) return { mark: "filled_dot", scorer_circled: false };
+  if (points === 2) return { mark: "diagonal", scorer_circled: false };
+  if (points === 3) return { mark: "diagonal", scorer_circled: true };
+  return { mark: null, scorer_circled: false };
+}
+
+export function periodScore(document: ScoresheetDocument, period: GamePeriod): PeriodScore {
+  return document.stated_period_scores.find((score) => score.period === period)
+    ?? { period, team_a: 0, team_b: 0 };
+}
+
+export function setPeriodScore(
+  document: ScoresheetDocument,
+  period: GamePeriod,
+  side: TeamSide,
+  value: number,
+): ScoresheetDocument {
+  const normalized = Math.max(0, Math.min(160, Math.trunc(value)));
+  const current = periodScore(document, period);
+  const next = { ...current, [side === "A" ? "team_a" : "team_b"]: normalized };
+  const index = document.stated_period_scores.findIndex((score) => score.period === period);
+  if (index >= 0) document.stated_period_scores[index] = next;
+  else document.stated_period_scores.push(next);
+  document.stated_period_scores.sort((left, right) => left.period - right.period);
+  return deriveScoreEvents(document);
+}
+
+export function deriveFinalScore(document: ScoresheetDocument): FinalScore {
+  const totals = document.stated_period_scores.reduce(
+    (result, score) => ({ team_a: result.team_a + score.team_a, team_b: result.team_b + score.team_b }),
+    { team_a: 0, team_b: 0 },
+  );
+  const teamA = teamBySide(document, "A");
+  const teamB = teamBySide(document, "B");
+  document.final_score = {
+    ...document.final_score,
+    ...totals,
+    winner_name: totals.team_a > totals.team_b ? teamA.name : totals.team_b > totals.team_a ? teamB.name : "",
+  };
+  return document.final_score;
 }
 
 export function periodCheckpoints(
   document: ScoresheetDocument,
   side: TeamSide,
-): Array<{ period: ScorePeriod; cumulative: number }> {
+): Array<{ period: GamePeriod; cumulative: number }> {
+  const byPeriod = new Map(document.stated_period_scores.map((score) => [score.period, score]));
+  const periods: GamePeriod[] = [1, 2, 3, 4];
+  if (byPeriod.has(5)) periods.push(5);
   let cumulative = 0;
-  return (["1", "2", "3", "4", "5"] as ScorePeriod[])
-    .filter((period) => Number(period) <= 4 || (
-      document.summary.period_scores[period].A !== null
-      && document.summary.period_scores[period].B !== null
-    ))
-    .map((period) => {
-      cumulative += document.summary.period_scores[period][side] ?? 0;
-      return { period, cumulative };
-    });
+  return periods.map((period) => {
+    const score = byPeriod.get(period);
+    if (score) cumulative += side === "A" ? score.team_a : score.team_b;
+    return { period, cumulative };
+  });
 }
 
-function scorePeriod(
-  cumulative: number,
-  checkpoints: Array<{ period: ScorePeriod; cumulative: number }>,
-): ScorePeriod {
-  const covering = checkpoints.find((checkpoint) => cumulative <= checkpoint.cumulative);
+function periodForScore(
+  cumulativeScore: number,
+  checkpoints: Array<{ period: GamePeriod; cumulative: number }>,
+): GamePeriod {
+  const covering = checkpoints.find((checkpoint) => cumulativeScore <= checkpoint.cumulative);
   if (covering) return covering.period;
   const last = checkpoints.at(-1);
-  return last && last.cumulative > 0 ? last.period : "1";
+  return last && last.cumulative > 0 ? last.period : 1;
 }
 
 export function deriveScoreEvents(document: ScoresheetDocument): ScoresheetDocument {
+  deriveFinalScore(document);
   const bySide = new Map<TeamSide, ScoreEvent[]>([
-    ["A", document.running_score.filter((event) => event.team === "A")],
-    ["B", document.running_score.filter((event) => event.team === "B")],
+    ["A", document.score_events.filter((event) => event.team === "A")],
+    ["B", document.score_events.filter((event) => event.team === "B")],
   ]);
   (["A", "B"] as TeamSide[]).forEach((side) => {
     const events = bySide.get(side)!
-      .sort((left, right) => left.cumulative - right.cumulative || left.sequence - right.sequence);
+      .sort((left, right) => left.cumulative_score - right.cumulative_score || left.sequence - right.sequence);
     const checkpoints = periodCheckpoints(document, side);
     let previous = 0;
     events.forEach((event) => {
-      event.value = event.cumulative - previous;
-      event.mark = scoreMark(event.value);
-      event.period = scorePeriod(event.cumulative, checkpoints);
+      const delta = event.cumulative_score - previous;
+      event.points = delta >= 1 ? delta : null;
+      Object.assign(event, semanticMark(event.points));
+      event.period = periodForScore(event.cumulative_score, checkpoints);
+      event.ink_role = event.period === 1 || event.period === 3 ? "q1_q3" : "q2_q4_ot";
       event.boundary = "none";
-      previous = event.cumulative;
+      previous = event.cumulative_score;
     });
-    const byCumulative = new Map(events.map((event) => [event.cumulative, event]));
+    const byCumulative = new Map(events.map((event) => [event.cumulative_score, event]));
     checkpoints.forEach(({ cumulative }) => {
       if (cumulative > 0) {
         const event = byCumulative.get(cumulative);
-        if (event) event.boundary = "period";
+        if (event) event.boundary = "period_end";
       }
     });
   });
@@ -357,104 +678,75 @@ export function deriveScoreEvents(document: ScoresheetDocument): ScoresheetDocum
   if (
     latestA
     && latestB
-    && latestA.cumulative === document.summary.final_score.A
-    && latestB.cumulative === document.summary.final_score.B
+    && latestA.cumulative_score === document.final_score.team_a
+    && latestB.cumulative_score === document.final_score.team_b
   ) {
-    latestA.boundary = "game";
-    latestB.boundary = "game";
+    latestA.boundary = "game_end";
+    latestB.boundary = "game_end";
   }
-  document.running_score.sort((left, right) => (
-    Number(left.period) - Number(right.period)
+  document.score_events.sort((left, right) => (
+    left.period - right.period
     || left.team.localeCompare(right.team)
-    || left.cumulative - right.cumulative
+    || left.cumulative_score - right.cumulative_score
     || left.sequence - right.sequence
   ));
-  document.running_score.forEach((event, index) => { event.sequence = index + 1; });
+  document.score_events.forEach((event, index) => { event.sequence = index + 1; });
   return document;
 }
 
 export function setScoreCell(
   document: ScoresheetDocument,
-  input: Omit<ScoreEvent, "sequence" | "value" | "mark" | "period" | "boundary"> & {
-    cumulative: number;
-  },
-): ScoresheetDocument {
-  let event = document.running_score.find(
-    (candidate) => candidate.team === input.team && candidate.cumulative === input.cumulative,
+  side: TeamSide,
+  cumulativeScore: number,
+  scorerJersey: string,
+): ScoreEvent {
+  let event = document.score_events.find(
+    (candidate) => candidate.team === side && candidate.cumulative_score === cumulativeScore,
   );
   if (!event) {
     event = {
-      ...input,
-      sequence: Math.max(0, ...document.running_score.map((candidate) => candidate.sequence)) + 1,
-      value: 1,
-      period: "1",
-      mark: "dot",
+      sequence: Math.max(0, ...document.score_events.map((candidate) => candidate.sequence)) + 1,
+      team: side,
+      period: 1,
+      points: null,
+      cumulative_score: cumulativeScore,
+      scorer_jersey: scorerJersey,
+      mark: null,
+      scorer_circled: false,
       boundary: "none",
+      ink_role: "neutral",
     };
-    document.running_score.push(event);
+    document.score_events.push(event);
   } else {
-    event.player_id = input.player_id;
-    event.player_name = input.player_name;
-    event.player_number = input.player_number;
+    event.scorer_jersey = scorerJersey;
   }
-  return deriveScoreEvents(document);
+  deriveScoreEvents(document);
+  return document.score_events.find(
+    (candidate) => candidate.team === side && candidate.cumulative_score === cumulativeScore,
+  )!;
 }
 
 export function removeScoreCell(
   document: ScoresheetDocument,
   side: TeamSide,
-  cumulative: number,
+  cumulativeScore: number,
 ): ScoresheetDocument {
-  document.running_score = document.running_score.filter(
-    (event) => event.team !== side || event.cumulative !== cumulative,
+  document.score_events = document.score_events.filter(
+    (event) => event.team !== side || event.cumulative_score !== cumulativeScore,
   );
   return deriveScoreEvents(document);
 }
 
-function resequenceWithoutMovingCells(events: ScoreEvent[]): ScoreEvent[] {
-  return events.map((event, index) => ({ ...event, sequence: index + 1 }));
-}
-
-export function insertScoreAt(
-  events: ScoreEvent[],
-  input: Omit<ScoreEvent, "sequence" | "value" | "mark"> & { cumulative: number },
-): ScoreEvent[] {
-  if (events.some((event) => event.team === input.team && event.cumulative === input.cumulative)) {
-    throw new Error("该累计分格已经填写");
-  }
-  const sameSide = events
-    .filter((event) => event.team === input.team)
-    .sort((left, right) => left.cumulative - right.cumulative);
-  const previous = [...sameSide].reverse().find((event) => event.cumulative < input.cumulative);
-  const next = sameSide.find((event) => event.cumulative > input.cumulative);
-  const value = input.cumulative - (previous?.cumulative ?? 0);
-  const inserted: ScoreEvent = { ...input, sequence: 0, value, mark: scoreMark(value) };
-  const result = events.map((event) => event.id === next?.id
-    ? { ...event, value: event.cumulative - input.cumulative, mark: scoreMark(event.cumulative - input.cumulative) }
-    : event);
-  const insertIndex = next ? result.findIndex((event) => event.id === next.id) : result.length;
-  result.splice(insertIndex < 0 ? result.length : insertIndex, 0, inserted);
-  return resequenceWithoutMovingCells(result);
-}
-
-export function deleteScoreAt(events: ScoreEvent[], eventId: string): ScoreEvent[] {
-  const removed = events.find((event) => event.id === eventId);
-  if (!removed) return events;
-  const previous = events
-    .filter((event) => event.team === removed.team && event.cumulative < removed.cumulative)
-    .sort((left, right) => right.cumulative - left.cumulative)[0];
-  const next = events
-    .filter((event) => event.team === removed.team && event.cumulative > removed.cumulative)
-    .sort((left, right) => left.cumulative - right.cumulative)[0];
-  return resequenceWithoutMovingCells(events
-    .filter((event) => event.id !== eventId)
-    .map((event) => event.id === next?.id
-      ? { ...event, value: event.cumulative - (previous?.cumulative ?? 0), mark: scoreMark(event.cumulative - (previous?.cumulative ?? 0)) }
-      : event));
-}
-
-export function deleteScoreEvent(events: ScoreEvent[], eventId: string): ScoreEvent[] {
-  return normalizeScoreEvents(events.filter((event) => event.id !== eventId));
+export function scoreTotalsByPeriod(document: ScoresheetDocument, side: TeamSide): Map<number, number> {
+  const totals = new Map<number, number>();
+  document.score_events
+    .filter((event) => event.team === side)
+    .forEach((event) => {
+      if (event.points === 1 || event.points === 2 || event.points === 3) {
+        totals.set(event.period, (totals.get(event.period) ?? 0) + event.points);
+      }
+    });
+  return totals;
 }
 
 export function scoreGridRow(

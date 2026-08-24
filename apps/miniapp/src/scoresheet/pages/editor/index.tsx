@@ -1,45 +1,30 @@
 import {
   Button,
   Image,
-  Input,
-  Picker,
+  MovableArea,
+  MovableView,
   ScrollView,
-  Slider,
-  Switch,
   Text,
   View,
 } from "@tarojs/components";
 import Taro, { useDidShow, useRouter, useUnload } from "@tarojs/taro";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   type ScoresheetDetail,
   type ScoresheetMutationContext,
 } from "@pkuba/api-client";
 import {
-  deriveScoreEvents,
-  fiba2024FoulEditorOptions,
   REGION_LABELS,
-  removeScoreCell,
-  SCORE_BLOCKS,
   SCORESHEET_REGIONS,
-  scoreGridRow,
-  setScoreCell,
-  TEMPLATE_REGION_BOUNDS,
-  type ScoreEvent,
-  type ScorePeriod,
+  semanticScoresheetPath,
   type ScoresheetDocument,
   type ScoresheetRegion,
-  type TeamSide,
 } from "@pkuba/scoresheet-domain";
 
 import { absoluteMediaUrl, api, replaceGameMedia } from "../../../api";
 import { getMiniAppSession } from "../../../auth";
-import {
-  type CanonicalScoresheetDocument,
-  mergeMobileDocument,
-  projectScoresheetDetail,
-} from "../../mobileDocument";
+import { MobileStandardView } from "../../MobileStandardView";
 import "./index.css";
 
 type StepKey = ScoresheetRegion | "CLOSING" | "PUBLISH";
@@ -54,6 +39,13 @@ const STEPS: Array<{ key: StepKey; label: string }> = [
 ];
 
 const CLIENT_KEY = "pkuba-scoresheet-miniapp-client";
+const RECOVERY_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface RecoverySnapshot {
+  local: ScoresheetDocument;
+  baseVersion: number;
+  expiresAt: number;
+}
 
 function leaseStorageKey(scoresheetId: string) {
   return `pkuba-scoresheet-miniapp-lease:${scoresheetId}`;
@@ -61,6 +53,30 @@ function leaseStorageKey(scoresheetId: string) {
 
 function clearStoredLease(scoresheetId: string) {
   if (scoresheetId) Taro.removeStorageSync(leaseStorageKey(scoresheetId));
+}
+
+function recoveryStorageKey(scoresheetId: string) {
+  return `pkuba-scoresheet-miniapp-recovery:${scoresheetId}`;
+}
+
+function storeRecovery(scoresheetId: string, local: ScoresheetDocument, baseVersion: number) {
+  if (!scoresheetId) return;
+  const snapshot: RecoverySnapshot = { local, baseVersion, expiresAt: Date.now() + RECOVERY_TTL_MS };
+  Taro.setStorageSync(recoveryStorageKey(scoresheetId), snapshot);
+}
+
+function readRecovery(scoresheetId: string): Omit<RecoverySnapshot, "expiresAt"> | null {
+  if (!scoresheetId) return null;
+  const snapshot = Taro.getStorageSync<RecoverySnapshot>(recoveryStorageKey(scoresheetId));
+  if (!snapshot?.local || !snapshot.expiresAt || snapshot.expiresAt <= Date.now()) {
+    Taro.removeStorageSync(recoveryStorageKey(scoresheetId));
+    return null;
+  }
+  return { local: snapshot.local, baseVersion: snapshot.baseVersion };
+}
+
+function clearRecovery(scoresheetId: string) {
+  if (scoresheetId) Taro.removeStorageSync(recoveryStorageKey(scoresheetId));
 }
 
 function getClientId() {
@@ -95,6 +111,11 @@ function documentDiffPaths(left: unknown, right: unknown, path = "", result: str
   return result;
 }
 
+function documentDiffLabels(left: unknown, right: unknown, document?: ScoresheetDocument): string {
+  const labels = documentDiffPaths(left, right).map((path) => semanticScoresheetPath(path, document));
+  return Array.from(new Set(labels)).join("、") || "多个字段";
+}
+
 export default function ScoresheetEditorPage() {
   const router = useRouter();
   const scoresheetId = router.params.id ?? "";
@@ -106,30 +127,31 @@ export default function ScoresheetEditorPage() {
   const [saveState, setSaveState] = useState("正在连接");
   const [error, setError] = useState("");
   const [online, setOnline] = useState(true);
-  const [sourceScale, setSourceScale] = useState(100);
+  const [sourceScale, setSourceScale] = useState(1);
+  const [sourcePosition, setSourcePosition] = useState({ x: 0, y: 0 });
   const [sourceRotation, setSourceRotation] = useState(0);
   const [history, setHistory] = useState<ScoresheetDocument[]>([]);
   const [future, setFuture] = useState<ScoresheetDocument[]>([]);
   const [selectedScoreId, setSelectedScoreId] = useState("");
+  const [standardScrollAnchor, setStandardScrollAnchor] = useState("step-source-game-top");
+  const [busyAction, setBusyAction] = useState("");
   const clientIdRef = useRef(getClientId());
   const serverRef = useRef<ScoresheetDetail | null>(null);
-  const canonicalRef = useRef<CanonicalScoresheetDocument | null>(null);
   const leaseRef = useRef("");
   const pendingRef = useRef<ScoresheetDocument | null>(null);
   const pendingBaseVersionRef = useRef<number | null>(null);
   const recoveryRef = useRef<{ local: ScoresheetDocument; baseVersion: number } | null>(null);
+  const recoveryLoadedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
+  const savingDocumentRef = useRef<ScoresheetDocument | null>(null);
+  const actionFlightRef = useRef("");
   const acquireFlightRef = useRef<Promise<void> | null>(null);
   const syncFlightRef = useRef<Promise<boolean> | null>(null);
   const heartbeatFlightRef = useRef<Promise<void> | null>(null);
   const flushRef = useRef<(changeType?: string, explicitSave?: boolean) => Promise<void>>(async () => undefined);
 
-  const projectServer = useCallback((raw: ScoresheetDetail) => {
-    const projection = projectScoresheetDetail(raw);
-    if (projection.canonical) canonicalRef.current = projection.canonical;
-    return projection.detail;
-  }, []);
+  const projectServer = useCallback((raw: ScoresheetDetail) => raw, []);
 
   const applyServer = useCallback((raw: ScoresheetDetail, preservePending = false) => {
     const next = projectServer(raw);
@@ -172,6 +194,7 @@ export default function ScoresheetEditorPage() {
       setReadOnly(false);
       const recovery = recoveryRef.current;
       if (!recovery) {
+        clearRecovery(scoresheetId);
         setSaveState("已保存");
         return;
       }
@@ -188,7 +211,7 @@ export default function ScoresheetEditorPage() {
       }
       const choice = await Taro.showModal({
         title: "恢复编辑前服务器再次变化",
-        content: `差异字段：${documentDiffPaths(recovery.local, server.draft).join("、") || "多个字段"}。请选择本次提交使用的值。`,
+        content: `差异字段：${documentDiffLabels(recovery.local, server.draft, server.draft)}。请选择本次提交使用的值。`,
         cancelText: "服务器值",
         confirmText: "本地值",
       });
@@ -199,6 +222,7 @@ export default function ScoresheetEditorPage() {
         setSheet({ ...server, draft: recovery.local });
         setTimeout(() => void flushRef.current("CONFLICT_RESOLVED_LOCAL", true), 0);
       } else {
+        clearRecovery(scoresheetId);
         applyServer(await api.getScoresheet(scoresheetId, token));
         setSaveState("已采用服务器版本");
       }
@@ -212,6 +236,10 @@ export default function ScoresheetEditorPage() {
   useDidShow(() => {
     void (async () => {
       try {
+        if (!recoveryLoadedRef.current) {
+          recoveryRef.current = readRecovery(scoresheetId);
+          recoveryLoadedRef.current = true;
+        }
         await load();
         await acquire();
       } catch (reason) {
@@ -242,18 +270,20 @@ export default function ScoresheetEditorPage() {
     pendingRef.current = null;
     pendingBaseVersionRef.current = null;
     savingRef.current = true;
+    savingDocumentRef.current = local;
     setSaveState("保存中…");
     try {
-      const canonical = mergeMobileDocument(local, canonicalRef.current);
       const result = await api.saveScoresheetDraft(
         scoresheetId,
         mutation,
-        [{ path: "/", operation: "SET", value: canonical }],
+        [{ path: "/", operation: "SET", value: local }],
         token,
         { changeType, explicitSave },
       );
       applyServer(result, Boolean(pendingRef.current));
       pendingBaseVersionRef.current = pendingRef.current ? result.draft_version : null;
+      if (pendingRef.current) storeRecovery(scoresheetId, pendingRef.current, result.draft_version);
+      else clearRecovery(scoresheetId);
       setSaveState(pendingRef.current ? "等待保存…" : "已保存");
       setError("");
     } catch (reason) {
@@ -274,6 +304,7 @@ export default function ScoresheetEditorPage() {
         } else {
           pendingRef.current = null;
           pendingBaseVersionRef.current = null;
+          clearRecovery(scoresheetId);
           applyServer(server);
         }
       } else if (
@@ -286,22 +317,25 @@ export default function ScoresheetEditorPage() {
         setReadOnly(true);
         if (server.draft_version === mutation.expected_version) {
           recoveryRef.current = { local: unsaved, baseVersion: server.draft_version };
+          storeRecovery(scoresheetId, unsaved, server.draft_version);
           serverRef.current = server;
           setSheet({ ...server, draft: unsaved });
           setSaveState("编辑权已失效 · 本地输入已保留，等待自动恢复");
         } else {
           const choice = await Taro.showModal({
             title: "编辑权已失效",
-            content: `服务器同时发生了修改：${documentDiffPaths(unsaved, server.draft).join("、") || "多个字段"}。取消采用服务器值；确认保留本地值并在接手后提交。`,
+            content: `服务器同时发生了修改：${documentDiffLabels(unsaved, server.draft, server.draft)}。取消采用服务器值；确认保留本地值并在恢复编辑后提交。`,
             cancelText: "服务器值",
             confirmText: "本地值",
           });
           if (choice.confirm) {
             recoveryRef.current = { local: unsaved, baseVersion: server.draft_version };
+            storeRecovery(scoresheetId, unsaved, server.draft_version);
             serverRef.current = server;
             setSheet({ ...server, draft: unsaved });
             setSaveState("本地值已保留 · 等待自动恢复编辑");
           } else {
+            clearRecovery(scoresheetId);
             applyServer(server);
             setSaveState("已采用服务器版本 · 当前为只读");
           }
@@ -309,11 +343,13 @@ export default function ScoresheetEditorPage() {
       } else {
         pendingRef.current = unsaved;
         pendingBaseVersionRef.current = mutation.expected_version;
+        storeRecovery(scoresheetId, unsaved, mutation.expected_version);
         setSaveState("保存失败 · 输入仍保留");
         setError(message(reason));
       }
     } finally {
       savingRef.current = false;
+      savingDocumentRef.current = null;
       if (pendingRef.current && online) setTimeout(() => void flush(), 60);
     }
   }, [applyServer, context, online, projectServer, scoresheetId, token]);
@@ -339,28 +375,13 @@ export default function ScoresheetEditorPage() {
     setFuture([]);
     if (!pendingRef.current) pendingBaseVersionRef.current = serverRef.current?.draft_version ?? null;
     pendingRef.current = next;
+    storeRecovery(scoresheetId, next, pendingBaseVersionRef.current ?? serverRef.current?.draft_version ?? 0);
     setSheet((current) => (current ? { ...current, draft: next } : current));
     setSaveState("等待保存…");
     if (timerRef.current) clearTimeout(timerRef.current);
     if (immediate) void flush(changeType);
     else timerRef.current = setTimeout(() => void flush(changeType), 1000);
-  }, [flush, online, readOnly]);
-
-  const changePath = useCallback((path: string, value: unknown, immediate = false) => {
-    if (!sheet) return;
-    const previous = sheet.draft;
-    const next = JSON.parse(JSON.stringify(previous)) as ScoresheetDocument;
-    const parts = path.split("/").filter(Boolean);
-    let cursor: any = next;
-    for (const part of parts.slice(0, -1)) {
-      cursor = cursor[Number.isInteger(Number(part)) ? Number(part) : part];
-    }
-    cursor[parts[parts.length - 1]] = value;
-    if (path.startsWith("/running_score") || path.startsWith("/summary")) {
-      deriveScoreEvents(next);
-    }
-    queueDocument(next, previous, immediate);
-  }, [queueDocument, sheet]);
+  }, [flush, online, readOnly, scoresheetId]);
 
   const sync = useCallback(() => {
     if (syncFlightRef.current) return syncFlightRef.current;
@@ -386,7 +407,7 @@ export default function ScoresheetEditorPage() {
           pendingBaseVersionRef.current = null;
           const choice = await Taro.showModal({
             title: "发现跨端差异",
-            content: `差异字段：${documentDiffPaths(local, next.draft).join("、") || "多个字段"}。取消采用服务器值；确认提交本地值。`,
+            content: `差异字段：${documentDiffLabels(local, next.draft, next.draft)}。取消采用服务器值；确认提交本地值。`,
             cancelText: "服务器值",
             confirmText: "本地值",
           });
@@ -396,6 +417,7 @@ export default function ScoresheetEditorPage() {
             pendingBaseVersionRef.current = next.draft_version;
             setSheet({ ...next, draft: local });
           } else {
+            clearRecovery(scoresheetId);
             applyServer(next);
           }
         }
@@ -409,6 +431,7 @@ export default function ScoresheetEditorPage() {
             local: pendingRef.current,
             baseVersion: pendingBaseVersionRef.current ?? current.draft_version,
           };
+          storeRecovery(scoresheetId, pendingRef.current, pendingBaseVersionRef.current ?? current.draft_version);
           pendingRef.current = null;
           pendingBaseVersionRef.current = null;
         }
@@ -452,6 +475,7 @@ export default function ScoresheetEditorPage() {
             local: pendingRef.current,
             baseVersion: pendingBaseVersionRef.current ?? serverRef.current?.draft_version ?? 0,
           };
+          storeRecovery(scoresheetId, pendingRef.current, pendingBaseVersionRef.current ?? serverRef.current?.draft_version ?? 0);
           pendingRef.current = null;
           pendingBaseVersionRef.current = null;
         }
@@ -490,7 +514,13 @@ export default function ScoresheetEditorPage() {
   }, [flush, heartbeat, sync]);
 
   useUnload(() => {
-    if (leaseRef.current && token && !pendingRef.current && !savingRef.current) {
+    const unsaved = pendingRef.current ?? savingDocumentRef.current;
+    if (unsaved) {
+      storeRecovery(scoresheetId, unsaved, pendingBaseVersionRef.current ?? serverRef.current?.draft_version ?? 0);
+      return;
+    }
+    clearRecovery(scoresheetId);
+    if (leaseRef.current && token && !savingRef.current) {
       void api.releaseScoresheetLease(
         scoresheetId,
         leaseRef.current,
@@ -504,19 +534,26 @@ export default function ScoresheetEditorPage() {
   });
 
   const validate = async () => {
-    if (!context()) return;
-    if (!(await drainPending())) return;
+    if (actionFlightRef.current) return;
+    actionFlightRef.current = "VALIDATE";
+    setBusyAction("VALIDATE");
     try {
+      if (!context() || !(await drainPending())) return;
       applyServer(await api.validateScoresheet(scoresheetId, context()!, token));
     } catch (reason) {
       setError(message(reason));
+    } finally {
+      actionFlightRef.current = "";
+      setBusyAction("");
     }
   };
 
   const publish = async () => {
-    if (!context()) return;
-    if (!(await drainPending())) return;
+    if (actionFlightRef.current) return;
+    actionFlightRef.current = "PUBLISH";
+    setBusyAction("PUBLISH");
     try {
+      if (!context() || !(await drainPending())) return;
       const validated = applyServer(await api.validateScoresheet(scoresheetId, context()!, token));
       const errors = validated.validation_report.errors ?? [];
       const warnings = validated.validation_report.warnings ?? [];
@@ -550,6 +587,9 @@ export default function ScoresheetEditorPage() {
       Taro.showToast({ title: "发布成功", icon: "success" });
     } catch (reason) {
       setError(message(reason));
+    } finally {
+      actionFlightRef.current = "";
+      setBusyAction("");
     }
   };
 
@@ -567,6 +607,7 @@ export default function ScoresheetEditorPage() {
     }
     pendingRef.current = target;
     pendingBaseVersionRef.current = serverRef.current?.draft_version ?? null;
+    storeRecovery(scoresheetId, target, pendingBaseVersionRef.current ?? 0);
     setSheet({ ...sheet, draft: target });
     void flush(direction);
   };
@@ -576,11 +617,6 @@ export default function ScoresheetEditorPage() {
   }
 
   const currentKey = stepKey(stepIndex);
-  const currentRegions = currentKey === "CLOSING"
-    ? (["SUMMARY", "OFFICIALS"] as ScoresheetRegion[])
-    : SCORESHEET_REGIONS.includes(currentKey as ScoresheetRegion)
-      ? ([currentKey] as ScoresheetRegion[])
-      : [];
   const errors = sheet.validation_report.errors ?? [];
   const warnings = sheet.validation_report.warnings ?? [];
 
@@ -604,7 +640,10 @@ export default function ScoresheetEditorPage() {
                 : [];
             const issueCount = [...errors, ...warnings].filter((issue) => regions.includes(issue.region)).length;
             return (
-              <View className={`mini-sheet-step ${stepIndex === index ? "active" : ""}`} key={step.key} onClick={() => setStepIndex(index)}>
+              <View className={`mini-sheet-step ${stepIndex === index ? "active" : ""}`} key={step.key} onClick={() => {
+                setStepIndex(index);
+                setStandardScrollAnchor(stepAnchor(step.key));
+              }}>
                 <Text className="step-number">{index + 1}</Text>
                 <Text>{step.label}</Text>
                 {issueCount > 0 && <Text className="step-issue">{issueCount}</Text>}
@@ -621,10 +660,14 @@ export default function ScoresheetEditorPage() {
         <Button disabled={readOnly || future.length === 0} onClick={() => undo("REDO")}>重做</Button>
       </View>
 
-      <ScrollView className="mini-sheet-content" scrollY enhanced showScrollbar={false}>
+      <View className={`mini-sheet-workspace ${currentKey === "RUNNING_SCORE" && view === "STANDARD" ? "running-score" : ""}`}>
         {sheet.recognition && sheet.recognition.status !== "SUCCEEDED" && (
           <RecognitionBanner
+            busy={busyAction === "RECOGNITION"}
             onRetry={async () => {
+              if (actionFlightRef.current) return;
+              actionFlightRef.current = "RECOGNITION";
+              setBusyAction("RECOGNITION");
               try {
                 if (!(await drainPending())) return;
                 const mutation = context();
@@ -637,68 +680,107 @@ export default function ScoresheetEditorPage() {
                 await load();
               } catch (reason) {
                 setError(message(reason));
+              } finally {
+                actionFlightRef.current = "";
+                setBusyAction("");
               }
             }}
             readOnly={readOnly || !online}
             recognition={sheet.recognition}
           />
         )}
+        {error && <View className="mini-sheet-error"><Text>{error}</Text><Button onClick={() => setError("")}>关闭</Button></View>}
         {view === "SOURCE" ? (
           <SourceView
-            corners={sheet.draft.source_alignment.corners}
-            currentRegion={currentRegions[0] ?? "SOURCE_GAME"}
-            onCornersChange={(corners) => changePath("/source_alignment/corners", corners, true)}
+            busy={busyAction === "REPLACE"}
+            onReload={async () => { await load(); }}
             onReplace={async () => {
-              if (!sheet.source || readOnly) return;
-              const selected = await Taro.chooseMedia({ count: 1, mediaType: ["image"], sourceType: ["album", "camera"], sizeType: ["original"] });
-              const file = selected.tempFiles[0];
-              if (!file) return;
-              const confirm = await Taro.showModal({ title: "重传原图", content: "重传会保留旧来源审计、重置识别额度并生成新草稿。", confirmText: "确认重传" });
-              if (!confirm.confirm) return;
-              await replaceGameMedia(sheet.source.id, sheet.source.version, file.tempFilePath, true, token);
-              await load();
+              if (!sheet.source || readOnly || actionFlightRef.current) return;
+              actionFlightRef.current = "REPLACE";
+              setBusyAction("REPLACE");
+              try {
+                if (!(await drainPending())) return;
+                const selected = await Taro.chooseMedia({ count: 1, mediaType: ["image"], sourceType: ["album", "camera"], sizeType: ["original"] });
+                const file = selected.tempFiles[0];
+                if (!file) return;
+                const confirm = await Taro.showModal({ title: "重传原图", content: "重传会保留旧来源审计、重置识别额度并生成新草稿。", confirmText: "确认重传" });
+                if (!confirm.confirm) return;
+                await replaceGameMedia(sheet.source.id, sheet.source.version, file.tempFilePath, true, token);
+                await load();
+              } catch (reason) {
+                if (!/cancel/i.test(message(reason))) setError(message(reason));
+              } finally {
+                actionFlightRef.current = "";
+                setBusyAction("");
+              }
             }}
-            onReload={() => void load().catch((reason) => setError(message(reason)))}
+            position={sourcePosition}
             readOnly={readOnly || !online}
             rotation={sourceRotation}
             scale={sourceScale}
+            setPosition={setSourcePosition}
             setRotation={setSourceRotation}
             setScale={setSourceScale}
             source={sheet.source}
           />
+        ) : currentKey === "RUNNING_SCORE" ? (
+          <View className="mini-sheet-running-score">
+            <StandardView
+              document={sheet.draft}
+              issues={[...errors, ...warnings]}
+              onChange={(next, immediate) => queueDocument(next, sheet.draft, immediate)}
+              onLocateIssue={setStandardScrollAnchor}
+              onSelectScore={setSelectedScoreId}
+              readOnly={readOnly || !online}
+              selectedScoreId={selectedScoreId}
+              step={currentKey}
+            />
+          </View>
         ) : (
-          <StandardView
-            changePath={changePath}
-            document={sheet.draft}
-            issues={[...errors, ...warnings]}
-            onSelectScore={setSelectedScoreId}
-            readOnly={readOnly || !online}
-            selectedScoreId={selectedScoreId}
-            step={currentKey}
-          />
+          <ScrollView className="mini-sheet-standard-scroll" scrollIntoView={standardScrollAnchor} scrollWithAnimation scrollY enhanced showScrollbar={false}>
+            <View className="mini-sheet-standard-inner">
+              <StandardView
+                document={sheet.draft}
+                issues={[...errors, ...warnings]}
+                onChange={(next, immediate) => queueDocument(next, sheet.draft, immediate)}
+                onLocateIssue={setStandardScrollAnchor}
+                onSelectScore={setSelectedScoreId}
+                readOnly={readOnly || !online}
+                selectedScoreId={selectedScoreId}
+                step={currentKey}
+              />
+              {currentKey === "PUBLISH" && (
+                <PublishPanel
+                  busy={busyAction === "PUBLISH"}
+                  errors={errors}
+                  publish={publish}
+                  readOnly={readOnly || !online || Boolean(busyAction)}
+                  validationReady={sheet.status === "READY" && sheet.validation_draft_version === sheet.draft_version}
+                  warnings={warnings}
+                />
+              )}
+            </View>
+          </ScrollView>
         )}
-        {error && <View className="mini-sheet-error">{error}</View>}
-      </ScrollView>
-
-      <View className="mini-sheet-footer">
-        <Button disabled={stepIndex === 0} onClick={() => setStepIndex((value) => Math.max(0, value - 1))}>上一步</Button>
-        {currentKey === "PUBLISH" ? (
-          <Button className="review" disabled={readOnly || !online} onClick={() => void validate()}>重新校验</Button>
-        ) : (
-          <Button className="review" disabled={readOnly || !online} onClick={() => void drainPending("EXPLICIT_SAVE")}>保存草稿</Button>
-        )}
-        <Button disabled={stepIndex === STEPS.length - 1} onClick={() => setStepIndex((value) => Math.min(STEPS.length - 1, value + 1))}>下一步</Button>
       </View>
 
-      {currentKey === "PUBLISH" && view === "STANDARD" && (
-        <PublishPanel
-          errors={errors}
-          publish={publish}
-          readOnly={readOnly || !online}
-          validationReady={sheet.status === "READY" && sheet.validation_draft_version === sheet.draft_version}
-          warnings={warnings}
-        />
-      )}
+      <View className="mini-sheet-footer">
+        <Button disabled={stepIndex === 0} onClick={() => setStepIndex((value) => {
+          const next = Math.max(0, value - 1);
+          setStandardScrollAnchor(stepAnchor(stepKey(next)));
+          return next;
+        })}>上一步</Button>
+        {currentKey === "PUBLISH" ? (
+          <Button className="review" disabled={readOnly || !online || Boolean(busyAction)} onClick={() => void validate()}>{busyAction === "VALIDATE" ? "校验中…" : "重新校验"}</Button>
+        ) : (
+          <Button className="review" disabled={readOnly || !online || Boolean(busyAction)} onClick={() => void drainPending("EXPLICIT_SAVE")}>保存草稿</Button>
+        )}
+        <Button disabled={stepIndex === STEPS.length - 1} onClick={() => setStepIndex((value) => {
+          const next = Math.min(STEPS.length - 1, value + 1);
+          setStandardScrollAnchor(stepAnchor(stepKey(next)));
+          return next;
+        })}>下一步</Button>
+      </View>
     </View>
   );
 }
@@ -707,9 +789,19 @@ function stepKey(index: number): StepKey {
   return STEPS[index]?.key ?? "SOURCE_GAME";
 }
 
-function RecognitionBanner({ recognition, readOnly, onRetry }: {
+function stepAnchor(step: StepKey) {
+  if (step === "TEAM_A") return "step-team-a-top";
+  if (step === "TEAM_B") return "step-team-b-top";
+  if (step === "RUNNING_SCORE") return "step-running-score-top";
+  if (step === "CLOSING") return "step-closing-top";
+  if (step === "PUBLISH") return "step-publish-top";
+  return "step-source-game-top";
+}
+
+function RecognitionBanner({ recognition, readOnly, busy, onRetry }: {
   recognition: NonNullable<ScoresheetDetail["recognition"]>;
   readOnly: boolean;
+  busy: boolean;
   onRetry: () => Promise<void>;
 }) {
   const [now, setNow] = useState(Date.now());
@@ -728,433 +820,136 @@ function RecognitionBanner({ recognition, readOnly, onRetry }: {
         <Text>{recognition.status === "RETRY_WAIT" && retrySeconds !== null ? `${retrySeconds} 秒后自动继续` : recognition.status === "FAILED" ? "可以手工录入，或重新识别" : "完成后会自动显示核对内容"}</Text>
       </View>
       {recognition.status === "FAILED" && (
-        <Button disabled={readOnly} onClick={() => void onRetry()}>重新识别</Button>
+        <Button disabled={readOnly || busy} onClick={() => void onRetry()}>{busy ? "启动中…" : "重新识别"}</Button>
       )}
     </View>
   );
 }
 
-function SourceView({ source, scale, rotation, setScale, setRotation, readOnly, onReplace, onReload, corners, currentRegion, onCornersChange }: {
+function SourceView({ source, scale, position, rotation, setScale, setPosition, setRotation, readOnly, busy, onReplace, onReload }: {
   source: ScoresheetDetail["source"];
   scale: number;
+  position: { x: number; y: number };
   rotation: number;
   setScale: (value: number) => void;
+  setPosition: (value: { x: number; y: number }) => void;
   setRotation: (value: number) => void;
   readOnly: boolean;
-  onReplace: () => void;
-  onReload: () => void;
-  corners: Array<{ x: number; y: number }>;
-  currentRegion: ScoresheetRegion;
-  onCornersChange: (corners: Array<{ x: number; y: number }>) => void;
+  busy: boolean;
+  onReplace: () => Promise<void>;
+  onReload: () => Promise<void>;
 }) {
-  const [aligning, setAligning] = useState(false);
-  const regionBox = corners.length === 4 ? projectedRegionBox(corners, currentRegion) : null;
-  const beginAlignment = () => {
-    if (readOnly) return;
-    setScale(100);
-    setRotation(0);
-    onCornersChange([]);
-    setAligning(true);
-  };
-  const captureCorner = (event: unknown) => {
-    if (!aligning || readOnly) return;
-    const tap = event as {
-      detail?: { x?: number; y?: number };
-      changedTouches?: Array<{ clientX?: number; clientY?: number }>;
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const failedUrlRef = useRef("");
+  const sourceWidth = Number(source?.width ?? 1);
+  const sourceHeight = Number(source?.height ?? 1);
+  const fit = (nextRotation: number) => {
+    const swapped = nextRotation % 180 !== 0;
+    const naturalWidth = swapped ? sourceHeight : sourceWidth;
+    const naturalHeight = swapped ? sourceWidth : sourceHeight;
+    const ratio = viewport.width && viewport.height
+      ? Math.min(viewport.width / naturalWidth, viewport.height / naturalHeight)
+      : 1;
+    const width = Math.max(1, naturalWidth * ratio);
+    const height = Math.max(1, naturalHeight * ratio);
+    return {
+      width,
+      height,
+      imageWidth: swapped ? height : width,
+      imageHeight: swapped ? width : height,
+      x: Math.max(0, (viewport.width - width) / 2),
+      y: Math.max(0, (viewport.height - height) / 2),
     };
-    const pageX = tap.detail?.x ?? tap.changedTouches?.[0]?.clientX;
-    const pageY = tap.detail?.y ?? tap.changedTouches?.[0]?.clientY;
-    if (pageX === undefined || pageY === undefined) return;
-    Taro.createSelectorQuery()
-      .select("#scoresheet-source-stage")
-      .boundingClientRect((rect) => {
-        const box = rect as unknown as { left: number; top: number; width: number; height: number } | null;
-        if (!box?.width || !box.height) return;
-        const point = {
-          x: Math.max(0, Math.min(1, (pageX - box.left) / box.width)),
-          y: Math.max(0, Math.min(1, (pageY - box.top) / box.height)),
-        };
-        const next = [...corners, point].slice(0, 4);
-        onCornersChange(next);
-        if (next.length === 4) setAligning(false);
-      })
-      .exec();
   };
+  const fitted = fit(rotation);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      Taro.createSelectorQuery().select("#scoresheet-source-canvas").boundingClientRect((rect) => {
+        const box = rect as unknown as { width?: number; height?: number } | null;
+        if (box?.width && box.height) setViewport({ width: box.width, height: box.height });
+      }).exec();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!viewport.width || !viewport.height || position.x !== 0 || position.y !== 0) return;
+    const initial = fit(rotation);
+    setPosition({ x: initial.x, y: initial.y });
+  }, [viewport.width, viewport.height]);
+  const reset = () => {
+    setScale(1);
+    setRotation(0);
+    const next = fit(0);
+    setPosition({ x: next.x, y: next.y });
+  };
+  const rotate = () => {
+    const nextRotation = (rotation + 90) % 360;
+    const next = fit(nextRotation);
+    setScale(1);
+    setRotation(nextRotation);
+    setPosition({ x: next.x, y: next.y });
+  };
+  const sourceUrl = source ? absoluteMediaUrl(source.url) : "";
   return (
     <View className="mini-source-view">
       <View className="mini-source-tools">
-        <Text>缩放 {scale}%</Text>
-        <Slider blockSize={18} max={220} min={60} onChange={(event) => setScale(event.detail.value)} step={10} value={scale} />
-        <Button onClick={() => setRotation((rotation + 90) % 360)}>旋转 90°</Button>
+        <Text>{Math.round(scale * 100)}%</Text>
+        <Button onClick={reset}>复位</Button>
+        <Button onClick={rotate}>旋转</Button>
       </View>
-      <ScrollView className="mini-source-canvas" scrollX scrollY enhanced>
+      <MovableArea className="mini-source-canvas" id="scoresheet-source-canvas" scaleArea>
         {source ? (
-          <View
-            className={aligning ? "mini-source-stage aligning" : "mini-source-stage"}
-            id="scoresheet-source-stage"
-            onClick={captureCorner}
-            style={{ transform: `scale(${scale / 100}) rotate(${rotation}deg)` }}
+          <MovableView
+            className="mini-source-stage"
+            direction="all"
+            inertia
+            outOfBounds
+            scale
+            scaleMax={4}
+            scaleMin={1}
+            scaleValue={scale}
+            style={{ width: `${fitted.width}px`, height: `${fitted.height}px` }}
+            x={position.x}
+            y={position.y}
+            onChange={(event) => setPosition({ x: event.detail.x, y: event.detail.y })}
+            onScale={(event) => {
+              setScale(event.detail.scale);
+              setPosition({ x: event.detail.x, y: event.detail.y });
+            }}
           >
-            <Image className="mini-source-image" mode="widthFix" src={absoluteMediaUrl(source.url)} />
-            {corners.map((corner, index) => <View className="mini-alignment-corner" key={`${corner.x}-${corner.y}-${index}`} style={{ left: `${corner.x * 100}%`, top: `${corner.y * 100}%` }}><Text>{index + 1}</Text></View>)}
-            {regionBox && <View className="mini-source-region-box" style={{ left: `${regionBox.left * 100}%`, top: `${regionBox.top * 100}%`, width: `${regionBox.width * 100}%`, height: `${regionBox.height * 100}%` }}><Text>{REGION_LABELS[currentRegion]}</Text></View>}
-          </View>
+            <Image
+              className="mini-source-image"
+              mode="aspectFit"
+              src={sourceUrl}
+              style={{ width: `${fitted.imageWidth}px`, height: `${fitted.imageHeight}px`, transform: `translate(-50%, -50%) rotate(${rotation}deg)` }}
+              onError={() => {
+                if (failedUrlRef.current === sourceUrl) return;
+                failedUrlRef.current = sourceUrl;
+                void onReload().catch(() => undefined);
+              }}
+            />
+          </MovableView>
         ) : <Text className="mini-source-missing">当前原图不存在。</Text>}
-      </ScrollView>
-      <View className="mini-alignment-actions">
-        <Text>{aligning ? `请依次点选左上、右上、右下、左下（${corners.length}/4）` : corners.length === 4 ? `已对齐 · 正在标出${REGION_LABELS[currentRegion]}` : "未对齐 · 不显示字段定位"}</Text>
-        {!readOnly && source && <Button onClick={beginAlignment}>{corners.length === 4 ? "重新对齐" : "四角对齐"}</Button>}
-      </View>
-      <Text className="mini-source-hint">四角对齐只用于人工核对；模型始终读取完整的安全预处理图。</Text>
-      {source && <Button className="mini-source-reload" onClick={onReload}>重新载入原图</Button>}
-      {!readOnly && source && <Button className="mini-source-replace" onClick={onReplace}>重传新原图</Button>}
+      </MovableArea>
+      {!readOnly && source && <Button className="mini-source-replace" disabled={busy} onClick={() => void onReplace()}>{busy ? "处理中…" : "重传新原图"}</Button>}
     </View>
   );
 }
 
-function projectedRegionBox(corners: Array<{ x: number; y: number }>, region: ScoresheetRegion) {
-  const bounds = TEMPLATE_REGION_BOUNDS[region];
-  const points = [
-    projectPoint(corners, bounds.x / 595.2, bounds.y / 841.8),
-    projectPoint(corners, (bounds.x + bounds.width) / 595.2, bounds.y / 841.8),
-    projectPoint(corners, (bounds.x + bounds.width) / 595.2, (bounds.y + bounds.height) / 841.8),
-    projectPoint(corners, bounds.x / 595.2, (bounds.y + bounds.height) / 841.8),
-  ];
-  const xs = points.map((point) => point.x);
-  const ys = points.map((point) => point.y);
-  const left = Math.min(...xs);
-  const top = Math.min(...ys);
-  return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
-}
-
-function projectPoint(corners: Array<{ x: number; y: number }>, u: number, v: number) {
-  const [topLeft, topRight, bottomRight, bottomLeft] = corners;
-  return {
-    x: (1 - u) * (1 - v) * topLeft.x + u * (1 - v) * topRight.x + u * v * bottomRight.x + (1 - u) * v * bottomLeft.x,
-    y: (1 - u) * (1 - v) * topLeft.y + u * (1 - v) * topRight.y + u * v * bottomRight.y + (1 - u) * v * bottomLeft.y,
-  };
-}
-
-function StandardView({ document, step, readOnly, changePath, issues, selectedScoreId, onSelectScore }: {
+function StandardView({ document, step, readOnly, onChange, issues, selectedScoreId, onSelectScore, onLocateIssue }: {
   document: ScoresheetDocument;
   step: StepKey;
   readOnly: boolean;
-  changePath: (path: string, value: unknown, immediate?: boolean) => void;
+  onChange: (document: ScoresheetDocument, immediate?: boolean) => void;
   issues: Array<{ region: ScoresheetRegion; path: string; message: string; severity: string }>;
   selectedScoreId: string;
   onSelectScore: (eventId: string) => void;
+  onLocateIssue: (anchor: string) => void;
 }) {
-  if (step === "SOURCE_GAME") {
-    return <MiniForm>{["competition", "date", "scheduled_time", "venue"].map((key) => <MiniReadOnlyRow key={key} label={gameLabel(key)} value={document.game[key] ?? ""} />)}</MiniForm>;
-  }
-  if (step === "TEAM_A" || step === "TEAM_B") {
-    const side = step.endsWith("A") ? "A" : "B";
-    return <MiniTeamEditor changePath={changePath} document={document} readOnly={readOnly} side={side} />;
-  }
-  if (step === "RUNNING_SCORE") {
-    return <MiniPaperScoreGrid document={document} issues={issues.filter((issue) => issue.region === "RUNNING_SCORE")} onChange={(events) => changePath("/running_score", events, true)} onSelect={onSelectScore} readOnly={readOnly} selectedId={selectedScoreId} />;
-  }
-  if (step === "CLOSING") {
-    return <MiniClosingEditor changePath={changePath} document={document} readOnly={readOnly} />;
-  }
-  return <View className="mini-publish-placeholder"><Text>先执行服务端校验，再逐项处理错误和提醒。</Text></View>;
+  return <MobileStandardView document={document} issues={issues} onChange={onChange} onLocateIssue={onLocateIssue} onSelectScore={onSelectScore} readOnly={readOnly} selectedScoreId={selectedScoreId} step={step} />;
 }
 
-function MiniClosingEditor({ document, readOnly, changePath }: {
-  document: ScoresheetDocument;
-  readOnly: boolean;
-  changePath: (path: string, value: unknown, immediate?: boolean) => void;
-}) {
-  const periods = (["1", "2", "3", "4", "5"] as ScorePeriod[]);
-  const final = periods.reduce((total, period) => ({
-    A: total.A + (document.summary.period_scores[period].A ?? 0),
-    B: total.B + (document.summary.period_scores[period].B ?? 0),
-  }), { A: 0, B: 0 });
-  const winner = final.A > final.B ? document.teams.A.name : final.B > final.A ? document.teams.B.name : "平分（不能发布）";
-  const updatePeriod = (period: ScorePeriod, side: TeamSide, value: number) => {
-    const next = { ...document.summary.period_scores[period], [side]: value };
-    const all = { ...document.summary.period_scores, [period]: next };
-    const nextFinal = periods.reduce((total, key) => ({ A: total.A + (all[key].A ?? 0), B: total.B + (all[key].B ?? 0) }), { A: 0, B: 0 });
-    changePath("/summary", {
-      ...document.summary,
-      period_scores: all,
-      final_score: nextFinal,
-      winner_side: nextFinal.A > nextFinal.B ? "A" : nextFinal.B > nextFinal.A ? "B" : "",
-    }, true);
-  };
-  return (
-    <View className="mini-closing-editor">
-      <View className="mini-section-heading"><Text>节比分与最终结果</Text></View>
-      {periods.map((period) => (
-        <View className="mini-period-row" key={period}>
-          <Text>{period === "5" ? "决胜期（全部加时合计）" : `第 ${period} 节`}</Text>
-          {(["A", "B"] as TeamSide[]).map((side) => <MiniStepper disabled={readOnly} key={side} label={side} max={160} onChange={(value) => updatePeriod(period, side, value)} value={document.summary.period_scores[period][side] ?? 0} />)}
-        </View>
-      ))}
-      <View className="mini-derived-result"><Text>最终比分</Text><Text>{document.teams.A.name} {final.A} : {final.B} {document.teams.B.name}</Text><Text>胜队：{winner}</Text></View>
-      <Picker disabled={readOnly} mode="time" onChange={(event) => changePath("/summary/ended_at", String(event.detail.value), true)} value={document.summary.ended_at || "00:00"}><View className="mini-input-row"><Text>比赛结束时间</Text><Text>{document.summary.ended_at || "请选择"}</Text></View></Picker>
-      <View className="mini-section-heading"><Text>工作人员</Text><Text>没有或看不清时留空</Text></View>
-      <MiniForm>
-        {document.table_personnel.map((name, index) => <View className="mini-personnel-row" key={index}><MiniInput disabled={readOnly} label={`记录台人员 ${index + 1}`} onChange={(value) => changePath("/table_personnel", document.table_personnel.map((item, itemIndex) => itemIndex === index ? value : item))} value={name} /><Button disabled={readOnly} onClick={() => changePath("/table_personnel", document.table_personnel.filter((_, itemIndex) => itemIndex !== index), true)}>删除</Button></View>)}
-        <Button className="mini-personnel-add" disabled={readOnly} onClick={() => changePath("/table_personnel", [...document.table_personnel, ""], true)}>添加记录台人员</Button>
-        {["scorer", "assistant_scorer", "timer", "shot_clock_operator", "crew_chief", "umpire_1", "umpire_2", "protest_captain"].map((key) => <MiniInput disabled={readOnly} key={key} label={officialLabel(key)} onChange={(value) => changePath(`/officials/${key}`, value)} value={String(document.officials[key] ?? "")} />)}
-      </MiniForm>
-    </View>
-  );
-}
 
-function MiniForm({ children }: { children: React.ReactNode }) {
-  return <View className="mini-sheet-form">{children}</View>;
-}
-
-function MiniInput({ label, value, disabled, onChange }: { label: string; value: string; disabled: boolean; onChange: (value: string) => void }) {
-  return <View className="mini-input-row"><Text>{label}</Text><Input disabled={disabled} onInput={(event) => onChange(event.detail.value)} value={value} /></View>;
-}
-
-function MiniReadOnlyRow({ label, value }: { label: string; value: string }) {
-  return <View className="mini-input-row locked"><View><Text>{label}</Text><Text className="mini-lock-label">由赛程确定</Text></View><Text>{value || "—"}</Text></View>;
-}
-
-function MiniStepper({ label, value, disabled, max, onChange }: { label: string; value: number; disabled: boolean; max: number; onChange: (value: number) => void }) {
-  return <View className="mini-stepper"><Text>{label}</Text><Button disabled={disabled || value <= 0} onClick={() => onChange(Math.max(0, value - 1))}>−</Button><Text>{value}</Text><Button disabled={disabled || value >= max} onClick={() => onChange(Math.min(max, value + 1))}>＋</Button></View>;
-}
-
-function MiniTeamEditor({ document, side, readOnly, changePath }: {
-  document: ScoresheetDocument;
-  side: TeamSide;
-  readOnly: boolean;
-  changePath: (path: string, value: unknown, immediate?: boolean) => void;
-}) {
-  const team = document.teams[side];
-  const resizeMarks = (values: unknown[], count: number, factory: (slot: number) => unknown) => [
-    ...values.slice(0, count),
-    ...Array.from({ length: Math.max(0, count - values.length) }, (_, index) => factory(values.length + index + 1)),
-  ];
-  return (
-    <View className="mini-team-editor">
-      <View className="mini-section-heading"><Text>球队 {side}</Text><Text>{team.name}</Text></View>
-      <View className="mini-team-paper-fields">
-        {(["H1", "H2", "OT"] as const).map((scope) => (
-          <MiniStepper disabled={readOnly} key={scope} label={`暂停 ${scope}`} max={3} onChange={(count) => changePath(`/teams/${side}/timeouts/${scope}`, resizeMarks(team.timeouts[scope] ?? [], count, (slot) => ({ slot, minute: 0 })))} value={(team.timeouts[scope] ?? []).length} />
-        ))}
-        {(["1", "2", "3", "4"] as const).map((period) => (
-          <MiniStepper disabled={readOnly} key={period} label={`第 ${period} 节全队犯规`} max={4} onChange={(count) => changePath(`/teams/${side}/team_fouls/${period}`, Array(count).fill("X"))} value={(team.team_fouls[period] ?? []).length} />
-        ))}
-        {(["head_coach", "assistant_coach"] as const).map((role) => (
-          <View className="mini-coach-row" key={role}>
-            <View className="mini-team-field"><Text>{role === "head_coach" ? "教练员" : "助理教练员"}</Text><Input disabled={readOnly} onInput={(event) => changePath(`/teams/${side}/${role}/name`, event.detail.value)} value={team[role].name} /></View>
-            <View className="mini-foul-strip"><Text>犯规</Text>{Array.from({ length: 3 }, (_, index) => <FoulSlotPicker disabled={readOnly || (index > 0 && !team[role].fouls[index - 1])} group="coach" key={index} onChange={(value) => changePath(`/teams/${side}/${role}/fouls`, replaceFoulSlot(team[role].fouls, index, value), true)} value={team[role].fouls[index]} />)}<Text className="mini-post-label">附加</Text>{Array.from({ length: 2 }, (_, slot) => {
-              const markers = role === "head_coach" ? team.coach_post_foul_markers ?? [] : team.assistant_coach_post_foul_markers ?? [];
-              const field = role === "head_coach" ? "coach_post_foul_markers" : "assistant_coach_post_foul_markers";
-              return <FoulSlotPicker disabled={readOnly || team[role].fouls.length < 3 || (slot > 0 && !markers[slot - 1])} group="post" key={`post-${slot}`} onChange={(value) => changePath(`/teams/${side}/${field}`, replaceFoulSlot(markers, slot, value), true)} value={markers[slot]} />;
-            })}</View>
-          </View>
-        ))}
-      </View>
-      {team.players.map((player, index) => (
-        <View className="mini-player-row" key={player.player_id}>
-          <View className="mini-player-name"><Text className="mini-player-number">{player.jersey_number || "–"}</Text><Text>{player.name}</Text></View>
-          <View className="mini-player-state">
-            <Picker disabled={readOnly} mode="selector" range={["未上场", "替补", "首发"]} value={player.starter ? 2 : player.appeared ? 1 : 0} onChange={(event) => { const state = Number(event.detail.value); changePath(`/teams/${side}/players/${index}`, { ...player, appeared: state > 0, starter: state === 2 }, true); }}><Text>{player.starter ? "首发" : player.appeared ? "替补" : "未上场"}</Text></Picker>
-            <View><Text>队长</Text><Switch checked={player.captain} color="#07c160" disabled={readOnly} onChange={(event) => changePath(`/teams/${side}/players/${index}/captain`, event.detail.value, true)} /></View>
-          </View>
-          <View className="mini-foul-strip"><Text>犯规</Text>{Array.from({ length: 5 }, (_, slot) => <FoulSlotPicker disabled={readOnly || (slot > 0 && !player.fouls[slot - 1])} group="player" key={slot} onChange={(value) => changePath(`/teams/${side}/players/${index}/fouls`, replaceFoulSlot(player.fouls, slot, value), true)} value={player.fouls[slot]} />)}<Text className="mini-post-label">附加</Text>{Array.from({ length: 2 }, (_, slot) => <FoulSlotPicker disabled={readOnly || player.fouls.length < 5 || (slot > 0 && !player.post_foul_markers?.[slot - 1])} group="post" key={`post-${slot}`} onChange={(value) => changePath(`/teams/${side}/players/${index}/post_foul_markers`, replaceFoulSlot(player.post_foul_markers ?? [], slot, value), true)} value={player.post_foul_markers?.[slot]} />)}</View>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-type MiniFoul = { code: string; free_throws?: number | null; cancelled?: boolean; slot?: number; catalog_id?: string | null; mark_style?: string; period?: 1 | 2 | 3 | 4 | 5 | null };
-
-const SUBSCRIPT: Record<string, string> = { "1": "₁", "2": "₂", "3": "₃", c: "c" };
-
-function foulChoices(group: "player" | "coach" | "post") {
-  const result: Array<{ label: string; value: MiniFoul | null }> = [{ label: "空", value: null }];
-  const options = fiba2024FoulEditorOptions(group === "post" ? "post_foul" : group);
-  for (const option of options) {
-    for (const suffix of option.allowedSuffixes) result.push({
-      label: `${option.code}${SUBSCRIPT[suffix] ?? ""}`,
-      value: { code: option.code, free_throws: /^[123]$/.test(suffix) ? Number(suffix) : null, cancelled: suffix === "c", catalog_id: option.catalogId, mark_style: option.markStyle, period: null },
-    });
-  }
-  return result;
-}
-
-function foulLabel(value: unknown) {
-  if (!value || typeof value !== "object") return String(value || "＋");
-  const foul = value as MiniFoul;
-  const suffix = foul.cancelled ? "c" : foul.free_throws ? String(foul.free_throws) : "";
-  return `${foul.code}${SUBSCRIPT[suffix] ?? ""}`;
-}
-
-function replaceFoulSlot(values: unknown[], index: number, value: MiniFoul | null) {
-  if (!value) return values.slice(0, index);
-  const next = values.slice(0, index + 1);
-  next[index] = { ...value, slot: index + 1 };
-  return next.map((row, slot) => typeof row === "object" && row ? { ...row as object, slot: slot + 1 } : row);
-}
-
-function FoulSlotPicker({ group, value, disabled, onChange }: { group: "player" | "coach" | "post"; value: unknown; disabled: boolean; onChange: (value: MiniFoul | null) => void }) {
-  const [editing, setEditing] = useState(false);
-  const choices = foulChoices(group);
-  const current = foulLabel(value);
-  const selected = Math.max(0, choices.findIndex((choice) => choice.label === current));
-  const foul = value && typeof value === "object" ? value as MiniFoul : null;
-  const periods = [null, 1, 2, 3, 4, 5] as const;
-  const periodLabels = ["不填写", "第 1 节", "第 2 节", "第 3 节", "第 4 节", "OT（合计）"];
-  const periodIndex = Math.max(0, periods.findIndex((period) => period === (foul?.period ?? null)));
-  const chooseFoul = (index: number) => {
-    const choice = choices[index]?.value;
-    onChange(choice ? { ...choice, period: foul?.period ?? null } : null);
-  };
-  return <>
-    <View className={value ? "mini-foul-cell filled" : "mini-foul-cell"} onClick={() => { if (!disabled) setEditing(true); }}>
-      <Text>{current}</Text>
-      {foul?.period && <Text className="mini-foul-period">{foul.period === 5 ? "OT" : `Q${foul.period}`}</Text>}
-    </View>
-    {editing && <View className="mini-foul-drawer-mask" onClick={() => setEditing(false)}>
-      <View className="mini-foul-drawer" onClick={(event) => event.stopPropagation()}>
-        <View className="mini-drawer-heading"><Text>犯规标记</Text><Button onClick={() => setEditing(false)}>完成</Button></View>
-        <Picker mode="selector" range={choices.map((choice) => choice.label)} value={selected} onChange={(event) => chooseFoul(Number(event.detail.value))}>
-          <View className="mini-drawer-field"><Text>代码与下标</Text><Text>{current}</Text></View>
-        </Picker>
-        <Picker disabled={!foul} mode="selector" range={periodLabels} value={periodIndex} onChange={(event) => foul && onChange({ ...foul, period: periods[Number(event.detail.value)] ?? null })}>
-          <View className="mini-drawer-field"><Text>发生节次</Text><Text>{foul ? periodLabels[periodIndex] : "请先选择犯规"}</Text></View>
-        </Picker>
-        {foul && <Button className="mini-drawer-delete" onClick={() => { onChange(null); setEditing(false); }}>清空此格</Button>}
-      </View>
-    </View>}
-  </>;
-}
-
-function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, onSelect }: {
-  document: ScoresheetDocument;
-  issues: Array<{ path: string }>;
-  readOnly: boolean;
-  onChange: (events: ScoreEvent[]) => void;
-  selectedId: string;
-  onSelect: (eventId: string) => void;
-}) {
-  const [blockIndex, setBlockIndex] = useState(0);
-  const [issueCursor, setIssueCursor] = useState(-1);
-  const [pendingCell, setPendingCell] = useState<{ side: TeamSide; cumulative: number } | null>(null);
-  const block = SCORE_BLOCKS[blockIndex];
-  const selected = document.running_score.find((event) => event.id === selectedId) ?? null;
-  const scrollEvent = selected ?? document.running_score[document.running_score.length - 1];
-  const scrollTarget = scrollEvent && scoreGridRow(scrollEvent.cumulative)?.block === blockIndex
-    ? `mini-score-row-${scrollEvent.cumulative}`
-    : "";
-  const byCell = useMemo(
-    () => new Map(document.running_score.map((event) => [`${event.team}-${event.cumulative}`, event])),
-    [document.running_score],
-  );
-  useEffect(() => {
-    const selectedEvent = document.running_score.find((event) => event.id === selectedId);
-    const event = selectedEvent ?? document.running_score[document.running_score.length - 1];
-    const location = event ? scoreGridRow(event.cumulative) : null;
-    if (location) setBlockIndex(location.block);
-  }, [document.running_score.length, selectedId]);
-  const issueEvents = useMemo(() => {
-    const seen = new Set<string>();
-    const result: ScoreEvent[] = [];
-    for (const issue of issues) {
-      const indexMatch = issue.path.match(/\/running_score\/(\d+)/);
-      const index = indexMatch ? Number(indexMatch[1]) : -1;
-      const event = index >= 0
-        ? document.running_score[index]
-        : document.running_score.find((row) => issue.path.includes(row.id));
-      if (event && !seen.has(event.id)) {
-        seen.add(event.id);
-        result.push(event);
-      }
-    }
-    return result;
-  }, [document.running_score, issues]);
-
-  const jumpIssue = (direction: -1 | 1) => {
-    if (!issueEvents.length) return;
-    const nextCursor = (issueCursor + direction + issueEvents.length) % issueEvents.length;
-    const event = issueEvents[nextCursor];
-    const location = scoreGridRow(event.cumulative);
-    setIssueCursor(nextCursor);
-    onSelect(event.id);
-    if (location) setBlockIndex(location.block);
-  };
-
-  return (
-    <View className="mini-paper-score">
-      <View className="mini-score-period-picker"><Text>点击任意累计分格选择球员号码</Text><Text>分值、节次和结束标记自动生成</Text></View>
-      {issueEvents.length > 0 && <View className="mini-score-issue-nav"><Text>{issueEvents.length} 处得分格问题</Text><View><Button onClick={() => jumpIssue(-1)}>上一处</Button><Button onClick={() => jumpIssue(1)}>下一处</Button></View></View>}
-      <ScrollView className="mini-score-block-tabs" scrollX>
-        <View>{SCORE_BLOCKS.map((item, index) => <Button className={index === blockIndex ? "active" : ""} key={item.key} onClick={() => setBlockIndex(index)}>{item.key}</Button>)}</View>
-      </ScrollView>
-      <ScrollView className="mini-score-grid-scroll" scrollIntoView={scrollTarget} scrollY showScrollbar={false}>
-        <View className="mini-score-grid-heading"><Text>累计</Text><Text>A 队</Text><Text>B 队</Text></View>
-        {Array.from({ length: 40 }, (_, index) => block.start + index).map((score) => (
-          <View className="mini-score-grid-row" id={`mini-score-row-${score}`} key={score}>
-            <Text>{score}</Text>
-            {(["A", "B"] as TeamSide[]).map((side) => {
-              const event = byCell.get(`${side}-${score}`);
-              const invalid = event && issues.some((issue) => scoreIssueMatches(issue.path, event));
-              const unusual = Boolean(event && event.value >= 4);
-              const periodLabel = Number(event?.period) <= 4 ? `Q${event?.period}` : "OT";
-              const boundaryLabel = event?.boundary === "game" ? "终" : event?.boundary === "period" ? "节" : "";
-              return <View className={`mini-score-cell ${invalid || unusual ? "invalid" : ""} ${event?.id === selectedId ? "selected" : ""}`} key={side} onClick={() => { if (event) onSelect(event.id); else if (!readOnly) setPendingCell({ side, cumulative: score }); }}>{event ? <><Text className="mini-score-player">{event.player_number || "?"}</Text><Text className="mini-score-mark">{event.value === 1 ? "●" : event.value === 2 ? "╱" : event.value === 3 ? "◯" : "—"}</Text><Text className="mini-score-period">{event.value >= 4 ? `+${event.value}` : `${periodLabel}${boundaryLabel}`}</Text></> : <Text className="mini-score-empty">＋</Text>}</View>;
-            })}
-          </View>
-        ))}
-      </ScrollView>
-      {(selected || pendingCell) && <ScoreEventDrawer cell={pendingCell} document={document} event={selected} onChange={onChange} onClose={() => { onSelect(""); setPendingCell(null); }} />}
-    </View>
-  );
-}
-
-function scoreIssueMatches(path: string, event: ScoreEvent) {
-  if (path.includes(event.id)) return true;
-  const match = path.match(/\/running_score\/(\d+)/);
-  return Boolean(match && Number(match[1]) === event.sequence - 1);
-}
-
-function ScoreEventDrawer({ document, event, cell, onChange, onClose }: { document: ScoresheetDocument; event: ScoreEvent | null; cell: { side: TeamSide; cumulative: number } | null; onChange: (events: ScoreEvent[]) => void; onClose: () => void }) {
-  const side = event?.team ?? cell?.side ?? "A";
-  const cumulative = event?.cumulative ?? cell?.cumulative ?? 0;
-  const players = document.teams[side].players.filter((player) => player.jersey_number);
-  const playerIndex = Math.max(0, players.findIndex((player) => player.player_id === event?.player_id));
-  const choosePlayer = (index: number) => {
-    const player = players[index];
-    if (!player) return;
-    const next = JSON.parse(JSON.stringify(document)) as ScoresheetDocument;
-    setScoreCell(next, {
-      id: event?.id ?? `cell-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      team: side,
-      cumulative,
-      player_id: player.player_id,
-      player_name: player.name,
-      player_number: player.jersey_number,
-    });
-    onChange(next.running_score);
-    if (!event) onClose();
-  };
-  const clearCell = () => {
-    const next = JSON.parse(JSON.stringify(document)) as ScoresheetDocument;
-    removeScoreCell(next, side, cumulative);
-    onChange(next.running_score);
-    onClose();
-  };
-  const periodLabel = event && (Number(event.period) <= 4 ? `第 ${event.period} 节` : "决胜期（合计）");
-  const boundaryLabel = event?.boundary === "game" ? "终场" : event?.boundary === "period" ? "节末" : "普通得分";
-  return <View className="mini-score-drawer-mask" onClick={onClose}><View className="mini-score-drawer" onClick={(click) => click.stopPropagation()}><View className="mini-drawer-heading"><Text>{side} 队累计 {cumulative} 分</Text><Button onClick={onClose}>完成</Button></View><Picker mode="selector" range={players.map((player) => `${player.jersey_number} ${player.name}`)} value={playerIndex} onChange={(change) => choosePlayer(Number(change.detail.value))}><View className="mini-drawer-field"><Text>球员号码</Text><Text>{event ? event.player_number || "请选择" : "点击选择后插入"}</Text></View></Picker>{event && <><View className={event.value >= 4 ? "mini-score-derived invalid" : "mini-score-derived"}><Text>本次得分</Text><Text>{event.value} 分（自动派生）</Text></View><View className="mini-score-derived"><Text>节次</Text><Text>{periodLabel}（自动派生）</Text></View><View className="mini-score-derived"><Text>结束标记</Text><Text>{boundaryLabel}（自动派生）</Text></View><Button className="mini-drawer-delete" onClick={clearCell}>清空此格号码</Button></>}</View></View>;
-}
-
-function PublishPanel({ errors, warnings, validationReady, readOnly, publish }: { errors: Array<{ id: string; message: string; region: ScoresheetRegion }>; warnings: Array<{ id: string; message: string; region: ScoresheetRegion }>; validationReady: boolean; readOnly: boolean; publish: () => void }) {
-  return <View className="mini-publish-panel"><View className="mini-publish-summary"><Text>保存后由服务端完整校验</Text><Text>{validationReady ? `${errors.length} 个错误 · ${warnings.length} 个提醒` : "发布时会自动重新校验当前草稿"}</Text></View>{errors.map((issue) => <View className="mini-publish-issue error" key={issue.id}><Text>{REGION_LABELS[issue.region]}</Text><Text>{issue.message}</Text></View>)}{warnings.map((issue) => <View className="mini-publish-issue" key={issue.id}><Text>{REGION_LABELS[issue.region]}</Text><View><Text>{issue.message}</Text></View></View>)}<Button className="mini-publish-button" disabled={readOnly} onClick={publish}>校验并发布</Button></View>;
-}
-
-function gameLabel(key: string) {
-  return ({ competition: "赛事", date: "日期", scheduled_time: "开赛时间", game_number: "比赛编号", venue: "场地", crew_chief: "主裁判", umpire_1: "副裁判 1", umpire_2: "副裁判 2" } as Record<string, string>)[key] ?? key;
-}
-
-function officialLabel(key: string) {
-  return ({ scorer: "记录员", assistant_scorer: "助理记录员", timer: "计时员", shot_clock_operator: "24 秒计时员", crew_chief_signature: "主裁判签名", umpire_1_signature: "副裁判 1 签名", umpire_2_signature: "副裁判 2 签名", captain_protest_signature: "队长抗议签名" } as Record<string, string>)[key] ?? key;
+function PublishPanel({ errors, warnings, validationReady, readOnly, busy, publish }: { errors: Array<{ id: string; message: string; region: ScoresheetRegion }>; warnings: Array<{ id: string; message: string; region: ScoresheetRegion }>; validationReady: boolean; readOnly: boolean; busy: boolean; publish: () => void }) {
+  return <View className="mini-publish-panel"><View className="mini-publish-summary"><Text>服务端完整校验</Text><Text>{validationReady ? `${errors.length} 个错误 · ${warnings.length} 个提醒` : "发布时会重新校验当前草稿"}</Text></View>{errors.map((issue) => <View className="mini-publish-issue error" key={issue.id}><Text>{REGION_LABELS[issue.region]}</Text><Text>{issue.message}</Text></View>)}{warnings.map((issue) => <View className="mini-publish-issue" key={issue.id}><Text>{REGION_LABELS[issue.region]}</Text><View><Text>{issue.message}</Text></View></View>)}<Button className="mini-publish-button" disabled={readOnly || busy} onClick={publish}>{busy ? "发布中…" : "校验并发布"}</Button></View>;
 }

@@ -1317,6 +1317,21 @@ def _validate_schedule_conflicts(
         if len(occupants) <= 1 or not any(kind == "new" for kind, _label, _cell in occupants):
             continue
         new_occupant = next(item for item in occupants if item[0] == "new")
+        has_reservation = any(kind == "reservation" for kind, _label, _cell in occupants)
+        if has_reservation:
+            issues.append(
+                _issue(
+                    "VENUE_OCCUPIED",
+                    f"{key[0].isoformat()} / {key[1]} 的目标时段与活动调赛资源预留冲突；"
+                    "具体场地将在调赛生效后公布。",
+                    context={
+                        "date": key[0].isoformat(),
+                        "period_code": key[1],
+                        "venue_hidden_until_reschedule_effective": True,
+                    },
+                )
+            )
+            continue
         issues.append(
             _issue(
                 "VENUE_OCCUPIED",

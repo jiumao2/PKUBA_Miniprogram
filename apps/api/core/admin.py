@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.core.exceptions import ObjectDoesNotExist
 
 from .models import (
     Account,
@@ -16,6 +17,7 @@ from .models import (
     ParticipantSlot,
     Period,
     PeriodCapacity,
+    RescheduleRequest,
     RosterImportBatch,
     RosterImportIssue,
     RosterPlayer,
@@ -30,6 +32,7 @@ from .models import (
     Team,
     Venue,
 )
+from .services.advanced_data import HIDDEN_RESCHEDULE_VENUE, redact_target_venue_payload
 
 
 @admin.register(Account)
@@ -96,7 +99,6 @@ admin.site.register(
         Period,
         PeriodCapacity,
         DatePeriodCapacityOverride,
-        SlotReservation,
         GameScoresheet,
         ScoresheetRecognitionRun,
         ScoresheetRevision,
@@ -107,6 +109,42 @@ admin.site.register(
         ScoresheetEditLease,
     ]
 )
+
+
+@admin.register(SlotReservation)
+class SlotReservationAdmin(admin.ModelAdmin):
+    list_display = ("date", "period", "status", "visible_venue")
+    list_filter = ("season", "status")
+    fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "season",
+        "date",
+        "period",
+        "status",
+        "visible_venue",
+        "released_at",
+        "converted_game",
+    )
+    readonly_fields = fields
+
+    @admin.display(description="场地")
+    def visible_venue(self, obj):
+        try:
+            approved = obj.request.status == RescheduleRequest.Status.APPROVED
+        except ObjectDoesNotExist:
+            approved = False
+        return obj.venue_name if approved else HIDDEN_RESCHEDULE_VENUE
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return bool(obj) and request.method in {"GET", "HEAD"}
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(GameMediaAsset)
@@ -136,6 +174,18 @@ class GameMediaAssetAdmin(admin.ModelAdmin):
 @admin.register(AdminAuditLog)
 class AdminAuditLogAdmin(admin.ModelAdmin):
     list_display = ("created_at", "actor", "action", "object_type", "object_id")
+    fields = (
+        "id",
+        "created_at",
+        "updated_at",
+        "actor",
+        "action",
+        "object_type",
+        "object_id",
+        "visible_before",
+        "visible_after",
+        "visible_metadata",
+    )
     readonly_fields = (
         "id",
         "created_at",
@@ -144,10 +194,36 @@ class AdminAuditLogAdmin(admin.ModelAdmin):
         "action",
         "object_type",
         "object_id",
-        "before",
-        "after",
-        "metadata",
+        "visible_before",
+        "visible_after",
+        "visible_metadata",
     )
+
+    def _venue_is_published(self, obj):
+        return (
+            obj.object_type == "RescheduleRequest"
+            and RescheduleRequest.objects.filter(
+                pk=obj.object_id,
+                status=RescheduleRequest.Status.APPROVED,
+            ).exists()
+        )
+
+    def _visible_payload(self, obj, value):
+        if obj.object_type != "RescheduleRequest" or self._venue_is_published(obj):
+            return value
+        return redact_target_venue_payload(value)
+
+    @admin.display(description="变更前")
+    def visible_before(self, obj):
+        return self._visible_payload(obj, obj.before)
+
+    @admin.display(description="变更后")
+    def visible_after(self, obj):
+        return self._visible_payload(obj, obj.after)
+
+    @admin.display(description="元数据")
+    def visible_metadata(self, obj):
+        return self._visible_payload(obj, obj.metadata)
 
     def has_add_permission(self, request):
         return False

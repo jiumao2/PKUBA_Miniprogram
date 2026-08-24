@@ -1055,6 +1055,16 @@ def _build_stats(
         )
         roster_rows = scoresheet.roster_snapshot.get(side, [])
         for player in team.get("players", []):
+            if (
+                not str(player.get("license_number") or "").strip()
+                and not str(player.get("name") or "").strip()
+                and not str(player.get("jersey_number") or "").strip()
+                and str(player.get("participation") or "none") == "none"
+                and not bool(player.get("captain"))
+                and not (player.get("fouls") or [])
+                and not (player.get("post_foul_markers") or [])
+            ):
+                continue
             roster = next(
                 (
                     row

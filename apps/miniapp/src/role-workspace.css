@@ -80,6 +80,7 @@
 .flow-picker.is-women { border-left-color: #c91f26; background: #fff5f4; }
 .flow-picker-title { display: block; font-size: 30rpx; font-weight: 850; }
 .flow-picker-meta { display: block; margin-top: 7rpx; color: #6f6b65; font-size: 26rpx; }
+.flow-helper { display: block; margin-top: 14rpx; color: #6f6b65; font-size: 26rpx; line-height: 1.55; }
 
 .flow-primary,
 .flow-secondary,

@@ -213,7 +213,6 @@ export function SeasonManagementPage({
         sort_order: nextSortOrder(draft.venues),
         active: true,
         game_count: 0,
-        active_reservation_count: 0,
       }],
     });
   };
@@ -483,7 +482,7 @@ export function SeasonManagementPage({
 
     <section className="season-config-section">
       <div className="season-section-heading">
-        <div><h2>标准场地</h2><p>新赛季默认五四东一至东三；启用中的场地按顺序参与领队调赛自动分配。</p></div>
+        <div><h2>标准场地</h2><p>新赛季默认五四东一至东三；启用中的场地按顺序参与自动分配，活动申请的具体预留场地在生效前隐藏。</p></div>
         {editable && <button className="text-action" type="button" onClick={addVenue}>＋ 添加场地</button>}
       </div>
       <div className="venue-config-table simplified" aria-label="标准场地">
@@ -494,7 +493,7 @@ export function SeasonManagementPage({
             <input aria-label={`${row.name}顺序`} disabled={!editable} min="1" type="number" value={row.sort_order} onChange={(event) => updateVenue(row.key, { sort_order: Number(event.target.value) })} />
             <input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updateVenue(row.key, { name: event.target.value })} />
             <label className="venue-active-toggle"><input checked={row.active} disabled={!editable} type="checkbox" onChange={(event) => updateVenue(row.key, { active: event.target.checked })} /><span>{row.active ? "启用" : "停用"}</span></label>
-            <span className="resource-usage">{row.game_count} 场比赛 · {row.active_reservation_count} 个活动预留</span>
+            <span className="resource-usage">{row.game_count} 场正式比赛</span>
             <button aria-label={`删除${row.name}`} className="row-remove" disabled={!editable || draft.venues.length <= 1} title={draft.venues.length <= 1 ? "至少保留一个标准场地" : "删除标准场地"} type="button" onClick={() => removeVenue(row.key)}>×</button>
           </div>)}
       </div>

@@ -14,6 +14,7 @@
   "dependencies": {
     "@pkuba/api-client": "0.1.0",
     "@pkuba/design-tokens": "0.1.0",
+    "@pkuba/scoresheet-domain": "0.1.0",
     "lucide-react": "^1.32.0",
     "pdfjs-dist": "^6.2.108",
     "qrcode": "^1.5.4",

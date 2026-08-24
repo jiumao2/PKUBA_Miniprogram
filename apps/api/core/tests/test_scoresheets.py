@@ -54,6 +54,7 @@ from core.services.scoresheet_recognition import (
 from core.services.scoresheet_renderer import render_scoresheet_pdf
 from core.services.scoresheets import (
     ScoresheetError,
+    _build_stats,
     acknowledge_warnings,
     acquire_edit_lease,
     force_takeover_edit_lease,
@@ -1065,6 +1066,32 @@ def test_publish_is_atomic_generates_stats_and_limits_leader_view(tmp_path, monk
             surface=ScoresheetEditLease.Surface.WEB,
         )
     assert correction.value.code in {"LEASE_REQUIRED", "SUPERADMIN_REQUIRED"}
+
+
+def test_stats_builder_skips_fully_blank_paper_player_rows(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        _, _, _, _, scoresheet = create_scoresheet()
+    snapshot = copy.deepcopy(scoresheet.draft)
+    snapshot["teams"][0]["players"].append(
+        {
+            "row": 12,
+            "license_number": "",
+            "name": "",
+            "jersey_number": "",
+            "captain": False,
+            "participation": "none",
+            "fouls": [],
+            "post_foul_markers": [],
+        }
+    )
+    publication = ScoresheetPublication(
+        scoresheet=scoresheet,
+        snapshot=snapshot,
+        validation_report={"computed": {"player_points": {}}},
+    )
+    _, players = _build_stats(publication, scoresheet)
+    assert len(players) == 10
+    assert all(player.player_name or player.jersey_number for player in players)
 
 
 def test_published_source_correction_is_superadmin_only_and_old_publication_stays_live(

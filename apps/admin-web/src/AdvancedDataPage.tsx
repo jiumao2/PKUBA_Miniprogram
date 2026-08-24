@@ -200,7 +200,7 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
           <div>
             <span>{model?.model_name}</span>
             <h2>{model?.label ?? "高级数据"}</h2>
-            <p>完整字段仅用于核心开发者审计；业务状态必须在对应事务页面修改。</p>
+            <p>完整字段仅用于核心开发者审计；调赛预留场地在生效前仍会脱敏，业务状态必须在对应事务页面修改。</p>
           </div>
           <div>
             <input

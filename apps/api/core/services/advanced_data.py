@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -121,6 +122,7 @@ MODEL_SPECS = (
 
 REGISTRY = {spec.key: spec for spec in MODEL_SPECS}
 SENSITIVE_FIELD_MARKERS = ("password", "openid", "token", "hash", "secret")
+HIDDEN_RESCHEDULE_VENUE = "调赛生效后公开"
 
 
 def get_spec(key: str) -> ModelSpec:
@@ -155,6 +157,85 @@ def model_catalog() -> list[dict[str, object]]:
     ]
 
 
+def _request_venue_is_published(request_id: object) -> bool:
+    if not request_id:
+        return False
+    return core_models.RescheduleRequest.objects.filter(
+        pk=request_id,
+        status=core_models.RescheduleRequest.Status.APPROVED,
+    ).exists()
+
+
+def redact_target_venue_payload(value: object, *, inside_reservation: bool = False) -> object:
+    if isinstance(value, list):
+        return [
+            redact_target_venue_payload(item, inside_reservation=inside_reservation)
+            for item in value
+        ]
+    if not isinstance(value, dict):
+        return value
+
+    result: dict[object, object] = {}
+    for key, item in value.items():
+        key_text = str(key)
+        child_is_reservation = inside_reservation or key_text == "reservation"
+        if key_text in {"target_venue_id", "preview_venue_id"}:
+            result[key] = None
+        elif key_text in {"target_venue_name", "preview_venue_name"}:
+            result[key] = HIDDEN_RESCHEDULE_VENUE
+        elif child_is_reservation and key_text in {"venue", "venue_id"}:
+            result[key] = None
+        elif child_is_reservation and key_text == "venue_name":
+            result[key] = HIDDEN_RESCHEDULE_VENUE
+        else:
+            result[key] = redact_target_venue_payload(
+                item,
+                inside_reservation=child_is_reservation,
+            )
+    return result
+
+
+def _redact_unpublished_reschedule_venue(
+    instance: models.Model,
+    values: dict[str, object],
+) -> dict[str, object]:
+    result = deepcopy(values)
+    if isinstance(instance, core_models.RescheduleRequest):
+        if instance.status != core_models.RescheduleRequest.Status.APPROVED:
+            result["target_venue_name"] = HIDDEN_RESCHEDULE_VENUE
+        return result
+
+    if isinstance(instance, core_models.SlotReservation):
+        try:
+            request_id = instance.request.id
+        except ObjectDoesNotExist:
+            request_id = None
+        if not _request_venue_is_published(request_id):
+            result["venue"] = None
+            result["venue_name"] = HIDDEN_RESCHEDULE_VENUE
+        return result
+
+    if isinstance(instance, core_models.AdminAuditLog):
+        if (
+            instance.object_type == "RescheduleRequest"
+            and not _request_venue_is_published(instance.object_id)
+        ):
+            result["before"] = redact_target_venue_payload(result.get("before", {}))
+            result["after"] = redact_target_venue_payload(result.get("after", {}))
+            result["metadata"] = redact_target_venue_payload(result.get("metadata", {}))
+        return result
+
+    if isinstance(instance, core_models.ApiIdempotencyRecord):
+        response = result.get("response_body")
+        request_id = response.get("id") if isinstance(response, dict) else None
+        if (
+            instance.operation == "reschedule.create"
+            and not _request_venue_is_published(request_id)
+        ):
+            result["response_body"] = redact_target_venue_payload(response)
+    return result
+
+
 def serialize_instance(instance: models.Model) -> dict[str, object]:
     values: dict[str, object] = {}
     for field in instance._meta.concrete_fields:
@@ -162,6 +243,7 @@ def serialize_instance(instance: models.Model) -> dict[str, object]:
         if isinstance(value, UUID):
             value = str(value)
         values[field.name] = value
+    values = _redact_unpublished_reschedule_venue(instance, values)
     return {
         "id": str(instance.pk),
         "model": instance._meta.model_name,

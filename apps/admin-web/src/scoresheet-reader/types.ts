@@ -1,183 +1,66 @@
-export type TeamSide = 'A' | 'B';
-export type ParticipationStatus = 'none' | 'starter' | 'substitute';
-export type FoulCode = 'P' | 'T' | 'U' | 'D' | 'C' | 'B' | 'GD' | 'F' | 'DI' | 'FL' | 'BD';
-export type FoulMarkStyle = 'plain' | 'circled';
-export type RuleProfileId = 'fiba_2024' | 'fiba_2026';
-export type ScoreMark = 'filled_dot' | 'diagonal';
-export type ScoreBoundary = 'none' | 'period_end' | 'game_end';
-export type InkRole = 'q1_q3' | 'q2_q4_ot' | 'neutral';
-export type SignaturePresence = 'present' | 'absent' | 'unclear';
-export type DocumentStatus = 'draft' | 'needs_review' | 'validated' | 'confirmed';
-export type GamePeriod = 1 | 2 | 3 | 4 | 5;
-export type RegulationPeriod = 1 | 2 | 3 | 4;
+import type {
+  DocumentStatus,
+  FinalScore,
+  FoulCode,
+  FoulEntry,
+  FoulMarkStyle,
+  GamePeriod,
+  GamePriorSnapshot,
+  Header,
+  InkRole,
+  OfficialEntry,
+  ParticipationStatus,
+  PeriodScore,
+  PlayerEntry,
+  PostFoulMarker,
+  PriorTeam,
+  RecognitionDocumentState,
+  RecognitionIssue,
+  RegulationPeriod,
+  RuleProfileId,
+  ScoreBoundary,
+  ScoreEvent,
+  ScoreMark,
+  ScoresheetDocument,
+  SignaturePresence,
+  SourceAsset,
+  TeamEntry,
+  TeamFoulPeriod,
+  TeamSide,
+  TimeoutEntry,
+} from '@pkuba/scoresheet-domain';
 
-export interface Header {
-  competition: string;
-  game_number: string;
-  date: string;
-  scheduled_time: string;
-  venue: string;
-  crew_chief: string;
-  umpire_1: string;
-  umpire_2: string;
-}
-
-export interface FoulEntry {
-  slot: number;
-  code: FoulCode;
-  catalog_id?: string | null;
-  mark_style?: FoulMarkStyle;
-  free_throws: number | null;
-  cancelled: boolean;
-  period: GamePeriod | null;
-}
-
-export type PostFoulMarker = FoulEntry;
-
-export interface PlayerEntry {
-  row: number;
-  license_number: string;
-  name: string;
-  jersey_number: string;
-  captain: boolean;
-  participation: ParticipationStatus;
-  fouls: FoulEntry[];
-  post_foul_markers: PostFoulMarker[];
-}
-
-export interface TimeoutEntry {
-  scope: 'H1' | 'H2' | 'OT';
-  slot: number;
-  minute: number;
-}
-
-export interface TeamFoulPeriod {
-  period: RegulationPeriod;
-  count: number;
-}
-
-export interface TeamEntry {
-  side: TeamSide;
-  name: string;
-  players: PlayerEntry[];
-  timeouts: TimeoutEntry[];
-  team_fouls: TeamFoulPeriod[];
-  coach_fouls: FoulEntry[];
-  coach_post_foul_markers: PostFoulMarker[];
-  assistant_coach_fouls: FoulEntry[];
-  assistant_coach_post_foul_markers: PostFoulMarker[];
-  head_coach: string;
-  assistant_coach: string;
-}
-
-export interface ScoreEvent {
-  sequence: number;
-  team: TeamSide;
-  period: GamePeriod;
-  points: number | null;
-  cumulative_score: number;
-  scorer_jersey: string;
-  mark: ScoreMark | null;
-  scorer_circled: boolean;
-  boundary: ScoreBoundary;
-  ink_role: InkRole;
-}
-
-export interface PeriodScore {
-  period: GamePeriod;
-  team_a: number;
-  team_b: number;
-}
-
-export interface FinalScore {
-  team_a: number;
-  team_b: number;
-  winner_name: string;
-  ended_at: string;
-}
-
-export interface OfficialEntry {
-  role:
-    | 'scorer'
-    | 'assistant_scorer'
-    | 'timer'
-    | 'shot_clock_operator'
-    | 'crew_chief'
-    | 'umpire_1'
-    | 'umpire_2'
-    | 'protest_captain';
-  name: string;
-  signature: SignaturePresence;
-}
-
-export interface SourceAsset {
-  original_filename: string;
-  original_url: string;
-  aligned_url: string;
-  version?: number;
-  content_sha256?: string;
-  width: number;
-  height: number;
-  rotation: number;
-  corners: number[][] | null;
-}
-
-export interface PriorTeam {
-  team_id: string;
-  name: string;
-  player_names: string[];
-}
-
-export interface GamePriorSnapshot {
-  game_id: string;
-  competition: string;
-  division: string;
-  date: string;
-  scheduled_time: string;
-  venue: string;
-  team_a: PriorTeam;
-  team_b: PriorTeam;
-  source_hash: string;
-  locked_paths: string[];
-}
-
-export interface RecognitionDocumentState {
-  run_id: string;
-  notes: string;
-  table_personnel: string[];
-  problem_paths: string[];
-  issues?: RecognitionIssue[];
-  applied_at: string;
-}
-
-export interface RecognitionIssue {
-  code: string;
-  path: string;
-  message: string;
-  observed: unknown;
-  expected: unknown;
-}
-
-export interface ScoresheetDocument {
-  schema_version: '1.0.0' | '1.1.0' | '1.2.0' | '1.3.0' | '1.4.0';
-  rules_profile?: RuleProfileId;
-  id: string;
-  revision: number;
-  template_id: string;
-  status: DocumentStatus;
-  created_at: string;
-  updated_at: string;
-  source: SourceAsset;
-  game_prior?: GamePriorSnapshot | null;
-  recognition?: RecognitionDocumentState | null;
-  header: Header;
-  teams: TeamEntry[];
-  score_events: ScoreEvent[];
-  stated_period_scores: PeriodScore[];
-  final_score: FinalScore;
-  officials: OfficialEntry[];
-  acknowledged_warnings: string[];
-}
+export type {
+  DocumentStatus,
+  FinalScore,
+  FoulCode,
+  FoulEntry,
+  FoulMarkStyle,
+  GamePeriod,
+  GamePriorSnapshot,
+  Header,
+  InkRole,
+  OfficialEntry,
+  ParticipationStatus,
+  PeriodScore,
+  PlayerEntry,
+  PostFoulMarker,
+  PriorTeam,
+  RecognitionDocumentState,
+  RecognitionIssue,
+  RegulationPeriod,
+  RuleProfileId,
+  ScoreBoundary,
+  ScoreEvent,
+  ScoreMark,
+  ScoresheetDocument,
+  SignaturePresence,
+  SourceAsset,
+  TeamEntry,
+  TeamFoulPeriod,
+  TeamSide,
+  TimeoutEntry,
+} from '@pkuba/scoresheet-domain';
 
 export interface ValidationIssue {
   code: string;
@@ -362,8 +245,4 @@ export interface TemplateDefinition {
   }[];
 }
 
-export const teamBySide = (document: ScoresheetDocument, side: TeamSide) =>
-  document.teams.find((team) => team.side === side)!;
-
-export const deepCloneDocument = (document: ScoresheetDocument): ScoresheetDocument =>
-  structuredClone(document);
+export { deepCloneDocument, teamBySide } from '@pkuba/scoresheet-domain';

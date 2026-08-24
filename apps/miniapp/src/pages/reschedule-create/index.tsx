@@ -69,7 +69,7 @@ export default function RescheduleCreatePage() {
     if (!token || !selectedGame || !selectedTarget) return;
     const confirmation = await Taro.showModal({
       title: "提交调赛申请",
-      content: `${formatDate(selectedTarget.date)} ${selectedTarget.start_time}，${selectedTarget.preview_venue_name}。提交后原比赛会被锁定。`,
+      content: `${formatDate(selectedTarget.date)} ${selectedTarget.start_time}。提交后原比赛会被锁定，具体场地将在调赛生效并更新正式赛程后公布。`,
       confirmText: "提交申请",
       confirmColor: "#c91f26",
     });
@@ -140,10 +140,11 @@ export default function RescheduleCreatePage() {
                 onChange={(event) => setPeriodIndex(Number(event.detail.value))}
               >
                 <View className="flow-picker">
-                  <Text className="flow-picker-title">{selectedTarget?.start_time} · {selectedTarget?.preview_venue_name}</Text>
+                  <Text className="flow-picker-title">{selectedTarget?.start_time}</Text>
                   <Text className="flow-picker-meta">{selectedTarget?.request_type === "SAME_WEEK" ? "同周调赛" : "跨周调赛"}</Text>
                 </View>
               </Picker>
+              <Text className="flow-helper">系统会在提交时内部预留可用场地，调赛生效并更新正式赛程后公布。</Text>
               <Button className="flow-primary" disabled={busy} onClick={() => void submit()}>
                 {busy ? "正在提交…" : "提交申请"}
               </Button>
@@ -164,5 +165,5 @@ function gameLabel(game: RescheduleGame) {
 }
 
 function targetLabel(target: RescheduleTarget) {
-  return `${target.start_time} · ${target.preview_venue_name} · ${target.request_type === "SAME_WEEK" ? "同周" : "跨周"}`;
+  return `${target.start_time} · ${target.request_type === "SAME_WEEK" ? "同周" : "跨周"}`;
 }

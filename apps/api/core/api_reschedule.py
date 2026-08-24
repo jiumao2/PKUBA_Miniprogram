@@ -63,8 +63,6 @@ class RescheduleTargetOut(Schema):
     period_code: str
     period_name: str
     start_time: str
-    preview_venue_id: UUID
-    preview_venue_name: str
     request_type: str
     submit_deadline: datetime
     confirmation_deadline: datetime
@@ -97,8 +95,6 @@ class RescheduleRequestOut(Schema):
     target_period_id: UUID
     target_period_name: str
     target_start_time: str
-    target_venue_id: UUID
-    target_venue_name: str
     submit_deadline: datetime
     confirmation_deadline: datetime
     confirmations: list[ConfirmationOut]
@@ -274,8 +270,6 @@ def _request_out(request_item: RescheduleRequest, actor: Account) -> dict[str, o
         "target_period_id": request_item.target_period_id,
         "target_period_name": request_item.target_period.name,
         "target_start_time": request_item.target_start_time.strftime("%H:%M"),
-        "target_venue_id": request_item.reservation.venue_id,
-        "target_venue_name": request_item.target_venue_name,
         "submit_deadline": request_item.submit_deadline,
         "confirmation_deadline": request_item.confirmation_deadline,
         "confirmations": [

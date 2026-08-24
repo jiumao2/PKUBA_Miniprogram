@@ -3547,8 +3547,6 @@ export interface components {
             active: boolean;
             /** Game Count */
             game_count: number;
-            /** Active Reservation Count */
-            active_reservation_count: number;
         };
         /** CreateSeasonIn */
         CreateSeasonIn: {
@@ -5300,13 +5298,6 @@ export interface components {
             /** Target Start Time */
             target_start_time: string;
             /**
-             * Target Venue Id
-             * Format: uuid
-             */
-            target_venue_id: string;
-            /** Target Venue Name */
-            target_venue_name: string;
-            /**
              * Submit Deadline
              * Format: date-time
              */
@@ -6135,13 +6126,6 @@ export interface components {
             /** Target Start Time */
             target_start_time: string;
             /**
-             * Target Venue Id
-             * Format: uuid
-             */
-            target_venue_id: string;
-            /** Target Venue Name */
-            target_venue_name: string;
-            /**
              * Submit Deadline
              * Format: date-time
              */
@@ -6216,13 +6200,6 @@ export interface components {
             period_name: string;
             /** Start Time */
             start_time: string;
-            /**
-             * Preview Venue Id
-             * Format: uuid
-             */
-            preview_venue_id: string;
-            /** Preview Venue Name */
-            preview_venue_name: string;
             /** Request Type */
             request_type: string;
             /**
@@ -6398,6 +6375,296 @@ export interface components {
             /** Page Size */
             page_size: number;
         };
+        /**
+         * DocumentStatus
+         * @enum {string}
+         */
+        DocumentStatus: "draft" | "needs_review" | "validated" | "confirmed";
+        /** FinalScore */
+        FinalScore: {
+            /**
+             * Team A
+             * @default 0
+             */
+            team_a: number;
+            /**
+             * Team B
+             * @default 0
+             */
+            team_b: number;
+            /**
+             * Winner Name
+             * @default
+             */
+            winner_name: string;
+            /**
+             * Ended At
+             * @default
+             */
+            ended_at: string;
+        };
+        /**
+         * FoulCode
+         * @enum {string}
+         */
+        FoulCode: "P" | "T" | "U" | "D" | "C" | "B" | "GD" | "F" | "DI" | "FL" | "BD";
+        /** FoulEntry */
+        FoulEntry: {
+            /** Slot */
+            slot: number;
+            code: components["schemas"]["FoulCode"];
+            /** Catalog Id */
+            catalog_id?: string | null;
+            /** @default plain */
+            mark_style: components["schemas"]["FoulMarkStyle"];
+            /** Free Throws */
+            free_throws?: number | null;
+            /**
+             * Cancelled
+             * @default false
+             */
+            cancelled: boolean;
+            /** Period */
+            period?: number | null;
+        };
+        /**
+         * FoulMarkStyle
+         * @enum {string}
+         */
+        FoulMarkStyle: "plain" | "circled";
+        /** GamePriorSnapshot */
+        GamePriorSnapshot: {
+            /** Game Id */
+            game_id: string;
+            /** Competition */
+            competition: string;
+            /** Division */
+            division: string;
+            /** Date */
+            date: string;
+            /** Scheduled Time */
+            scheduled_time: string;
+            /** Venue */
+            venue: string;
+            team_a: components["schemas"]["PriorTeam"];
+            team_b: components["schemas"]["PriorTeam"];
+            /** Source Hash */
+            source_hash: string;
+            /** Locked Paths */
+            locked_paths?: string[];
+        };
+        /** Header */
+        Header: {
+            /**
+             * Competition
+             * @default
+             */
+            competition: string;
+            /**
+             * Game Number
+             * @default
+             */
+            game_number: string;
+            /**
+             * Date
+             * @default
+             */
+            date: string;
+            /**
+             * Scheduled Time
+             * @default
+             */
+            scheduled_time: string;
+            /**
+             * Venue
+             * @default
+             */
+            venue: string;
+            /**
+             * Crew Chief
+             * @default
+             */
+            crew_chief: string;
+            /**
+             * Umpire 1
+             * @default
+             */
+            umpire_1: string;
+            /**
+             * Umpire 2
+             * @default
+             */
+            umpire_2: string;
+        };
+        /**
+         * InkRole
+         * @enum {string}
+         */
+        InkRole: "q1_q3" | "q2_q4_ot" | "neutral";
+        /** OfficialEntry */
+        OfficialEntry: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "scorer" | "assistant_scorer" | "timer" | "shot_clock_operator" | "crew_chief" | "umpire_1" | "umpire_2" | "protest_captain";
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** @default absent */
+            signature: components["schemas"]["SignaturePresence"];
+        };
+        /**
+         * ParticipationStatus
+         * @enum {string}
+         */
+        ParticipationStatus: "none" | "starter" | "substitute";
+        /** PeriodScore */
+        PeriodScore: {
+            /** Period */
+            period: number;
+            /** Team A */
+            team_a: number;
+            /** Team B */
+            team_b: number;
+        };
+        /** PlayerEntry */
+        PlayerEntry: {
+            /** Row */
+            row: number;
+            /**
+             * License Number
+             * @default
+             */
+            license_number: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Jersey Number
+             * @default
+             */
+            jersey_number: string;
+            /**
+             * Captain
+             * @default false
+             */
+            captain: boolean;
+            /** @default none */
+            participation: components["schemas"]["ParticipationStatus"];
+            /** Fouls */
+            fouls?: components["schemas"]["FoulEntry"][];
+            /** Post Foul Markers */
+            post_foul_markers?: components["schemas"]["PostFoulMarker"][];
+        };
+        /**
+         * PostFoulMarker
+         * @description A rule marker written in the unboxed column after the last formal foul cell.
+         */
+        PostFoulMarker: {
+            /** Slot */
+            slot: number;
+            code: components["schemas"]["FoulCode"];
+            /** Catalog Id */
+            catalog_id?: string | null;
+            /** @default plain */
+            mark_style: components["schemas"]["FoulMarkStyle"];
+            /** Free Throws */
+            free_throws?: number | null;
+            /**
+             * Cancelled
+             * @default false
+             */
+            cancelled: boolean;
+            /** Period */
+            period?: number | null;
+        };
+        /** PriorTeam */
+        PriorTeam: {
+            /** Team Id */
+            team_id: string;
+            /** Name */
+            name: string;
+            /** Player Names */
+            player_names: string[];
+        };
+        /** RecognitionDocumentState */
+        RecognitionDocumentState: {
+            /** Run Id */
+            run_id: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Table Personnel */
+            table_personnel?: string[];
+            /** Problem Paths */
+            problem_paths?: string[];
+            /** Issues */
+            issues?: components["schemas"]["RecognitionIssue"][];
+            /**
+             * Applied At
+             * Format: date-time
+             */
+            applied_at?: string;
+        };
+        /** RecognitionIssue */
+        RecognitionIssue: {
+            /** Code */
+            code: string;
+            /** Path */
+            path: string;
+            /** Message */
+            message: string;
+            /** Observed */
+            observed?: unknown | null;
+            /** Expected */
+            expected?: unknown | null;
+        };
+        /**
+         * RuleProfileId
+         * @enum {string}
+         */
+        RuleProfileId: "fiba_2024" | "fiba_2026";
+        /**
+         * ScoreBoundary
+         * @enum {string}
+         */
+        ScoreBoundary: "none" | "period_end" | "game_end";
+        /** ScoreEvent */
+        ScoreEvent: {
+            /** Sequence */
+            sequence: number;
+            team: components["schemas"]["TeamSide"];
+            /** Period */
+            period: number;
+            /** Points */
+            points?: number | null;
+            /** Cumulative Score */
+            cumulative_score: number;
+            /** Scorer Jersey */
+            scorer_jersey: string;
+            mark?: components["schemas"]["ScoreMark"] | null;
+            /**
+             * Scorer Circled
+             * @default false
+             */
+            scorer_circled: boolean;
+            /** @default none */
+            boundary: components["schemas"]["ScoreBoundary"];
+            /** @default neutral */
+            ink_role: components["schemas"]["InkRole"];
+        };
+        /**
+         * ScoreMark
+         * @enum {string}
+         */
+        ScoreMark: "filled_dot" | "diagonal";
         /** ScoresheetDetailOut */
         ScoresheetDetailOut: {
             /**
@@ -6417,10 +6684,7 @@ export interface components {
             source_version: number;
             /** Status */
             status: string;
-            /** Draft */
-            draft: {
-                [key: string]: unknown;
-            };
+            draft: components["schemas"]["ScoresheetDocument"];
             /** Draft Version */
             draft_version: number;
             /** Event Sequence */
@@ -6449,6 +6713,163 @@ export interface components {
             publication: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ScoresheetDocument */
+        ScoresheetDocument: {
+            /**
+             * Schema Version
+             * @default 1.4.0
+             * @enum {string}
+             */
+            schema_version: "1.0.0" | "1.1.0" | "1.2.0" | "1.3.0" | "1.4.0";
+            /** @default fiba_2024 */
+            rules_profile: components["schemas"]["RuleProfileId"];
+            /** Id */
+            id: string;
+            /**
+             * Revision
+             * @default 0
+             */
+            revision: number;
+            /**
+             * Template Id
+             * @default pku-basketball-2019-v1
+             */
+            template_id: string;
+            /** @default draft */
+            status: components["schemas"]["DocumentStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at?: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at?: string;
+            source?: components["schemas"]["SourceAsset"];
+            game_prior?: components["schemas"]["GamePriorSnapshot"] | null;
+            recognition?: components["schemas"]["RecognitionDocumentState"] | null;
+            header?: components["schemas"]["Header"];
+            /** Teams */
+            teams: components["schemas"]["TeamEntry"][];
+            /** Score Events */
+            score_events?: components["schemas"]["ScoreEvent"][];
+            /** Stated Period Scores */
+            stated_period_scores?: components["schemas"]["PeriodScore"][];
+            final_score?: components["schemas"]["FinalScore"];
+            /** Officials */
+            officials?: components["schemas"]["OfficialEntry"][];
+            /** Acknowledged Warnings */
+            acknowledged_warnings?: string[];
+        };
+        /**
+         * SignaturePresence
+         * @enum {string}
+         */
+        SignaturePresence: "present" | "absent" | "unclear";
+        /** SourceAsset */
+        SourceAsset: {
+            /**
+             * Original Filename
+             * @default
+             */
+            original_filename: string;
+            /**
+             * Original Url
+             * @default
+             */
+            original_url: string;
+            /**
+             * Aligned Url
+             * @default
+             */
+            aligned_url: string;
+            /**
+             * Version
+             * @default 0
+             */
+            version: number;
+            /**
+             * Content Sha256
+             * @default
+             */
+            content_sha256: string;
+            /**
+             * Width
+             * @default 0
+             */
+            width: number;
+            /**
+             * Height
+             * @default 0
+             */
+            height: number;
+            /**
+             * Rotation
+             * @default 0
+             */
+            rotation: number;
+            /** Corners */
+            corners?: number[][] | null;
+        };
+        /** TeamEntry */
+        TeamEntry: {
+            side: components["schemas"]["TeamSide"];
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /** Players */
+            players?: components["schemas"]["PlayerEntry"][];
+            /** Timeouts */
+            timeouts?: components["schemas"]["TimeoutEntry"][];
+            /** Team Fouls */
+            team_fouls?: components["schemas"]["TeamFoulPeriod"][];
+            /** Coach Fouls */
+            coach_fouls?: components["schemas"]["FoulEntry"][];
+            /** Coach Post Foul Markers */
+            coach_post_foul_markers?: components["schemas"]["PostFoulMarker"][];
+            /** Assistant Coach Fouls */
+            assistant_coach_fouls?: components["schemas"]["FoulEntry"][];
+            /** Assistant Coach Post Foul Markers */
+            assistant_coach_post_foul_markers?: components["schemas"]["PostFoulMarker"][];
+            /**
+             * Head Coach
+             * @default
+             */
+            head_coach: string;
+            /**
+             * Assistant Coach
+             * @default
+             */
+            assistant_coach: string;
+        };
+        /** TeamFoulPeriod */
+        TeamFoulPeriod: {
+            /** Period */
+            period: number;
+            /** Count */
+            count: number;
+        };
+        /**
+         * TeamSide
+         * @enum {string}
+         */
+        TeamSide: "A" | "B";
+        /** TimeoutEntry */
+        TimeoutEntry: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "H1" | "H2" | "OT";
+            /** Slot */
+            slot: number;
+            /** Minute */
+            minute: number;
         };
         /** ScoresheetSyncOut */
         ScoresheetSyncOut: {

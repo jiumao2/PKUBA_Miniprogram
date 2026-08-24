@@ -323,9 +323,6 @@ def _venue_snapshot(venue: Venue) -> dict:
         "sort_order": venue.sort_order,
         "active": venue.active,
         "game_count": Game.objects.filter(season=venue.season, venue_name=venue.name).count(),
-        "active_reservation_count": venue.reservations.filter(
-            status=SlotReservation.Status.ACTIVE
-        ).count(),
     }
 
 
