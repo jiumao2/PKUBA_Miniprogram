@@ -11,7 +11,44 @@ export type ScoresheetRegion = (typeof SCORESHEET_REGIONS)[number];
 export type ScoresheetSurface = "WEB" | "MINIAPP";
 export type TeamSide = "A" | "B";
 export type ScoreValue = number;
-export type ScorePeriod = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8";
+export type ScorePeriod = "1" | "2" | "3" | "4" | "5";
+export type FoulEditorGroup = "player" | "coach" | "post_foul";
+export type FoulSuffix = "" | "1" | "2" | "3" | "c";
+
+export interface FoulEditorOption {
+  code: string;
+  catalogId: string;
+  markStyle: "plain" | "circled";
+  allowedSuffixes: FoulSuffix[];
+}
+
+const FIBA_2024_FOUL_OPTIONS: Record<FoulEditorGroup, FoulEditorOption[]> = {
+  player: [
+    { code: "P", catalogId: "player.personal", markStyle: "plain", allowedSuffixes: ["", "1", "2", "3", "c"] },
+    { code: "T", catalogId: "player.technical", markStyle: "plain", allowedSuffixes: ["", "1", "2", "3", "c"] },
+    { code: "U", catalogId: "player.unsportsmanlike", markStyle: "plain", allowedSuffixes: ["", "1", "2", "3", "c"] },
+    { code: "D", catalogId: "player.disqualifying", markStyle: "plain", allowedSuffixes: ["", "1", "2", "3", "c"] },
+  ],
+  coach: [
+    { code: "C", catalogId: "coach.personal_technical", markStyle: "plain", allowedSuffixes: ["", "1", "2", "3", "c"] },
+    { code: "B", catalogId: "coach.bench_technical", markStyle: "plain", allowedSuffixes: ["", "1", "2", "3", "c"] },
+    { code: "D", catalogId: "coach.disqualifying", markStyle: "plain", allowedSuffixes: ["", "1", "2", "3", "c"] },
+    { code: "F", catalogId: "system.fighting_remainder", markStyle: "plain", allowedSuffixes: [""] },
+  ],
+  post_foul: [
+    { code: "D", catalogId: "system.post_disqualifying", markStyle: "plain", allowedSuffixes: ["", "1", "2", "3", "c"] },
+    { code: "GD", catalogId: "system.game_disqualification", markStyle: "plain", allowedSuffixes: [""] },
+    { code: "F", catalogId: "system.fighting_remainder", markStyle: "plain", allowedSuffixes: [""] },
+  ],
+};
+
+/** Current FIBA 2024 foul catalogue shared by the web and miniapp editors. */
+export function fiba2024FoulEditorOptions(group: FoulEditorGroup): FoulEditorOption[] {
+  return FIBA_2024_FOUL_OPTIONS[group].map((option) => ({
+    ...option,
+    allowedSuffixes: [...option.allowedSuffixes],
+  }));
+}
 
 export const REGION_LABELS: Record<ScoresheetRegion, string> = {
   SOURCE_GAME: "原图与比赛信息",
@@ -261,7 +298,117 @@ export function normalizeScoreEvents(events: ScoreEvent[]): ScoreEvent[] {
 }
 
 function scoreMark(value: number): ScoreEvent["mark"] {
-  return value === 1 ? "dot" : value === 3 ? "circle" : "slash";
+  return value === 1 ? "dot" : value === 2 ? "slash" : value === 3 ? "circle" : undefined;
+}
+
+export function periodCheckpoints(
+  document: ScoresheetDocument,
+  side: TeamSide,
+): Array<{ period: ScorePeriod; cumulative: number }> {
+  let cumulative = 0;
+  return (["1", "2", "3", "4", "5"] as ScorePeriod[])
+    .filter((period) => Number(period) <= 4 || (
+      document.summary.period_scores[period].A !== null
+      && document.summary.period_scores[period].B !== null
+    ))
+    .map((period) => {
+      cumulative += document.summary.period_scores[period][side] ?? 0;
+      return { period, cumulative };
+    });
+}
+
+function scorePeriod(
+  cumulative: number,
+  checkpoints: Array<{ period: ScorePeriod; cumulative: number }>,
+): ScorePeriod {
+  const covering = checkpoints.find((checkpoint) => cumulative <= checkpoint.cumulative);
+  if (covering) return covering.period;
+  const last = checkpoints.at(-1);
+  return last && last.cumulative > 0 ? last.period : "1";
+}
+
+export function deriveScoreEvents(document: ScoresheetDocument): ScoresheetDocument {
+  const bySide = new Map<TeamSide, ScoreEvent[]>([
+    ["A", document.running_score.filter((event) => event.team === "A")],
+    ["B", document.running_score.filter((event) => event.team === "B")],
+  ]);
+  (["A", "B"] as TeamSide[]).forEach((side) => {
+    const events = bySide.get(side)!
+      .sort((left, right) => left.cumulative - right.cumulative || left.sequence - right.sequence);
+    const checkpoints = periodCheckpoints(document, side);
+    let previous = 0;
+    events.forEach((event) => {
+      event.value = event.cumulative - previous;
+      event.mark = scoreMark(event.value);
+      event.period = scorePeriod(event.cumulative, checkpoints);
+      event.boundary = "none";
+      previous = event.cumulative;
+    });
+    const byCumulative = new Map(events.map((event) => [event.cumulative, event]));
+    checkpoints.forEach(({ cumulative }) => {
+      if (cumulative > 0) {
+        const event = byCumulative.get(cumulative);
+        if (event) event.boundary = "period";
+      }
+    });
+  });
+  const latestA = bySide.get("A")!.at(-1);
+  const latestB = bySide.get("B")!.at(-1);
+  if (
+    latestA
+    && latestB
+    && latestA.cumulative === document.summary.final_score.A
+    && latestB.cumulative === document.summary.final_score.B
+  ) {
+    latestA.boundary = "game";
+    latestB.boundary = "game";
+  }
+  document.running_score.sort((left, right) => (
+    Number(left.period) - Number(right.period)
+    || left.team.localeCompare(right.team)
+    || left.cumulative - right.cumulative
+    || left.sequence - right.sequence
+  ));
+  document.running_score.forEach((event, index) => { event.sequence = index + 1; });
+  return document;
+}
+
+export function setScoreCell(
+  document: ScoresheetDocument,
+  input: Omit<ScoreEvent, "sequence" | "value" | "mark" | "period" | "boundary"> & {
+    cumulative: number;
+  },
+): ScoresheetDocument {
+  let event = document.running_score.find(
+    (candidate) => candidate.team === input.team && candidate.cumulative === input.cumulative,
+  );
+  if (!event) {
+    event = {
+      ...input,
+      sequence: Math.max(0, ...document.running_score.map((candidate) => candidate.sequence)) + 1,
+      value: 1,
+      period: "1",
+      mark: "dot",
+      boundary: "none",
+    };
+    document.running_score.push(event);
+  } else {
+    event.player_id = input.player_id;
+    event.player_name = input.player_name;
+    event.player_number = input.player_number;
+  }
+  return deriveScoreEvents(document);
+}
+
+export function removeScoreCell(
+  document: ScoresheetDocument,
+  side: TeamSide,
+  cumulative: number,
+): ScoresheetDocument {
+  document.running_score = document.running_score.filter(
+    (event) => event.team !== side || event.cumulative !== cumulative,
+  );
+  return deriveScoreEvents(document);
 }
 
 function resequenceWithoutMovingCells(events: ScoreEvent[]): ScoreEvent[] {

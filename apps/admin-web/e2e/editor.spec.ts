@@ -168,33 +168,28 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
 
   test('running-score editing and deterministic validation remain available', async ({ page }) => {
     await openDemoSheet(page);
-    await page.locator('rect[data-field-id="score.A.003"]').dblclick();
+    await page.locator('rect[data-field-id="score.A.004"]').click();
     const ledger = page.getByLabel('A 队得分事件账本');
     await expect(ledger).toBeVisible();
     await expect(page.getByRole('tab', { name: /Q1/ })).toHaveAttribute('aria-selected', 'true');
-    const rowCount = await ledger.locator('.score-ledger-row').count();
-    await page.getByRole('button', { name: '在累计 3 分之前插入' }).click();
-    await expect(ledger.locator('.score-ledger-row')).toHaveCount(rowCount + 1);
-    await page.getByLabel('本次得分', { exact: true }).selectOption('3');
-    await expect(ledger.locator('.score-ledger-row.is-selected')).toBeVisible();
-    await page.getByRole('button', { name: /删除累计 .* 分事件/ }).last().click();
-    await page.getByRole('button', { name: '撤销' }).click();
+    await expect(page.getByLabel('本次得分', { exact: true })).toHaveCount(0);
+    await page.getByLabel('得分队员').selectOption('8');
+    await expect(ledger.locator('[data-score-field="score.A.004"]')).toBeVisible();
+
+    await page.locator('rect[data-field-id="score.A.003"]').dblclick();
+    await page.getByRole('button', { name: '删除本格号码' }).click();
+    await page.locator('rect[data-field-id="score.A.004"]').dblclick();
+    await page.getByRole('button', { name: '删除本格号码' }).click();
+    await waitForSaved(page);
+    await page.getByRole('button', { name: /^校验/ }).click();
+    await expect(page.getByRole('button', { name: /SCORE_SEQUENCE_GAP/ }).first()).toBeVisible();
     await page.getByRole('button', { name: '撤销' }).click();
     await page.getByRole('button', { name: '撤销' }).click();
     await waitForSaved(page);
 
-    await page.locator('rect[data-field-id="summary.final.A"]').dblclick();
-    const finalA = page.getByLabel('A 队最终比分');
-    const originalFinal = await finalA.inputValue();
-    await finalA.fill('99');
-    await waitForSaved(page);
-    await page.getByRole('button', { name: /^校验/ }).click();
-    const issue = page.getByRole('button', { name: /FINAL_SCORE_MISMATCH/ }).first();
-    await expect(issue).toBeVisible();
-    await issue.click();
-    await expect(page.locator('[data-field-id="summary"]')).toHaveClass(/is-selected/);
-    await finalA.fill(originalFinal);
-    await waitForSaved(page);
+    await page.locator('[data-field-id="summary"]').click();
+    await expect(page.getByLabel('A 队最终比分')).toHaveAttribute('readonly', '');
+    await expect(page.getByLabel('胜队')).toHaveAttribute('readonly', '');
   });
 
   test('a real uploaded sheet validates, confirms and exports the current draft PDF', async ({ page }) => {

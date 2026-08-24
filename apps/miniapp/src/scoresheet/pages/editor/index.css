@@ -786,7 +786,8 @@ button::after {
   color: #fff;
 }
 
-.mini-score-drawer-mask {
+.mini-score-drawer-mask,
+.mini-foul-drawer-mask {
   position: fixed;
   z-index: 20;
   inset: 0;
@@ -795,7 +796,8 @@ button::after {
   background: rgba(20, 18, 16, 0.42);
 }
 
-.mini-score-drawer {
+.mini-score-drawer,
+.mini-foul-drawer {
   box-sizing: border-box;
   width: 100%;
   padding: 18rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
@@ -923,8 +925,9 @@ button::after {
 .mini-player-state switch { transform: scale(.78); transform-origin: right center; }
 
 .mini-foul-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 7rpx; color: #777e78; font-size: 19rpx; }
-.mini-foul-cell { width: 52rpx; height: 50rpx; display: flex; align-items: center; justify-content: center; border: 1rpx solid #d9dfda; border-radius: 7rpx; background: #fff; color: #8b928c; font-size: 22rpx; }
+.mini-foul-cell { position: relative; width: 52rpx; height: 50rpx; display: flex; align-items: center; justify-content: center; border: 1rpx solid #d9dfda; border-radius: 7rpx; background: #fff; color: #8b928c; font-size: 22rpx; }
 .mini-foul-cell.filled { border-color: #9eaaa0; color: #202520; font-weight: 600; }
+.mini-foul-period { position: absolute; right: 2rpx; bottom: 0; color: #6b756d; font-size: 13rpx; font-weight: 500; line-height: 16rpx; }
 .mini-post-label { margin-left: 7rpx; }
 .mini-coach-row { grid-template-columns: 1fr; }
 

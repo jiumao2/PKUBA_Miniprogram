@@ -10,6 +10,7 @@ import type {
   ValidationReport,
 } from './types';
 import { deepCloneDocument } from './types';
+import { deriveScoreEvents } from './lib/score';
 
 const LAST_DOCUMENT_KEY = 'scoresheet-reader:last-document-id';
 const RECOGNITION_POLL_INTERVAL_MS = 500;
@@ -365,6 +366,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const previous = deepCloneDocument(current);
     const next = rebaseSnapshot(current, serverRevision);
     mutation(next);
+    deriveScoreEvents(next);
     next.status = next.recognition ? 'needs_review' : 'draft';
     set((state) => ({
       document: next,

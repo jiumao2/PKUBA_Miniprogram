@@ -223,6 +223,36 @@ def _normalize_team(team: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _normalize_score_events(
+    events: list[dict[str, Any]],
+) -> dict[str, dict[str, dict[str, dict[str, Any]]]]:
+    """Key score cells by their immutable paper coordinates.
+
+    Sequence numbers are derived and can change when an administrator fills an
+    earlier cumulative cell.  Team + printed cumulative score is the stable
+    identity shared by the editor, recognition diagnostics and change log.
+    """
+
+    result: dict[str, dict[str, dict[str, dict[str, Any]]]] = {
+        "A": {"cumulative": {}},
+        "B": {"cumulative": {}},
+    }
+    counts: dict[tuple[str, int], int] = {}
+    for event in events:
+        side = str(event.get("team") or "")
+        cumulative = event.get("cumulative_score")
+        if side not in result or not isinstance(cumulative, int):
+            continue
+        key = (side, cumulative)
+        counts[key] = counts.get(key, 0) + 1
+        identity = str(cumulative) if counts[key] == 1 else f"{cumulative}#{counts[key]}"
+        normalized = dict(event)
+        normalized.pop("team", None)
+        normalized.pop("cumulative_score", None)
+        result[side]["cumulative"][identity] = normalized
+    return result
+
+
 def _semantic_document(document: dict[str, Any]) -> dict[str, Any]:
     """Return editable scoresheet content with ScoresheetReader's stable domain keys."""
 
@@ -234,7 +264,7 @@ def _semantic_document(document: dict[str, Any]) -> dict[str, Any]:
             for team in document.get("teams") or []
             if isinstance(team, dict) and team.get("side") in {"A", "B"}
         },
-        "score_events": _keyed(list(document.get("score_events") or []), "sequence"),
+        "score_events": _normalize_score_events(list(document.get("score_events") or [])),
         "stated_period_scores": _keyed(
             list(document.get("stated_period_scores") or []), "period"
         ),

@@ -17,12 +17,14 @@ import {
   type ScoresheetMutationContext,
 } from "@pkuba/api-client";
 import {
-  deleteScoreAt,
-  insertScoreAt,
+  deriveScoreEvents,
+  fiba2024FoulEditorOptions,
   REGION_LABELS,
+  removeScoreCell,
   SCORE_BLOCKS,
   SCORESHEET_REGIONS,
   scoreGridRow,
+  setScoreCell,
   TEMPLATE_REGION_BOUNDS,
   type ScoreEvent,
   type ScorePeriod,
@@ -354,6 +356,9 @@ export default function ScoresheetEditorPage() {
       cursor = cursor[Number.isInteger(Number(part)) ? Number(part) : part];
     }
     cursor[parts[parts.length - 1]] = value;
+    if (path.startsWith("/running_score") || path.startsWith("/summary")) {
+      deriveScoreEvents(next);
+    }
     queueDocument(next, previous, immediate);
   }, [queueDocument, sheet]);
 
@@ -860,7 +865,7 @@ function MiniClosingEditor({ document, readOnly, changePath }: {
   readOnly: boolean;
   changePath: (path: string, value: unknown, immediate?: boolean) => void;
 }) {
-  const periods = (["1", "2", "3", "4", "5", "6", "7", "8"] as ScorePeriod[]);
+  const periods = (["1", "2", "3", "4", "5"] as ScorePeriod[]);
   const final = periods.reduce((total, period) => ({
     A: total.A + (document.summary.period_scores[period].A ?? 0),
     B: total.B + (document.summary.period_scores[period].B ?? 0),
@@ -882,7 +887,7 @@ function MiniClosingEditor({ document, readOnly, changePath }: {
       <View className="mini-section-heading"><Text>节比分与最终结果</Text></View>
       {periods.map((period) => (
         <View className="mini-period-row" key={period}>
-          <Text>{Number(period) <= 4 ? `第 ${period} 节` : `加时 ${Number(period) - 4}`}</Text>
+          <Text>{period === "5" ? "决胜期（全部加时合计）" : `第 ${period} 节`}</Text>
           {(["A", "B"] as TeamSide[]).map((side) => <MiniStepper disabled={readOnly} key={side} label={side} max={160} onChange={(value) => updatePeriod(period, side, value)} value={document.summary.period_scores[period][side] ?? 0} />)}
         </View>
       ))}
@@ -960,18 +965,17 @@ function MiniTeamEditor({ document, side, readOnly, changePath }: {
   );
 }
 
-type MiniFoul = { code: string; free_throws?: number | null; cancelled?: boolean; slot?: number; catalog_id?: string | null; mark_style?: string; period?: number | null };
+type MiniFoul = { code: string; free_throws?: number | null; cancelled?: boolean; slot?: number; catalog_id?: string | null; mark_style?: string; period?: 1 | 2 | 3 | 4 | 5 | null };
 
 const SUBSCRIPT: Record<string, string> = { "1": "₁", "2": "₂", "3": "₃", c: "c" };
 
 function foulChoices(group: "player" | "coach" | "post") {
-  const codes = group === "player" ? ["P", "T", "U", "D"] : group === "coach" ? ["C", "B", "D", "F"] : ["D", "GD", "F"];
   const result: Array<{ label: string; value: MiniFoul | null }> = [{ label: "空", value: null }];
-  for (const code of codes) {
-    const suffixes = ["", ...(code === "F" || code === "GD" ? [] : ["1", "2", "3", "c"])];
-    for (const suffix of suffixes) result.push({
-      label: `${code}${SUBSCRIPT[suffix] ?? ""}`,
-      value: { code, free_throws: /^[123]$/.test(suffix) ? Number(suffix) : null, cancelled: suffix === "c", catalog_id: null, mark_style: "plain", period: null },
+  const options = fiba2024FoulEditorOptions(group === "post" ? "post_foul" : group);
+  for (const option of options) {
+    for (const suffix of option.allowedSuffixes) result.push({
+      label: `${option.code}${SUBSCRIPT[suffix] ?? ""}`,
+      value: { code: option.code, free_throws: /^[123]$/.test(suffix) ? Number(suffix) : null, cancelled: suffix === "c", catalog_id: option.catalogId, mark_style: option.markStyle, period: null },
     });
   }
   return result;
@@ -992,10 +996,36 @@ function replaceFoulSlot(values: unknown[], index: number, value: MiniFoul | nul
 }
 
 function FoulSlotPicker({ group, value, disabled, onChange }: { group: "player" | "coach" | "post"; value: unknown; disabled: boolean; onChange: (value: MiniFoul | null) => void }) {
+  const [editing, setEditing] = useState(false);
   const choices = foulChoices(group);
   const current = foulLabel(value);
   const selected = Math.max(0, choices.findIndex((choice) => choice.label === current));
-  return <Picker disabled={disabled} mode="selector" range={choices.map((choice) => choice.label)} value={selected} onChange={(event) => onChange(choices[Number(event.detail.value)]?.value ?? null)}><View className={value ? "mini-foul-cell filled" : "mini-foul-cell"}><Text>{current}</Text></View></Picker>;
+  const foul = value && typeof value === "object" ? value as MiniFoul : null;
+  const periods = [null, 1, 2, 3, 4, 5] as const;
+  const periodLabels = ["不填写", "第 1 节", "第 2 节", "第 3 节", "第 4 节", "OT（合计）"];
+  const periodIndex = Math.max(0, periods.findIndex((period) => period === (foul?.period ?? null)));
+  const chooseFoul = (index: number) => {
+    const choice = choices[index]?.value;
+    onChange(choice ? { ...choice, period: foul?.period ?? null } : null);
+  };
+  return <>
+    <View className={value ? "mini-foul-cell filled" : "mini-foul-cell"} onClick={() => { if (!disabled) setEditing(true); }}>
+      <Text>{current}</Text>
+      {foul?.period && <Text className="mini-foul-period">{foul.period === 5 ? "OT" : `Q${foul.period}`}</Text>}
+    </View>
+    {editing && <View className="mini-foul-drawer-mask" onClick={() => setEditing(false)}>
+      <View className="mini-foul-drawer" onClick={(event) => event.stopPropagation()}>
+        <View className="mini-drawer-heading"><Text>犯规标记</Text><Button onClick={() => setEditing(false)}>完成</Button></View>
+        <Picker mode="selector" range={choices.map((choice) => choice.label)} value={selected} onChange={(event) => chooseFoul(Number(event.detail.value))}>
+          <View className="mini-drawer-field"><Text>代码与下标</Text><Text>{current}</Text></View>
+        </Picker>
+        <Picker disabled={!foul} mode="selector" range={periodLabels} value={periodIndex} onChange={(event) => foul && onChange({ ...foul, period: periods[Number(event.detail.value)] ?? null })}>
+          <View className="mini-drawer-field"><Text>发生节次</Text><Text>{foul ? periodLabels[periodIndex] : "请先选择犯规"}</Text></View>
+        </Picker>
+        {foul && <Button className="mini-drawer-delete" onClick={() => { onChange(null); setEditing(false); }}>清空此格</Button>}
+      </View>
+    </View>}
+  </>;
 }
 
 function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, onSelect }: {
@@ -1008,7 +1038,6 @@ function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, 
 }) {
   const [blockIndex, setBlockIndex] = useState(0);
   const [issueCursor, setIssueCursor] = useState(-1);
-  const [period, setPeriod] = useState<ScorePeriod>("1");
   const [pendingCell, setPendingCell] = useState<{ side: TeamSide; cumulative: number } | null>(null);
   const block = SCORE_BLOCKS[blockIndex];
   const selected = document.running_score.find((event) => event.id === selectedId) ?? null;
@@ -1055,7 +1084,7 @@ function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, 
 
   return (
     <View className="mini-paper-score">
-      <View className="mini-score-period-picker"><Text>当前节次</Text><Picker disabled={readOnly} mode="selector" range={["第1节", "第2节", "第3节", "第4节", "加时1", "加时2", "加时3", "加时4"]} value={Number(period) - 1} onChange={(event) => setPeriod(String(Number(event.detail.value) + 1) as ScorePeriod)}><Text>{Number(period) <= 4 ? `第 ${period} 节` : `加时 ${Number(period) - 4}`}</Text></Picker><Text>点空格后选球员号码</Text></View>
+      <View className="mini-score-period-picker"><Text>点击任意累计分格选择球员号码</Text><Text>分值、节次和结束标记自动生成</Text></View>
       {issueEvents.length > 0 && <View className="mini-score-issue-nav"><Text>{issueEvents.length} 处得分格问题</Text><View><Button onClick={() => jumpIssue(-1)}>上一处</Button><Button onClick={() => jumpIssue(1)}>下一处</Button></View></View>}
       <ScrollView className="mini-score-block-tabs" scrollX>
         <View>{SCORE_BLOCKS.map((item, index) => <Button className={index === blockIndex ? "active" : ""} key={item.key} onClick={() => setBlockIndex(index)}>{item.key}</Button>)}</View>
@@ -1069,12 +1098,14 @@ function MiniPaperScoreGrid({ document, issues, readOnly, onChange, selectedId, 
               const event = byCell.get(`${side}-${score}`);
               const invalid = event && issues.some((issue) => scoreIssueMatches(issue.path, event));
               const unusual = Boolean(event && event.value >= 4);
-              return <View className={`mini-score-cell ${invalid || unusual ? "invalid" : ""} ${event?.id === selectedId ? "selected" : ""}`} key={side} onClick={() => { if (event) onSelect(event.id); else if (!readOnly) setPendingCell({ side, cumulative: score }); }}>{event ? <><Text className="mini-score-player">{event.player_number || "?"}</Text><Text className="mini-score-mark">{event.value === 1 ? "●" : event.value === 3 ? "◯" : "╱"}</Text><Text className="mini-score-period">{event.value >= 4 ? `+${event.value}` : Number(event.period) <= 4 ? event.period : `OT${Number(event.period) - 4}`}</Text></> : <Text className="mini-score-empty">＋</Text>}</View>;
+              const periodLabel = Number(event?.period) <= 4 ? `Q${event?.period}` : "OT";
+              const boundaryLabel = event?.boundary === "game" ? "终" : event?.boundary === "period" ? "节" : "";
+              return <View className={`mini-score-cell ${invalid || unusual ? "invalid" : ""} ${event?.id === selectedId ? "selected" : ""}`} key={side} onClick={() => { if (event) onSelect(event.id); else if (!readOnly) setPendingCell({ side, cumulative: score }); }}>{event ? <><Text className="mini-score-player">{event.player_number || "?"}</Text><Text className="mini-score-mark">{event.value === 1 ? "●" : event.value === 2 ? "╱" : event.value === 3 ? "◯" : "—"}</Text><Text className="mini-score-period">{event.value >= 4 ? `+${event.value}` : `${periodLabel}${boundaryLabel}`}</Text></> : <Text className="mini-score-empty">＋</Text>}</View>;
             })}
           </View>
         ))}
       </ScrollView>
-      {(selected || pendingCell) && <ScoreEventDrawer cell={pendingCell} document={document} event={selected} initialPeriod={period} onChange={onChange} onClose={() => { onSelect(""); setPendingCell(null); }} />}
+      {(selected || pendingCell) && <ScoreEventDrawer cell={pendingCell} document={document} event={selected} onChange={onChange} onClose={() => { onSelect(""); setPendingCell(null); }} />}
     </View>
   );
 }
@@ -1085,23 +1116,35 @@ function scoreIssueMatches(path: string, event: ScoreEvent) {
   return Boolean(match && Number(match[1]) === event.sequence - 1);
 }
 
-function ScoreEventDrawer({ document, event, cell, initialPeriod, onChange, onClose }: { document: ScoresheetDocument; event: ScoreEvent | null; cell: { side: TeamSide; cumulative: number } | null; initialPeriod: ScorePeriod; onChange: (events: ScoreEvent[]) => void; onClose: () => void }) {
+function ScoreEventDrawer({ document, event, cell, onChange, onClose }: { document: ScoresheetDocument; event: ScoreEvent | null; cell: { side: TeamSide; cumulative: number } | null; onChange: (events: ScoreEvent[]) => void; onClose: () => void }) {
   const side = event?.team ?? cell?.side ?? "A";
   const cumulative = event?.cumulative ?? cell?.cumulative ?? 0;
   const players = document.teams[side].players.filter((player) => player.jersey_number);
-  const update = (patch: Partial<ScoreEvent>) => {
-    if (!event) return;
-    onChange(document.running_score.map((row) => row.id === event.id ? { ...row, ...patch } : row));
-  };
   const playerIndex = Math.max(0, players.findIndex((player) => player.player_id === event?.player_id));
   const choosePlayer = (index: number) => {
     const player = players[index];
     if (!player) return;
-    if (event) update({ player_id: player.player_id, player_name: player.name, player_number: player.jersey_number });
-    else if (cell) onChange(insertScoreAt(document.running_score, { id: `cell-${Date.now()}-${Math.random().toString(36).slice(2)}`, team: cell.side, cumulative: cell.cumulative, period: initialPeriod, player_id: player.player_id, player_name: player.name, player_number: player.jersey_number, boundary: "none" }));
+    const next = JSON.parse(JSON.stringify(document)) as ScoresheetDocument;
+    setScoreCell(next, {
+      id: event?.id ?? `cell-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      team: side,
+      cumulative,
+      player_id: player.player_id,
+      player_name: player.name,
+      player_number: player.jersey_number,
+    });
+    onChange(next.running_score);
     if (!event) onClose();
   };
-  return <View className="mini-score-drawer-mask" onClick={onClose}><View className="mini-score-drawer" onClick={(click) => click.stopPropagation()}><View className="mini-drawer-heading"><Text>{side} 队累计 {cumulative} 分</Text><Button onClick={onClose}>完成</Button></View><Picker mode="selector" range={players.map((player) => `${player.jersey_number} ${player.name}`)} value={playerIndex} onChange={(change) => choosePlayer(Number(change.detail.value))}><View className="mini-drawer-field"><Text>球员号码</Text><Text>{event ? event.player_number || "请选择" : "点击选择后插入"}</Text></View></Picker>{event && <><View className={event.value >= 4 ? "mini-score-derived invalid" : "mini-score-derived"}><Text>本次得分</Text><Text>{event.value} 分（由累计格自动推导）</Text></View><Picker mode="selector" range={["第1节", "第2节", "第3节", "第4节", "加时1", "加时2", "加时3", "加时4"]} value={Number(event.period) - 1} onChange={(change) => update({ period: String(Number(change.detail.value) + 1) as ScorePeriod })}><View className="mini-drawer-field"><Text>节次</Text><Text>{Number(event.period) <= 4 ? `第 ${event.period} 节` : `加时 ${Number(event.period) - 4}`}</Text></View></Picker><Picker mode="selector" range={["普通", "节末", "终场"]} value={["none", "period", "game"].indexOf(event.boundary ?? "none")} onChange={(change) => update({ boundary: (["none", "period", "game"] as const)[Number(change.detail.value)] })}><View className="mini-drawer-field"><Text>标记</Text><Text>{event.boundary === "game" ? "终场" : event.boundary === "period" ? "节末" : "普通"}</Text></View></Picker><Button className="mini-drawer-delete" onClick={() => { onChange(deleteScoreAt(document.running_score, event.id)); onClose(); }}>清空此格号码</Button></>}</View></View>;
+  const clearCell = () => {
+    const next = JSON.parse(JSON.stringify(document)) as ScoresheetDocument;
+    removeScoreCell(next, side, cumulative);
+    onChange(next.running_score);
+    onClose();
+  };
+  const periodLabel = event && (Number(event.period) <= 4 ? `第 ${event.period} 节` : "决胜期（合计）");
+  const boundaryLabel = event?.boundary === "game" ? "终场" : event?.boundary === "period" ? "节末" : "普通得分";
+  return <View className="mini-score-drawer-mask" onClick={onClose}><View className="mini-score-drawer" onClick={(click) => click.stopPropagation()}><View className="mini-drawer-heading"><Text>{side} 队累计 {cumulative} 分</Text><Button onClick={onClose}>完成</Button></View><Picker mode="selector" range={players.map((player) => `${player.jersey_number} ${player.name}`)} value={playerIndex} onChange={(change) => choosePlayer(Number(change.detail.value))}><View className="mini-drawer-field"><Text>球员号码</Text><Text>{event ? event.player_number || "请选择" : "点击选择后插入"}</Text></View></Picker>{event && <><View className={event.value >= 4 ? "mini-score-derived invalid" : "mini-score-derived"}><Text>本次得分</Text><Text>{event.value} 分（自动派生）</Text></View><View className="mini-score-derived"><Text>节次</Text><Text>{periodLabel}（自动派生）</Text></View><View className="mini-score-derived"><Text>结束标记</Text><Text>{boundaryLabel}（自动派生）</Text></View><Button className="mini-drawer-delete" onClick={clearCell}>清空此格号码</Button></>}</View></View>;
 }
 
 function PublishPanel({ errors, warnings, validationReady, readOnly, publish }: { errors: Array<{ id: string; message: string; region: ScoresheetRegion }>; warnings: Array<{ id: string; message: string; region: ScoresheetRegion }>; validationReady: boolean; readOnly: boolean; publish: () => void }) {

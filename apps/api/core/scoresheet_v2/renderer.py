@@ -25,6 +25,7 @@ from .models import (
     TeamEntry,
     TeamSide,
 )
+from .scoring import derive_score_events
 from .template import load_template_definition
 
 ASSET_DIR = Path(settings.BASE_DIR) / "core" / "assets" / "scoresheet"
@@ -504,22 +505,8 @@ def _team_primitives(
     return result
 
 
-def _automatic_game_end_sequences(document: ScoresheetDocument) -> set[int]:
-    """Return the last scoring event for each team once both written final scores agree."""
-    latest: dict[TeamSide, Any] = {}
-    for side in (TeamSide.A, TeamSide.B):
-        side_events = [event for event in document.score_events if event.team == side]
-        if not side_events:
-            return set()
-        latest[side] = max(side_events, key=lambda event: event.cumulative_score)
-    if latest[TeamSide.A].cumulative_score != document.final_score.team_a:
-        return set()
-    if latest[TeamSide.B].cumulative_score != document.final_score.team_b:
-        return set()
-    return {latest[TeamSide.A].sequence, latest[TeamSide.B].sequence}
-
-
 def build_scene(document: ScoresheetDocument) -> list[Primitive]:
+    document = derive_score_events(document.model_copy(deep=True))
     definition = load_template_definition()
     result: list[Primitive] = []
     header_values = {
@@ -556,7 +543,6 @@ def build_scene(document: ScoresheetDocument) -> list[Primitive]:
     group_boundaries = running["group_boundaries"]
     row_boundaries = running["row_boundaries"]
     offsets = running["cell_offsets"]
-    automatic_game_end = _automatic_game_end_sequences(document)
     for event in document.score_events:
         group = (event.cumulative_score - 1) // 40
         row = (event.cumulative_score - 1) % 40 + 1
@@ -590,13 +576,7 @@ def build_scene(document: ScoresheetDocument) -> list[Primitive]:
             )
         if event.scorer_circled:
             result.append(_circle(player_x, center_y, 5.2, 1.0, field_id=f"{event_id}.three_point"))
-        effective_boundary = (
-            ScoreBoundary.GAME_END
-            if event.sequence in automatic_game_end
-            else ScoreBoundary.PERIOD_END
-            if event.boundary in {ScoreBoundary.PERIOD_END, ScoreBoundary.GAME_END}
-            else ScoreBoundary.NONE
-        )
+        effective_boundary = event.boundary
         if effective_boundary in {ScoreBoundary.PERIOD_END, ScoreBoundary.GAME_END}:
             result.append(_circle(score_x, center_y, 5.3, 1.35, field_id=f"{event_id}.boundary"))
             if event.team == TeamSide.A:

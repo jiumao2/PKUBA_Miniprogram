@@ -8,6 +8,7 @@ import type {
 import { teamBySide } from '../types';
 import { describeRecognitionProblem } from './fieldPaths';
 import { isValidJerseyNumber } from './jersey';
+import { periodCheckpoints } from './score';
 import {
   foulEditorOptions,
   ruleProfileAllowsFoulMarking,
@@ -130,6 +131,23 @@ export function validateLocal(document: ScoresheetDocument): ValidationReport {
   if (!document.header.venue.trim()) issues.push(issue('MISSING_VENUE', 'warning', ['/header/venue'], '地点尚未填写。'));
   if (!document.header.scheduled_time.trim()) issues.push(issue('MISSING_SCHEDULED_TIME', 'warning', ['/header/scheduled_time'], '计划时间尚未填写。'));
   if (!document.score_events.length) issues.push(issue('MISSING_SCORE_EVENTS', 'error', ['/score_events'], '尚未录入任何逐次得分事件。'));
+  const scoreCellCounts = new Map<string, number>();
+  document.score_events.forEach((event) => {
+    const key = `${event.team}:${event.cumulative_score}`;
+    scoreCellCounts.set(key, (scoreCellCounts.get(key) ?? 0) + 1);
+  });
+  scoreCellCounts.forEach((count, key) => {
+    if (count <= 1) return;
+    const [side, cumulative] = key.split(':');
+    issues.push(issue(
+      'DUPLICATE_SCORE_CELL',
+      'error',
+      [`/score_events/${side}/cumulative/${cumulative}`],
+      `${side} 队累计 ${cumulative} 分格存在多个得分事件。`,
+      count,
+      1,
+    ));
+  });
   if (!document.final_score.ended_at.trim()) issues.push(issue('MISSING_END_TIME', 'warning', ['/final_score/ended_at'], '比赛结束时间尚未填写。'));
   const orderedEvents = document.score_events
     .map((event, index) => ({ event, index }))
@@ -155,36 +173,56 @@ export function validateLocal(document: ScoresheetDocument): ValidationReport {
   });
   const periodTotals = new Map<number, Record<TeamSide, number>>();
   const computedFinal: Record<TeamSide, number> = { A: 0, B: 0 };
+  const checkpointsBySide = new Map<TeamSide, ReturnType<typeof periodCheckpoints>>([
+    ['A', periodCheckpoints(document, 'A')],
+    ['B', periodCheckpoints(document, 'B')],
+  ]);
   (['A', 'B'] as TeamSide[]).forEach((side) => {
     const team = teamBySide(document, side);
     const roster = new Set(team.players.map((player) => player.jersey_number).filter(Boolean));
     let previous = 0;
     document.score_events
       .filter((event) => event.team === side)
-      .sort((a, b) => a.sequence - b.sequence)
+      .sort((a, b) => a.cumulative_score - b.cumulative_score || a.sequence - b.sequence)
       .forEach((event) => {
         const eventIndex = document.score_events.indexOf(event);
         const delta = event.cumulative_score - previous;
         const validPoints = event.points === 1 || event.points === 2 || event.points === 3;
+        const validDelta = delta === 1 || delta === 2 || delta === 3;
         if (event.points == null) {
           issues.push(issue('UNRESOLVED_SCORE_POINTS', 'warning', [`/score_events/${eventIndex}/points`], `${side} 队累计 ${event.cumulative_score} 分的本次得分仍待确定。`, null, [1, 2, 3]));
-        } else if (!validPoints) {
-          issues.push(issue('INVALID_SCORE_POINTS', 'error', [`/score_events/${eventIndex}/points`], '每次得分只能是1、2或3分。', event.points, [1, 2, 3]));
-        }
-        if (![1, 2, 3].includes(delta) || (event.points != null && delta !== event.points)) {
+        } else if (!validPoints || (validDelta && event.points !== delta)) {
           issues.push(issue(
-            'SCORE_SEQUENCE_GAP',
+            'INVALID_SCORE_POINTS',
             'error',
-            [`/score_events/${eventIndex}/cumulative_score`],
-            `${side} 队本次累计分与上一项相差 ${delta} 分；单次得分必须为1、2或3分，并与填写分值一致。`,
-            event.cumulative_score,
-            event.points == null ? `${previous + 1}至${previous + 3}` : previous + event.points,
+            [`/score_events/${eventIndex}/points`],
+            '本次得分必须是1、2或3，并等于相邻固定累计分格的差值。',
+            event.points,
+            validDelta ? delta : [1, 2, 3],
           ));
         }
+        if (!validDelta) issues.push(issue(
+          'SCORE_SEQUENCE_GAP',
+          'error',
+          [`/score_events/${eventIndex}/cumulative_score`],
+          `${side} 队本次累计分与上一项相差 ${delta} 分；单次得分必须为1、2或3分。`,
+          event.cumulative_score,
+          `${previous + 1}至${previous + 3}`,
+        ));
+        const crossed = checkpointsBySide.get(side)!.filter(
+          ({ cumulative }) => previous < cumulative && cumulative < event.cumulative_score,
+        );
+        if (crossed.length) issues.push(issue(
+          'SCORE_EVENT_CROSSES_PERIOD_BOUNDARY',
+          'error',
+          [`/score_events/${eventIndex}/cumulative_score`, '/stated_period_scores'],
+          `${side} 队从累计 ${previous} 分到 ${event.cumulative_score} 分的派生事件跨过了书面节末检查点。`,
+          { from: previous, to: event.cumulative_score },
+          crossed,
+        ));
         previous = event.cumulative_score;
         const totals = periodTotals.get(event.period) ?? { A: 0, B: 0 };
-        if (validPoints) totals[side] += event.points!;
-        else if (event.points == null && [1, 2, 3].includes(delta)) totals[side] += delta;
+        if (validDelta) totals[side] += delta;
         periodTotals.set(event.period, totals);
         if (!event.scorer_jersey) {
           issues.push(issue('MISSING_SCORER', 'error', [`/score_events/${eventIndex}/scorer_jersey`], `${side} 队累计 ${event.cumulative_score} 分尚未填写得分号码。`));
@@ -233,6 +271,22 @@ export function validateLocal(document: ScoresheetDocument): ValidationReport {
     const stated = document.stated_period_scores.find((score) => score.period === period);
     if (!stated) issues.push(issue('MISSING_PERIOD_SCORE', 'error', [`/stated_period_scores/${period}`], `第 ${period} 节的书面节比分尚未填写，无法核对累计分。`));
     else if (stated.team_a !== totals.A || stated.team_b !== totals.B) issues.push(issue('PERIOD_SCORE_MISMATCH', 'error', ['/stated_period_scores', '/score_events'], `第 ${period} 节书面比分与逐次得分不一致。`, { A: stated.team_a, B: stated.team_b }, totals));
+    (['A', 'B'] as TeamSide[]).forEach((side) => {
+      const checkpoint = checkpointsBySide.get(side)!
+        .find((entry) => entry.period === period)?.cumulative;
+      if (checkpoint == null || checkpoint <= 0) return;
+      const exists = document.score_events.some(
+        (event) => event.team === side && event.cumulative_score === checkpoint,
+      );
+      if (!exists) issues.push(issue(
+        'PERIOD_BOUNDARY_WITHOUT_EVENT',
+        'error',
+        [`/score_events/${side}/period/${period}/boundary`, `/stated_period_scores/${period}`],
+        `${side} 队第 ${period} 节书面累计检查点为 ${checkpoint} 分，但该累计分格没有得分事件，不能生成节末标记。`,
+        checkpoint,
+        '该累计分格存在号码或待识别事件',
+      ));
+    });
   });
 
   const observed = { A: document.final_score.team_a, B: document.final_score.team_b };

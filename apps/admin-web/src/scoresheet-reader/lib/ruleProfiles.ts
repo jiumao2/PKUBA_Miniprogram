@@ -1,4 +1,5 @@
 import ruleProfilesJson from '../../../shared/rule_profiles.json';
+import { fiba2024FoulEditorOptions } from '@pkuba/scoresheet-domain';
 import type { FoulCode, FoulMarkStyle, RuleProfileId } from '../types';
 
 export type FoulEditorGroup = 'player' | 'coach' | 'post_foul';
@@ -38,6 +39,14 @@ export function foulEditorOptions(
   profileId: RuleProfileId,
   group: FoulEditorGroup,
 ): FoulEditorOption[] {
+  if (profileId === 'fiba_2024') {
+    return fiba2024FoulEditorOptions(group).map((option) => ({
+      code: option.code as FoulCode,
+      catalogId: option.catalogId,
+      markStyle: option.markStyle,
+      allowedSuffixes: option.allowedSuffixes,
+    }));
+  }
   const options: FoulEditorOption[] = [];
   for (const marking of ruleProfiles[profileId].foul_markings) {
     if (!marking.editor_groups.includes(group)) continue;

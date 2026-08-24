@@ -48,7 +48,7 @@ describe('semantic inspector', () => {
     await user.click(screen.getByLabelText('队长（CAP）'));
     await user.selectOptions(screen.getByLabelText('犯规 1 类型'), 'T');
     await user.selectOptions(screen.getByLabelText('犯规 1 罚球下标'), '2');
-    await user.selectOptions(screen.getByLabelText('犯规 1 节次'), '3');
+    await user.selectOptions(screen.getByLabelText('犯规 1 节次'), '5');
     const cancelled = screen.getAllByRole('checkbox').find((element) => element.closest('.cancel-toggle'))!;
     expect(cancelled).toBeDisabled();
     await user.selectOptions(screen.getByLabelText('犯规 1 罚球下标'), '');
@@ -59,7 +59,7 @@ describe('semantic inspector', () => {
       jersey_number: '23',
       captain: true,
       participation: 'starter',
-      fouls: [{ slot: 1, code: 'T', free_throws: null, cancelled: true, period: 3 }],
+      fouls: [{ slot: 1, code: 'T', free_throws: null, cancelled: true, period: 5 }],
     });
   });
 
@@ -184,65 +184,63 @@ describe('semantic inspector', () => {
       .toBe('示例scorer');
   });
 
-  it('changes a score event and recalculates all later cumulative values', async () => {
+  it('edits only the scorer number in a fixed cumulative-score cell', async () => {
     const user = userEvent.setup();
-    render(<Harness selectedField="score.A.001" />);
+    render(<Harness selectedField="score.A.001.edit" />);
 
-    await user.selectOptions(screen.getByLabelText('本次得分'), '3');
+    expect(screen.queryByLabelText('本次得分')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('节次')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('节末标记')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('得分队员'), '8');
     const document = JSON.parse(screen.getByTestId('document-json').textContent ?? '{}');
     expect(document.score_events.filter((event: { team: string }) => event.team === 'A'))
       .toMatchObject([
-        { points: 3, cumulative_score: 3, mark: 'diagonal', scorer_circled: true },
-        { cumulative_score: 5 },
-        { cumulative_score: 8 },
+        { cumulative_score: 1, points: 1, scorer_jersey: '8' },
+        { cumulative_score: 3, points: 2 },
+        { cumulative_score: 6, points: 3 },
       ]);
   });
 
-  it('shows unresolved recognition points but only allows choosing one two or three', async () => {
+  it('shows an unresolved recognized scorer as a pending cell until a roster number is chosen', async () => {
     const user = userEvent.setup();
     const initialDocument = makeDocument();
-    initialDocument.score_events[0].points = null;
-    initialDocument.score_events[0].mark = null;
-    initialDocument.score_events[0].scorer_circled = false;
-    render(<Harness selectedField="score.A.001" initialDocument={initialDocument} />);
+    initialDocument.score_events[0].scorer_jersey = '';
+    render(<Harness selectedField="score.A.001.edit" initialDocument={initialDocument} />);
 
-    const points = screen.getByLabelText('本次得分') as HTMLSelectElement;
-    expect([...points.options].map((option) => option.value)).toEqual(['', '1', '2', '3']);
-    expect(points.options[0]).toBeDisabled();
-    expect(points).toHaveValue('');
+    const scorer = screen.getByLabelText('得分队员') as HTMLSelectElement;
+    expect(scorer).toHaveValue('__unknown__');
+    expect(screen.getByText('? · 待识别')).toBeVisible();
+    expect(screen.queryByLabelText('本次得分')).not.toBeInTheDocument();
 
-    await user.selectOptions(points, '2');
+    await user.selectOptions(scorer, '5');
     const document = JSON.parse(screen.getByTestId('document-json').textContent ?? '{}');
-    expect(document.score_events.filter((event: { team: string }) => event.team === 'A'))
-      .toMatchObject([
-        { points: 2, cumulative_score: 2, mark: 'diagonal', scorer_circled: false },
-        { cumulative_score: 4 },
-        { cumulative_score: 7 },
-      ]);
+    expect(document.score_events.find((event: { team: string; cumulative_score: number }) => (
+      event.team === 'A' && event.cumulative_score === 1
+    ))).toMatchObject({ scorer_jersey: '5', points: 1 });
   });
 
-  it('inserts and deletes score events directly from the event ledger', async () => {
+  it('fills and deletes fixed cells without shifting any later cumulative score', async () => {
     const user = userEvent.setup();
-    render(<Harness selectedField="score.A.003" />);
+    const { rerender } = render(<Harness selectedField="score.A.002.edit" />);
 
-    expect(screen.getByRole('button', { name: '在累计 3 分之前插入' })).toBeVisible();
-    await user.click(screen.getByRole('button', { name: '在累计 3 分之前插入' }));
+    await user.selectOptions(screen.getByLabelText('得分队员'), '8');
     let document = JSON.parse(screen.getByTestId('document-json').textContent ?? '{}');
     expect(document.score_events.filter((entry: { team: string }) => entry.team === 'A'))
       .toMatchObject([
         { cumulative_score: 1, points: 1 },
-        { cumulative_score: 3, points: 2 },
-        { cumulative_score: 5, points: 2 },
-        { cumulative_score: 8, points: 3 },
+        { cumulative_score: 2, points: 1, scorer_jersey: '8' },
+        { cumulative_score: 3, points: 1 },
+        { cumulative_score: 6, points: 3 },
       ]);
 
-    await user.click(screen.getByRole('button', { name: '删除累计 3 分事件' }));
+    rerender(<Harness selectedField="score.A.003.edit" initialDocument={document} />);
+    await user.click(screen.getByRole('button', { name: '删除本格号码' }));
     document = JSON.parse(screen.getByTestId('document-json').textContent ?? '{}');
     expect(document.score_events.filter((entry: { team: string }) => entry.team === 'A'))
       .toMatchObject([
         { cumulative_score: 1, points: 1 },
-        { cumulative_score: 3, points: 2 },
-        { cumulative_score: 6, points: 3 },
+        { cumulative_score: 2, points: 1 },
+        { cumulative_score: 6, points: 4, mark: null },
       ]);
   });
 
@@ -252,13 +250,13 @@ describe('semantic inspector', () => {
 
     expect(screen.getByRole('tab', { name: /Q2/ })).toHaveAttribute('aria-selected', 'true');
     expect(container.querySelector('[data-score-field="score.A.006"]')).toHaveClass('is-selected', 'is-targeted');
-    expect(screen.queryByRole('button', { name: '删除累计 1 分事件' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '删除累计 6 分事件' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '删除本格号码' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '编辑A队累计 6 分事件' })).toBeVisible();
 
     await user.click(screen.getByRole('tab', { name: /Q1/ }));
     expect(screen.getByRole('tab', { name: /Q1/ })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('button', { name: '删除累计 1 分事件' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: '删除累计 6 分事件' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '编辑A队累计 1 分事件' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '编辑A队累计 6 分事件' })).not.toBeInTheDocument();
   });
 
   it('jumps from a validation issue to the related field', () => {
@@ -287,18 +285,62 @@ describe('semantic inspector', () => {
       id: 7,
       document_id: 'doc-1',
       action: 'human_edit',
-      summary: '人工编辑 · 1 项',
-      changes: [{ path: '/teams/A/players/4/jersey_number', before: '11', after: '13' }],
+      summary: '人工编辑 · 2 项',
+      changes: [
+        { path: '/teams/A/players/4/jersey_number', before: '11', after: '13' },
+        { path: '/score_events/B/cumulative/37/scorer_jersey', before: null, after: '8' },
+      ],
       created_at: '2026-08-21T09:30:00Z',
     }];
     render(<Harness selectedField="document" changes={changes} />);
 
     expect(screen.getByText('人工修改记录')).toBeVisible();
-    await user.click(screen.getByText('人工编辑 · 1 项'));
+    await user.click(screen.getByText('人工编辑 · 2 项'));
     expect(screen.getByText('A 队 · 第 4 行队员 · 球衣号码')).toBeVisible();
+    expect(screen.getByText('B 队 · 累计 37 分 · 得分号码')).toBeVisible();
     expect(screen.getByText('11')).toBeVisible();
     expect(screen.getByText('13')).toBeVisible();
     expect(screen.queryByText(/v7/)).not.toBeInTheDocument();
+  });
+
+  it('renders legacy compound changes as stable Chinese field changes', async () => {
+    const user = userEvent.setup();
+    const changes: DocumentChangeLogEntry[] = [{
+      id: 8,
+      document_id: 'doc-1',
+      action: 'human_edit',
+      summary: '人工编辑 · 4 项',
+      changes: [
+        {
+          path: '/score_events/24/undefined',
+          before: null,
+          after: {
+            team: 'A',
+            cumulative_score: 40,
+            scorer_jersey: '10',
+            points: 3,
+            period: 4,
+            sequence: 25,
+          },
+        },
+        { path: '/score_events/16/scorer_circled', before: false, after: true },
+        { path: '/teams/A/team_fouls/0/undefined', before: null, after: { count: 0, period: 1 } },
+        { path: '/teams/B/timeouts/0/undefined', before: null, after: { slot: 1, scope: 'H1', minute: 1 } },
+      ],
+      created_at: '2026-08-24T00:53:00Z',
+    }];
+    render(<Harness selectedField="document" changes={changes} />);
+
+    await user.click(screen.getByText('人工编辑 · 4 项'));
+    expect(screen.getByText('A 队 · 累计 40 分格 · 得分号码')).toBeVisible();
+    expect(screen.getByText('10 号')).toBeVisible();
+    expect(screen.getByText('第 17 个得分事件 · 三分球圆圈')).toBeVisible();
+    expect(screen.getByText('A 队 · 第 1 节全队犯规次数')).toBeVisible();
+    expect(screen.getByText('0 次')).toBeVisible();
+    expect(screen.getByText('B 队 · 上半场第 1 次暂停')).toBeVisible();
+    expect(screen.getByText('第 1 分钟')).toBeVisible();
+    const auditSection = screen.getByText('人工修改记录').closest('section');
+    expect(auditSection).not.toHaveTextContent(/undefined|cumulative_score|scorer_jersey|scorer_circled|\{"/);
   });
 
   it('locates and explicitly resolves one recognition uncertainty at a time', async () => {

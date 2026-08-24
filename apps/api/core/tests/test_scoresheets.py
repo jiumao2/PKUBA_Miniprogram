@@ -7,12 +7,14 @@ import json
 from datetime import timedelta
 
 import pytest
+from django.conf import settings as django_settings
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
 from django.utils import timezone
 from openpyxl import load_workbook
 from PIL import Image
+from pydantic import ValidationError as PydanticValidationError
 from pypdf import PdfReader
 
 from core.models import (
@@ -30,6 +32,7 @@ from core.models import (
     ScoresheetRecognitionRun,
 )
 from core.scoresheet_schema_v2 import ScoresheetDocumentError
+from core.scoresheet_v2.models import FoulEntry, PeriodScore, ScoreEvent, ScoresheetDocument
 from core.scoresheet_v2.recognition import (
     QWEN_DATA_URI_MAX_BYTES,
     RecognitionImageError,
@@ -37,6 +40,9 @@ from core.scoresheet_v2.recognition import (
     _encode_jpeg,
     prepare_image,
 )
+from core.scoresheet_v2.renderer import build_scene
+from core.scoresheet_v2.scoring import derive_score_events
+from core.scoresheet_v2.validation import validate_document as validate_v2_document
 from core.services.game_media import replace_game_media, upload_game_media
 from core.services.scoresheet_recognition import (
     RecognitionAttemptError,
@@ -173,6 +179,148 @@ def obtain_lease(scoresheet: GameScoresheet, actor: Account, client_id: str = "w
     assert read_only is False
     assert token
     return token
+
+
+def test_combined_overtime_period_contract_rejects_period_six():
+    assert FoulEntry(slot=1, code="P", period=5).period == 5
+    assert PeriodScore(period=5, team_a=2, team_b=1).period == 5
+    assert ScoreEvent(
+        sequence=1,
+        team="A",
+        period=5,
+        points=2,
+        cumulative_score=2,
+        scorer_jersey="7",
+    ).period == 5
+
+    with pytest.raises(PydanticValidationError):
+        FoulEntry(slot=1, code="P", period=6)
+    with pytest.raises(PydanticValidationError):
+        PeriodScore(period=6, team_a=2, team_b=1)
+    with pytest.raises(PydanticValidationError):
+        ScoreEvent(
+            sequence=1,
+            team="A",
+            period=6,
+            points=2,
+            cumulative_score=2,
+            scorer_jersey="7",
+        )
+
+
+def test_fixed_score_cell_validation_reports_duplicates_crossings_and_missing_boundaries(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        _, _, _, _, scoresheet = create_scoresheet()
+    base = valid_document(scoresheet)
+
+    duplicate = copy.deepcopy(base)
+    duplicate["score_events"].append({**duplicate["score_events"][0], "sequence": 3})
+    rule_profiles_path = (
+        django_settings.BASE_DIR / "core" / "assets" / "scoresheet" / "rule_profiles.json"
+    )
+    duplicate_report = validate_v2_document(
+        ScoresheetDocument.model_validate(duplicate), rule_profiles_path
+    )
+    assert "DUPLICATE_SCORE_CELL" in {issue.code for issue in duplicate_report.issues}
+
+    crossed = copy.deepcopy(base)
+    crossed["score_events"][0]["cumulative_score"] = 3
+    crossed["score_events"][0]["points"] = 3
+    crossed_report = validate_v2_document(
+        ScoresheetDocument.model_validate(crossed), rule_profiles_path
+    )
+    crossed_codes = {issue.code for issue in crossed_report.issues}
+    assert "SCORE_EVENT_CROSSES_PERIOD_BOUNDARY" in crossed_codes
+    assert "PERIOD_BOUNDARY_WITHOUT_EVENT" in crossed_codes
+
+
+def test_fixed_score_cells_derive_combined_overtime_without_an_intermediate_boundary(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        _, _, _, _, scoresheet = create_scoresheet()
+    draft = valid_document(scoresheet)
+    draft["stated_period_scores"].append({"period": 5, "team_a": 2, "team_b": 1})
+    jersey_a = draft["teams"][0]["players"][0]["jersey_number"]
+    jersey_b = draft["teams"][1]["players"][0]["jersey_number"]
+    draft["score_events"].extend(
+        [
+            {
+                "sequence": 3,
+                "team": "A",
+                "period": 1,
+                "points": 1,
+                "cumulative_score": 3,
+                "scorer_jersey": jersey_a,
+                "mark": "filled_dot",
+                "scorer_circled": False,
+                "boundary": "period_end",
+                "ink_role": "neutral",
+            },
+            {
+                "sequence": 4,
+                "team": "A",
+                "period": 1,
+                "points": 1,
+                "cumulative_score": 4,
+                "scorer_jersey": jersey_a,
+                "mark": "filled_dot",
+                "scorer_circled": False,
+                "boundary": "none",
+                "ink_role": "neutral",
+            },
+            {
+                "sequence": 5,
+                "team": "B",
+                "period": 1,
+                "points": 1,
+                "cumulative_score": 2,
+                "scorer_jersey": jersey_b,
+                "mark": "filled_dot",
+                "scorer_circled": False,
+                "boundary": "none",
+                "ink_role": "neutral",
+            },
+        ]
+    )
+    draft["final_score"].update(team_a=4, team_b=2)
+
+    document = derive_score_events(ScoresheetDocument.model_validate(draft))
+    overtime_a = [
+        event
+        for event in document.score_events
+        if event.team.value == "A" and event.cumulative_score >= 3
+    ]
+
+    assert [event.period for event in overtime_a] == [5, 5]
+    assert [event.boundary.value for event in overtime_a] == ["none", "game_end"]
+    final_b = next(
+        event
+        for event in document.score_events
+        if event.team.value == "B" and event.cumulative_score == 2
+    )
+    assert final_b.boundary.value == "game_end"
+
+
+def test_renderer_recomputes_forged_score_metadata_before_drawing(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        _, _, _, _, scoresheet = create_scoresheet()
+    draft = valid_document(scoresheet)
+    first_a = next(event for event in draft["score_events"] if event["team"] == "A")
+    first_a.update(
+        points=1,
+        period=4,
+        mark="filled_dot",
+        scorer_circled=False,
+        boundary="none",
+        ink_role="neutral",
+    )
+
+    scene = build_scene(ScoresheetDocument.model_validate(draft))
+    score_mark = next(item for item in scene if item.get("field_id") == "score.A.002.mark")
+    boundary = [item for item in scene if item.get("field_id") == "score.A.002.boundary"]
+
+    assert score_mark["type"] == "line"
+    assert [item["type"] for item in boundary].count("circle") == 1
+    assert [item["type"] for item in boundary].count("line") == 2
 
 
 def make_ready(
@@ -385,8 +533,58 @@ def test_game_prior_fields_are_locked_and_final_result_is_derived(tmp_path):
     replacement = copy.deepcopy(scoresheet.draft)
     replacement["header"]["game_number"] = "也不可通过整表覆盖"
     replacement["stated_period_scores"] = [
-        {"period": 1, "team_a": 12, "team_b": 10},
-        {"period": 2, "team_a": 8, "team_b": 11},
+        {"period": 1, "team_a": 2, "team_b": 3},
+        {"period": 2, "team_a": 3, "team_b": 1},
+    ]
+    replacement["score_events"] = [
+        {
+            "sequence": 1,
+            "team": "A",
+            "period": 99,
+            "points": 0,
+            "cumulative_score": 2,
+            "scorer_jersey": replacement["teams"][0]["players"][0]["jersey_number"],
+            "mark": "forged",
+            "scorer_circled": True,
+            "boundary": "forged",
+            "ink_role": "forged",
+        },
+        {
+            "sequence": 1,
+            "team": "A",
+            "period": 8,
+            "points": 9,
+            "cumulative_score": 5,
+            "scorer_jersey": replacement["teams"][0]["players"][0]["jersey_number"],
+            "mark": None,
+            "scorer_circled": False,
+            "boundary": "none",
+            "ink_role": "neutral",
+        },
+        {
+            "sequence": 93,
+            "team": "B",
+            "period": 8,
+            "points": 9,
+            "cumulative_score": 3,
+            "scorer_jersey": replacement["teams"][1]["players"][0]["jersey_number"],
+            "mark": None,
+            "scorer_circled": False,
+            "boundary": "none",
+            "ink_role": "neutral",
+        },
+        {
+            "sequence": 94,
+            "team": "B",
+            "period": 8,
+            "points": 9,
+            "cumulative_score": 4,
+            "scorer_jersey": replacement["teams"][1]["players"][0]["jersey_number"],
+            "mark": None,
+            "scorer_circled": False,
+            "boundary": "none",
+            "ink_role": "neutral",
+        },
     ]
     replacement["final_score"].update(team_a=99, team_b=98, winner_name="伪造胜队")
     saved = save_draft_changes(
@@ -400,11 +598,74 @@ def test_game_prior_fields_are_locked_and_final_result_is_derived(tmp_path):
     )
     assert saved.draft["header"]["game_number"] == scoresheet.draft["header"]["game_number"]
     assert saved.draft["final_score"] == {
-        "team_a": 20,
-        "team_b": 21,
-        "winner_name": saved.draft["teams"][1]["name"],
+        "team_a": 5,
+        "team_b": 4,
+        "winner_name": saved.draft["teams"][0]["name"],
         "ended_at": "",
     }
+    assert [
+        (
+            event["team"],
+            event["cumulative_score"],
+            event["points"],
+            event["period"],
+            event["mark"],
+            event["scorer_circled"],
+            event["boundary"],
+            event["ink_role"],
+        )
+        for event in saved.draft["score_events"]
+    ] == [
+        ("A", 2, 2, 1, "diagonal", False, "period_end", "q1_q3"),
+        ("B", 3, 3, 1, "diagonal", True, "period_end", "q1_q3"),
+        ("A", 5, 3, 2, "diagonal", True, "game_end", "q2_q4_ot"),
+        ("B", 4, 1, 2, "filled_dot", False, "game_end", "q2_q4_ot"),
+    ]
+
+    with pytest.raises(ScoresheetDocumentError) as derived_locked:
+        save_draft_changes(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=saved.draft_version,
+            lease_token=token,
+            client_id="web-1",
+            surface=ScoresheetEditLease.Surface.WEB,
+            changes=[{"path": "/score_events/0/period", "value": 8}],
+        )
+    assert derived_locked.value.code == "SCORESHEET_FIELD_LOCKED"
+
+    invalid_gap = copy.deepcopy(saved.draft)
+    invalid_gap["score_events"] = [
+        event
+        for event in invalid_gap["score_events"]
+        if not (event["team"] == "A" and event["cumulative_score"] == 2)
+    ]
+    invalid_saved = save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=saved.draft_version,
+        lease_token=token,
+        client_id="web-1",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/", "operation": "SET", "value": invalid_gap}],
+    )
+    invalid_event = next(
+        event
+        for event in invalid_saved.draft["score_events"]
+        if event["team"] == "A" and event["cumulative_score"] == 5
+    )
+    assert invalid_event["points"] == 5
+    assert invalid_event["mark"] is None
+    validated = validate_scoresheet(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=invalid_saved.draft_version,
+        lease_token=token,
+        client_id="web-1",
+        surface=ScoresheetEditLease.Surface.WEB,
+    )
+    error_codes = {row["code"] for row in validated.validation_report["errors"]}
+    assert {"INVALID_SCORE_POINTS", "SCORE_SEQUENCE_GAP"} <= error_codes
 
 
 def test_publish_does_not_require_region_reviews_and_keeps_field_change_log(tmp_path):
@@ -1240,6 +1501,132 @@ def test_changes_endpoint_only_returns_chinese_human_events_with_true_values(tmp
     ]
 
 
+def test_score_change_log_only_exposes_the_selected_jersey(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    token = obtain_lease(scoresheet, setup["admin"], "score-log-tab")
+
+    period_document = copy.deepcopy(scoresheet.draft)
+    period_document["stated_period_scores"] = [
+        {"period": period, "team_a": 2 if period == 1 else 0, "team_b": 0}
+        for period in range(1, 5)
+    ]
+    scoresheet = save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=scoresheet.draft_version,
+        lease_token=token,
+        client_id="score-log-tab",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/", "operation": "SET", "value": period_document}],
+    )
+
+    jersey = scoresheet.draft["teams"][0]["players"][0]["jersey_number"]
+    score_document = copy.deepcopy(scoresheet.draft)
+    score_document["score_events"] = [
+        {
+            "sequence": 99,
+            "team": "A",
+            "period": 8,
+            "points": 9,
+            "cumulative_score": 2,
+            "scorer_jersey": jersey,
+            "mark": None,
+            "scorer_circled": False,
+            "boundary": "none",
+            "ink_role": "neutral",
+        }
+    ]
+    save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=scoresheet.draft_version,
+        lease_token=token,
+        client_id="score-log-tab",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/", "operation": "SET", "value": score_document}],
+    )
+
+    latest = scoresheet.change_logs.order_by("-event_sequence").first()
+    assert latest is not None
+    assert latest.changed_fields[0]["path"] == "/score_events/A/cumulative/2"
+    assert latest.changed_fields[0]["after"]["points"] == 2
+
+    client = Client()
+    client.force_login(setup["admin"])
+    response = client.get(f"/api/v1/scoresheets/{scoresheet.id}/changes")
+
+    assert response.status_code == 200
+    entry = response.json()["items"][0]
+    assert entry["summary"] == "人工编辑 · 1 项"
+    assert entry["changes"] == [
+        {
+            "path": "/score_events/A/cumulative/2/scorer_jersey",
+            "before": None,
+            "after": jersey,
+        }
+    ]
+
+
+def test_duplicate_score_cells_keep_distinct_stable_audit_paths(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    token = obtain_lease(scoresheet, setup["admin"], "duplicate-score-log-tab")
+    jersey = scoresheet.draft["teams"][0]["players"][0]["jersey_number"]
+    duplicate_document = copy.deepcopy(scoresheet.draft)
+    duplicate_document["stated_period_scores"] = [
+        {"period": period, "team_a": 2 if period == 1 else 0, "team_b": 0}
+        for period in range(1, 5)
+    ]
+    event = {
+        "sequence": 1,
+        "team": "A",
+        "period": 1,
+        "points": 2,
+        "cumulative_score": 2,
+        "scorer_jersey": jersey,
+        "mark": "diagonal",
+        "scorer_circled": False,
+        "boundary": "none",
+        "ink_role": "q1_q3",
+    }
+    duplicate_document["score_events"] = [event, {**event, "sequence": 2}]
+
+    saved = save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=scoresheet.draft_version,
+        lease_token=token,
+        client_id="duplicate-score-log-tab",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/", "operation": "SET", "value": duplicate_document}],
+    )
+    latest = saved.change_logs.order_by("-event_sequence").first()
+
+    assert latest is not None
+    assert {
+        change["path"]
+        for change in latest.changed_fields
+        if change["path"].startswith("/score_events/")
+    } == {
+        "/score_events/A/cumulative/2",
+        "/score_events/A/cumulative/2#2",
+    }
+
+    client = Client()
+    client.force_login(setup["admin"])
+    response = client.get(f"/api/v1/scoresheets/{scoresheet.id}/changes")
+    assert response.status_code == 200
+    assert {
+        change["path"]
+        for change in response.json()["items"][0]["changes"]
+        if change["path"].startswith("/score_events/")
+    } == {
+        "/score_events/A/cumulative/2/scorer_jersey",
+        "/score_events/A/cumulative/2#2/scorer_jersey",
+    }
+
+
 def test_recognition_capability_and_removed_stop_endpoint(tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path, QWEN_API_KEY=""):
         setup, _, _, _, scoresheet = create_scoresheet()
@@ -1253,7 +1640,7 @@ def test_recognition_capability_and_removed_stop_endpoint(tmp_path):
         "configured": False,
         "provider": "QWEN",
         "model": "qwen3.8-max",
-            "prompt_version": "scoresheet-2026-08-24-v25-cn",
+        "prompt_version": "scoresheet-2026-08-24-v25-cn",
         "max_attempts": 4,
         "retry_delays_seconds": [30, 30, 30],
     }

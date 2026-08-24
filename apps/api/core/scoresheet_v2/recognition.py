@@ -1014,7 +1014,8 @@ def _score_events(
                     path=f"{path}/points",
                     message=(
                         f"{side.value} 队累计 {cumulative} 分的模型分值为 {points}，"
-                        f"与上一得分事件的累计分差值 {delta} 不一致；已保留模型分值等待人工核对。"
+                        f"与上一得分事件的累计分差值 {delta} 不一致；"
+                        "编辑器按固定累计分格的差值生成标准事件，该位置仍需人工核对。"
                     ),
                     observed=points,
                     expected=delta,

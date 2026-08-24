@@ -110,7 +110,8 @@ class FoulEntry(StrictModel):
     mark_style: FoulMarkStyle = FoulMarkStyle.PLAIN
     free_throws: int | None = Field(default=None, ge=1, le=3)
     cancelled: bool = False
-    period: int | None = Field(default=None, ge=1, le=8)
+    # Period 5 intentionally aggregates every physical overtime period.
+    period: int | None = Field(default=None, ge=1, le=5)
 
     @model_validator(mode="after")
     def cancellation_and_free_throws_are_exclusive(self) -> FoulEntry:
@@ -244,10 +245,11 @@ class TeamEntry(StrictModel):
 class ScoreEvent(StrictModel):
     sequence: int = Field(ge=1)
     team: TeamSide
-    period: int = Field(ge=1, le=8)
-    # Recognition may locate an outer jersey number before it can determine the
-    # scoring value. Values above three are accepted only so imported/legacy
-    # drafts remain inspectable; deterministic validation rejects them.
+    # Period 5 intentionally aggregates every physical overtime period.
+    period: int = Field(ge=1, le=5)
+    # This compatibility field is canonicalized from adjacent fixed cumulative
+    # score cells. Values above three remain loadable so a deletion gap can be
+    # saved and corrected in the editor; deterministic validation rejects them.
     points: int | None = Field(default=None, ge=1)
     cumulative_score: int = Field(ge=1, le=160)
     scorer_jersey: str
@@ -271,7 +273,8 @@ class ScoreEvent(StrictModel):
 
 
 class PeriodScore(StrictModel):
-    period: int = Field(ge=1, le=8)
+    # The paper exposes one combined extra-period score, stored as period 5.
+    period: int = Field(ge=1, le=5)
     team_a: int = Field(ge=0, le=160)
     team_b: int = Field(ge=0, le=160)
 

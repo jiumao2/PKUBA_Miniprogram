@@ -334,6 +334,19 @@ body.is-resizing-panes, body.is-resizing-panes * { cursor: col-resize !important
 .score-period-status strong, .score-period-status b { color: #33312c; font-size: 9px; font-weight: 500; }
 .score-period-status.is-mismatch { border-left-color: #ba6f2d; background: #fbf2e7; }
 .score-period-status.is-missing { border-left-color: #aaa69d; background: #f2f0eb; }
+.score-cell-editor { display: grid; gap: 9px; margin: 0 0 14px; padding: 10px; border-left: 2px solid #77736b; background: #f4f2ec; }
+.score-cell-editor.is-invalid-points { border-left-color: var(--danger); background: #fff2ef; }
+.score-cell-summary { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.score-cell-summary > div { display: grid; gap: 2px; }
+.score-cell-summary strong { color: #302f2a; font-size: 11px; font-weight: 550; }
+.score-cell-summary span, .score-cell-editor > small { color: var(--muted); font-size: 8.5px; line-height: 1.45; }
+.score-cell-summary > b { color: #5b5850; font-size: 10px; font-weight: 550; }
+.score-cell-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: end; }
+.score-cell-controls label { display: grid; gap: 3px; color: #77736b; font-size: 8px; }
+.score-cell-controls select { width: 100%; height: 30px; padding: 0 7px; border: 1px solid #cfccc2; border-radius: 3px; outline: none; color: #25241f; background: #fff; font-size: 10px; }
+.score-cell-controls select:focus { border-color: #b76c21; box-shadow: 0 0 0 2px rgba(183,108,33,.12); }
+.score-cell-controls .compact-action { height: 30px; color: #8f3932; background: #f3e5e2; }
+.score-cell-editor > .primary-action { justify-self: start; min-height: 29px; }
 .score-empty-cell { display: grid; gap: 9px; margin: 0 0 14px; padding: 10px; border-left: 2px solid #ba6f2d; background: #f6efe5; }
 .score-empty-cell > div { display: flex; justify-content: space-between; gap: 9px; }
 .score-empty-cell strong { font-size: 10px; font-weight: 550; }
@@ -343,12 +356,18 @@ body.is-resizing-panes, body.is-resizing-panes * { cursor: col-resize !important
 .score-ledger-heading > div { display: grid; gap: 2px; }
 .score-ledger-heading .compact-action { height: 26px; padding: 0 7px; font-size: 8.5px; }
 .score-ledger { display: grid; gap: 4px; }
-.score-ledger-row { display: grid; grid-template-columns: 40px minmax(76px,1fr) 58px 52px 34px; gap: 4px; align-items: end; padding: 6px; border: 1px solid #dedbd2; background: rgba(255,255,255,.62); transition: border-color .12s ease, background-color .12s ease; }
+.score-ledger-row { display: grid; grid-template-columns: 40px minmax(72px, 1fr) 52px 58px; gap: 4px; align-items: center; padding: 6px; border: 1px solid #dedbd2; background: rgba(255,255,255,.62); transition: border-color .12s ease, background-color .12s ease; }
 .score-ledger-row:hover { background: #fff; }
 .score-ledger-row.is-selected { border-color: #b76c21; box-shadow: inset 2px 0 #b76c21; }
 .score-ledger-row.is-targeted { background: #fff7e9; animation: score-target-pulse .7s ease-out 1; }
 .score-ledger-row.is-unresolved { border-left: 2px solid #c17a27; background: #fff9ef; }
 .score-ledger-row.is-invalid-points { border-left: 2px solid var(--danger); background: #fff2ef; }
+.score-ledger-cell { display: grid; gap: 2px; min-width: 0; padding: 5px 7px; border: 0; color: #34322d; background: transparent; text-align: left; }
+.score-ledger-cell:hover { background: #f0ede5; }
+.score-ledger-cell strong { overflow: hidden; font-size: 11px; font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+.score-ledger-cell span, .score-ledger-derived span { color: #8a877f; font-size: 7px; }
+.score-ledger-derived { display: grid; gap: 2px; }
+.score-ledger-derived strong { color: #45433d; font-size: 9px; font-weight: 550; }
 .score-ledger-row label { display: grid; gap: 3px; min-width: 0; }
 .score-ledger-row label > span { color: #8a877f; font-size: 7px; }
 .score-ledger-row select { width: 100%; height: 27px; min-width: 0; padding: 0 4px; border: 1px solid #d2cfc6; border-radius: 2px; outline: none; color: #2d2c27; background: #fff; font-size: 8.5px; }

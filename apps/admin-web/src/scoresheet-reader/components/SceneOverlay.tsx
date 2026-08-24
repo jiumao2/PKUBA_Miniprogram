@@ -2,12 +2,14 @@ import { memo, useMemo, type KeyboardEvent, type ReactElement } from 'react';
 import type {
   FoulEntry,
   PostFoulMarker,
+  RegulationPeriod,
   ScoresheetDocument,
   TeamEntry,
   TeamSide,
   TemplateDefinition,
 } from '../types';
-import { teamBySide } from '../types';
+import { deepCloneDocument, teamBySide } from '../types';
+import { deriveScoreEvents } from '../lib/score';
 
 type Primitive =
   | { type: 'text'; x: number; y: number; value: string; size: number; anchor?: 'start' | 'middle'; vertical?: 'baseline' | 'middle'; field: string }
@@ -141,7 +143,7 @@ function teamScene(
   const teamFouls = new Map(team.team_fouls.map((entry) => [entry.period, entry.count]));
   Object.entries(layout.team_fouls).forEach(([periodText, foulLayout]) => {
     const period = Number(periodText);
-    const count = teamFouls.get(period) ?? 0;
+    const count = teamFouls.get(period as RegulationPeriod) ?? 0;
     foulLayout.cells.forEach(([x1, y1, x2, y2], index) => {
       const centerY = (y1 + y2) / 2;
       const field = `team.${side}.team_foul.${period}.${index + 1}`;
@@ -222,17 +224,8 @@ function teamScene(
   return result;
 }
 
-function automaticGameEndSequences(document: ScoresheetDocument): Set<number> {
-  const latest = (['A', 'B'] as TeamSide[]).map((side) => {
-    const events = document.score_events.filter((event) => event.team === side);
-    return events.length ? events.reduce((best, event) => event.cumulative_score > best.cumulative_score ? event : best) : null;
-  });
-  if (!latest[0] || !latest[1]) return new Set();
-  if (latest[0].cumulative_score !== document.final_score.team_a || latest[1].cumulative_score !== document.final_score.team_b) return new Set();
-  return new Set([latest[0].sequence, latest[1].sequence]);
-}
-
-function buildScene(document: ScoresheetDocument, definition: TemplateDefinition): Primitive[] {
+function buildScene(source: ScoresheetDocument, definition: TemplateDefinition): Primitive[] {
+  const document = deriveScoreEvents(deepCloneDocument(source));
   const result: Primitive[] = [];
   const headerValues: Record<string, string> = {
     team_a_name: teamBySide(document, 'A').name,
@@ -253,7 +246,6 @@ function buildScene(document: ScoresheetDocument, definition: TemplateDefinition
   document.teams.forEach((team) => result.push(...teamScene(team, definition)));
 
   const running = definition.running_score;
-  const gameEndSequences = automaticGameEndSequences(document);
   document.score_events.forEach((event) => {
     const group = Math.floor((event.cumulative_score - 1) / 40);
     const row = ((event.cumulative_score - 1) % 40) + 1;
@@ -266,11 +258,7 @@ function buildScene(document: ScoresheetDocument, definition: TemplateDefinition
     if (event.mark === 'filled_dot') result.push(circle(scoreX, centerY, 1.55, 0, `${id}.mark`, true));
     else if (event.mark === 'diagonal') result.push(line(scoreX - 4.6, centerY + 4.6, scoreX + 4.6, centerY - 4.6, 1.2, `${id}.mark`));
     if (event.scorer_circled) result.push(circle(playerX, centerY, 5.2, 1, `${id}.three_point`));
-    const effectiveBoundary = gameEndSequences.has(event.sequence)
-      ? 'game_end'
-      : event.boundary === 'period_end' || event.boundary === 'game_end'
-        ? 'period_end'
-        : 'none';
+    const effectiveBoundary = event.boundary;
     if (effectiveBoundary !== 'none') {
       result.push(circle(scoreX, centerY, 5.3, 1.35, `${id}.boundary`));
       const start = event.team === 'A' ? groupX + 1.2 : groupX + 29.4;
@@ -601,7 +589,7 @@ export const SceneOverlay = memo(function SceneOverlay({
                   role="button"
                   tabIndex={0}
                   aria-label={`编辑 ${side} 队累积分 ${score}`}
-                  onClick={() => onSelect(field)}
+                  onClick={() => onSelect(`${field}.edit`)}
                   onDoubleClick={(event) => { event.stopPropagation(); onSelect(`${field}.edit`); }}
                   onKeyDown={(event) => selectWithKeyboard(event, `${field}.edit`)}
                 />

@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from core.models import Game, RosterPlayer
 from core.scoresheet_v2.models import ScoresheetDocument
+from core.scoresheet_v2.scoring import derive_score_events
 from core.scoresheet_v2.validation import validate_document as validate_v2_document
 
 RULE_PROFILE = "fiba_2024"
@@ -376,10 +377,12 @@ def ensure_v2_document(
         payload = copy.deepcopy(document)
         if document_id:
             payload["id"] = document_id
-        return ScoresheetDocument.model_validate(payload).model_dump(mode="json")
+        return _canonicalize_derived_fields(payload)
     if not prior:
         raise ScoresheetDocumentError("DRAFT_SCHEMA_INVALID", "旧版记录表缺少比赛先验，无法迁移。")
-    return _convert_old_document(document, prior, roster, document_id or "pending")
+    return _canonicalize_derived_fields(
+        _convert_old_document(document, prior, roster, document_id or "pending")
+    )
 
 
 def region_for_path(path: str) -> str:
@@ -514,6 +517,25 @@ def _derive_final_score(document: dict[str, Any]) -> None:
     )
 
 
+def _canonicalize_derived_fields(document: dict[str, Any]) -> dict[str, Any]:
+    _derive_final_score(document)
+    for sequence, event in enumerate(document.get("score_events") or [], start=1):
+        if not isinstance(event, dict):
+            continue
+        # These fields are not client input. Give Pydantic safe placeholders,
+        # then derive their real values from fixed cumulative cells below.
+        event.update(
+            sequence=sequence,
+            period=1,
+            points=1,
+            mark=None,
+            scorer_circled=False,
+            boundary="none",
+            ink_role="neutral",
+        )
+    return derive_score_events(ScoresheetDocument.model_validate(document)).model_dump(mode="json")
+
+
 def _assert_editable_path(document: dict[str, Any], path: str) -> None:
     locked_paths = set((document.get("game_prior") or {}).get("locked_paths") or [])
     if path in locked_paths:
@@ -525,6 +547,15 @@ def _assert_editable_path(document: dict[str, Any], path: str) -> None:
         raise ScoresheetDocumentError(
             "SCORESHEET_FIELD_LOCKED",
             "最终比分和胜队由各节比分自动计算，不能直接修改。",
+        )
+    derived_score_field = re.fullmatch(
+        r"/score_events/\d+/(sequence|period|points|mark|scorer_circled|boundary|ink_role)",
+        path,
+    )
+    if derived_score_field:
+        raise ScoresheetDocumentError(
+            "SCORESHEET_FIELD_LOCKED",
+            "得分分值、节次、符号和结束标记由累计分格与节比分自动生成，不能直接修改。",
         )
 
 
@@ -545,9 +576,8 @@ def apply_changes(
             if operation != "SET" or not isinstance(value, dict):
                 raise ScoresheetDocumentError("DRAFT_ROOT_INVALID", "整表替换必须提交 JSON 对象。")
             candidate = _preserve_server_fields(document, value)
-            _derive_final_score(candidate)
             try:
-                updated = ScoresheetDocument.model_validate(candidate).model_dump(mode="json")
+                updated = _canonicalize_derived_fields(candidate)
             except ValidationError as error:
                 raise ScoresheetDocumentError("DRAFT_SCHEMA_INVALID", str(error)) from error
             root_changes = [
@@ -604,14 +634,13 @@ def apply_changes(
         changed_regions.add(region)
         normalized_changes.append({"path": path, "operation": operation, "value": value})
     before_derived = copy.deepcopy(updated)
-    _derive_final_score(updated)
+    try:
+        updated = _canonicalize_derived_fields(updated)
+    except ValidationError as error:
+        raise ScoresheetDocumentError("DRAFT_SCHEMA_INVALID", str(error)) from error
     for derived_change in _json_changes(before_derived, updated):
         changed_regions.add(region_for_path(derived_change["path"]))
         normalized_changes.append(derived_change)
-    try:
-        updated = ScoresheetDocument.model_validate(updated).model_dump(mode="json")
-    except ValidationError as error:
-        raise ScoresheetDocumentError("DRAFT_SCHEMA_INVALID", str(error)) from error
     return updated, sorted(changed_regions), normalized_changes
 
 
@@ -784,7 +813,7 @@ def merge_recognition_result(
         recognized["status"] = "needs_review"
         recognized["acknowledged_warnings"] = []
         try:
-            return ScoresheetDocument.model_validate(recognized).model_dump(mode="json")
+            return _canonicalize_derived_fields(recognized)
         except ValidationError as error:
             raise ScoresheetDocumentError("RECOGNITION_SCHEMA_INVALID", str(error)) from error
     if "running_score" in recognized and "score_events" not in recognized:
@@ -849,7 +878,7 @@ def merge_recognition_result(
     result["acknowledged_warnings"] = []
     result = _preserve_server_fields(document, result)
     try:
-        return ScoresheetDocument.model_validate(result).model_dump(mode="json")
+        return _canonicalize_derived_fields(result)
     except ValidationError as error:
         raise ScoresheetDocumentError("RECOGNITION_SCHEMA_INVALID", str(error)) from error
 

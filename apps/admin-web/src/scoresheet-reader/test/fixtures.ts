@@ -25,7 +25,7 @@ const team = (side: TeamSide): TeamEntry => ({
   name: side === 'A' ? '示例学院甲' : '示例学院乙',
   players: players(side),
   timeouts: [],
-  team_fouls: [1, 2, 3, 4].map((period) => ({ period, count: 0 })),
+  team_fouls: ([1, 2, 3, 4] as const).map((period) => ({ period, count: 0 })),
   coach_fouls: [],
   coach_post_foul_markers: [],
   assistant_coach_fouls: [],

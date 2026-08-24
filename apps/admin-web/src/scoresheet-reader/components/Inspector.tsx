@@ -8,24 +8,24 @@ import {
   type FoulEditorOption,
 } from '../lib/ruleProfiles';
 import {
-  insertScoreEvent,
-  recalculateTeamEvents,
-  removeScoreEvent,
+  periodCheckpoints,
+  removeScoreCell,
   scoreTotalsByPeriod,
-  semanticMark,
+  setScoreCell,
 } from '../lib/score';
 import type {
   DocumentChangeLogEntry,
   FoulCode,
   FoulEntry,
+  GamePeriod,
   OfficialEntry,
   PlayerEntry,
   RecognitionDiff,
   RecognitionRun,
-  ScoreEvent,
   ScoresheetDocument,
   TeamEntry,
   TeamSide,
+  RegulationPeriod,
   ValidationIssue,
   ValidationReport,
 } from '../types';
@@ -144,11 +144,14 @@ function FoulSlot({
         aria-label={`${label} ${slot} 节次`}
         value={value?.period ?? ''}
         disabled={disabled || !value}
-        onChange={(event) => value && onChange({ ...value, period: event.target.value ? Number(event.target.value) : null })}
+        onChange={(event) => value && onChange({
+          ...value,
+          period: event.target.value ? Number(event.target.value) as GamePeriod : null,
+        })}
       >
         <option value="">节次未知</option>
-        {[1, 2, 3, 4].map((period) => (
-          <option key={period} value={period}>第 {period} 节</option>
+        {([1, 2, 3, 4, 5] as GamePeriod[]).map((period) => (
+          <option key={period} value={period}>{period === 5 ? 'OT（合计）' : `第 ${period} 节`}</option>
         ))}
       </select>
       <label className="cancel-toggle">
@@ -294,7 +297,7 @@ function TeamEditor({
 
       <div className="subsection-heading"><span>全队犯规</span><small>0–4 格</small></div>
       <div className="team-foul-controls">
-        {[1, 2, 3, 4].map((period) => {
+        {([1, 2, 3, 4] as RegulationPeriod[]).map((period) => {
           const value = team.team_fouls.find((entry) => entry.period === period)?.count ?? 0;
           return (
             <LabeledField label={`第 ${period} 节`} key={period}>
@@ -612,13 +615,13 @@ function ScoreEditor({
   const team = teamBySide(document, side);
   const events = document.score_events
     .filter((entry) => entry.team === side)
-    .sort((a, b) => a.sequence - b.sequence);
+    .sort((a, b) => a.cumulative_score - b.cumulative_score);
   const periodTotals = scoreTotalsByPeriod(document, side);
-  const periods = [1, 2, 3, 4, 5];
+  const periods: GamePeriod[] = [1, 2, 3, 4, 5];
+  const checkpoints = periodCheckpoints(document, side);
   const inferredSelectedPeriod = event?.period
-    ?? events.find((entry) => entry.cumulative_score > cumulative)?.period
-    ?? [...events].reverse().find((entry) => entry.cumulative_score < cumulative)?.period
-    ?? 1;
+    ?? checkpoints.find((checkpoint) => cumulative <= checkpoint.cumulative)?.period
+    ?? (checkpoints.at(-1)?.cumulative ? checkpoints.at(-1)!.period : 1);
   const [activePeriod, setActivePeriod] = useState(inferredSelectedPeriod);
   const eventRows = useRef(new Map<number, HTMLDivElement>());
   const periodEvents = events.filter((entry) => entry.period === activePeriod);
@@ -632,8 +635,6 @@ function ScoreEditor({
       .filter((entry) => entry.cumulative_score < cumulative)
       .map((entry) => entry.cumulative_score),
   );
-  const inferredPoints = cumulative - previous;
-  const firstJersey = team.players.find((player) => player.jersey_number)?.jersey_number ?? '';
   const scoreField = (value: number) => `score.${side}.${String(value).padStart(3, '0')}`;
   const periodLabel = (period: number) => period <= 4 ? `Q${period}` : 'OT';
 
@@ -649,82 +650,24 @@ function ScoreEditor({
     });
   }, [activePeriod, event, selectedField]);
 
-  const updateEvent = (sequence: number, mutation: (event: ScoreEvent) => void) => {
-    let nextField = '';
-    let nextPeriod = activePeriod;
-    onMutate((draft) => {
-      const draftEvent = draft.score_events.find((entry) => entry.sequence === sequence);
-      if (!draftEvent) return;
-      mutation(draftEvent);
-      recalculateTeamEvents(draft, side);
-      nextField = scoreField(draftEvent.cumulative_score);
-      nextPeriod = draftEvent.period;
-    });
-    setActivePeriod(nextPeriod);
-    if (nextField) onSelect(nextField);
+  const selectedScoreField = scoreField(cumulative);
+  const editing = selectedField === `${selectedScoreField}.edit`;
+  const registeredPlayers = team.players.filter((player) => player.jersey_number);
+  const rosterHasCurrent = Boolean(
+    event?.scorer_jersey
+    && registeredPlayers.some((player) => player.jersey_number === event.scorer_jersey),
+  );
+  const derivedPoints = event?.points ?? cumulative - previous;
+  const invalidPoints = Boolean(event && (derivedPoints < 1 || derivedPoints > 3));
+  const prospectiveInvalid = !event && (derivedPoints < 1 || derivedPoints > 3);
+  const changeJersey = (jersey: string) => {
+    if (!jersey || jersey === '__unknown__') return;
+    onMutate((draft) => { setScoreCell(draft, side, cumulative, jersey); });
+    onSelect(selectedScoreField);
   };
-
-  const addRelative = (
-    anchor: ScoreEvent | undefined,
-    position: 'before' | 'after' | 'end',
-    periodOverride?: number,
-  ) => {
-    let nextField = '';
-    let nextPeriod = periodOverride ?? anchor?.period ?? events.at(-1)?.period ?? 1;
-    onMutate((draft) => {
-      const draftAnchor = anchor
-        ? draft.score_events.find((entry) => entry.sequence === anchor.sequence)
-        : undefined;
-      nextPeriod = periodOverride ?? draftAnchor?.period ?? events.at(-1)?.period ?? 1;
-      const inserted = insertScoreEvent(
-        draft,
-        side,
-        draftAnchor?.sequence ?? null,
-        position,
-        {
-          period: nextPeriod,
-          points: 2,
-          scorerJersey: draftAnchor?.scorer_jersey || firstJersey,
-        },
-      );
-      nextField = scoreField(inserted.cumulative_score);
-    });
-    setActivePeriod(nextPeriod);
-    if (nextField) onSelect(nextField);
-  };
-
-  const addInActivePeriod = () => {
-    const lastInPeriod = periodEvents.at(-1);
-    if (lastInPeriod) {
-      addRelative(lastInPeriod, 'after', activePeriod);
-      return;
-    }
-    const firstLater = events.find((entry) => entry.period > activePeriod);
-    addRelative(firstLater ?? events.at(-1), firstLater ? 'before' : 'end', activePeriod);
-  };
-
-  const addAtSelectedCell = () => {
-    const next = events.find((entry) => entry.cumulative_score > cumulative);
-    const prior = [...events].reverse().find((entry) => entry.cumulative_score < cumulative);
-    let nextField = '';
-    onMutate((draft) => {
-      const draftNext = next
-        ? draft.score_events.find((entry) => entry.sequence === next.sequence)
-        : undefined;
-      const inserted = insertScoreEvent(
-        draft,
-        side,
-        draftNext?.sequence ?? null,
-        draftNext ? 'before' : 'end',
-        {
-          period: draftNext?.period ?? prior?.period ?? 1,
-          points: inferredPoints,
-          scorerJersey: firstJersey,
-        },
-      );
-      nextField = scoreField(inserted.cumulative_score);
-    });
-    if (nextField) onSelect(nextField);
+  const deleteCell = () => {
+    onMutate((draft) => { removeScoreCell(draft, side, cumulative); });
+    onSelect(selectedScoreField);
   };
 
   return (
@@ -763,34 +706,63 @@ function ScoreEditor({
         </div>
       </div>
 
-      {!event ? (
-        <div className="score-empty-cell">
+      <div className={`score-cell-editor${invalidPoints ? ' is-invalid-points' : ''}`}>
+        <div className="score-cell-summary">
           <div>
-            <strong>{cumulative} 分格尚无事件</strong>
-            <span>前一项为 {previous} 分</span>
+            <strong>{event ? (event.scorer_jersey || '? · 待识别') : '空白格'}</strong>
+            <span>上一事件 {previous} 分 · {event ? '派生' : '填写后将派生'} {derivedPoints} 分 · {periodLabel(inferredSelectedPeriod)}</span>
           </div>
-          {inferredPoints >= 1 && inferredPoints <= 3 && firstJersey ? (
-            <button className="primary-action" onClick={addAtSelectedCell}>
-              <Plus size={14} /> 在此补录 {inferredPoints} 分
-            </button>
-          ) : (
-            <small>需要先补齐前面缺失的得分，使相邻增量为 1、2 或 3。</small>
-          )}
+          <b>{event ? (invalidPoints ? `异常间隔 ${derivedPoints}` : `${derivedPoints} 分`) : '未填写'}</b>
         </div>
-      ) : null}
+        {editing ? (
+          <div className="score-cell-controls">
+            <label>
+              <span>得分号码</span>
+              <select
+                aria-label="得分队员"
+                autoFocus
+                value={event ? (event.scorer_jersey || '__unknown__') : ''}
+                onChange={(change) => changeJersey(change.target.value)}
+              >
+                {!event ? <option value="" disabled>选择登记号码</option> : null}
+                {event && !event.scorer_jersey ? <option value="__unknown__" disabled>? · 待识别号码</option> : null}
+                {event?.scorer_jersey && !rosterHasCurrent ? (
+                  <option value={event.scorer_jersey} disabled>{event.scorer_jersey} · 未在登记名单</option>
+                ) : null}
+                {registeredPlayers.map((player) => (
+                  <option key={player.row} value={player.jersey_number}>{player.jersey_number} · {player.name}</option>
+                ))}
+              </select>
+            </label>
+            {event ? (
+              <button className="danger compact-action" onClick={deleteCell}>
+                <Trash2 size={13} /> 删除本格号码
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <button
+            className="primary-action"
+            disabled={registeredPlayers.length === 0}
+            onClick={() => onSelect(`${selectedScoreField}.edit`)}
+          >
+            {event ? '编辑号码' : '在此格填写号码'}
+          </button>
+        )}
+        {registeredPlayers.length === 0 ? <small>请先在球队登记区填写球员号码。</small> : null}
+        {invalidPoints ? <small>异常间隔可以暂存，但不会绘制得分符号且不能通过校验。</small> : null}
+        {prospectiveInvalid ? <small>如在此格填写号码，当前会形成 {derivedPoints} 分异常间隔；可先暂存后继续补齐中间格。</small> : null}
+      </div>
 
       <div className="score-ledger-heading">
         <div><strong>{periodLabel(activePeriod)} 得分事件</strong><span>本节 {periodEvents.length} 笔 · 全场 {events.length} 笔</span></div>
-        <button className="compact-action" onClick={addInActivePeriod} disabled={!firstJersey}>
-          <Plus size={13} /> 本节新增
-        </button>
       </div>
       <div className="score-ledger" role="tabpanel" aria-label={`${side} 队得分事件账本`}>
         {periodEvents.map((entry) => {
           const selected = entry.sequence === event?.sequence;
           const rosterHasJersey = team.players.some((player) => player.jersey_number === entry.scorer_jersey);
-          const unresolvedPoints = entry.points == null;
-          const invalidPoints = entry.points != null && ![1, 2, 3].includes(entry.points);
+          const rowInvalid = entry.points == null || entry.points < 1 || entry.points > 3;
+          const entryField = scoreField(entry.cumulative_score);
           return (
             <div
               key={entry.sequence}
@@ -798,86 +770,36 @@ function ScoreEditor({
                 if (node) eventRows.current.set(entry.sequence, node);
                 else eventRows.current.delete(entry.sequence);
               }}
-              data-score-field={scoreField(entry.cumulative_score)}
+              data-score-field={entryField}
               data-score-period={entry.period}
-              className={`score-ledger-row${selected ? ' is-selected' : ''}${selected && selectedField.endsWith('.edit') ? ' is-targeted' : ''}${unresolvedPoints ? ' is-unresolved' : ''}${invalidPoints ? ' is-invalid-points' : ''}`}
+              className={`score-ledger-row${selected ? ' is-selected' : ''}${selected && selectedField.endsWith('.edit') ? ' is-targeted' : ''}${!entry.scorer_jersey ? ' is-unresolved' : ''}${rowInvalid ? ' is-invalid-points' : ''}`}
             >
               <button
                 className="score-ledger-total"
-                aria-label={`选择${side}队累计 ${entry.cumulative_score} 分事件`}
-                onClick={() => onSelect(scoreField(entry.cumulative_score))}
+                aria-label={`编辑${side}队累计 ${entry.cumulative_score} 分事件`}
+                onClick={() => onSelect(`${entryField}.edit`)}
+                onDoubleClick={() => onSelect(`${entryField}.edit`)}
               >
                 <strong>{entry.cumulative_score}</strong><small>累计</small>
               </button>
-              <label>
-                <span>队员</span>
-                <select
-                  aria-label={selected ? '得分队员' : `${side}队累计${entry.cumulative_score}分 得分队员`}
-                  value={entry.scorer_jersey}
-                  onChange={(change) => updateEvent(entry.sequence, (draftEvent) => { draftEvent.scorer_jersey = change.target.value; })}
-                >
-                  {!rosterHasJersey && entry.scorer_jersey ? <option value={entry.scorer_jersey}>{entry.scorer_jersey} · 未在名单</option> : null}
-                  {team.players.filter((player) => player.jersey_number).map((player) => (
-                    <option key={player.row} value={player.jersey_number}>{player.jersey_number} · {player.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>得分</span>
-                <select
-                  aria-label={selected ? '本次得分' : `${side}队累计${entry.cumulative_score}分 本次得分`}
-                  value={entry.points ?? ''}
-                  onChange={(change) => updateEvent(entry.sequence, (draftEvent) => {
-                    draftEvent.points = Number(change.target.value);
-                    Object.assign(draftEvent, semanticMark(draftEvent.points));
-                  })}
-                >
-                  {unresolvedPoints ? <option value="" disabled>待确定</option> : null}
-                  {invalidPoints ? <option value={entry.points ?? ''} disabled>异常值 {entry.points}</option> : null}
-                  <option value="1">1 · ●</option>
-                  <option value="2">2 · ╱</option>
-                  <option value="3">3 · ╱○</option>
-                </select>
-              </label>
-              <label>
-                <span>节次</span>
-                <select
-                  aria-label={selected ? '节次' : `${side}队累计${entry.cumulative_score}分 节次`}
-                  value={entry.period}
-                  onChange={(change) => updateEvent(entry.sequence, (draftEvent) => { draftEvent.period = Number(change.target.value); })}
-                >
-                  {[1, 2, 3, 4, 5].map((period) => <option key={period} value={period}>{periodLabel(period)}</option>)}
-                </select>
-              </label>
-              <label className="score-ledger-boundary">
-                <span>节末</span>
-                <input
-                  type="checkbox"
-                  aria-label={selected ? '节末标记' : `${side}队累计${entry.cumulative_score}分 节末标记`}
-                  checked={entry.boundary === 'period_end' || entry.boundary === 'game_end'}
-                  onChange={(change) => updateEvent(entry.sequence, (draftEvent) => { draftEvent.boundary = change.target.checked ? 'period_end' : 'none'; })}
-                />
-              </label>
-              <div className="score-ledger-actions">
-                <button aria-label={`在累计 ${entry.cumulative_score} 分之前插入`} title="之前插入" onClick={() => addRelative(entry, 'before')}><Plus size={12} />前</button>
-                <button aria-label={`在累计 ${entry.cumulative_score} 分之后插入`} title="之后插入" onClick={() => addRelative(entry, 'after')}><Plus size={12} />后</button>
-                <button
-                  className="danger"
-                  aria-label={`删除累计 ${entry.cumulative_score} 分事件`}
-                  title="删除"
-                  onClick={() => {
-                    onMutate((draft) => removeScoreEvent(draft, entry.sequence));
-                    const fallback = events.find((candidate) => candidate.sequence !== entry.sequence);
-                    onSelect(fallback ? scoreField(fallback.cumulative_score) : `team.${side}.score`);
-                  }}
-                ><Trash2 size={12} /></button>
+              <button className="score-ledger-cell" onClick={() => onSelect(`${entryField}.edit`)} onDoubleClick={() => onSelect(`${entryField}.edit`)}>
+                <strong>{entry.scorer_jersey || '?'}</strong>
+                <span>{entry.scorer_jersey ? (rosterHasJersey ? '登记号码' : '名单外号码') : '待识别号码'}</span>
+              </button>
+              <div className="score-ledger-derived">
+                <strong>{entry.points ?? '—'} 分</strong>
+                <span>{rowInvalid ? '异常间隔' : entry.points === 1 ? '罚球' : entry.points === 2 ? '两分' : '三分'}</span>
+              </div>
+              <div className="score-ledger-derived">
+                <strong>{periodLabel(entry.period)}</strong>
+                <span>{entry.boundary === 'game_end' ? '比赛结束' : entry.boundary === 'period_end' ? '节末' : '自动派生'}</span>
               </div>
             </div>
           );
         })}
-        {periodEvents.length === 0 ? <p className="section-note score-period-empty">{periodLabel(activePeriod)} 尚无得分事件，可在本节新增；纸面为 0 分时保持为空即表示核对一致。</p> : null}
+        {periodEvents.length === 0 ? <p className="section-note score-period-empty">{periodLabel(activePeriod)} 尚无得分事件。请单击或双击左侧记录表中的目标累积分格填写号码。</p> : null}
       </div>
-      <p className="section-note score-boundary-note">纸面节比分保持独立，不会被事件合计覆盖。双方最终分与最后累计分一致时，比赛结束双横线自动生成。</p>
+      <p className="section-note score-boundary-note">分值、节次、得分符号和结束标记均由累积分位置及书面节比分自动生成。OT 统一表示全部加时赛的合计；系统不拆分或保存中间 OT 节末线。</p>
     </div>
   );
 }
@@ -887,6 +809,7 @@ function SummaryEditor({
   onMutate,
   selectedField,
 }: Pick<InspectorProps, 'document' | 'onMutate' | 'selectedField'>) {
+  const periodName = (period: GamePeriod) => period === 5 ? '决胜期（合计）' : `第 ${period} 节`;
   const deriveResult = (draft: ScoresheetDocument) => {
     const teamA = draft.stated_period_scores.reduce((total, row) => total + row.team_a, 0);
     const teamB = draft.stated_period_scores.reduce((total, row) => total + row.team_b, 0);
@@ -902,7 +825,7 @@ function SummaryEditor({
       <p className="section-note">各节比分按纸面填写；最终比分与胜队由各节比分自动计算。</p>
       <div className="period-score-grid">
         <span /> <b>A</b> <b>B</b>
-        {[1, 2, 3, 4, 5].map((period) => {
+        {([1, 2, 3, 4, 5] as GamePeriod[]).map((period) => {
           const score = document.stated_period_scores.find((entry) => entry.period === period);
           const update = (side: 'team_a' | 'team_b', value: number) =>
             onMutate((draft) => {
@@ -917,9 +840,9 @@ function SummaryEditor({
             });
           return (
             <div className="period-score-row" key={period}>
-              <span>{period === 5 ? '决胜期' : `第 ${period} 节`}</span>
+              <span>{periodName(period)}</span>
               <input
-                aria-label={`${period === 5 ? '决胜期' : `第 ${period} 节`} A 队得分`}
+                aria-label={`${periodName(period)} A 队得分`}
                 data-precise-focus={selectedField === `summary.period.${period}.A` || undefined}
                 autoFocus={selectedField === `summary.period.${period}.A`}
                 type="number"
@@ -928,7 +851,7 @@ function SummaryEditor({
                 onChange={(event) => update('team_a', Number(event.target.value))}
               />
               <input
-                aria-label={`${period === 5 ? '决胜期' : `第 ${period} 节`} B 队得分`}
+                aria-label={`${periodName(period)} B 队得分`}
                 data-precise-focus={selectedField === `summary.period.${period}.B` || undefined}
                 autoFocus={selectedField === `summary.period.${period}.B`}
                 type="number"
@@ -1107,10 +1030,28 @@ const fieldLabels: Record<string, string> = {
   code: '犯规类型', free_throws: '罚球数', cancelled: '抵消标记', period: '节次', minute: '比赛分钟', count: '数量',
   head_coach: '主教练员', assistant_coach: '助理教练员', team_a: 'A 队', team_b: 'B 队',
   points: '本次得分', cumulative_score: '累计分', scorer_jersey: '得分号码', boundary: '结束标记',
+  scorer_circled: '三分球圆圈', mark: '得分符号', sequence: '事件序号', ink_role: '书写颜色',
   winner_name: '胜队', ended_at: '结束时间', signature: '签名状态',
 };
 
-function formatChangePath(path: string) {
+function changeRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function scoreEventIdentity(value: unknown): { side: TeamSide; cumulative: number } | null {
+  const candidate = changeRecord(value);
+  if (!candidate) return null;
+  const side = candidate.team;
+  const cumulative = candidate.cumulative_score;
+  if ((side !== 'A' && side !== 'B') || typeof cumulative !== 'number' || !Number.isFinite(cumulative)) {
+    return null;
+  }
+  return { side, cumulative };
+}
+
+function formatChangePath(path: string, before?: unknown, after?: unknown) {
   const parts = path.split('/').slice(1).map((part) => part.replaceAll('~1', '/').replaceAll('~0', '~'));
   if (parts[0] === 'header') return `比赛信息 · ${fieldLabels[parts[1]] ?? parts[1]}`;
   if (parts[0] === 'teams') {
@@ -1121,22 +1062,61 @@ function formatChangePath(path: string) {
       if (parts[4] === 'post_foul_markers') return `${base} · 附加犯规 · ${fieldLabels[parts[6]] ?? parts[6]}`;
       return `${base} · ${fieldLabels[parts[4]] ?? parts[4]}`;
     }
-    if (parts[2] === 'timeouts') return `${side} · 暂停 ${parts[3]} · ${fieldLabels[parts[4]] ?? parts[4]}`;
-    if (parts[2] === 'team_fouls') return `${side} · 第 ${parts[3]} 节全队犯规 · ${fieldLabels[parts[4]] ?? parts[4]}`;
+    if (parts[2] === 'timeouts') {
+      const entry = changeRecord(after) ?? changeRecord(before);
+      if (!parts[4] || parts[4] === 'undefined') {
+        const scope = entry?.scope;
+        const slot = entry?.slot;
+        const scopeLabel = scope === 'H1' ? '上半场' : scope === 'H2' ? '下半场' : scope === 'OT' ? '决胜期' : '比赛';
+        return `${side} · ${scopeLabel}第 ${typeof slot === 'number' ? slot : parts[3]} 次暂停`;
+      }
+      return `${side} · 暂停 ${parts[3]} · ${fieldLabels[parts[4]] ?? parts[4]}`;
+    }
+    if (parts[2] === 'team_fouls') {
+      const entry = changeRecord(after) ?? changeRecord(before);
+      const period = typeof entry?.period === 'number' ? entry.period : parts[3];
+      if (!parts[4] || parts[4] === 'undefined') return `${side} · 第 ${period} 节全队犯规次数`;
+      return `${side} · 第 ${period} 节全队犯规 · ${fieldLabels[parts[4]] ?? parts[4]}`;
+    }
     if (parts[2]?.includes('coach') && parts[2]?.includes('foul')) return `${side} · 教练犯规第 ${parts[3]} 格 · ${fieldLabels[parts[4]] ?? parts[4]}`;
     return `${side} · ${fieldLabels[parts[2]] ?? parts[2]}`;
   }
-  if (parts[0] === 'score_events') return `第 ${parts[1]} 个得分事件 · ${fieldLabels[parts[2]] ?? parts[2]}`;
-  if (parts[0] === 'stated_period_scores') return `第 ${parts[1]} 节书面比分 · ${fieldLabels[parts[2]] ?? parts[2]}`;
+  if (parts[0] === 'score_events' && parts[2] === 'cumulative') {
+    return `${parts[1]} 队 · 累计 ${parts[3]} 分 · ${fieldLabels[parts[4]] ?? parts[4]}`;
+  }
+  if (parts[0] === 'score_events') {
+    const identity = scoreEventIdentity(after) ?? scoreEventIdentity(before);
+    if (identity) return `${identity.side} 队 · 累计 ${identity.cumulative} 分格 · 得分号码`;
+    const suffix = parts[2] && parts[2] !== 'undefined' ? ` · ${fieldLabels[parts[2]] ?? parts[2]}` : '';
+    return `第 ${Number(parts[1]) + 1} 个得分事件${suffix}`;
+  }
+  if (parts[0] === 'stated_period_scores') {
+    const period = parts[1] === '5' ? '决胜期（合计）' : `第 ${parts[1]} 节`;
+    return `${period}书面比分 · ${fieldLabels[parts[2]] ?? parts[2]}`;
+  }
   if (parts[0] === 'final_score') return `比赛结果 · ${fieldLabels[parts[1]] ?? parts[1]}`;
   if (parts[0] === 'officials') return `裁判员 ${parts[1]} · ${fieldLabels[parts[2]] ?? parts[2]}`;
   if (parts[0] === 'table_personnel') return `记录台人员 · 第 ${Number(parts[1]) + 1} 项`;
   return parts.map((part) => fieldLabels[part] ?? part).join(' · ');
 }
 
-function formatChangeValue(value: unknown) {
+function formatChangeValue(value: unknown, path = '') {
   if (value === null || value === undefined || value === '') return '（空）';
   if (typeof value === 'boolean') return value ? '是' : '否';
+  if (path.startsWith('/score_events/')) {
+    const identity = scoreEventIdentity(value);
+    if (identity) {
+      const scorer = (value as Record<string, unknown>).scorer_jersey;
+      return typeof scorer === 'string' && scorer ? `${scorer} 号` : '（号码待核对）';
+    }
+  }
+  const record = changeRecord(value);
+  if (record && path.includes('/team_fouls/')) {
+    return typeof record.count === 'number' ? `${record.count} 次` : '已记录';
+  }
+  if (record && path.includes('/timeouts/')) {
+    return typeof record.minute === 'number' ? `第 ${record.minute} 分钟` : '已记录';
+  }
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
@@ -1275,8 +1255,8 @@ export function Inspector({
                       <ul className="field-change-list">
                         {entry.changes.map((change) => (
                           <li key={change.path}>
-                            <strong>{formatChangePath(change.path)}</strong>
-                            <span><del>{formatChangeValue(change.before)}</del><i>→</i><ins>{formatChangeValue(change.after)}</ins></span>
+                            <strong>{formatChangePath(change.path, change.before, change.after)}</strong>
+                            <span><del>{formatChangeValue(change.before, change.path)}</del><i>→</i><ins>{formatChangeValue(change.after, change.path)}</ins></span>
                           </li>
                         ))}
                       </ul>

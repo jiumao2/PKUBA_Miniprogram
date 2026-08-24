@@ -9,9 +9,13 @@ import type {
   ValidationIssue,
 } from "@pkuba/scoresheet-domain";
 
+type CanonicalGamePeriod = 1 | 2 | 3 | 4 | 5;
+type CanonicalRegulationPeriod = 1 | 2 | 3 | 4;
+
 type CanonicalFoul = Record<string, unknown> & {
   slot: number;
   code: string;
+  period?: CanonicalGamePeriod | null;
 };
 
 type CanonicalPlayer = Record<string, unknown> & {
@@ -30,7 +34,7 @@ type CanonicalTeam = Record<string, unknown> & {
   name: string;
   players: CanonicalPlayer[];
   timeouts: Array<Record<string, unknown> & { scope: "H1" | "H2" | "OT"; slot: number; minute: number }>;
-  team_fouls: Array<Record<string, unknown> & { period: number; count: number }>;
+  team_fouls: Array<Record<string, unknown> & { period: CanonicalRegulationPeriod; count: number }>;
   coach_fouls: CanonicalFoul[];
   coach_post_foul_markers: CanonicalFoul[];
   assistant_coach_fouls: CanonicalFoul[];
@@ -42,7 +46,7 @@ type CanonicalTeam = Record<string, unknown> & {
 type CanonicalScoreEvent = Record<string, unknown> & {
   sequence: number;
   team: TeamSide;
-  period: number;
+  period: CanonicalGamePeriod;
   points: number | null;
   cumulative_score: number;
   scorer_jersey: string;
@@ -53,7 +57,7 @@ type CanonicalScoreEvent = Record<string, unknown> & {
 };
 
 type CanonicalPeriodScore = Record<string, unknown> & {
-  period: number;
+  period: CanonicalGamePeriod;
   team_a: number;
   team_b: number;
 };
@@ -88,7 +92,7 @@ export type CanonicalScoresheetDocument = Record<string, unknown> & {
 type MobileScoreEvent = ScoreEvent & {
   __canonical_sequence?: number;
   __canonical_points?: number | null;
-  __canonical_period?: number;
+  __canonical_period?: CanonicalGamePeriod;
 };
 
 export interface MobileScoresheetProjection {
@@ -102,9 +106,6 @@ const PERIOD_LABELS: Record<number, ScorePeriod> = {
   3: "3",
   4: "4",
   5: "5",
-  6: "6",
-  7: "7",
-  8: "8",
 };
 
 const FOUL_CODES = new Set(["P", "T", "U", "D", "C", "B", "GD", "F", "DI", "FL", "BD"]);
@@ -188,7 +189,9 @@ function toMobileTeam(document: CanonicalScoresheetDocument, side: TeamSide): Sc
 }
 
 function mobilePeriod(period: number): ScorePeriod {
-  return PERIOD_LABELS[period] ?? "5";
+  const label = PERIOD_LABELS[period];
+  if (!label) throw new Error(`记录表包含不支持的节次：${period}`);
+  return label;
 }
 
 function mobileValue(points: number | null): number {
@@ -219,11 +222,11 @@ function toMobileScoreEvent(document: CanonicalScoresheetDocument, event: Canoni
 
 function toMobileDocument(document: CanonicalScoresheetDocument): ScoresheetDocument {
   const periodScores = Object.fromEntries(
-    (["1", "2", "3", "4", "5", "6", "7", "8"] as ScorePeriod[]).map((period) => [period, { A: null, B: null }]),
+    (["1", "2", "3", "4", "5"] as ScorePeriod[]).map((period) => [period, { A: null, B: null }]),
   ) as ScoresheetDocument["summary"]["period_scores"];
   for (const row of document.stated_period_scores) {
     const period = mobilePeriod(row.period);
-    if (row.period <= 8) periodScores[period] = { A: row.team_a, B: row.team_b };
+    periodScores[period] = { A: row.team_a, B: row.team_b };
   }
   const teamA = canonicalTeam(document, "A");
   const teamB = canonicalTeam(document, "B");
@@ -346,7 +349,7 @@ function mergeTimeouts(team: ScoresheetTeam): CanonicalTeam["timeouts"] {
 }
 
 function mergeTeamFouls(team: ScoresheetTeam): CanonicalTeam["team_fouls"] {
-  return [1, 2, 3, 4].map((period) => ({
+  return ([1, 2, 3, 4] as CanonicalRegulationPeriod[]).map((period) => ({
     period,
     count: Math.max(0, Math.min(4, (team.team_fouls[String(period)] ?? []).length)),
   }));
@@ -382,9 +385,9 @@ function mergeTeam(mobile: ScoresheetTeam, original: CanonicalTeam): CanonicalTe
   };
 }
 
-function canonicalPeriod(event: MobileScoreEvent, original: CanonicalScoreEvent | undefined): number {
+function canonicalPeriod(event: MobileScoreEvent, original: CanonicalScoreEvent | undefined): CanonicalGamePeriod {
   if (original && event.__canonical_period === original.period && Number(event.period) === original.period) return original.period;
-  return Number(event.period);
+  return Number(event.period) as CanonicalGamePeriod;
 }
 
 function mergeScoreEvent(event: MobileScoreEvent, original: CanonicalScoreEvent | undefined, index: number): CanonicalScoreEvent {
@@ -438,7 +441,7 @@ export function mergeMobileDocument(
     return mergeScoreEvent(event, originals.get(event.__canonical_sequence ?? -1), index);
   });
   const byPeriod = new Map(canonical.stated_period_scores.map((row) => [row.period, clone(row)]));
-  for (const [label, period] of [["1", 1], ["2", 2], ["3", 3], ["4", 4], ["5", 5], ["6", 6], ["7", 7], ["8", 8]] as const) {
+  for (const [label, period] of [["1", 1], ["2", 2], ["3", 3], ["4", 4], ["5", 5]] as const) {
     const row = mobile.summary.period_scores[label];
     if (row.A === null || row.B === null) byPeriod.delete(period);
     else byPeriod.set(period, { ...(byPeriod.get(period) ?? {}), period, team_a: row.A, team_b: row.B });

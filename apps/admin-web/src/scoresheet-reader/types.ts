@@ -8,6 +8,8 @@ export type ScoreBoundary = 'none' | 'period_end' | 'game_end';
 export type InkRole = 'q1_q3' | 'q2_q4_ot' | 'neutral';
 export type SignaturePresence = 'present' | 'absent' | 'unclear';
 export type DocumentStatus = 'draft' | 'needs_review' | 'validated' | 'confirmed';
+export type GamePeriod = 1 | 2 | 3 | 4 | 5;
+export type RegulationPeriod = 1 | 2 | 3 | 4;
 
 export interface Header {
   competition: string;
@@ -27,7 +29,7 @@ export interface FoulEntry {
   mark_style?: FoulMarkStyle;
   free_throws: number | null;
   cancelled: boolean;
-  period: number | null;
+  period: GamePeriod | null;
 }
 
 export type PostFoulMarker = FoulEntry;
@@ -50,7 +52,7 @@ export interface TimeoutEntry {
 }
 
 export interface TeamFoulPeriod {
-  period: number;
+  period: RegulationPeriod;
   count: number;
 }
 
@@ -71,7 +73,7 @@ export interface TeamEntry {
 export interface ScoreEvent {
   sequence: number;
   team: TeamSide;
-  period: number;
+  period: GamePeriod;
   points: number | null;
   cumulative_score: number;
   scorer_jersey: string;
@@ -82,7 +84,7 @@ export interface ScoreEvent {
 }
 
 export interface PeriodScore {
-  period: number;
+  period: GamePeriod;
   team_a: number;
   team_b: number;
 }

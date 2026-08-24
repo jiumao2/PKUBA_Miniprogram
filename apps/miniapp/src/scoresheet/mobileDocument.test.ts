@@ -68,7 +68,7 @@ function canonicalDraft(): CanonicalScoresheetDocument {
           jersey_number: "7",
           captain: true,
           participation: "starter",
-          fouls: [{ slot: 1, code: "P", catalog_id: "P1", mark_style: "circled", free_throws: 2, cancelled: false, period: 2 }],
+          fouls: [{ slot: 1, code: "P", catalog_id: "P1", mark_style: "circled", free_throws: 2, cancelled: false, period: 5 }],
           post_foul_markers: [{ slot: 1, code: "GD", catalog_id: null, mark_style: "plain", free_throws: null, cancelled: false, period: 4 }],
         }],
         timeouts: [{ scope: "H1", slot: 1, minute: 4 }],
@@ -106,7 +106,7 @@ function canonicalDraft(): CanonicalScoresheetDocument {
     score_events: [{
       sequence: 1,
       team: "A",
-      period: 6,
+      period: 5,
       points: null,
       cumulative_score: 1,
       scorer_jersey: "7",
@@ -117,8 +117,7 @@ function canonicalDraft(): CanonicalScoresheetDocument {
     }],
     stated_period_scores: [
       { period: 1, team_a: 10, team_b: 8 },
-      { period: 5, team_a: 2, team_b: 2 },
-      { period: 6, team_a: 3, team_b: 1 },
+      { period: 5, team_a: 5, team_b: 3 },
     ],
     final_score: { team_a: 15, team_b: 11, winner_name: "甲队", ended_at: "14:10" },
     officials: [
@@ -168,13 +167,23 @@ describe("mobile scoresheet projection", () => {
     expect(merged.header.game_number).toBe("M-02");
     expect(merged.teams[0].players[0].license_number).toBe("LIC-A-1");
     expect(merged.teams[0].players[0].post_foul_markers[0].code).toBe("GD");
+    expect(merged.teams[0].players[0].fouls[0].period).toBe(5);
     expect(merged.teams[0].coach_post_foul_markers[0].code).toBe("GD");
-    expect(merged.score_events[0].period).toBe(6);
+    expect(merged.score_events[0].period).toBe(5);
     expect(merged.score_events[0].points).toBeNull();
-    expect(merged.stated_period_scores.find((row) => row.period === 6)).toMatchObject({ team_a: 3, team_b: 1 });
+    expect(merged.stated_period_scores.find((row) => row.period === 5)).toMatchObject({ team_a: 5, team_b: 3 });
     expect(merged.officials.find((row) => row.role === "crew_chief")?.signature).toBe("unclear");
     expect(merged.recognition?.notes).toBe("keep me");
     expect(merged.table_personnel).toBeUndefined();
     expect(merged.recognition?.table_personnel).toEqual(["记录员甲"]);
+  });
+
+  it("rejects legacy periods above the combined overtime slot instead of folding them", () => {
+    const original = canonicalDraft();
+    original.score_events[0].period = 6 as never;
+
+    expect(() => projectScoresheetDetail(detail(original))).toThrow(
+      "记录表包含不支持的节次：6",
+    );
   });
 });

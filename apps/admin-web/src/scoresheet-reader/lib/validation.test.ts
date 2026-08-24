@@ -49,7 +49,6 @@ describe('instant deterministic validation', () => {
     invalid.score_events[0].mark = null;
     expect(codes(invalid)).toEqual(expect.arrayContaining([
       'INVALID_SCORE_POINTS',
-      'SCORE_SEQUENCE_GAP',
     ]));
 
     const unresolved = makeDocument();
@@ -60,6 +59,37 @@ describe('instant deterministic validation', () => {
       expect.objectContaining({ code: 'UNRESOLVED_SCORE_POINTS', severity: 'warning' }),
     ]));
     expect(report.status).toBe('needs_review');
+  });
+
+  it('rejects duplicate cells and derived gaps that cross a written checkpoint', () => {
+    const duplicate = makeDocument();
+    duplicate.score_events.push({ ...duplicate.score_events[0], sequence: 6 });
+    expect(codes(duplicate)).toContain('DUPLICATE_SCORE_CELL');
+
+    const gap = makeDocument();
+    gap.score_events = gap.score_events.filter(
+      (event) => event.team !== 'A' || event.cumulative_score !== 3,
+    );
+    const later = gap.score_events.find(
+      (event) => event.team === 'A' && event.cumulative_score === 6,
+    )!;
+    later.points = 5;
+    later.mark = null;
+    later.scorer_circled = false;
+
+    expect(codes(gap)).toEqual(expect.arrayContaining([
+      'INVALID_SCORE_POINTS',
+      'SCORE_SEQUENCE_GAP',
+    ]));
+
+    const boundary = makeDocument();
+    boundary.score_events = boundary.score_events.filter(
+      (event) => event.team !== 'A' || event.cumulative_score !== 1,
+    );
+    expect(codes(boundary)).toEqual(expect.arrayContaining([
+      'SCORE_EVENT_CROSSES_PERIOD_BOUNDARY',
+      'PERIOD_BOUNDARY_WITHOUT_EVENT',
+    ]));
   });
 
   it('treats a written period with no running-score events as a mandatory mismatch', () => {

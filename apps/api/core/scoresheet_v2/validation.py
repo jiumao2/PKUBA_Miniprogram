@@ -6,7 +6,6 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from .models import (
-    ScoreBoundary,
     ScoreMark,
     ScoresheetDocument,
     TeamSide,
@@ -15,6 +14,7 @@ from .models import (
     ValidationSeverity,
     ValidationStatus,
 )
+from .scoring import period_checkpoints
 
 
 def _issue(
@@ -473,6 +473,19 @@ def validate_document(
                 "尚未录入任何逐次得分事件。",
             )
         )
+    cell_counts = Counter((event.team, event.cumulative_score) for event in document.score_events)
+    duplicate_cells = [cell for cell, count in cell_counts.items() if count > 1]
+    for side, cumulative in duplicate_cells:
+        issues.append(
+            _issue(
+                "DUPLICATE_SCORE_CELL",
+                ValidationSeverity.ERROR,
+                [f"/score_events/{side.value}/cumulative/{cumulative}"],
+                f"{side.value} 队累计 {cumulative} 分格存在多个得分事件。",
+                observed=cell_counts[(side, cumulative)],
+                expected=1,
+            )
+        )
     if not document.final_score.ended_at.strip():
         issues.append(
             _issue(
@@ -519,6 +532,12 @@ def validate_document(
     events_by_team: dict[TeamSide, list] = defaultdict(list)
     for _, event in indexed_events:
         events_by_team[event.team].append(event)
+    for events in events_by_team.values():
+        events.sort(key=lambda event: (event.cumulative_score, event.sequence))
+
+    checkpoints_by_side = {
+        side: period_checkpoints(document, side) for side in (TeamSide.A, TeamSide.B)
+    }
 
     period_totals: dict[int, dict[TeamSide, int]] = defaultdict(
         lambda: {TeamSide.A: 0, TeamSide.B: 0}
@@ -534,6 +553,7 @@ def validate_document(
             event_index = document.score_events.index(event)
             delta = event.cumulative_score - previous
             valid_points = event.points in {1, 2, 3}
+            valid_delta = delta in {1, 2, 3}
             if event.points is None:
                 issues.append(
                     _issue(
@@ -545,18 +565,18 @@ def validate_document(
                         expected=[1, 2, 3],
                     )
                 )
-            elif not valid_points:
+            elif not valid_points or (valid_delta and event.points != delta):
                 issues.append(
                     _issue(
                         "INVALID_SCORE_POINTS",
                         ValidationSeverity.ERROR,
                         [f"/score_events/{event_index}/points"],
-                        "每次得分只能是1、2或3分。",
+                        "本次得分必须是1、2或3，并等于相邻固定累积分格的差值。",
                         observed=event.points,
-                        expected=[1, 2, 3],
+                        expected=delta if valid_delta else [1, 2, 3],
                     )
                 )
-            if delta not in {1, 2, 3} or (event.points is not None and delta != event.points):
+            if not valid_delta:
                 issues.append(
                     _issue(
                         "SCORE_SEQUENCE_GAP",
@@ -564,20 +584,39 @@ def validate_document(
                         [f"/score_events/{event_index}/cumulative_score"],
                         (
                             f"{side} 队本次累计分与上一项相差 {delta} 分；"
-                            "单次得分必须为1、2或3分，并与填写分值一致。"
+                            "相邻已填写格之间只能派生1、2或3分。"
                         ),
                         observed=event.cumulative_score,
-                        expected=(
-                            previous + event.points
-                            if event.points is not None
-                            else f"{previous + 1}至{previous + 3}"
+                        expected=f"{previous + 1}至{previous + 3}",
+                    )
+                )
+            crossed = [
+                (period, checkpoint)
+                for period, checkpoint in checkpoints_by_side[side]
+                if previous < checkpoint < event.cumulative_score
+            ]
+            if crossed:
+                issues.append(
+                    _issue(
+                        "SCORE_EVENT_CROSSES_PERIOD_BOUNDARY",
+                        ValidationSeverity.ERROR,
+                        [
+                            f"/score_events/{event_index}/cumulative_score",
+                            "/stated_period_scores",
+                        ],
+                        (
+                            f"{side.value} 队从累计 {previous} 分到 {event.cumulative_score} 分的"
+                            "派生事件跨过了书面节末检查点。"
                         ),
+                        observed={"from": previous, "to": event.cumulative_score},
+                        expected=[
+                            {"period": period, "checkpoint": checkpoint}
+                            for period, checkpoint in crossed
+                        ],
                     )
                 )
             previous = event.cumulative_score
-            if valid_points:
-                period_totals[event.period][side] += event.points
-            elif event.points is None and delta in {1, 2, 3}:
+            if valid_delta:
                 period_totals[event.period][side] += delta
 
             if not event.scorer_jersey:
@@ -645,13 +684,6 @@ def validate_document(
                 )
         computed_final[side] = previous
 
-    automatic_game_end = (
-        computed_final[TeamSide.A] == document.final_score.team_a
-        and computed_final[TeamSide.B] == document.final_score.team_b
-        and bool(events_by_team[TeamSide.A])
-        and bool(events_by_team[TeamSide.B])
-    )
-    final_played_period = max(period_totals, default=0)
     period_counts = Counter(score.period for score in document.stated_period_scores)
     duplicate_periods = sorted(period for period, count in period_counts.items() if count > 1)
     if duplicate_periods:
@@ -704,20 +736,28 @@ def validate_document(
                 )
             )
 
-        period_events = [event for event in document.score_events if event.period == period]
         for side in (TeamSide.A, TeamSide.B):
-            side_events = [event for event in period_events if event.team == side]
-            if (
-                side_events
-                and not (automatic_game_end and period == final_played_period)
-                and all(event.boundary == ScoreBoundary.NONE for event in side_events[-1:])
-            ):
+            checkpoint = dict(checkpoints_by_side[side]).get(period)
+            if checkpoint is None or checkpoint <= 0:
+                continue
+            checkpoint_events = [
+                event for event in events_by_team[side] if event.cumulative_score == checkpoint
+            ]
+            if not checkpoint_events:
                 issues.append(
                     _issue(
-                        "MISSING_PERIOD_BOUNDARY",
-                        ValidationSeverity.WARNING,
-                        [f"/score_events/{document.score_events.index(side_events[-1])}/boundary"],
-                        f"{side} 队第 {period} 节最后一个得分未标记节末。",
+                        "PERIOD_BOUNDARY_WITHOUT_EVENT",
+                        ValidationSeverity.ERROR,
+                        [
+                            f"/score_events/{side.value}/period/{period}/boundary",
+                            f"/stated_period_scores/{period}",
+                        ],
+                        (
+                            f"{side.value} 队第 {period} 节书面累计检查点为 {checkpoint} 分，"
+                            "但该累积分格没有得分事件，不能生成节末标记。"
+                        ),
+                        observed=checkpoint,
+                        expected="该累积分格存在号码或待识别事件",
                     )
                 )
 

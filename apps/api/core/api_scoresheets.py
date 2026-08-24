@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Literal
 from urllib.parse import quote
@@ -48,6 +49,52 @@ from core.services.scoresheets import (
 
 router = Router(tags=["scoresheets"], auth=[miniapp_bearer_auth, admin_session_auth])
 public_router = Router(tags=["public-scoresheet-stats"])
+
+
+_DERIVED_SCORE_CHANGE = re.compile(
+    r"^/score_events/(A|B)/cumulative/(\d+(?:#\d+)?)/(sequence|period|points|mark|scorer_circled|boundary|ink_role)$"
+)
+_SCORE_CELL_CHANGE = re.compile(r"^/score_events/(A|B)/cumulative/(\d+(?:#\d+)?)$")
+_DERIVED_FINAL_CHANGE = re.compile(r"^/final_score/(team_a|team_b|winner_name)$")
+
+
+def _human_visible_changes(changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Hide deterministic score metadata while retaining the jersey edit.
+
+    Full changes remain in ScoresheetChangeLog for two-second synchronization
+    and system audit.  The editor's human history only describes values that an
+    administrator actually chose.
+    """
+
+    visible: list[dict[str, Any]] = []
+    for change in changes:
+        path = str(change.get("path") or "/")
+        if _DERIVED_SCORE_CHANGE.fullmatch(path) or _DERIVED_FINAL_CHANGE.fullmatch(path):
+            continue
+        cell = _SCORE_CELL_CHANGE.fullmatch(path)
+        if cell:
+            before = change.get("before")
+            after = change.get("after", change.get("value"))
+            before_jersey = before.get("scorer_jersey") if isinstance(before, dict) else None
+            after_jersey = after.get("scorer_jersey") if isinstance(after, dict) else None
+            if before_jersey == after_jersey:
+                continue
+            visible.append(
+                {
+                    "path": f"{path}/scorer_jersey",
+                    "before": before_jersey,
+                    "after": after_jersey,
+                }
+            )
+            continue
+        visible.append(
+            {
+                "path": path,
+                "before": change.get("before"),
+                "after": change.get("after", change.get("value")),
+            }
+        )
+    return visible
 
 
 class ScoresheetErrorOut(Schema):
@@ -929,16 +976,18 @@ def list_scoresheet_changes(
             query = query.filter(event_sequence__lt=before_event)
         page_size = max(1, min(limit, 100))
         candidates = list(query[: page_size + 16])
-        rows = []
+        rows: list[tuple[Any, list[dict[str, Any]]]] = []
         for row in candidates:
             if row.event_type == "SOURCE_REPLACED" and int(
                 row.payload.get("source_version") or 0
             ) <= 1:
                 continue
+            human_changes: list[dict[str, Any]] = []
             if row.event_type in {"FIELD_EDIT", "UNDO", "REDO", "RECOGNITION_MERGE"}:
-                if not row.changed_fields:
+                human_changes = _human_visible_changes(row.changed_fields)
+                if not human_changes:
                     continue
-            rows.append(row)
+            rows.append((row, human_changes))
             if len(rows) == page_size:
                 break
         action_map = {
@@ -964,26 +1013,19 @@ def list_scoresheet_changes(
                     "document_id": str(scoresheet.id),
                     "action": action_map[row.event_type],
                     "summary": (
-                        f"{summary_map[row.event_type]} · {len(row.changed_fields)} 项"
+                        f"{summary_map[row.event_type]} · {len(human_changes)} 项"
                         if row.event_type
                         in {"FIELD_EDIT", "UNDO", "REDO", "RECOGNITION_MERGE"}
                         else summary_map[row.event_type]
                     ),
-                    "changes": [
-                        {
-                            "path": change.get("path", "/"),
-                            "before": change.get("before"),
-                            "after": change.get("after", change.get("value")),
-                        }
-                        for change in row.changed_fields
-                    ],
+                    "changes": human_changes,
                     "created_at": row.created_at,
                     "actor_name": row.actor.username if row.actor else None,
                     "surface": row.surface,
                 }
-                for row in rows
+                for row, human_changes in rows
             ],
-            "next_before_id": rows[-1].event_sequence if len(rows) == page_size else None,
+            "next_before_id": rows[-1][0].event_sequence if len(rows) == page_size else None,
         }
     except ScoresheetError as error:
         return _error(error)
