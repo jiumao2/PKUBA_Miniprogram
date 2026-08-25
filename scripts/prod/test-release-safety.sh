@@ -529,12 +529,12 @@ printf 'archive\n' >"$fixture/data-sentinels/archive"
 before_hash=$(sha256sum "$fixture"/data-sentinels/*)
 
 reset_deploy_fixture() {
-  /usr/bin/rm -rf "$fixture/deploy/backups" "$fixture/deploy/logs"
-  /usr/bin/rm -rf "$state_root/release-transaction" \
+  run_root /usr/bin/rm -rf "$fixture/deploy/backups" "$fixture/deploy/logs"
+  run_root /usr/bin/rm -rf "$state_root/release-transaction" \
     "$state_root/release-transaction-completed"
-  /usr/bin/rm -f "$fixture/reload-count"
+  run_root /usr/bin/rm -f "$fixture/reload-count"
   mkdir -p "$state_root/slots" "$fixture/deploy/backups" "$fixture/deploy/logs"
-  /usr/bin/rm -f "$state_root/slots/"*.env \
+  run_root /usr/bin/rm -f "$state_root/slots/"*.env \
     "$state_root/slots/"*.retain-until "$state_root/maintenance.enabled" \
     "$state_root/release-recovery-required.env"
   write_state "$state_root/current.env" blue v1.2.3 "$commit_one" "$api_one" "$web_one" \
@@ -668,9 +668,9 @@ assert_deploy_commit_failure_restores_everything mv-success '/SUCCESS'
 # Only application Compose operations are allowed; three data sentinels and
 # their hashes must remain byte-for-byte unchanged.
 reset_rollback_fixture() {
-  /usr/bin/rm -rf "$state_root/release-transaction" \
+  run_root /usr/bin/rm -rf "$state_root/release-transaction" \
     "$state_root/release-transaction-completed"
-  /usr/bin/rm -f "$fixture/reload-count"
+  run_root /usr/bin/rm -f "$fixture/reload-count"
   mkdir -p "$state_root/slots" "$fixture/deploy/logs"
   write_state "$state_root/current.env" green v1.2.4 "$commit_two" "$api_two" "$web_two" \
     "$release_root/v1.2.4" reschedule-route-v2
@@ -678,7 +678,7 @@ reset_rollback_fixture() {
     "$release_root/v1.2.3" reschedule-route-v1 reschedule-route-v2
   printf '%s\n' "$(( $(date +%s) + 3600 ))" \
     >"$state_root/slots/blue.env.retain-until"
-  /usr/bin/rm -f "$state_root/slots/green.env" \
+  run_root /usr/bin/rm -f "$state_root/slots/green.env" \
     "$state_root/slots/green.env.retain-until" \
     "$state_root/maintenance.enabled" "$state_root/release-recovery-required.env" \
     "$fixture/deploy/logs/"*-application-rollback.env
@@ -1110,7 +1110,7 @@ for crash in after-state-recovery after-gateway-reload after-recovery-committed 
     bash "$script_dir/recover-release-transaction.sh" >/dev/null 2>&1
   run_deploy bash "$script_dir/recover-release-transaction.sh" >/dev/null
   assert_current_release green v1.2.4
-  /usr/bin/rm -rf "$state_root/release-transaction-completed"
+  run_root /usr/bin/rm -rf "$state_root/release-transaction-completed"
 done
 
 reset_rollback_fixture
@@ -1169,11 +1169,11 @@ python3 "$script_dir/verify-paired-backup.py" \
   --scratch-root "$fixture/paired-preflight" --allow-test-root >/dev/null
 
 reset_paired_fixture() {
-  /usr/bin/rm -rf "$state_root/paired-restore-transaction" \
+  run_root /usr/bin/rm -rf "$state_root/paired-restore-transaction" \
     "$state_root/paired-restore-completed" \
     "$fixture/deploy/incident-snapshots" \
     "$fixture/deploy/logs/paired-restore-transactions"
-  /usr/bin/rm -f "$state_root/maintenance.enabled" \
+  run_root /usr/bin/rm -f "$state_root/maintenance.enabled" \
     "$fixture/deploy/logs/"*paired-restore.env "$fixture/reload-count"
   mkdir -p "$fixture/deploy/incident-snapshots" \
     "$fixture/deploy/logs/paired-restore-transactions"
@@ -1452,12 +1452,12 @@ synthetic_three=$(create_synthetic_backup "$paired_backup" 2026-08-22T00:00:00Z 
 synthetic_four=$(create_synthetic_backup "$paired_backup" 2026-08-23T00:00:00Z \
   v1.2.7 "$commit_7" "$api_seven" "$web_seven" "$release_root/v1.2.7" \
   v1.2.8 "$commit_8")
-/usr/bin/rm -rf -- "$paired_backup"
+run_root /usr/bin/rm -rf -- "$paired_backup"
 
 # Reset only runtime state; keep the four synthetic rollback points.
-/usr/bin/rm -rf "$state_root/release-transaction" \
+run_root /usr/bin/rm -rf "$state_root/release-transaction" \
   "$state_root/release-transaction-completed"
-/usr/bin/rm -f "$fixture/reload-count" "$state_root/slots/"*.env \
+run_root /usr/bin/rm -f "$fixture/reload-count" "$state_root/slots/"*.env \
   "$state_root/slots/"*.retain-until "$state_root/maintenance.enabled"
 write_state "$state_root/current.env" blue v1.2.3 "$commit_one" \
   "$api_one" "$web_one" "$release_root/v1.2.3" reschedule-route-v1
