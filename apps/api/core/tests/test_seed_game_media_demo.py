@@ -2,6 +2,7 @@ import pytest
 from django.core.files.storage import default_storage
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import IntegrityError, transaction
 from django.test import override_settings
 
 from core.models import AdminAuditLog, Game, GameMediaAsset
@@ -75,7 +76,7 @@ def test_seed_game_media_demo_refuses_non_debug_environment(tmp_path):
             )
 
 
-def test_public_data_check_rejects_multiple_current_group_photos(tmp_path):
+def test_database_rejects_multiple_current_group_photos():
     setup = reschedule_setup()
     game = setup["games"][0]
     rows = [
@@ -94,8 +95,9 @@ def test_public_data_check_rejects_multiple_current_group_photos(tmp_path):
         )
         for index in range(2)
     ]
-    GameMediaAsset.objects.bulk_create(rows)
-
-    with override_settings(DEBUG=False, MEDIA_ROOT=tmp_path):
-        with pytest.raises(CommandError, match="多张当前比赛合照"):
-            call_command("check_no_synthetic_public_data")
+    # The database constraint is now the authoritative guard.  Keep the
+    # failure inside a savepoint so the surrounding transactional test remains
+    # usable after PostgreSQL rejects the invalid pair.
+    with pytest.raises(IntegrityError, match="uniq_active_group_photo_per_game"):
+        with transaction.atomic():
+            GameMediaAsset.objects.bulk_create(rows)
