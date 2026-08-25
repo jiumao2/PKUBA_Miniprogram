@@ -86,6 +86,12 @@ MODEL_SPECS = (
     ModelSpec("roster-import-batches", core_models.RosterImportBatch, "名单导入批次"),
     ModelSpec("roster-import-issues", core_models.RosterImportIssue, "名单导入问题"),
     ModelSpec("game-media-assets", core_models.GameMediaAsset, "比赛图片"),
+    ModelSpec(
+        "game-media-upload-staging",
+        core_models.GameMediaUploadStaging,
+        "比赛图片暂存任务",
+        immutable=True,
+    ),
     ModelSpec("game-scoresheets", core_models.GameScoresheet, "记录表工作区"),
     ModelSpec("scoresheet-revisions", core_models.ScoresheetRevision, "记录表修订", immutable=True),
     ModelSpec(

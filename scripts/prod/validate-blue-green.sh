@@ -85,5 +85,17 @@ grep -Fq 'ACTIVE_SLOT=uninitialized' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'PRODUCTION_DEPLOYMENTS_ENABLED' \
   "$repo_root/.github/workflows/release.yml"
+grep -Fq 'RESTORE_PAIRED_DATA' \
+  "$repo_root/scripts/prod/restore-paired-data.sh"
+grep -Fq 'archive-staging.files.sha256' \
+  "$repo_root/scripts/prod/restore-paired-data.sh"
+grep -Fq 'MANIFEST.env' \
+  "$repo_root/scripts/prod/backup-current-server.sh"
+grep -Fq 'database_restored=1' \
+  "$repo_root/scripts/prod/restore-paired-data.sh"
+grep -Fq 'media_restored=1' \
+  "$repo_root/scripts/prod/restore-paired-data.sh"
+grep -Fq 'archive_restored=1' \
+  "$repo_root/scripts/prod/restore-paired-data.sh"
 
 echo "Blue/green deployment files are structurally valid."

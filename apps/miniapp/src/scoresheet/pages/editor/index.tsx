@@ -11,6 +11,7 @@ import Taro, { useDidShow, useRouter, useUnload } from "@tarojs/taro";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  createIdempotencyKey,
   type ScoresheetDetail,
   type ScoresheetMutationContext,
 } from "@pkuba/api-client";
@@ -146,6 +147,7 @@ export default function ScoresheetEditorPage() {
   const savingRef = useRef(false);
   const savingDocumentRef = useRef<ScoresheetDocument | null>(null);
   const actionFlightRef = useRef("");
+  const recognitionOperationRef = useRef({ version: -1, key: "" });
   const acquireFlightRef = useRef<Promise<void> | null>(null);
   const syncFlightRef = useRef<Promise<boolean> | null>(null);
   const heartbeatFlightRef = useRef<Promise<void> | null>(null);
@@ -672,7 +674,19 @@ export default function ScoresheetEditorPage() {
                 if (!(await drainPending())) return;
                 const mutation = context();
                 if (!mutation) return;
-                await api.retryScoresheetRecognition(scoresheetId, mutation, token);
+                if (recognitionOperationRef.current.version !== mutation.expected_version) {
+                  recognitionOperationRef.current = {
+                    version: mutation.expected_version,
+                    key: createIdempotencyKey(),
+                  };
+                }
+                await api.retryScoresheetRecognition(
+                  scoresheetId,
+                  mutation,
+                  token,
+                  recognitionOperationRef.current.key,
+                );
+                recognitionOperationRef.current = { version: -1, key: "" };
                 leaseRef.current = "";
                 clearStoredLease(scoresheetId);
                 setReadOnly(true);
@@ -895,7 +909,7 @@ function SourceView({ source, scale, position, rotation, setScale, setPosition, 
       <View className="mini-source-tools">
         <Text>{Math.round(scale * 100)}%</Text>
         <Button onClick={reset}>复位</Button>
-        <Button onClick={rotate}>旋转</Button>
+        <Button onClick={rotate}>仅旋转视图</Button>
       </View>
       <MovableArea className="mini-source-canvas" id="scoresheet-source-canvas" scaleArea>
         {source ? (

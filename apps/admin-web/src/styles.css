@@ -82,15 +82,6 @@ button:not(:disabled) {
   opacity: .68;
 }
 
-.sidebar-foot {
-  margin-top: auto;
-  padding: 12px;
-  border-top: 1px solid var(--pkuba-line);
-  color: var(--pkuba-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .sidebar-account {
   display: grid;
   gap: 4px;
@@ -171,18 +162,11 @@ h2 {
   gap: 12px;
 }
 
-.environment,
 .status {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
-}
-
-.environment {
-  padding: 6px 10px;
-  color: var(--pkuba-warning);
-  background: #f8ede1;
 }
 
 .account-role {
@@ -1281,8 +1265,7 @@ h2 {
     padding-inline: 11px;
   }
 
-  .sidebar nav .nav-item:disabled,
-  .sidebar-foot {
+  .sidebar nav .nav-item:disabled {
     display: none;
   }
 
@@ -1369,10 +1352,6 @@ h2 {
     gap: 7px;
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .environment {
-    text-align: center;
   }
 
   .primary-action {

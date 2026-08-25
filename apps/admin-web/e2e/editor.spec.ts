@@ -59,34 +59,34 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
   test('opens, edits, logs, undoes, redoes, autosaves and restores', async ({ page }) => {
     const recognition = await openDemoSheet(page);
     await expect(recognition).toContainText(/总计\s+[\d,]+\s+tokens/);
-    await expect(page.locator('.document-state')).toContainText('示例学院甲 vs 示例学院乙');
+    await expect(page.locator('.document-state')).toContainText('示例学院甲 — 示例学院乙');
     await expect(page.locator('.document-state')).not.toContainText(/v\d+/);
 
-    await page.locator('rect[data-field-id="header.game_number"]').dblclick();
-    const gameNumber = page.getByLabel('比赛序号');
-    const before = await gameNumber.inputValue();
-    const target = before === 'E2E-42' ? 'E2E-43' : 'E2E-42';
-    await gameNumber.fill(target);
+    await page.locator('rect[data-field-id="header.crew_chief"]').dblclick();
+    const crewChief = page.getByLabel('主裁判员');
+    const before = await crewChief.inputValue();
+    const target = before === 'E2E 主裁判甲' ? 'E2E 主裁判乙' : 'E2E 主裁判甲';
+    await crewChief.fill(target);
     await waitForSaved(page);
 
     await page.getByRole('button', { name: '撤销' }).click();
-    await expect(gameNumber).toHaveValue(before);
+    await expect(crewChief).toHaveValue(before);
     await waitForSaved(page);
     await page.getByRole('button', { name: '重做' }).click();
-    await expect(gameNumber).toHaveValue(target);
+    await expect(crewChief).toHaveValue(target);
     await waitForSaved(page);
 
     await expect(page.getByText('人工修改记录')).toBeVisible();
     const latestChange = page.locator('.change-log-list details').first();
     await expect(latestChange).toContainText('重做修改');
     await latestChange.locator('summary').click();
-    await expect(latestChange).toContainText('比赛信息 · 比赛序号');
+    await expect(latestChange).toContainText('比赛信息 · 主裁判员');
     await expect(latestChange).toContainText(before || '（空）');
     await expect(latestChange).toContainText(target);
 
     await page.reload();
-    await page.locator('rect[data-field-id="header.game_number"]').dblclick();
-    await expect(page.getByLabel('比赛序号')).toHaveValue(target);
+    await page.locator('rect[data-field-id="header.crew_chief"]').dblclick();
+    await expect(page.getByLabel('主裁判员')).toHaveValue(target);
   });
 
   test('photo and document canvases support direct pan, zoom, reset and reload', async ({ page }) => {
@@ -161,19 +161,28 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
     await expect(page.getByLabel('大模型识别结果')).toContainText('识别结果已载入', {
       timeout: 1_200_000,
     });
-    await page.locator('rect[data-field-id="header.game_number"]').dblclick();
+    await page.locator('rect[data-field-id="header.game_number"]').click();
     await expect(page.getByLabel('比赛序号')).toHaveValue('SCORESHEET-DEMO-001');
+    await expect(page.getByLabel('比赛序号')).toBeDisabled();
     await expect(page.getByText('重新上传记录表并重置草稿').first()).toBeVisible();
   });
 
   test('running-score editing and deterministic validation remain available', async ({ page }) => {
     await openDemoSheet(page);
+    await page.locator('rect[data-field-id="team.A.player.01.jersey"]').dblclick();
+    const jerseyInput = page.getByRole('textbox', { name: /^球衣号码/ });
+    let scorerJersey = await jerseyInput.inputValue();
+    if (!scorerJersey) {
+      scorerJersey = '8';
+      await jerseyInput.fill(scorerJersey);
+      await waitForSaved(page);
+    }
     await page.locator('rect[data-field-id="score.A.004"]').click();
     const ledger = page.getByLabel('A 队得分事件账本');
     await expect(ledger).toBeVisible();
     await expect(page.getByRole('tab', { name: /Q1/ })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByLabel('本次得分', { exact: true })).toHaveCount(0);
-    await page.getByLabel('得分队员').selectOption('8');
+    await page.getByLabel('得分队员').selectOption(scorerJersey);
     await expect(ledger.locator('[data-score-field="score.A.004"]')).toBeVisible();
 
     await page.locator('rect[data-field-id="score.A.003"]').dblclick();
@@ -192,7 +201,7 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
     await expect(page.getByLabel('胜队')).toHaveAttribute('readonly', '');
   });
 
-  test('a real uploaded sheet validates, confirms and exports the current draft PDF', async ({ page }) => {
+  test('validates the current uploaded draft, publishes only when valid and exports PDF', async ({ page }) => {
     await openDemoSheet(page);
     const validationResponse = page.waitForResponse((response) =>
       response.url().endsWith('/validate')
@@ -201,17 +210,30 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
     );
     await page.getByRole('button', { name: /^校验/ }).click();
     await validationResponse;
-    await expect(page.locator('.issue-row.error')).toHaveCount(0);
+    const validationErrors = page.locator('.issue-row.error');
+    const validationErrorCount = await validationErrors.count();
 
-    const confirmResponse = page.waitForResponse((response) =>
-      response.url().endsWith('/publish')
-      && response.request().method() === 'POST'
-      && response.ok(),
-    );
-    page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: /提交记录表/ }).click();
-    await confirmResponse;
-    await expect(page.locator('.document-state')).toContainText('已提交');
+    if (validationErrorCount === 0) {
+      const confirmResponse = page.waitForResponse((response) =>
+        response.url().endsWith('/publish')
+        && response.request().method() === 'POST'
+        && response.ok(),
+      );
+      page.once('dialog', (dialog) => dialog.accept());
+      await page.getByRole('button', { name: /提交记录表/ }).click();
+      await confirmResponse;
+      await expect(page.locator('.document-state')).toContainText('已提交');
+    } else {
+      const revalidationResponse = page.waitForResponse((response) =>
+        response.url().endsWith('/validate')
+        && response.request().method() === 'POST'
+        && response.ok(),
+      );
+      await page.getByRole('button', { name: /提交记录表/ }).click();
+      await revalidationResponse;
+      await expect(validationErrors).toHaveCount(validationErrorCount);
+      await expect(page.locator('.document-state')).not.toContainText('已提交');
+    }
 
     const exportLink = page.getByRole('link', { name: /导出 PDF/ });
     const href = await exportLink.getAttribute('href');

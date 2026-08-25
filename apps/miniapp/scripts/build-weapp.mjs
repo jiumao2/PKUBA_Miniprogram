@@ -1,15 +1,13 @@
 import { spawnSync } from "node:child_process";
 import {
-  copyFileSync,
   existsSync,
-  mkdirSync,
   readFileSync,
-  readdirSync,
   rmSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listFiles, syncWeappOutput, validateWeappOutput } from "./weapp-artifacts.mjs";
 
 const require = createRequire(import.meta.url);
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -89,15 +87,8 @@ if (!existsSync(stagedAppJson)) {
   throw new Error("微信小程序暂存构建缺少 app.json，未更新 dist。");
 }
 
-function listFiles(root, current = root) {
-  if (!existsSync(current)) return [];
-  return readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
-    const fullPath = join(current, entry.name);
-    return entry.isDirectory() ? listFiles(root, fullPath) : [relative(root, fullPath)];
-  });
-}
-
 const stagedFiles = listFiles(stagingRoot);
+validateWeappOutput(stagingRoot);
 if (!allowInsecureLocal) {
   const textExtensions = new Set([".js", ".json", ".wxml", ".wxss", ".sitemap"]);
   const forbidden = [
@@ -116,18 +107,6 @@ if (!allowInsecureLocal) {
     }
   }
 }
-const stagedSet = new Set(stagedFiles);
-mkdirSync(outputRoot, { recursive: true });
-for (const outputFile of listFiles(outputRoot)) {
-  if (!stagedSet.has(outputFile) && outputFile !== "app.json") {
-    rmSync(join(outputRoot, outputFile), { force: true });
-  }
-}
-for (const stagedFile of stagedFiles.filter((file) => file !== "app.json")) {
-  const destination = join(outputRoot, stagedFile);
-  mkdirSync(dirname(destination), { recursive: true });
-  copyFileSync(join(stagingRoot, stagedFile), destination);
-}
-copyFileSync(stagedAppJson, join(outputRoot, "app.json"));
+syncWeappOutput(stagingRoot, outputRoot);
 rmSync(stagingRoot, { recursive: true, force: true });
 console.log("微信小程序已完整构建并同步到 dist；app.json 在同步过程中始终可用。");

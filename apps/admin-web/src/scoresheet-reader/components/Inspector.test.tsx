@@ -40,6 +40,10 @@ describe('semantic inspector', () => {
 
     const jersey = screen.getByLabelText(/球衣号码/);
     await user.clear(jersey);
+    await user.type(jersey, '1a00');
+    expect(jersey).toHaveValue('1a00');
+    expect(screen.getByText('号码格式无效')).toBeInTheDocument();
+    await user.clear(jersey);
     await user.type(jersey, '01');
     expect(screen.getByText('号码格式无效')).toBeInTheDocument();
     await user.clear(jersey);

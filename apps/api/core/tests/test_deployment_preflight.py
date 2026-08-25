@@ -8,7 +8,8 @@ from django.core.management.base import CommandError
 from django.utils import timezone
 
 from core.management.commands.deployment_preflight import deployment_state
-from core.models import Account, ArchiveJob
+from core.models import Account, ArchiveJob, GameMediaAsset, GameMediaUploadStaging
+from core.tests.factories import reschedule_setup
 
 pytestmark = pytest.mark.django_db
 
@@ -22,6 +23,7 @@ def test_deployment_preflight_reports_safe_business_counts():
         "archive_jobs": 0,
         "media_purge_jobs": 0,
         "edit_leases": 0,
+        "media_uploads": 0,
         "due_reschedules": 0,
     }
     assert payload["counts"]["seasons"] == 0
@@ -55,3 +57,26 @@ def test_deployment_preflight_blocks_recoverable_expired_worker_lease():
     )
     with pytest.raises(CommandError):
         call_command("deployment_preflight", "--json", stdout=io.StringIO())
+
+
+def test_deployment_preflight_blocks_durable_media_upload_staging():
+    setup = reschedule_setup()
+    GameMediaUploadStaging.objects.create(
+        game=setup["games"][0],
+        kind=GameMediaAsset.Kind.GROUP_PHOTO,
+        file_key=f"staging/{setup['games'][0].id}/group-photo.jpg",
+        original_filename="group-photo.jpg",
+        mime_type="image/jpeg",
+        file_sha256="a" * 64,
+        byte_size=1024,
+        width=1600,
+        height=1200,
+        uploaded_by=setup["superadmin"],
+    )
+
+    with pytest.raises(CommandError) as error:
+        call_command("deployment_preflight", "--wait-seconds=0", "--json")
+
+    payload = json.loads(str(error.value))
+    assert payload["ready"] is False
+    assert payload["busy"]["media_uploads"] == 1

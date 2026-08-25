@@ -23,6 +23,7 @@ backups/
 Thumbs.db
 apps/miniapp/dist/
 apps/miniapp/.dist-staging/
+apps/miniapp/.dist-watch-staging/
 apps/miniapp/.swc/
 apps/miniapp/project.private.config.json
 apps/admin-web/dist/

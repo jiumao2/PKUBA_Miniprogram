@@ -599,7 +599,7 @@ export function TeamRosterPage({
                 <label><span>组别 *</span><select value={draft.divisionId} disabled={Boolean(draft.id) || dataset.read_only} onChange={(event) => markDraft({ ...draft, divisionId: event.target.value })}>{dataset.divisions.map((division) => <option key={division.id} value={division.id}>{division.name}</option>)}</select></label>
               </div>
               <div className="roster-table-heading">
-                <div><h3>球员名单</h3><p>姓名必填；号码可留空。同队重号会提示，但可以保存。</p></div>
+                <div><h3>球员名单</h3><p>姓名必填；号码可留空。同队启用球员的号码不能重复。</p></div>
                 <button type="button" disabled={dataset.read_only} onClick={() => markDraft({ ...draft, players: [...draft.players, playerDraft()] })}>＋ 增加球员</button>
               </div>
               <div className="roster-player-table" role="table" aria-label="球员在线编辑表">

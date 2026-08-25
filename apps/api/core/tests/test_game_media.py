@@ -5,6 +5,7 @@ import io
 import json
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -20,9 +21,15 @@ from core.models import (
     ApiIdempotencyRecord,
     Game,
     GameMediaAsset,
+    GameMediaUploadStaging,
     Season,
 )
-from core.services.game_media import GameMediaError, replace_game_media, upload_game_media
+from core.services.game_media import (
+    GameMediaError,
+    reconcile_staged_game_media,
+    replace_game_media,
+    upload_game_media,
+)
 from core.services.wechat import issue_session
 from core.tests.factories import placeholder_game, reschedule_setup, season
 
@@ -69,6 +76,29 @@ def upload(
         f"/api/v1/game-media/games/{game_id}",
         data={
             "kind": kind,
+            "scoresheet_complete_confirmed": "true" if confirmed else "false",
+            "image": file,
+        },
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+        **extra,
+    )
+
+
+def replace(
+    client: Client,
+    asset_id,
+    expected_version: int,
+    token: str,
+    *,
+    confirmed: bool,
+    file: SimpleUploadedFile,
+    idempotency_key: str = "",
+):
+    extra = {"HTTP_IDEMPOTENCY_KEY": idempotency_key} if idempotency_key else {}
+    return client.post(
+        f"/api/v1/game-media/assets/{asset_id}/replace",
+        data={
+            "expected_version": str(expected_version),
             "scoresheet_complete_confirmed": "true" if confirmed else "false",
             "image": file,
         },
@@ -179,6 +209,60 @@ def test_media_upload_replays_same_key_and_rejects_different_file(tmp_path):
     assert GameMediaAsset.objects.filter(game=game).count() == 1
     record = ApiIdempotencyRecord.objects.get(operation="game-media.upload")
     assert record.key_digest != "media-upload-test"
+
+
+def test_media_replace_replays_same_key_without_creating_another_current_asset(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["superadmin"])
+    client = Client()
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        created = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("original.jpg", (900, 700)),
+        )
+        original = GameMediaAsset.objects.get(id=created.json()["id"])
+        first = replace(
+            client,
+            original.id,
+            original.version,
+            token,
+            confirmed=False,
+            file=image_file("replacement.jpg", (900, 700)),
+            idempotency_key="media-replace-test",
+        )
+        replayed = replace(
+            client,
+            original.id,
+            original.version,
+            token,
+            confirmed=False,
+            file=image_file("replacement.jpg", (900, 700)),
+            idempotency_key="media-replace-test",
+        )
+        conflicting = replace(
+            client,
+            original.id,
+            original.version,
+            token,
+            confirmed=False,
+            file=image_file("different.jpg", (901, 700)),
+            idempotency_key="media-replace-test",
+        )
+
+    assert first.status_code == 201, first.content
+    assert replayed.status_code == 201
+    assert replayed.json()["id"] == first.json()["id"]
+    assert conflicting.status_code == 409
+    assert conflicting.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert GameMediaAsset.objects.filter(game=game, deleted_at__isnull=True).count() == 1
+    assert GameMediaAsset.objects.filter(game=game).count() == 2
+    assert ApiIdempotencyRecord.objects.filter(operation="game-media.replace").count() == 1
 
 
 def test_scoresheet_upload_is_admin_only_and_requires_confirmation(tmp_path):
@@ -771,6 +855,100 @@ def test_invalid_upload_and_storage_failure_clean_staging_files(
     assert partial_paths
     assert all(not path.exists() for path in partial_paths)
     assert all(not path.exists() for path in created_paths)
+
+
+def test_crash_after_storage_write_is_reconciled_without_orphan(tmp_path, monkeypatch):
+    from core.services import game_media as media_service
+
+    setup = reschedule_setup()
+    game = setup["games"][0]
+
+    def crash_after_storage(staging, image):
+        stored_key = media_service._store_validated_image(staging.file_key, image)
+        assert stored_key == staging.file_key
+        raise SystemExit("simulated process crash")
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                media_service,
+                "_store_or_resume_staging",
+                crash_after_storage,
+            )
+            with pytest.raises(SystemExit, match="simulated process crash"):
+                upload_game_media(
+                    actor=setup["admin"],
+                    game=game,
+                    kind=GameMediaAsset.Kind.GAME_PHOTO,
+                    scoresheet_complete_confirmed=False,
+                    uploaded_file=image_file("crash-recovery.jpg", (800, 600)),
+                )
+
+        staging = GameMediaUploadStaging.objects.get()
+        assert staging.status == GameMediaUploadStaging.Status.STAGING
+        assert (tmp_path / staging.file_key).exists()
+        assert not GameMediaAsset.objects.filter(game=game).exists()
+
+        summary = reconcile_staged_game_media(stale_after=timedelta(0))
+
+    staging.refresh_from_db()
+    assert summary == {"promoted": 1, "failed": 0, "discarded": 0, "deferred": 0}
+    assert staging.status == GameMediaUploadStaging.Status.PROMOTED
+    assert staging.promoted_asset_id is not None
+    assert GameMediaAsset.objects.filter(
+        id=staging.promoted_asset_id,
+        game=game,
+        deleted_at__isnull=True,
+    ).count() == 1
+
+
+def test_idempotent_upload_recovers_when_response_record_was_not_written(
+    tmp_path,
+    monkeypatch,
+):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["admin"])
+    client = Client()
+    manager = ApiIdempotencyRecord.objects
+    real_create = manager.create
+    attempts = 0
+
+    def fail_once(**kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("simulated response-record crash")
+        return real_create(**kwargs)
+
+    with override_settings(MEDIA_ROOT=tmp_path):
+        monkeypatch.setattr(manager, "create", fail_once)
+        with pytest.raises(RuntimeError, match="response-record crash"):
+            upload(
+                client,
+                game.id,
+                token,
+                kind=GameMediaAsset.Kind.GAME_PHOTO,
+                confirmed=False,
+                file=image_file("idempotent-crash.jpg", (900, 700)),
+                idempotency_key="media-crash-retry",
+            )
+        replayed = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("idempotent-crash.jpg", (900, 700)),
+            idempotency_key="media-crash-retry",
+        )
+
+    assert replayed.status_code == 201
+    assert GameMediaAsset.objects.filter(game=game, deleted_at__isnull=True).count() == 1
+    staging = GameMediaUploadStaging.objects.get()
+    assert staging.status == GameMediaUploadStaging.Status.PROMOTED
+    assert str(staging.promoted_asset_id) == replayed.json()["id"]
+    assert ApiIdempotencyRecord.objects.filter(operation="game-media.upload").count() == 1
 
 
 def test_public_game_detail_exposes_only_online_group_photos_without_review_gate(

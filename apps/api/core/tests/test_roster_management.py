@@ -15,6 +15,7 @@ from core.models import (
     AdminAuditLog,
     Division,
     RosterImportBatch,
+    RosterImportIssue,
     RosterPlayer,
     Season,
     SeasonLeaderBinding,
@@ -156,6 +157,32 @@ def test_upload_audits_required_duplicates_jersey_near_names_and_cross_division(
         "SIMILAR_TEAM_NAMES",
         "TEAM_DUPLICATE_ACROSS_DIVISIONS",
     } <= codes
+    duplicate_jersey = batch.issues.get(code="DUPLICATE_JERSEY_NUMBER")
+    assert duplicate_jersey.severity == RosterImportIssue.Severity.ERROR
+    assert batch.summary["error_count"] >= 1
+
+
+def test_duplicate_active_jersey_blocks_roster_confirmation_without_writes(tmp_path):
+    setup = _setup()
+    content = _workbook(
+        setup,
+        {"男甲": [("号码冲突球队", "张三", "7"), ("号码冲突球队", "李四", "7")]},
+    )
+    with override_settings(MEDIA_ROOT=tmp_path):
+        batch = _upload(setup, tmp_path, content)
+        with pytest.raises(RosterManagementError) as blocked:
+            confirm_roster_import(
+                actor=setup["actor"],
+                batch_id=batch.id,
+                expected_season_version=setup["season"].version,
+                warnings_acknowledged=True,
+            )
+
+    assert blocked.value.code == "DUPLICATE_JERSEY_NUMBER"
+    assert not Team.objects.filter(season=setup["season"]).exists()
+    assert not RosterPlayer.objects.filter(team__season=setup["season"]).exists()
+    setup["season"].refresh_from_db()
+    assert setup["season"].version == 1
 
 
 def test_name_resolution_reaudits_without_silent_merge(tmp_path):

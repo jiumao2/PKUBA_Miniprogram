@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AdminAccount,
   type AdminManagedAccount,
@@ -6,6 +6,8 @@ import {
   type SeasonInvite,
   type createAdminClient,
 } from "@pkuba/api-client";
+
+import { useAdminDirtySource } from "./dirtyGuard";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type PendingAction =
@@ -31,8 +33,15 @@ export function AdminAccountsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
+
+  useAdminDirtySource(
+    "admin-invite-form",
+    Boolean(inviteCode || inviteAgain),
+  );
 
   const load = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -40,17 +49,27 @@ export function AdminAccountsPage({
         client.listAdminAccounts(),
         season ? client.getSeasonInvite(season.id) : Promise.resolve(null),
       ]);
+      if (generation !== loadGenerationRef.current) return;
       setAccounts(nextAccounts);
       setInvite(nextInvite);
     } catch (reason: unknown) {
+      if (generation !== loadGenerationRef.current) return;
       setError(reason instanceof Error ? reason.message : "无法读取管理员列表");
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) setLoading(false);
     }
   }, [client, season]);
 
   useEffect(() => {
+    loadGenerationRef.current += 1;
+    setAccounts([]);
+    setInvite(null);
+    setInviteCode("");
+    setInviteAgain("");
     if (account.role === "SUPERADMIN") void load();
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [account.role, load]);
 
   const execute = async () => {
@@ -147,11 +166,6 @@ export function AdminAccountsPage({
                 ? `最近更新：${new Date(invite.updated_at).toLocaleString("zh-CN")}`
                 : "尚未设置"}
             </span>
-            {invite.uses_default_invite && (
-              <span className="form-warning" role="status">
-                当前仍使用默认邀请码 PKUBA1997，正式开放前建议轮换。
-              </span>
-            )}
             {season.status === "ARCHIVED" && (
               <span className="subtle">已归档赛季只读，不能轮换邀请码。</span>
             )}

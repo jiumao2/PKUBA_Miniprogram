@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev:weapp": "taro build --type weapp --watch",
+    "dev:weapp": "node ./scripts/watch-weapp.mjs",
     "build:weapp": "node ./scripts/build-weapp.mjs",
-    "test": "vitest run",
+    "test": "vitest run && node --test ./scripts/weapp-artifacts.node-test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

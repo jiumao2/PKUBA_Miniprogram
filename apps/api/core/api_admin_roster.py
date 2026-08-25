@@ -213,6 +213,7 @@ def _error_response(error: RosterManagementError):
         "ROSTER_ALREADY_CONFIRMED",
         "PROTECTED_TEAM_REFERENCE",
         "ROSTER_INTEGRITY_CONFLICT",
+        "ROSTER_VALIDATION_FAILED",
     }
     status_code = 409 if error.code in conflict_codes else 400
     return Status(status_code, {"message": str(error), "code": error.code})

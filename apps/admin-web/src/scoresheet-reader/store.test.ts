@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setTablePersonnel } from '@pkuba/scoresheet-domain';
 import { api } from './api';
 import { useEditorStore } from './store';
 import { makeDocument, makeTemplate } from './test/fixtures';
@@ -57,6 +58,20 @@ beforeEach(() => {
 });
 
 describe('editor persistence and history', () => {
+  it('keeps a manual table-personnel sentinel in draft status', () => {
+    const document = { ...makeDocument('manual-personnel'), status: 'draft' as const };
+    document.recognition = null;
+    useEditorStore.setState({ document, serverRevision: 0 });
+
+    useEditorStore.getState().mutate((draft) => {
+      setTablePersonnel(draft, ['人工记录台人员']);
+    });
+
+    expect(useEditorStore.getState().document?.recognition?.run_id).toBe(
+      'manual-table-personnel',
+    );
+    expect(useEditorStore.getState().document?.status).toBe('draft');
+  });
   it('starts monitoring the backend recognition created by a game upload', async () => {
     const document = {
       ...makeDocument('auto-upload-document'),

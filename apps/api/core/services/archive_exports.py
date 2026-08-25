@@ -40,6 +40,7 @@ from core.models import (
     AdminAuditLog,
     ArchiveJob,
     GameMediaAsset,
+    GameMediaUploadStaging,
     MediaPurgeJob,
     RescheduleRequest,
     ScoresheetEditLease,
@@ -255,6 +256,13 @@ def _system_backup_blockers() -> list[dict[str, str]]:
         blockers.append({"code": "RECOGNITION_ACTIVE", "message": "存在未结束的记录表识别任务。"})
     if ScoresheetEditLease.objects.filter(expires_at__gt=now).exists():
         blockers.append({"code": "SCORESHEET_EDIT_ACTIVE", "message": "存在有效的记录表编辑租约。"})
+    if GameMediaUploadStaging.objects.filter(
+        status__in=[
+            GameMediaUploadStaging.Status.STAGING,
+            GameMediaUploadStaging.Status.STORED,
+        ]
+    ).exists():
+        blockers.append({"code": "MEDIA_UPLOAD_ACTIVE", "message": "存在未完成的比赛图片上传。"})
     return blockers
 
 
@@ -949,6 +957,13 @@ def media_purge_preview(season: Season) -> dict[str, object]:
     active_leases = ScoresheetEditLease.objects.filter(
         scoresheet__game__season=season, expires_at__gt=timezone.now()
     ).count()
+    active_media_uploads = GameMediaUploadStaging.objects.filter(
+        game__season=season,
+        status__in=[
+            GameMediaUploadStaging.Status.STAGING,
+            GameMediaUploadStaging.Status.STORED,
+        ],
+    ).count()
     blockers: list[dict[str, str]] = []
     if season.status != Season.Status.ARCHIVED:
         blockers.append(
@@ -962,7 +977,13 @@ def media_purge_preview(season: Season) -> dict[str, object]:
         blockers.append(
             {"code": "FINAL_PHOTO_ARCHIVE_REQUIRED", "message": "缺少归档后的最终照片包。"}
         )
-    if active_reschedules or active_reservations or active_recognition or active_leases:
+    if (
+        active_reschedules
+        or active_reservations
+        or active_recognition
+        or active_leases
+        or active_media_uploads
+    ):
         blockers.append(
             {"code": "SEASON_ACTIVITY_ACTIVE", "message": "赛季仍有活动流程，不能清理照片。"}
         )

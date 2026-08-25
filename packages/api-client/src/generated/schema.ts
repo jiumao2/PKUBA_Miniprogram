@@ -11212,7 +11212,9 @@ export interface operations {
     core_api_game_media_replace_admin_game_media: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 asset_id: string;
             };
@@ -12029,7 +12031,9 @@ export interface operations {
     core_api_game_media_replace_miniapp_game_media: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 asset_id: string;
             };
@@ -13165,7 +13169,9 @@ export interface operations {
     core_api_scoresheets_retry_scoresheet_recognition: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 scoresheet_id: string;
             };

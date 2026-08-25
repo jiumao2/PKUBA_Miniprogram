@@ -7,12 +7,14 @@ interface SourcePaneProps {
   document: ScoresheetDocument | null;
   onRequestUpload: () => void;
   onReloadSource?: () => Promise<void>;
+  allowUpload?: boolean;
 }
 
 export function SourcePane({
   document,
   onRequestUpload,
   onReloadSource = async () => {},
+  allowUpload = true,
 }: SourcePaneProps) {
   const imageFrame = useRef<HTMLDivElement>(null);
   const sourceScroll = useRef<HTMLDivElement>(null);
@@ -155,9 +157,11 @@ export function SourcePane({
           <button className="source-icon-button" disabled={!sourceUrl || zoom >= 2.5} onClick={() => zoomFromCenter(zoom + 0.1)} title="放大原图" aria-label="放大原图">
             <Plus size={14} />
           </button>
-          <button className="source-icon-button" onClick={onRequestUpload} title={document ? '重新上传记录表照片' : '选择比赛并上传照片'} aria-label={document ? '重新上传照片' : '选择比赛并上传照片'}>
-            <ImagePlus size={15} />
-          </button>
+          {allowUpload ? (
+            <button className="source-icon-button" onClick={onRequestUpload} title={document ? '重新上传记录表照片' : '选择比赛并上传照片'} aria-label={document ? '重新上传照片' : '选择比赛并上传照片'}>
+              <ImagePlus size={15} />
+            </button>
+          ) : null}
           <button className="source-icon-button" disabled={!sourceUrl} onClick={() => void reloadImage()} title="获取新链接并重新载入原图" aria-label="重新载入原图">
             <RefreshCw size={15} />
           </button>
@@ -194,13 +198,19 @@ export function SourcePane({
               </div>
             </div>
           </div>
-        ) : (
+        ) : allowUpload ? (
           <button type="button" className="source-empty" onClick={onRequestUpload} aria-label="导入记录表照片">
             <span className="source-empty-mark"><ScanLine size={31} /></span>
             <strong>点击导入记录表照片</strong>
             <p>先选择比赛，再上传 JPEG、PNG 或 WebP 图片；上传后将自动开始识别。</p>
             <span className="source-empty-action">选择比赛并上传</span>
           </button>
+        ) : (
+          <div className="source-empty" aria-label="没有可查看的记录表原图">
+            <span className="source-empty-mark"><ScanLine size={31} /></span>
+            <strong>没有可查看的记录表原图</strong>
+            <p>归档纠错只允许修改已有的结构化记录，不允许上传或替换照片。</p>
+          </div>
         )}
       </div>
     </section>

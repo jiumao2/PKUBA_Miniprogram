@@ -17,6 +17,7 @@ import type {
   ScoresheetQueueItem,
   createAdminClient,
 } from "@pkuba/api-client";
+import { createIdempotencyKey } from "@pkuba/api-client";
 
 import "./competition-media.css";
 
@@ -70,6 +71,7 @@ export function GameMediaWorkbench({
   const gamesRequest = useRef(0);
   const assetsRequest = useRef(0);
   const initialTargetLoaded = useRef(false);
+  const mediaOperationKeys = useRef(new Map<string, string>());
   const pageSize = 20;
 
   const selectedSeason = seasons.find((item) => item.id === seasonId) ?? null;
@@ -216,7 +218,17 @@ export function GameMediaWorkbench({
     setBusy(true);
     setMessage("");
     try {
-      await client.replaceAdminGameMedia(selectedAsset.id, selectedAsset.version, false, replacementFile);
+      const operation = `replace:${selectedAsset.id}:${selectedAsset.version}:${replacementFile.name}:${replacementFile.size}:${replacementFile.lastModified}`;
+      const idempotencyKey = mediaOperationKeys.current.get(operation) ?? createIdempotencyKey();
+      mediaOperationKeys.current.set(operation, idempotencyKey);
+      await client.replaceAdminGameMedia(
+        selectedAsset.id,
+        selectedAsset.version,
+        false,
+        replacementFile,
+        idempotencyKey,
+      );
+      mediaOperationKeys.current.delete(operation);
       setReplacementFile(null);
       setMessage("照片已重新上传，旧文件已保留审计记录。");
       await loadAssets();
@@ -236,7 +248,17 @@ export function GameMediaWorkbench({
     setMessage("");
     try {
       for (const file of files) {
-        await client.uploadAdminGameMedia(selectedGame.game_id, kind, false, file);
+        const operation = `upload:${selectedGame.game_id}:${kind}:${file.name}:${file.size}:${file.lastModified}`;
+        const idempotencyKey = mediaOperationKeys.current.get(operation) ?? createIdempotencyKey();
+        mediaOperationKeys.current.set(operation, idempotencyKey);
+        await client.uploadAdminGameMedia(
+          selectedGame.game_id,
+          kind,
+          false,
+          file,
+          idempotencyKey,
+        );
+        mediaOperationKeys.current.delete(operation);
       }
       setMessage(kind === "GROUP_PHOTO" ? "比赛合照已上传并公开。" : `已添加 ${files.length} 张其他照片。`);
       await loadAssets();
@@ -390,7 +412,7 @@ export function GameMediaWorkbench({
                   )}
                   {archived && selectedGame.scoresheet_id && (
                     <div className="media-archived-scoresheet-actions">
-                      <button className="media-secondary-action" type="button" onClick={() => window.location.assign(scoresheetHref(seasonId, selectedGame.game_id))}>
+                      <button className="media-secondary-action" type="button" onClick={() => window.location.assign(scoresheetHref(seasonId, selectedGame.game_id, { archivedView: true }))}>
                         查看记录表<ExternalLink size={15} />
                       </button>
                       {isSuperadmin && selectedGame.status === "PUBLISHED" && (
@@ -399,7 +421,10 @@ export function GameMediaWorkbench({
                           type="button"
                           onClick={() => {
                             if (window.confirm("确认纠正这张已归档记录表？修改必须重新校验并发布，新旧版本和操作者都会保留在审计中。")) {
-                              window.location.assign(scoresheetHref(seasonId, selectedGame.game_id, true));
+                              window.location.assign(scoresheetHref(seasonId, selectedGame.game_id, {
+                                archivedView: true,
+                                correctionDocumentId: selectedGame.scoresheet_id ?? "",
+                              }));
                             }
                           }}
                         >
@@ -567,9 +592,16 @@ function scoresheetActionDetail(game: ScoresheetQueueItem, archived: boolean) {
   return "进入全屏编辑器继续校对语义字段、校验并发布。";
 }
 
-function scoresheetHref(seasonId: string, gameId: string, archivedCorrection = false) {
+export function scoresheetHref(
+  seasonId: string,
+  gameId: string,
+  options: { archivedView?: boolean; correctionDocumentId?: string } = {},
+) {
   const params = new URLSearchParams({ season_id: seasonId, game_id: gameId });
-  if (archivedCorrection) params.set("archived_correction", "1");
+  if (options.archivedView) params.set("archived_view", "1");
+  if (options.correctionDocumentId) {
+    params.set("archived_correction", options.correctionDocumentId);
+  }
   return `/scoresheet.html?${params.toString()}`;
 }
 

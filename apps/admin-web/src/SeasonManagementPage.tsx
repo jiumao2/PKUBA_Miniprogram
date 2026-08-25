@@ -80,16 +80,6 @@ function moveOrderedRow<T extends { key: string; sort_order: number }>(
   return continuousOrder(next);
 }
 
-function moveOrderedRowBy<T extends { key: string; sort_order: number }>(
-  rows: T[],
-  key: string,
-  offset: -1 | 1,
-): T[] {
-  const index = rows.findIndex((row) => row.key === key);
-  const target = rows[index + offset];
-  return index < 0 || !target ? rows : moveOrderedRow(rows, key, target.key);
-}
-
 function nextVenueName(rows: Array<{ name: string }>) {
   const used = new Set(rows.map((row) => row.name.trim()));
   let index = rows.length + 1;
@@ -245,28 +235,10 @@ export function SeasonManagementPage({
     );
     markChanged({ ...draft, [collection]: nextRows } as ConfigurationDraft);
   };
-  const moveCollectionBy = (
-    collection: OrderedCollection,
-    key: string,
-    offset: -1 | 1,
-  ) => {
-    if (!draft) return;
-    const nextRows = moveOrderedRowBy(
-      draft[collection] as Array<{ key: string; sort_order: number }>,
-      key,
-      offset,
-    );
-    markChanged({ ...draft, [collection]: nextRows } as ConfigurationDraft);
-  };
   const sortableRow = (
     collection: OrderedCollection,
     key: string,
   ) => ({
-    draggable: editable,
-    onDragStart: (event: DragEvent<HTMLElement>) => {
-      event.dataTransfer.effectAllowed = "move";
-      setDragging({ collection, key });
-    },
     onDragOver: (event: DragEvent<HTMLElement>) => {
       if (editable && dragging?.collection === collection) event.preventDefault();
     },
@@ -277,8 +249,27 @@ export function SeasonManagementPage({
       }
       setDragging(null);
     },
-    onDragEnd: () => setDragging(null),
   });
+  const renderOrderHandle = (
+    collection: OrderedCollection,
+    key: string,
+    label: string,
+  ) => (
+    <button
+      aria-label={`拖动${label}排序`}
+      className="row-drag-handle"
+      disabled={!editable}
+      draggable={editable}
+      title="拖动排序"
+      type="button"
+      onDragEnd={() => setDragging(null)}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", key);
+        setDragging({ collection, key });
+      }}
+    >⋮</button>
+  );
   const updateDivision = (key: string, patch: Partial<DivisionDraft>) => {
     if (!draft) return;
     markChanged({ ...draft, divisions: draft.divisions.map((row) => row.key === key ? { ...row, ...patch } : row) });
@@ -455,14 +446,14 @@ export function SeasonManagementPage({
     )}
 
     <section className="season-config-section">
-      <div className="season-section-heading"><div><h2>赛季信息</h2></div><span>版本 v{draft.version}</span></div>
+      <div className="season-section-heading"><div><h2>赛季信息</h2></div></div>
       <div className="season-core-grid">
         <label className="season-name-field">赛季名称<input disabled={!editable} value={draft.name} onChange={(event) => markChanged({ ...draft, name: event.target.value })} /></label>
         <label>赛事类型<select disabled={!editable} value={draft.competition_type} onChange={(event) => markChanged({ ...draft, competition_type: event.target.value })}><option value="PKU_CUP">北大杯</option><option value="FRESHMAN_CUP">新生杯</option></select></label>
         <label>赛季年份<input disabled={!editable} min="1" step="1" type="number" value={draft.year} onChange={(event) => markChanged({ ...draft, year: Number(event.target.value) })} /></label>
         <label>计划开始日期<input disabled={!editable} type="date" value={draft.starts_on} onChange={(event) => markChanged({ ...draft, starts_on: event.target.value })} /><small>用于模板和日历的默认范围，不限制特殊日期比赛。</small></label>
         <label>计划结束日期<input disabled={!editable} type="date" value={draft.ends_on} onChange={(event) => markChanged({ ...draft, ends_on: event.target.value })} /><small>范围外比赛、预留和容量例外仍会保留。</small></label>
-        <label>时区<input disabled value={draft.timezone} /></label>
+        <label className="season-timezone-field">时区<input disabled value={draft.timezone} /></label>
       </div>
     </section>
 
@@ -470,10 +461,10 @@ export function SeasonManagementPage({
       <div className="season-section-heading"><div><h2>赛事组别</h2><p>球队、签位和比赛均归属于组别。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, divisions: [...draft.divisions, { id: "", key: nextKey("division"), code: "", name: "新组别", gender: "MEN", sort_order: nextSortOrder(draft.divisions), version: 1, team_count: 0, group_count: 0, game_count: 0 }] })}>＋ 添加组别</button>}</div>
       <div className="division-config-table">
         <div className="division-config-row division-config-head"><span>移动</span><span>名称</span><span>分类</span><span>已关联</span><span /></div>
-        {draft.divisions.map((row, index) => {
+        {draft.divisions.map((row) => {
           const referenced = row.team_count + row.group_count + row.game_count > 0;
           return <div className={`division-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("divisions", row.key)}>
-            <OrderControls editable={editable} index={index} label={row.name} total={draft.divisions.length} onMove={(offset) => moveCollectionBy("divisions", row.key, offset)} />
+            {renderOrderHandle("divisions", row.key, row.name)}
             <input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updateDivision(row.key, { name: event.target.value })} />
             <select aria-label={`${row.name}分类`} disabled={!editable} value={row.gender} onChange={(event) => updateDivision(row.key, { gender: event.target.value })}><option value="MEN">男子</option><option value="WOMEN">女子</option></select>
             <span className="resource-usage">{row.team_count} 队 · {row.group_count} 组 · {row.game_count} 场</span>
@@ -526,8 +517,8 @@ export function SeasonManagementPage({
       </div>
       <div className="slot-family-table">
         <div className="slot-family-row slot-family-head"><span>移动</span><span>组别 / 球队</span><span>阶段</span><span>轮次</span><span>字母</span><span>签位数</span><span>自动比赛数</span><span /></div>
-        {draft.slot_families.map((row, index) => <div className={`slot-family-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("slot_families", row.key)}>
-            <OrderControls editable={editable} index={index} label={`${row.division_name}${row.stage_name}${row.prefix}`} total={draft.slot_families.length} onMove={(offset) => moveCollectionBy("slot_families", row.key, offset)} />
+        {draft.slot_families.map((row) => <div className={`slot-family-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("slot_families", row.key)}>
+            {renderOrderHandle("slot_families", row.key, `${row.division_name}${row.stage_name}${row.prefix}`)}
             <select aria-label={`${row.prefix}签位组别`} disabled={!editable} value={row.division_id} onChange={(event) => {
               const division = draft.divisions.find((item) => item.id === event.target.value);
               if (!division) return;
@@ -571,8 +562,8 @@ export function SeasonManagementPage({
       </div>
       <div className="venue-config-table simplified" aria-label="标准场地">
         <div className="venue-config-row venue-config-head"><span>移动</span><span>场地名称</span><span>自动分配</span><span>已关联</span><span /></div>
-        {draft.venues.map((row, index) => <div className={`venue-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("venues", row.key)}>
-            <OrderControls editable={editable} index={index} label={row.name} total={draft.venues.length} onMove={(offset) => moveCollectionBy("venues", row.key, offset)} />
+        {draft.venues.map((row) => <div className={`venue-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("venues", row.key)}>
+            {renderOrderHandle("venues", row.key, row.name)}
             <input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updateVenue(row.key, { name: event.target.value })} />
             <label className="venue-active-toggle"><input checked={row.active} disabled={!editable} type="checkbox" onChange={(event) => updateVenue(row.key, { active: event.target.checked })} /><span>{row.active ? "启用" : "停用"}</span></label>
             <span className="resource-usage">{row.game_count} 场正式比赛</span>
@@ -585,8 +576,8 @@ export function SeasonManagementPage({
       <div className="season-section-heading"><div><h2>标准时段</h2><p>系统已预设 8 个标准时段；通常只需核对显示名称和默认时间，无需手动添加。</p></div><span>固定 8 个</span></div>
       <div className="period-config-table">
         <div className="period-config-row period-config-head"><span>移动</span><span>名称</span><span>默认时间</span><span>已关联</span></div>
-        {draft.periods.map((row, index) => <div className={`period-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("periods", row.key)}>
-          <OrderControls editable={editable} index={index} label={row.name} total={draft.periods.length} onMove={(offset) => moveCollectionBy("periods", row.key, offset)} />
+        {draft.periods.map((row) => <div className={`period-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("periods", row.key)}>
+          {renderOrderHandle("periods", row.key, row.name)}
           <input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updatePeriod(row.key, { name: event.target.value })} />
           <input aria-label={`${row.name}默认时间`} disabled={!editable} type="time" value={row.start_time.slice(0, 5)} onChange={(event) => updatePeriod(row.key, { start_time: event.target.value })} />
           <span className="resource-usage">{row.game_count} 场 · {row.active_reservation_count} 个预留</span>
@@ -636,20 +627,6 @@ export function SeasonManagementPage({
     </div>}
     {message && <p className={`season-management-message ${messageTone}`} role="status">{message}</p>}
     {showCreate && <CreateSeasonDialog client={client} seasons={seasons} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onDataChanged(created.id); onSeasonChange(created.id); }} />}
-  </div>;
-}
-
-function OrderControls({ editable, index, label, total, onMove }: {
-  editable: boolean;
-  index: number;
-  label: string;
-  total: number;
-  onMove: (offset: -1 | 1) => void;
-}) {
-  return <div className="row-order-controls">
-    <span className="row-drag-handle" aria-hidden title="拖动排序">⋮⋮</span>
-    <button aria-label={`上移${label}`} disabled={!editable || index === 0} type="button" onClick={() => onMove(-1)}>↑</button>
-    <button aria-label={`下移${label}`} disabled={!editable || index === total - 1} type="button" onClick={() => onMove(1)}>↓</button>
   </div>;
 }
 

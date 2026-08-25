@@ -635,6 +635,6 @@ def test_demotion_protects_last_active_superadmin_under_stale_actor_state():
             expected_version=target.version,
         )
 
-    assert blocked.value.code == "LAST_SUPERADMIN_PROTECTED"
+    assert blocked.value.code == "ACTOR_STATE_CHANGED"
     target.refresh_from_db()
     assert target.role == Account.Role.SUPERADMIN

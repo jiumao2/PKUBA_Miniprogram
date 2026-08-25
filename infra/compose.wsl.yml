@@ -121,6 +121,9 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
       PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
+      LOCAL_MEDIA_ROOT: /app/media
+    volumes:
+      - pkuba-wsl-media:/app/media
     depends_on:
       db:
         condition: service_healthy

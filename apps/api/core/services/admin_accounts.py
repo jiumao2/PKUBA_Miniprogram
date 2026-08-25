@@ -72,7 +72,25 @@ def demote_superadmin(
     expected_version: int,
 ) -> Account:
     _require_superadmin(actor)
-    target = Account.objects.select_for_update().get(id=target_id)
+    locked_accounts = list(
+        Account.objects.select_for_update()
+        .filter(id__in={actor.id, target_id})
+        .order_by("id")
+    )
+    current_actor = next((item for item in locked_accounts if item.id == actor.id), None)
+    target = next((item for item in locked_accounts if str(item.id) == str(target_id)), None)
+    if target is None:
+        raise Account.DoesNotExist
+    if (
+        current_actor is None
+        or not current_actor.is_active
+        or current_actor.role != Account.Role.SUPERADMIN
+        or current_actor.version != actor.version
+    ):
+        raise AdminAccountError(
+            "当前管理员身份已发生变化，请刷新后重试。",
+            "ACTOR_STATE_CHANGED",
+        )
     if target.version != expected_version:
         raise AdminAccountError("账号已被其他操作修改，请刷新。", "VERSION_CONFLICT")
     if target.id == actor.id:
@@ -83,6 +101,7 @@ def demote_superadmin(
         active_superadmin_ids = list(
             Account.objects.select_for_update()
             .filter(role=Account.Role.SUPERADMIN, is_active=True)
+            .order_by("id")
             .values_list("id", flat=True)
         )
         if len(active_superadmin_ids) <= 1:

@@ -11,6 +11,7 @@ from io import BytesIO
 from pathlib import PurePath
 from zipfile import BadZipFile, ZipFile
 
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.serializers.json import DjangoJSONEncoder
@@ -461,7 +462,6 @@ def _parse_workbook(
                     _issue(
                         "DUPLICATE_JERSEY_NUMBER",
                         f"{row['canonical_team_name']}有多名球员使用 {jersey} 号。",
-                        severity=RosterImportIssue.Severity.WARNING,
                         cell=f"{row['sheet']}!C{row['row']}",
                         context={"first_row": jersey_seen[jersey]["row"], "jersey_number": jersey},
                     )
@@ -920,6 +920,10 @@ def confirm_roster_import(
     except IntegrityError as error:
         raise RosterManagementError(
             "名单与并发数据发生冲突，整次确认已回滚。", "ROSTER_INTEGRITY_CONFLICT"
+        ) from error
+    except ValidationError as error:
+        raise RosterManagementError(
+            "名单未通过权威数据校验，整次确认已回滚。", "ROSTER_VALIDATION_FAILED"
         ) from error
 
 

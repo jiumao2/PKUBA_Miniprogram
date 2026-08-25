@@ -419,7 +419,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const next = rebaseSnapshot(current, serverRevision);
     mutation(next);
     deriveScoreEvents(next);
-    next.status = next.recognition ? 'needs_review' : 'draft';
+    next.status = hasRecognitionResult(next) ? 'needs_review' : 'draft';
     set((state) => ({
       document: next,
       past: [...state.past.slice(-49), previous],
@@ -592,7 +592,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         rebased.recognition.issues = local.recognition.issues?.filter((issue) =>
           latestIssues.has(JSON.stringify(issue)));
       }
-      rebased.status = rebased.recognition ? 'needs_review' : 'draft';
+      rebased.status = hasRecognitionResult(rebased) ? 'needs_review' : 'draft';
       rebased.acknowledged_warnings = [];
       set({
         document: rebased,
@@ -672,7 +672,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!current || current.id !== confirmationDocument.id) return;
       if (current !== confirmationDocument || get().serverRevision !== confirmationRevision) {
         const rebased = rebaseSnapshot(current, confirmed.revision);
-        rebased.status = rebased.recognition ? 'needs_review' : 'draft';
+        rebased.status = hasRecognitionResult(rebased) ? 'needs_review' : 'draft';
         rebased.acknowledged_warnings = [];
         set({
           document: rebased,

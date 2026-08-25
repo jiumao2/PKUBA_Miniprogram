@@ -26,7 +26,7 @@ export function mutateScoresheet(
 }
 
 export function sanitizeJerseyInput(value: string): string {
-  return value.replace(/\D/g, "");
+  return value;
 }
 
 export function replaceTeam(

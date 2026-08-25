@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AdminSeason,
   MobileAdminGame,
@@ -6,6 +6,7 @@ import type {
   UpdateMobileAdminGame,
 } from "@pkuba/api-client";
 
+import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
 import "./operation-pages.css";
 
 type AdminClient = ReturnType<typeof import("@pkuba/api-client").createAdminClient>;
@@ -34,6 +35,7 @@ export function ScheduleEditorPage({
 }) {
   const [options, setOptions] = useState<MobileScheduleOptions | null>(null);
   const [selected, setSelected] = useState<MobileAdminGame | null>(null);
+  const [selectedBaseline, setSelectedBaseline] = useState<MobileAdminGame | null>(null);
   const [divisionId, setDivisionId] = useState("all");
   const [adjustability, setAdjustability] = useState("all");
   const [query, setQuery] = useState("");
@@ -42,12 +44,36 @@ export function ScheduleEditorPage({
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const optionsGeneration = useRef(0);
+  const gameGeneration = useRef(0);
+
+  const selectedDirty = Boolean(
+    selected
+    && selectedBaseline
+    && JSON.stringify(editableGameSnapshot(selected)) !== JSON.stringify(editableGameSnapshot(selectedBaseline)),
+  );
+  useAdminDirtySource(
+    "schedule-editor-game",
+    selectedDirty || cancelRequest || overrideRules,
+  );
 
   useEffect(() => {
+    const generation = ++optionsGeneration.current;
+    gameGeneration.current += 1;
     setSelected(null);
-    client.getAdminScheduleOptions(season.id).then(setOptions).catch((reason: unknown) => {
-      setMessage(reason instanceof Error ? reason.message : "无法读取赛程选项");
+    setSelectedBaseline(null);
+    setOptions(null);
+    client.getAdminScheduleOptions(season.id).then((next) => {
+      if (generation === optionsGeneration.current) setOptions(next);
+    }).catch((reason: unknown) => {
+      if (generation === optionsGeneration.current) {
+        setMessage(reason instanceof Error ? reason.message : "无法读取赛程选项");
+      }
     });
+    return () => {
+      optionsGeneration.current += 1;
+      gameGeneration.current += 1;
+    };
   }, [client, season.id]);
 
   const divisions = useMemo(() => {
@@ -67,13 +93,19 @@ export function ScheduleEditorPage({
   });
 
   const openGame = async (game: MobileAdminGame) => {
+    if (!(await confirmAdminNavigation())) return;
+    const generation = ++gameGeneration.current;
     setMessage(null);
     try {
-      setSelected(await client.getAdminScheduleGame(game.id));
+      const next = await client.getAdminScheduleGame(game.id);
+      if (generation !== gameGeneration.current) return;
+      setSelected(next);
+      setSelectedBaseline(next);
       setCancelRequest(false);
       setOverrideRules(false);
       setAcknowledged(false);
     } catch (reason: unknown) {
+      if (generation !== gameGeneration.current) return;
       setMessage(reason instanceof Error ? reason.message : "无法读取比赛");
     }
   };
@@ -104,6 +136,9 @@ export function ScheduleEditorPage({
       };
       const updated = await client.updateAdminScheduleGame(selected.id, payload);
       setSelected(updated);
+      setSelectedBaseline(updated);
+      setCancelRequest(false);
+      setOverrideRules(false);
       setAcknowledged(false);
       setMessage("比赛已更新，公开赛程已刷新。");
       await onUpdated();
@@ -125,7 +160,12 @@ export function ScheduleEditorPage({
         </div>
         <label className="editor-season-select">
           操作赛季
-          <select value={season.id} onChange={(event) => onSeasonChange(event.target.value)}>
+          <select value={season.id} onChange={(event) => {
+            const nextSeasonId = event.target.value;
+            void confirmAdminNavigation().then((confirmed) => {
+              if (confirmed) onSeasonChange(nextSeasonId);
+            });
+          }}>
             {seasons.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
@@ -170,7 +210,6 @@ export function ScheduleEditorPage({
           <form onSubmit={(event) => void submit(event)}>
             <div className="operation-heading">
               <div><p>{selected.division_name}</p><h2>{selected.home_name}　—　{selected.away_name}</h2></div>
-              <span className="version-mark">v{selected.version}</span>
             </div>
             {selected.active_reschedule_request_id && (
               <div className="operation-warning">本场存在活动调赛申请。修改前必须明确取消，并释放其预留。</div>
@@ -222,6 +261,22 @@ function score(game: MobileAdminGame) {
 
 function numeric(value: string) {
   return value === "" ? null : Number(value);
+}
+
+function editableGameSnapshot(game: MobileAdminGame) {
+  return {
+    date: game.date,
+    period_id: game.period_id,
+    start_time: game.start_time,
+    standard_venue_id: game.standard_venue_id,
+    venue_name: game.venue_name,
+    home_team_id: game.home_team_id,
+    away_team_id: game.away_team_id,
+    home_score: game.home_score,
+    away_score: game.away_score,
+    status: game.status,
+    leader_adjustable: game.leader_adjustable,
+  };
 }
 
 export function scheduleGameVisualClass(game: MobileAdminGame, active = false) {

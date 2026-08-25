@@ -39,6 +39,15 @@ export async function openDemoSheet(page: Page) {
   await game.click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('svg.scene-overlay')).toBeVisible();
+  const validateButton = page.getByRole('button', { name: /^校验/ });
+  if (await validateButton.isDisabled()) {
+    const documentId = await page.evaluate(() =>
+      localStorage.getItem('scoresheet-reader:last-document-id'));
+    if (!documentId) throw new Error('只读演示记录表缺少逐记录纠错标识。');
+    await page.goto(`/scoresheet.html?archived_view=1&archived_correction=${encodeURIComponent(documentId)}`);
+    await expect(page.locator('svg.scene-overlay')).toBeVisible();
+    await expect(validateButton).toBeEnabled({ timeout: 10_000 });
+  }
   const recognition = page.getByLabel('大模型识别结果');
   await expect(recognition).toContainText('识别结果已载入', { timeout: 10_000 });
   return recognition;

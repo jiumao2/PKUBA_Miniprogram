@@ -76,6 +76,8 @@ services:
     env_file: ${PKUBA_ENV_FILE:-./.env.production}
     environment: *release-metadata
     command: python manage.py expire_reschedules --loop
+    volumes:
+      - private-media:/app/.local/media
     depends_on:
       db:
         condition: service_healthy

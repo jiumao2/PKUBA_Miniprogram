@@ -200,7 +200,7 @@ describe("SchedulePlannerWorkspace", () => {
   });
 
   it("downloads the generated blank template when upstream configuration is ready", async () => {
-    const createObjectURL = vi.fn().mockReturnValue("blob:pkuba-v32-template");
+    const createObjectURL = vi.fn().mockReturnValue("blob:pkuba-v33-template");
     Object.defineProperty(URL, "createObjectURL", {
       configurable: true,
       value: createObjectURL,

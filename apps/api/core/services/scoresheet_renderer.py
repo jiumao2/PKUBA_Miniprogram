@@ -361,10 +361,9 @@ def render_scoresheet_pdf(document: dict[str, Any], template_path: Path | None =
 
     template = PdfReader(str(path))
     overlay = PdfReader(overlay_buffer)
-    page = template.pages[0]
-    page.merge_page(overlay.pages[0])
     writer = PdfWriter()
-    writer.add_page(page)
+    page = writer.add_page(template.pages[0])
+    page.merge_page(overlay.pages[0])
     output = io.BytesIO()
     writer.write(output)
     return output.getvalue()

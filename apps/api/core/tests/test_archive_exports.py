@@ -16,6 +16,7 @@ from core.models import (
     AdminAuditLog,
     ArchiveJob,
     GameMediaAsset,
+    GameMediaUploadStaging,
     MediaPurgeJob,
     Season,
 )
@@ -118,6 +119,32 @@ def test_season_export_api_creates_json_safe_job(tmp_path, monkeypatch):
     assert response.status_code == 202
     job = ArchiveJob.objects.get(id=response.json()["id"])
     assert job.summary["preview"]["season_id"] == str(setup["season"].id)
+
+
+def test_system_backup_preview_blocks_durable_media_upload_staging(tmp_path, monkeypatch):
+    setup = reschedule_setup()
+    _allow_archive_space(monkeypatch)
+    GameMediaUploadStaging.objects.create(
+        game=setup["games"][0],
+        kind=GameMediaAsset.Kind.GROUP_PHOTO,
+        file_key=f"staging/{setup['games'][0].id}/group-photo.jpg",
+        original_filename="group-photo.jpg",
+        mime_type="image/jpeg",
+        file_sha256="b" * 64,
+        byte_size=2048,
+        width=1600,
+        height=1200,
+        uploaded_by=setup["superadmin"],
+    )
+
+    with override_settings(
+        MEDIA_ROOT=tmp_path / "media",
+        ARCHIVE_ROOT=tmp_path / "archives",
+    ):
+        preview = archive_exports.archive_preview(kind=ArchiveJob.Kind.SYSTEM_RAW)
+
+    assert preview["ready"] is False
+    assert {blocker["code"] for blocker in preview["blockers"]} == {"MEDIA_UPLOAD_ACTIVE"}
 
 
 def test_season_data_and_photo_packages_are_portable_and_flat(tmp_path):

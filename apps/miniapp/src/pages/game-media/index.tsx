@@ -2,7 +2,8 @@ import { Button, Image, Text, View } from "@tarojs/components";
 import Taro, { useDidShow, useRouter } from "@tarojs/taro";
 import { useMemo, useRef, useState } from "react";
 import {
-  formatOfficialScore,
+  ApiError,
+  createIdempotencyKey,
   type GameMediaAsset,
   type GameMediaCollection,
   type MiniAppMe,
@@ -19,7 +20,7 @@ import {
 } from "../../api";
 import { getMiniAppSession, resolveMiniAppIdentity } from "../../auth";
 import { formatDate } from "../../format";
-import { mediaAssetActions, mediaGroupPresentation } from "./viewModel";
+import { gameHeadingScore, mediaAssetActions, mediaGroupPresentation } from "./viewModel";
 import "./index.css";
 
 const MEDIA_GROUPS: ReadonlyArray<{ kind: GameMediaKind; label: string }> = [
@@ -41,6 +42,17 @@ export default function GameDetailPage() {
   const [message, setMessage] = useState("");
   const [privateError, setPrivateError] = useState("");
   const requestVersionRef = useRef(0);
+  const operationKeysRef = useRef(new Map<string, string>());
+
+  const privateErrorMessage = (reason: unknown) => {
+    if (reason instanceof ApiError) {
+      if (reason.status === 401) return "登录状态已失效，请在“我的”重新登录。";
+      if (reason.status === 403) return "当前账号无权查看本场私有资料。";
+      if (reason.status >= 500) return "服务器暂时无法读取比赛资料，请稍后重试。";
+      return reason.message;
+    }
+    return "网络连接失败，请检查网络后重试。";
+  };
 
   const loadPrivate = async (requestVersion: number) => {
     setPrivateLoading(true);
@@ -58,16 +70,12 @@ export default function GameDetailPage() {
         if (requestVersion === requestVersionRef.current) setCollection(media);
       } catch (reason: unknown) {
         if (requestVersion === requestVersionRef.current) {
-          setPrivateError(
-            reason instanceof Error ? reason.message : "比赛私有资料读取失败，请重试。",
-          );
+          setPrivateError(privateErrorMessage(reason));
         }
       }
     } catch (reason: unknown) {
       if (requestVersion === requestVersionRef.current) {
-        setPrivateError(
-          reason instanceof Error ? reason.message : "身份核对失败，请重试。",
-        );
+        setPrivateError(privateErrorMessage(reason));
       }
     } finally {
       if (requestVersion === requestVersionRef.current) setPrivateLoading(false);
@@ -200,6 +208,9 @@ export default function GameDetailPage() {
       });
       const file = selected.tempFiles[0];
       if (!file) return;
+      const operation = `replace:${asset.id}:${asset.version}:${file.tempFilePath}`;
+      const idempotencyKey = operationKeysRef.current.get(operation) ?? createIdempotencyKey();
+      operationKeysRef.current.set(operation, idempotencyKey);
       setUploadingTarget(asset.id);
       await replaceGameMedia(
         asset.id,
@@ -208,7 +219,9 @@ export default function GameDetailPage() {
         confirmed,
         token,
         setProgress,
+        idempotencyKey,
       );
+      operationKeysRef.current.delete(operation);
       Taro.showToast({ title: "已重新上传", icon: "success" });
       await load();
     } catch (reason: unknown) {
@@ -307,12 +320,12 @@ export default function GameDetailPage() {
 
 function GameHeading({ detail }: { detail: PublicGameDetail }) {
   const game = detail.game;
-  const score = formatOfficialScore(game.home_score, game.away_score, " : ");
+  const score = gameHeadingScore(game.home_score, game.away_score);
   return <View className={`detail-game-heading ${game.division_gender === "WOMEN" ? "is-women" : ""}`}>
     <Text className="detail-division">{game.division_name} · {formatDate(game.date)} {game.start_time}</Text>
     <View className="detail-matchup">
       <Text>{game.home_name}</Text>
-      {score && <Text className="detail-score">{score}</Text>}
+      <Text className="detail-score">{score}</Text>
       <Text>{game.away_name}</Text>
     </View>
     <Text className="detail-venue">{game.venue_name}</Text>

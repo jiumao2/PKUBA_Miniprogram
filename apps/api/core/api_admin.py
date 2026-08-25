@@ -624,7 +624,11 @@ def _schedule_error(error: ScheduleImportError):
 def _admin_account_error(error: AdminAccountError):
     if error.code == "PERMISSION_DENIED":
         status = 403
-    elif error.code in {"VERSION_CONFLICT", "LAST_SUPERADMIN_PROTECTED"}:
+    elif error.code in {
+        "VERSION_CONFLICT",
+        "LAST_SUPERADMIN_PROTECTED",
+        "ACTOR_STATE_CHANGED",
+    }:
         status = 409
     else:
         status = 400

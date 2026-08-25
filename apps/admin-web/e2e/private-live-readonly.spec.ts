@@ -23,14 +23,14 @@ test('the second tab opens the same private sheet read-only and receives edits w
     await expect(second.locator('svg.scene-overlay')).toBeVisible();
     await expect(second.locator('.offline-badge')).toContainText('正在通过网页编辑', { timeout: 5_000 });
 
-    await page.locator('rect[data-field-id="header.game_number"]').dblclick();
-    const firstInput = page.getByLabel('比赛序号');
+    await page.locator('rect[data-field-id="header.crew_chief"]').dblclick();
+    const firstInput = page.getByLabel('主裁判员');
     const target = `跨端-${Date.now()}`;
     await firstInput.fill(target);
     await waitForSaved(page);
 
-    await second.locator('rect[data-field-id="header.game_number"]').dblclick();
-    const secondInput = second.getByLabel('比赛序号');
+    await second.locator('rect[data-field-id="header.crew_chief"]').dblclick();
+    const secondInput = second.getByLabel('主裁判员');
     await expect(secondInput).toBeDisabled();
     await expect(secondInput).toHaveValue(target, { timeout: 3_500 });
 

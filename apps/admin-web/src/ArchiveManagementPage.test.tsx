@@ -181,6 +181,44 @@ describe("ArchiveManagementPage", () => {
     })).not.toBeChecked());
   });
 
+  it("clears the external-copy confirmation when a refreshed preview hash changes", async () => {
+    const first = { ...purgePreview(season, 4), preview_hash: "preview-before" };
+    const second = { ...purgePreview(season, 5), preview_hash: "preview-after" };
+    const client = {
+      ...baseClient(),
+      previewMediaPurge: vi.fn()
+        .mockResolvedValueOnce(first)
+        .mockResolvedValue(second),
+      previewSeasonExport: vi.fn().mockResolvedValue({
+        ready: true,
+        blockers: [],
+        estimated_bytes: 1024,
+      }),
+      createSeasonExport: vi.fn().mockResolvedValue({}),
+    } as unknown as AdminClient;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(
+      <ArchiveManagementPage
+        client={client}
+        seasons={[season]}
+        seasonId={season.id}
+        onSeasonChange={vi.fn()}
+      />,
+    );
+
+    const checkbox = await screen.findByRole("checkbox", {
+      name: "我已将最终数据包和照片包保存到服务器以外的位置",
+    });
+    await userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: "生成数据包" }));
+
+    await waitFor(() => expect(client.previewMediaPurge).toHaveBeenCalledTimes(2));
+    expect(checkbox).not.toBeChecked();
+  });
+
   it("ignores a late purge preview from the previously selected season", async () => {
     let resolveFirstPreview: ((value: ReturnType<typeof purgePreview>) => void) | undefined;
     const firstPreview = new Promise<ReturnType<typeof purgePreview>>((resolve) => {

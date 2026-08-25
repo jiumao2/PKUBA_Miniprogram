@@ -1,6 +1,13 @@
-import type { GameMediaAsset } from "@pkuba/api-client";
+import { formatOfficialScore, type GameMediaAsset } from "@pkuba/api-client";
 
 export type MediaKind = "SCORESHEET" | "GROUP_PHOTO" | "GAME_PHOTO";
+
+export function gameHeadingScore(
+  homeScore: number | null,
+  awayScore: number | null,
+): string {
+  return formatOfficialScore(homeScore, awayScore, " : ") ?? "VS";
+}
 
 export function mediaGroupPresentation(
   kind: MediaKind,

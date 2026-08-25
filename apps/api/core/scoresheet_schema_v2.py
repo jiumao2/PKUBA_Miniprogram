@@ -45,7 +45,9 @@ class ScoresheetDocumentError(ValueError):
 
 
 def _utc_now() -> str:
-    return datetime.now(UTC).isoformat()
+    value = datetime.now(UTC)
+    value = value.replace(microsecond=(value.microsecond // 1000) * 1000)
+    return value.isoformat(timespec="milliseconds")
 
 
 def has_recognition_result(document: dict[str, Any]) -> bool:
@@ -575,6 +577,33 @@ def _recognition_field_locked() -> ScoresheetDocumentError:
     )
 
 
+def _same_datetime_millisecond(current: Any, incoming: Any) -> bool:
+    if current == incoming:
+        return True
+    if not isinstance(current, (str, datetime)) or not isinstance(incoming, (str, datetime)):
+        return False
+    try:
+        current_value = (
+            current
+            if isinstance(current, datetime)
+            else datetime.fromisoformat(current.replace("Z", "+00:00"))
+        )
+        incoming_value = (
+            incoming
+            if isinstance(incoming, datetime)
+            else datetime.fromisoformat(incoming.replace("Z", "+00:00"))
+        )
+    except ValueError:
+        return False
+    if current_value.tzinfo is None or incoming_value.tzinfo is None:
+        return False
+    current_utc = current_value.astimezone(UTC)
+    incoming_utc = incoming_value.astimezone(UTC)
+    current_utc = current_utc.replace(microsecond=(current_utc.microsecond // 1000) * 1000)
+    incoming_utc = incoming_utc.replace(microsecond=(incoming_utc.microsecond // 1000) * 1000)
+    return current_utc == incoming_utc
+
+
 def _assert_recognition_document_editable(current: Any, incoming: Any) -> None:
     if current is None:
         if incoming is None:
@@ -593,9 +622,11 @@ def _assert_recognition_document_editable(current: Any, incoming: Any) -> None:
         return
     if not isinstance(current, dict) or not isinstance(incoming, dict):
         raise _recognition_field_locked()
-    for key in ("run_id", "notes", "applied_at"):
+    for key in ("run_id", "notes"):
         if incoming.get(key) != current.get(key):
             raise _recognition_field_locked()
+    if not _same_datetime_millisecond(current.get("applied_at"), incoming.get("applied_at")):
+        raise _recognition_field_locked()
     for key in ("problem_paths", "issues"):
         if not _is_list_subset(incoming.get(key, []), current.get(key, [])):
             raise _recognition_field_locked()

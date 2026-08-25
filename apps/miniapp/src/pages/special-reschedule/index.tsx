@@ -1,10 +1,11 @@
 import { Button, Text, View } from "@tarojs/components";
 import Taro from "@tarojs/taro";
 
+import { copyStaffEmail, STAFF_EMAIL } from "./copy";
 import "./index.css";
 
 export default function SpecialReschedulePage() {
-  const email = "pkubaoutward@163.com";
+  const email = STAFF_EMAIL;
   return (
     <View className="page special-page">
       <Text className="page-title">特殊原因调赛</Text>
@@ -31,7 +32,10 @@ export default function SpecialReschedulePage() {
       </View>
       <View className="contact-line">
         <View><Text className="contact-label">组委会公邮</Text><Text className="contact-value">{email}</Text></View>
-        <Button className="contact-copy" onClick={() => void Taro.setClipboardData({ data: email })}>复制邮箱</Button>
+        <Button className="contact-copy" onClick={() => void copyStaffEmail(
+          (options) => Taro.setClipboardData(options),
+          (options) => Taro.showToast(options),
+        )}>复制邮箱</Button>
       </View>
     </View>
   );

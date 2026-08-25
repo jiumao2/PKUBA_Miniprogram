@@ -7,6 +7,7 @@ import type {
   AdvancedRecordList,
 } from "@pkuba/api-client";
 
+import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
 import "./advanced-data.css";
 
 type AdminClient = ReturnType<typeof import("@pkuba/api-client").createAdminClient>;
@@ -69,8 +70,14 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
   const [error, setError] = useState<string | null>(null);
   const [mutation, setMutation] = useState<AdvancedMutation | null>(null);
   const [mutationText, setMutationText] = useState("{}");
+  const [mutationBaseline, setMutationBaseline] = useState("{}");
   const [preview, setPreview] = useState<AdvancedMutationPreview | null>(null);
   const requestGenerationRef = useRef(0);
+
+  useAdminDirtySource(
+    "advanced-data-mutation",
+    Boolean(mutation && mutation.operation !== "DELETE" && mutationText !== mutationBaseline),
+  );
 
   const model = models.find((item) => item.key === modelKey) ?? null;
   const orderedFields = useMemo(
@@ -90,7 +97,7 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
         setError(reason instanceof Error ? reason.message : "无法读取高级数据目录");
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [client]);
 
   const loadRecords = async ({
     key = modelKey,
@@ -150,7 +157,9 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
       values: operation === "DELETE" ? {} : editableValues(modelKey, selected),
     };
     setMutation(next);
-    setMutationText(JSON.stringify(next.values ?? {}, null, 2));
+    const nextText = JSON.stringify(next.values ?? {}, null, 2);
+    setMutationText(nextText);
+    setMutationBaseline(nextText);
     setPreview(null);
     setError(null);
   };
@@ -182,6 +191,7 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
         impact_hash: preview.impact_hash,
         confirmed: true,
       });
+      setMutationBaseline(mutationText);
       await loadRecords({ key: model.key, offset: records?.offset ?? 0 });
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "高级数据修改失败");
@@ -207,7 +217,12 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
               className={item.key === modelKey ? "active" : ""}
               key={item.key}
               type="button"
-              onClick={() => setModelKey(item.key)}
+              onClick={() => {
+                if (item.key === modelKey) return;
+                void confirmAdminNavigation().then((confirmed) => {
+                  if (confirmed) setModelKey(item.key);
+                });
+              }}
             >
               <span>{item.label}</span>
               <small>{item.mutation_mode === "READ_ONLY" ? "只读" : "主数据"}</small>
@@ -328,11 +343,19 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
       )}
 
       {mutation && model && (
-        <div className="dialog-backdrop" role="presentation" onMouseDown={() => setMutation(null)}>
+        <div className="dialog-backdrop" role="presentation" onMouseDown={() => {
+          void confirmAdminNavigation().then((confirmed) => {
+            if (confirmed) setMutation(null);
+          });
+        }}>
           <section className="advanced-mutation-dialog" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
             <header>
               <div><span>ADVANCED MUTATION</span><h2>{mutation.operation} · {model.label}</h2></div>
-              <button type="button" onClick={() => setMutation(null)} aria-label="关闭">×</button>
+              <button type="button" onClick={() => {
+                void confirmAdminNavigation().then((confirmed) => {
+                  if (confirmed) setMutation(null);
+                });
+              }} aria-label="关闭">×</button>
             </header>
             <p>仅接受该模型允许编辑的字段。关联字段请填写稳定 UUID；提交前服务端会再次校验赛季状态、引用和并发版本。</p>
             {mutation.operation !== "DELETE" && (
@@ -354,7 +377,11 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
               </div>
             )}
             <footer>
-              <button className="secondary-action" type="button" onClick={() => setMutation(null)}>取消</button>
+              <button className="secondary-action" type="button" onClick={() => {
+                void confirmAdminNavigation().then((confirmed) => {
+                  if (confirmed) setMutation(null);
+                });
+              }}>取消</button>
               <button className="secondary-action" disabled={busy} type="button" onClick={() => void previewMutation()}>{busy ? "正在检查…" : "服务端预览"}</button>
               <button className="primary-action" disabled={busy || !preview?.can_apply} type="button" onClick={() => void applyMutation()}>二次确认并执行</button>
             </footer>

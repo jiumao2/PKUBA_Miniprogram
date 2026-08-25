@@ -252,6 +252,16 @@
   font-size: 12px;
   font-weight: 700;
 }
+.season-core-grid > label {
+  min-width: 0;
+  align-content: start;
+}
+.season-timezone-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  box-sizing: border-box;
+}
 .season-create-form label > small {
   color: var(--pkuba-muted);
   font-size: 12px;
@@ -287,25 +297,20 @@
 .slot-family-row:last-child,
 .grid-column-row:last-child { border-bottom: 0; }
 
-.division-config-row { grid-template-columns: 112px minmax(220px, 1fr) 108px 190px 32px; }
+.division-config-row { grid-template-columns: 64px minmax(220px, 1fr) 108px 190px 32px; }
 .venue-config-row { grid-template-columns: 64px 150px minmax(180px, 1fr) 108px 190px 32px; }
-.period-config-row { grid-template-columns: 112px minmax(220px, 1fr) 130px 210px; }
+.period-config-row { grid-template-columns: 64px minmax(220px, 1fr) 130px 210px; }
 .slot-family-row {
   min-width: 1010px;
-  grid-template-columns: 112px minmax(190px, 1fr) 140px 70px 64px 92px 120px 32px;
+  grid-template-columns: 64px minmax(190px, 1fr) 140px 70px 64px 92px 120px 32px;
 }
 .grid-column-row {
   min-width: 860px;
   grid-template-columns: 64px minmax(210px, 1fr) minmax(180px, 1fr) 120px 88px 32px;
 }
 .venue-config-table.simplified .venue-config-row {
-  grid-template-columns: 112px minmax(220px, 1fr) 120px 210px 32px;
+  grid-template-columns: 64px minmax(220px, 1fr) 120px 210px 32px;
 }
-
-.division-config-row[draggable="true"],
-.venue-config-row[draggable="true"],
-.period-config-row[draggable="true"],
-.slot-family-row[draggable="true"] { cursor: grab; }
 
 .division-config-row.is-dragging,
 .venue-config-row.is-dragging,
@@ -315,36 +320,31 @@
   background: #fff5f4;
 }
 
-.row-order-controls {
-  display: grid;
-  grid-template-columns: 24px 32px 32px;
-  align-items: center;
-  gap: 4px;
-}
-
 .row-drag-handle {
-  color: #8f8679;
-  font-size: 20px;
-  letter-spacing: -5px;
-  user-select: none;
-}
-
-.row-order-controls button {
-  width: 32px;
-  height: 32px;
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
   padding: 0;
-  color: #5e5548;
-  background: #fff;
-  border: 1px solid var(--pkuba-line);
-  border-radius: 4px;
+  align-items: center;
+  justify-items: center;
+  color: #8f8679;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 26px;
+  line-height: 1;
+  user-select: none;
+  cursor: grab;
+  touch-action: none;
 }
-
-.row-order-controls button:hover:not(:disabled) {
+.row-drag-handle:hover:not(:disabled),
+.row-drag-handle:focus-visible {
   color: var(--pkuba-red-dark);
   border-color: var(--pkuba-red);
+  outline: 0;
 }
-
-.row-order-controls button:disabled { opacity: .25; }
+.row-drag-handle:active:not(:disabled) { cursor: grabbing; }
+.row-drag-handle:disabled { opacity: .25; cursor: default; }
 
 .division-config-head,
 .venue-config-head,

@@ -6,6 +6,7 @@ import time
 
 from django.core.management.base import BaseCommand
 
+from core.services.game_media import reconcile_staged_game_media
 from core.services.rescheduling import expire_due_confirmations
 from core.services.system_write_fence import (
     SystemWriteFenceActive,
@@ -28,9 +29,20 @@ class Command(BaseCommand):
             try:
                 with shared_system_write_access():
                     count = expire_due_confirmations()
+                    media_summary = reconcile_staged_game_media(limit=100)
             except SystemWriteFenceActive:
                 count = 0
-            touch_worker_heartbeat("expiry", worker, details={"expired": count})
+                media_summary = {
+                    "promoted": 0,
+                    "failed": 0,
+                    "discarded": 0,
+                    "deferred": 0,
+                }
+            touch_worker_heartbeat(
+                "expiry",
+                worker,
+                details={"expired": count, "media_staging": media_summary},
+            )
             if count:
                 self.stdout.write(f"expired={count}")
             if not options["loop"]:

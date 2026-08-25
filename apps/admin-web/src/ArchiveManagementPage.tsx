@@ -17,6 +17,7 @@ import {
   createAdminClient,
 } from "@pkuba/api-client";
 
+import { useAdminDirtySource } from "./dirtyGuard";
 import "./archive-management.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -70,7 +71,7 @@ export function ArchiveManagementPage({
   const [purgeJobs, setPurgeJobs] = useState<MediaPurgeJob[]>([]);
   const [purgePreview, setPurgePreview] = useState<MediaPurgePreview | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
-  const [externalCopyConfirmed, setExternalCopyConfirmed] = useState(false);
+  const [confirmedPreviewHash, setConfirmedPreviewHash] = useState<string | null>(null);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +81,14 @@ export function ArchiveManagementPage({
   const hasActiveJob =
     [...seasonJobs, ...systemJobs].some((job) => ["QUEUED", "BUILDING"].includes(job.status))
     || purgeJobs.some((job) => ["QUEUED", "BUILDING"].includes(job.status));
+  const externalCopyConfirmed = Boolean(
+    purgePreview && confirmedPreviewHash === purgePreview.preview_hash,
+  );
+
+  useAdminDirtySource(
+    "archive-management-form",
+    Boolean(currentPassword || confirmedPreviewHash),
+  );
 
   const load = useCallback(async () => {
     if (!season) return;
@@ -100,6 +109,9 @@ export function ArchiveManagementPage({
       setSystemJobs(nextSystemJobs.items);
       setPurgeJobs(nextPurgeJobs.items);
       setPurgePreview(nextPurgePreview);
+      setConfirmedPreviewHash((current) =>
+        current && current === nextPurgePreview?.preview_hash ? current : null,
+      );
     } catch (reason: unknown) {
       if (loadGenerationRef.current !== generation) return;
       setError(reason instanceof Error ? reason.message : "无法读取备份状态");
@@ -108,7 +120,7 @@ export function ArchiveManagementPage({
 
   useEffect(() => {
     loadGenerationRef.current += 1;
-    setExternalCopyConfirmed(false);
+    setConfirmedPreviewHash(null);
     setPurgePreview(null);
     setSeasonJobs([]);
     setPurgeJobs([]);
@@ -194,7 +206,7 @@ export function ArchiveManagementPage({
   const applyPurge = async () => {
     if (!season || !purgePreview) return;
     if (purgePreview.season_id !== season.id) {
-      setExternalCopyConfirmed(false);
+      setConfirmedPreviewHash(null);
       setError("赛季已经切换，请重新读取照片清理预览。");
       return;
     }
@@ -210,7 +222,7 @@ export function ArchiveManagementPage({
         confirmed_external_copy: true,
         confirm_permanent_delete: true,
       });
-      setExternalCopyConfirmed(false);
+      setConfirmedPreviewHash(null);
       setNotice("照片清理任务已经提交，页面会自动刷新状态。");
     });
   };
@@ -309,7 +321,13 @@ export function ArchiveManagementPage({
             <ul>{purgePreview.blockers.map((blocker) => <li key={blocker.code}>{blocker.message}</li>)}</ul>
           )}
           <label className="archive-confirm-check">
-            <input type="checkbox" checked={externalCopyConfirmed} onChange={(event) => setExternalCopyConfirmed(event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={externalCopyConfirmed}
+              onChange={(event) => setConfirmedPreviewHash(
+                event.target.checked ? purgePreview.preview_hash : null,
+              )}
+            />
             我已将最终数据包和照片包保存到服务器以外的位置
           </label>
           <button className="danger-action" disabled={!purgePreview.ready || !externalCopyConfirmed || Boolean(busy)} onClick={() => void applyPurge()}>

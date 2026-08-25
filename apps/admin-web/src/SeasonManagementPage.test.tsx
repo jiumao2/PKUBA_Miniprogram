@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -206,12 +206,23 @@ describe("SeasonManagementPage", () => {
     );
 
     await screen.findByText("赛事组别");
-    expect(container.querySelectorAll('[draggable="true"]')).toHaveLength(10);
+    const handles = container.querySelectorAll('.row-drag-handle[draggable="true"]');
+    expect(handles).toHaveLength(10);
+    expect(container.querySelectorAll('.division-config-row[draggable="true"]')).toHaveLength(0);
     expect(screen.queryByLabelText("男甲代码")).toBeNull();
     expect(screen.queryByLabelText("12:50代码")).toBeNull();
     expect(screen.queryAllByText("顺序")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "上移女乙" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "下移女乙" })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "上移女乙" }));
+    const dataTransfer = { effectAllowed: "none", setData: vi.fn() };
+    fireEvent.dragStart(screen.getByRole("button", { name: "拖动女乙排序" }), {
+      dataTransfer,
+    });
+    const targetRow = screen.getByDisplayValue("女甲").closest(".division-config-row");
+    expect(targetRow).not.toBeNull();
+    fireEvent.dragOver(targetRow as Element, { dataTransfer });
+    fireEvent.drop(targetRow as Element, { dataTransfer });
     await user.click(screen.getByRole("button", { name: "预览并保存" }));
 
     await waitFor(() => expect(updateSeasonConfiguration).toHaveBeenCalledOnce());

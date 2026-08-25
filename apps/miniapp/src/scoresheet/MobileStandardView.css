@@ -89,7 +89,7 @@
 .canonical-input-row input {
   box-sizing: border-box;
   width: 100%;
-  height: 64rpx;
+  height: 88rpx;
   padding: 0 14rpx;
   border: 1rpx solid #d7d3ce;
   border-radius: 9rpx;
@@ -255,7 +255,7 @@
 }
 
 .roster-row {
-  min-height: 84rpx;
+  min-height: 88rpx;
   display: grid;
   grid-template-columns: 48rpx 66rpx minmax(0, 1fr) 70rpx;
   align-items: center;
@@ -330,10 +330,11 @@
 }
 
 .canonical-drawer-heading button {
-  height: 62rpx;
+  min-width: 88rpx;
+  height: 88rpx;
   margin: 0;
   padding: 0 20rpx;
-  line-height: 60rpx;
+  line-height: 86rpx;
   border: 1rpx solid #d3cec8;
   border-radius: 9rpx;
   background: #fff;
@@ -500,7 +501,7 @@
 }
 
 .score-grid-row {
-  min-height: 72rpx;
+  min-height: 88rpx;
   border-top: 1rpx solid #e7e4e0;
 }
 
@@ -512,7 +513,7 @@
 }
 
 .score-cell {
-  min-height: 72rpx;
+  min-height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -635,11 +636,12 @@
 .ended-time-row > button {
   position: absolute;
   right: 18rpx;
-  top: 13rpx;
-  height: 58rpx;
+  top: 6rpx;
+  min-width: 88rpx;
+  height: 88rpx;
   margin: 0;
   padding: 0 16rpx;
-  line-height: 56rpx;
+  line-height: 86rpx;
   border: 1rpx solid #d5d0ca;
   border-radius: 8rpx;
   background: #fff;
@@ -650,7 +652,7 @@
 .personnel-section { border-top: 14rpx solid #f2f1ef; }
 
 .personnel-row {
-  min-height: 78rpx;
+  min-height: 104rpx;
   display: grid;
   grid-template-columns: 1fr 94rpx;
   align-items: center;
@@ -660,7 +662,7 @@
 }
 
 .personnel-row input {
-  height: 62rpx;
+  height: 88rpx;
   padding: 0 14rpx;
   border: 1rpx solid #d7d3ce;
   border-radius: 8rpx;
@@ -669,10 +671,10 @@
 }
 
 .personnel-row button {
-  height: 60rpx;
+  height: 88rpx;
   margin: 0;
   padding: 0;
-  line-height: 58rpx;
+  line-height: 86rpx;
   border: 1rpx solid #dfb8b4;
   border-radius: 8rpx;
   background: #fff;

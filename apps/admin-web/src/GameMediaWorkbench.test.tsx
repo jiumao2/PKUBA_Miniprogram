@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdminSeason, GameMediaAsset, ScoresheetQueueItem, createAdminClient } from "@pkuba/api-client";
 
-import { GameMediaWorkbench } from "./GameMediaWorkbench";
+import { GameMediaWorkbench, scoresheetHref } from "./GameMediaWorkbench";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -78,6 +78,15 @@ function clientWith(overrides: Partial<AdminClient> = {}) {
 }
 
 describe("GameMediaWorkbench", () => {
+  it("binds archived correction confirmation to one concrete scoresheet", () => {
+    expect(scoresheetHref("season-live", "game-one", {
+      archivedView: true,
+      correctionDocumentId: "sheet-one",
+    })).toBe(
+      "/scoresheet.html?season_id=season-live&game_id=game-one&archived_view=1&archived_correction=sheet-one",
+    );
+  });
+
   it("aggregates records and photos by game, restores selection and filters the game index", async () => {
     const user = userEvent.setup();
     const client = clientWith();

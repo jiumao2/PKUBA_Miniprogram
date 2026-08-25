@@ -1,4 +1,4 @@
-import { createAdminClient } from '@pkuba/api-client';
+import { createAdminClient, createIdempotencyKey } from '@pkuba/api-client';
 import { hasRecognitionResult } from '@pkuba/scoresheet-domain';
 
 import type {
@@ -28,6 +28,8 @@ type RawLease = {
     expires_at: string;
   };
 };
+
+const recognitionOperationKeys = new Map<string, string>();
 
 type RawRecognition = {
   id: string;
@@ -149,6 +151,13 @@ function storedLeaseToken(documentId: string): string {
   return sessionStorage.getItem(leaseTokenKey(documentId)) ?? '';
 }
 
+export function isArchivedCorrectionConfirmed(
+  documentId: string,
+  search = window.location.search,
+): boolean {
+  return new URLSearchParams(search).get('archived_correction') === documentId;
+}
+
 function clearLease(documentId: string): void {
   sessionStorage.removeItem(leaseTokenKey(documentId));
   leaseSessions.delete(documentId);
@@ -180,7 +189,7 @@ async function acquire(documentId: string): Promise<LeaseSession> {
       clientId(),
       'WEB',
       resumeToken,
-      new URLSearchParams(window.location.search).get('archived_correction') === '1',
+      isArchivedCorrectionConfirmed(documentId),
     )) as unknown as RawLease;
     const session = {
       token: response.lease_token,
@@ -501,13 +510,21 @@ export const api = {
 
   async createRecognition(id: string, baseRevision: number): Promise<RecognitionRun> {
     await ensureEditable(id);
+    const operation = `${id}:${baseRevision}`;
+    const idempotencyKey = recognitionOperationKeys.get(operation) ?? createIdempotencyKey();
+    recognitionOperationKeys.set(operation, idempotencyKey);
     const response = await fetch(`${baseUrl}/api/v1/scoresheets/${id}/recognition/retry`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+        'X-CSRFToken': csrfToken(),
+      },
       body: JSON.stringify(targetContext(id, baseRevision)),
     });
     if (!response.ok) throw await responseError(response);
+    recognitionOperationKeys.delete(operation);
     clearLease(id);
     return recognitionFromRaw(await response.json() as RawRecognition)!;
   },

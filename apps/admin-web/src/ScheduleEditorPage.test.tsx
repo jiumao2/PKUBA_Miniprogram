@@ -1,5 +1,7 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AdminSeason, MobileAdminGame } from "@pkuba/api-client";
 import { ScheduleEditorPage, scheduleGameVisualClass } from "./ScheduleEditorPage";
@@ -56,6 +58,51 @@ describe("ScheduleEditorPage colors", () => {
       division_gender: "WOMEN",
       leader_adjustable: false,
     })).toBe("schedule-editor-game game-women game-locked");
+  });
+
+  it("keeps the newer game selected when an older request resolves late", async () => {
+    let resolveFirst!: (game: MobileAdminGame) => void;
+    const firstRequest = new Promise<MobileAdminGame>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondGame: MobileAdminGame = {
+      ...baseGame,
+      id: "game-women",
+      code: "女甲·丙队vs丁队",
+      division_id: "division-women",
+      division_name: "女甲",
+      division_gender: "WOMEN",
+      home_name: "丙队",
+      away_name: "丁队",
+    };
+    const client = {
+      getAdminScheduleOptions: vi.fn().mockResolvedValue({
+        periods: [], venues: [], teams: [],
+      }),
+      getAdminScheduleGame: vi.fn((id: string) => (
+        id === baseGame.id ? firstRequest : Promise.resolve(secondGame)
+      )),
+    };
+
+    render(
+      <ScheduleEditorPage
+        client={client as never}
+        games={[baseGame, secondGame]}
+        seasons={[season]}
+        season={season}
+        onSeasonChange={vi.fn()}
+        onUpdated={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /男甲.*甲队.*乙队/ }));
+    await userEvent.click(screen.getByRole("button", { name: /女甲.*丙队.*丁队/ }));
+    expect(await screen.findByRole("heading", { name: /丙队.*丁队/ })).toBeInTheDocument();
+
+    resolveFirst(baseGame);
+    await firstRequest;
+    await waitFor(() => expect(screen.getByRole("heading", { name: /丙队.*丁队/ })).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: /甲队.*乙队/ })).not.toBeInTheDocument();
   });
 
   it("renders a visible legend and locked label in addition to color", () => {

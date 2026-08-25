@@ -44,8 +44,10 @@ function draft(): ScoresheetDocument {
 }
 
 describe("miniapp canonical editor model", () => {
-  it("keeps every typed digit so an invalid three-digit jersey cannot become another valid number", () => {
-    expect(sanitizeJerseyInput("1a00")).toBe("100");
+  it("keeps invalid jersey input verbatim so validation cannot mistake it for another number", () => {
+    expect(sanitizeJerseyInput("1a00")).toBe("1a00");
+    expect(sanitizeJerseyInput("A")).toBe("A");
+    expect(sanitizeJerseyInput("000")).toBe("000");
   });
 
   it("round-trips all player paper fields while persisting only material rows", () => {

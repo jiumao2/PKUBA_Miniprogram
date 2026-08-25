@@ -80,7 +80,6 @@ export function SeasonLifecyclePanel({
           <h2 id="season-lifecycle-title">赛季状态</h2>
           <p>赛季公开后，比赛能否操作由双方是否完成签位及业务数据实时判断。</p>
         </div>
-        <span>赛季 v{configuration.version}</span>
       </div>
 
       {dirty && (

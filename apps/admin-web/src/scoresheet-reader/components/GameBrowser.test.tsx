@@ -103,4 +103,12 @@ describe('game browser', () => {
     expect(reupload).toHaveBeenCalledWith('recognized-document', file);
     expect(close).toHaveBeenCalledOnce();
   });
+
+  it('keeps archived records readable without upload or replacement actions', () => {
+    render(<GameBrowser {...browserProps} allowUploads={false} />);
+
+    expect(screen.getByRole('button', { name: /物院.*化院.*已识别/ })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '重新上传' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /上传并识别/ })).not.toBeInTheDocument();
+  });
 });

@@ -23,7 +23,11 @@ from core.services.game_media import (
     replace_game_media,
     upload_game_media,
 )
-from core.services.idempotency import IdempotencyError, execute_idempotent
+from core.services.idempotency import (
+    IdempotencyError,
+    execute_idempotent,
+    idempotency_identity,
+)
 
 router = Router(tags=["game-media"])
 admin_router = Router(tags=["admin-game-media"], auth=admin_session_auth)
@@ -83,6 +87,8 @@ def _error_response(error: GameMediaError):
         "GROUP_PHOTO_EXISTS",
         "SCORESHEET_SOURCE_EXISTS",
         "VERSION_CONFLICT",
+        "IDEMPOTENCY_KEY_REUSED",
+        "MEDIA_REPLACEMENT_IN_PROGRESS",
     }:
         status = 409
     elif error.code == "GAME_NOT_FOUND":
@@ -253,6 +259,14 @@ def create_game_media(
     if game is None:
         return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
     try:
+        fingerprint = {
+            "game_id": game_id,
+            "kind": kind,
+            "scoresheet_complete_confirmed": scoresheet_complete_confirmed,
+            "image": _upload_fingerprint(image),
+        }
+        identity = idempotency_identity(request=request, fingerprint=fingerprint)
+
         def command():
             asset = upload_game_media(
                 actor=request.auth,
@@ -260,6 +274,9 @@ def create_game_media(
                 kind=kind,
                 scoresheet_complete_confirmed=scoresheet_complete_confirmed,
                 uploaded_file=image,
+                idempotency_operation="game-media.upload",
+                idempotency_key_digest=identity.key_digest or "",
+                request_digest=identity.request_digest,
             )
             return 201, {"asset_id": asset.id}
 
@@ -267,13 +284,9 @@ def create_game_media(
             request=request,
             actor=request.auth,
             operation="game-media.upload",
-            fingerprint={
-                "game_id": game_id,
-                "kind": kind,
-                "scoresheet_complete_confirmed": scoresheet_complete_confirmed,
-                "image": _upload_fingerprint(image),
-            },
+            fingerprint=fingerprint,
             command=command,
+            transactional_command=False,
         )
     except IdempotencyError as error:
         return Status(error.status, {"code": error.code, "message": str(error)})
@@ -351,21 +364,48 @@ def replace_miniapp_game_media(
     expected_version: Form[int],
     scoresheet_complete_confirmed: Form[bool],
     image: File[UploadedFile],
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     try:
-        asset = replace_game_media(
+        fingerprint = {
+            "asset_id": asset_id,
+            "expected_version": expected_version,
+            "scoresheet_complete_confirmed": scoresheet_complete_confirmed,
+            "image": _upload_fingerprint(image),
+        }
+        identity = idempotency_identity(request=request, fingerprint=fingerprint)
+
+        def command():
+            asset = replace_game_media(
+                actor=request.auth,
+                asset_id=asset_id,
+                expected_version=expected_version,
+                scoresheet_complete_confirmed=scoresheet_complete_confirmed,
+                uploaded_file=image,
+                idempotency_operation="game-media.replace",
+                idempotency_key_digest=identity.key_digest or "",
+                request_digest=identity.request_digest,
+            )
+            return 201, {"asset_id": asset.id}
+
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            asset_id=asset_id,
-            expected_version=expected_version,
-            scoresheet_complete_confirmed=scoresheet_complete_confirmed,
-            uploaded_file=image,
+            operation="game-media.replace",
+            fingerprint=fingerprint,
+            command=command,
+            transactional_command=False,
         )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except GameMediaError as error:
         return _error_response(error)
+    asset = _asset_queryset().get(id=UUID(str(body["asset_id"])))
     return Status(
-        201,
+        status,
         _serialize_asset(
-            _asset_queryset().get(id=asset.id),
+            asset,
             actor=request.auth,
         ),
     )
@@ -422,6 +462,14 @@ def create_admin_game_media(
     if game is None:
         return Status(404, {"code": "GAME_NOT_FOUND", "message": "比赛不存在。"})
     try:
+        fingerprint = {
+            "game_id": game_id,
+            "kind": kind,
+            "scoresheet_complete_confirmed": scoresheet_complete_confirmed,
+            "image": _upload_fingerprint(image),
+        }
+        identity = idempotency_identity(request=request, fingerprint=fingerprint)
+
         def command():
             asset = upload_game_media(
                 actor=request.auth,
@@ -429,6 +477,9 @@ def create_admin_game_media(
                 kind=kind,
                 scoresheet_complete_confirmed=scoresheet_complete_confirmed,
                 uploaded_file=image,
+                idempotency_operation="game-media.upload",
+                idempotency_key_digest=identity.key_digest or "",
+                request_digest=identity.request_digest,
             )
             return 201, {"asset_id": asset.id}
 
@@ -436,13 +487,9 @@ def create_admin_game_media(
             request=request,
             actor=request.auth,
             operation="game-media.upload",
-            fingerprint={
-                "game_id": game_id,
-                "kind": kind,
-                "scoresheet_complete_confirmed": scoresheet_complete_confirmed,
-                "image": _upload_fingerprint(image),
-            },
+            fingerprint=fingerprint,
             command=command,
+            transactional_command=False,
         )
     except IdempotencyError as error:
         return Status(error.status, {"code": error.code, "message": str(error)})
@@ -503,21 +550,48 @@ def replace_admin_game_media(
     expected_version: Form[int],
     scoresheet_complete_confirmed: Form[bool],
     image: File[UploadedFile],
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     try:
-        asset = replace_game_media(
+        fingerprint = {
+            "asset_id": asset_id,
+            "expected_version": expected_version,
+            "scoresheet_complete_confirmed": scoresheet_complete_confirmed,
+            "image": _upload_fingerprint(image),
+        }
+        identity = idempotency_identity(request=request, fingerprint=fingerprint)
+
+        def command():
+            asset = replace_game_media(
+                actor=request.auth,
+                asset_id=asset_id,
+                expected_version=expected_version,
+                scoresheet_complete_confirmed=scoresheet_complete_confirmed,
+                uploaded_file=image,
+                idempotency_operation="game-media.replace",
+                idempotency_key_digest=identity.key_digest or "",
+                request_digest=identity.request_digest,
+            )
+            return 201, {"asset_id": asset.id}
+
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            asset_id=asset_id,
-            expected_version=expected_version,
-            scoresheet_complete_confirmed=scoresheet_complete_confirmed,
-            uploaded_file=image,
+            operation="game-media.replace",
+            fingerprint=fingerprint,
+            command=command,
+            transactional_command=False,
         )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except GameMediaError as error:
         return _error_response(error)
+    asset = _asset_queryset().get(id=UUID(str(body["asset_id"])))
     return Status(
-        201,
+        status,
         _serialize_asset(
-            _asset_queryset().get(id=asset.id),
+            asset,
             actor=request.auth,
         ),
     )

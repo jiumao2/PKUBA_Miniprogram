@@ -776,6 +776,7 @@ def force_scoresheet_lease(request: HttpRequest, scoresheet_id: UUID, payload: L
             client_id=payload.client_id,
             surface=payload.surface,
             confirmed=payload.confirmed,
+            archived_correction_confirmed=payload.archived_correction_confirmed,
         )
         return {
             "read_only": False,
@@ -936,19 +937,40 @@ def publish_scoresheet_endpoint(
     response={200: dict[str, Any], **ERROR_RESPONSES},
 )
 def retry_scoresheet_recognition(
-    request: HttpRequest, scoresheet_id: UUID, payload: MutationContextIn
+    request: HttpRequest,
+    scoresheet_id: UUID,
+    payload: MutationContextIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     try:
         _require_admin(request)
-        run = retry_recognition(
-            scoresheet_id=scoresheet_id,
+        def command():
+            run = retry_recognition(
+                scoresheet_id=scoresheet_id,
+                actor=request.auth,
+                expected_version=payload.expected_version,
+                lease_token=payload.lease_token,
+                client_id=payload.client_id,
+                surface=payload.surface,
+            )
+            return 200, _recognition_run(run)
+
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            expected_version=payload.expected_version,
-            lease_token=payload.lease_token,
-            client_id=payload.client_id,
-            surface=payload.surface,
+            operation="scoresheet.recognition.retry",
+            fingerprint={
+                "scoresheet_id": scoresheet_id,
+                "expected_version": payload.expected_version,
+                "client_id": payload.client_id,
+                "surface": payload.surface,
+            },
+            command=command,
         )
-        return _recognition_run(run)
+        return Status(status, body)
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)

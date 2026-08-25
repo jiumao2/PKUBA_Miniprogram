@@ -44,36 +44,42 @@ export function uploadGameMedia(
   idempotencyKey = createIdempotencyKey(),
 ): Promise<GameMediaAsset> {
   return new Promise((resolve, reject) => {
-    const task = Taro.uploadFile({
-      url: `${PKUBA_API_BASE_URL.replace(/\/$/, "")}/api/v1/game-media/games/${gameId}`,
-      filePath,
-      name: "image",
-      header: {
-        Authorization: `Bearer ${token}`,
-        "Idempotency-Key": idempotencyKey,
-      },
-      formData: {
-        kind,
-        scoresheet_complete_confirmed: scoresheetCompleteConfirmed ? "true" : "false",
-      },
-      success: (response) => {
-        let data: GameMediaAsset | { message?: string; code?: string };
-        try {
-          data = JSON.parse(response.data) as typeof data;
-        } catch {
-          reject(new ApiError("服务器返回了无法识别的上传结果", response.statusCode));
-          return;
-        }
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          const error = data as { message?: string; code?: string };
-          reject(new ApiError(error.message ?? "图片上传失败", response.statusCode, error.code));
-          return;
-        }
-        resolve(data as GameMediaAsset);
-      },
-      fail: (error) => reject(new Error(error.errMsg)),
-    });
-    task.onProgressUpdate((event) => onProgress?.(event.progress));
+    const start = (attempt: number) => {
+      const task = Taro.uploadFile({
+        url: `${PKUBA_API_BASE_URL.replace(/\/$/, "")}/api/v1/game-media/games/${gameId}`,
+        filePath,
+        name: "image",
+        header: {
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": idempotencyKey,
+        },
+        formData: {
+          kind,
+          scoresheet_complete_confirmed: scoresheetCompleteConfirmed ? "true" : "false",
+        },
+        success: (response) => {
+          let data: GameMediaAsset | { message?: string; code?: string };
+          try {
+            data = JSON.parse(response.data) as typeof data;
+          } catch {
+            reject(new ApiError("服务器返回了无法识别的上传结果", response.statusCode));
+            return;
+          }
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            const error = data as { message?: string; code?: string };
+            reject(new ApiError(error.message ?? "图片上传失败", response.statusCode, error.code));
+            return;
+          }
+          resolve(data as GameMediaAsset);
+        },
+        fail: (error) => {
+          if (attempt === 0) start(1);
+          else reject(new Error(error.errMsg));
+        },
+      });
+      task.onProgressUpdate((event) => onProgress?.(event.progress));
+    };
+    start(0);
   });
 }
 
@@ -84,34 +90,44 @@ export function replaceGameMedia(
   scoresheetCompleteConfirmed: boolean,
   token: string,
   onProgress?: (progress: number) => void,
+  idempotencyKey = createIdempotencyKey(),
 ): Promise<GameMediaAsset> {
   return new Promise((resolve, reject) => {
-    const task = Taro.uploadFile({
-      url: `${PKUBA_API_BASE_URL.replace(/\/$/, "")}/api/v1/game-media/assets/${assetId}/replace`,
-      filePath,
-      name: "image",
-      header: { Authorization: `Bearer ${token}` },
-      formData: {
-        expected_version: String(expectedVersion),
-        scoresheet_complete_confirmed: scoresheetCompleteConfirmed ? "true" : "false",
-      },
-      success: (response) => {
-        let data: GameMediaAsset | { message?: string; code?: string };
-        try {
-          data = JSON.parse(response.data) as typeof data;
-        } catch {
-          reject(new ApiError("服务器返回了无法识别的上传结果", response.statusCode));
-          return;
-        }
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          const error = data as { message?: string; code?: string };
-          reject(new ApiError(error.message ?? "图片替换失败", response.statusCode, error.code));
-          return;
-        }
-        resolve(data as GameMediaAsset);
-      },
-      fail: (error) => reject(new Error(error.errMsg)),
-    });
-    task.onProgressUpdate((event) => onProgress?.(event.progress));
+    const start = (attempt: number) => {
+      const task = Taro.uploadFile({
+        url: `${PKUBA_API_BASE_URL.replace(/\/$/, "")}/api/v1/game-media/assets/${assetId}/replace`,
+        filePath,
+        name: "image",
+        header: {
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": idempotencyKey,
+        },
+        formData: {
+          expected_version: String(expectedVersion),
+          scoresheet_complete_confirmed: scoresheetCompleteConfirmed ? "true" : "false",
+        },
+        success: (response) => {
+          let data: GameMediaAsset | { message?: string; code?: string };
+          try {
+            data = JSON.parse(response.data) as typeof data;
+          } catch {
+            reject(new ApiError("服务器返回了无法识别的上传结果", response.statusCode));
+            return;
+          }
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            const error = data as { message?: string; code?: string };
+            reject(new ApiError(error.message ?? "图片替换失败", response.statusCode, error.code));
+            return;
+          }
+          resolve(data as GameMediaAsset);
+        },
+        fail: (error) => {
+          if (attempt === 0) start(1);
+          else reject(new Error(error.errMsg));
+        },
+      });
+      task.onProgressUpdate((event) => onProgress?.(event.progress));
+    };
+    start(0);
   });
 }

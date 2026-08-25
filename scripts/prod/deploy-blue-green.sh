@@ -62,7 +62,7 @@ automation_armed=${PKUBA_PRODUCTION_AUTOMATION_ARMED:-0}
 [[ $automation_armed == 1 ]] \
   || die "production automation is not armed; complete the isolated blue/green rehearsal first"
 
-for command_name in awk curl df docker flock git realpath seq sha256sum tar; do
+for command_name in awk curl df docker find flock git head realpath sed seq sha256sum sort tar; do
   require_command "$command_name"
 done
 docker compose version >/dev/null 2>&1 || die "docker compose is unavailable"
@@ -537,3 +537,55 @@ echo "PKUBA_PREVIOUS_SLOT_RETAIN_UNTIL=$retain_until"
 echo "PKUBA_BACKUP_DIR=$backup_dir"
 echo "The previous application stack is retained for 24 hours; its workers remain stopped."
 echo "A normal rollback switches applications only. Paired data restoration requires a separate confirmed incident procedure."
+
+# Keep exactly the three newest successful paired rollback points. Failed
+# deployments are diagnostic evidence and are never removed automatically.
+# CURRENT_TAG is the just-retained previous application, so both live slots
+# remain protected even when their release is older than the newest three.
+set +e
+mapfile -t newest_successful_backups < <(
+  find "$backup_root" -mindepth 2 -maxdepth 2 -type f -name SUCCESS \
+    -printf '%T@ %h\n' | sort -nr | awk 'NR <= 3 {$1=""; sub(/^ /, ""); print}'
+)
+mapfile -t old_successful_backups < <(
+  find "$backup_root" -mindepth 2 -maxdepth 2 -type f -name SUCCESS \
+    -printf '%T@ %h\n' | sort -nr | awk 'NR > 3 {$1=""; sub(/^ /, ""); print}'
+)
+for old_backup in "${old_successful_backups[@]}"; do
+  resolved_backup=$(realpath "$old_backup")
+  if [[ $resolved_backup != "$backup_root"/* ]]; then
+    echo "Cleanup warning: refusing unsafe backup path: $resolved_backup" >&2
+    continue
+  fi
+  rm -rf -- "$resolved_backup" \
+    || echo "Cleanup warning: could not remove $resolved_backup" >&2
+done
+
+declare -A retained_release_tags=()
+retained_release_tags[$release_tag]=1
+retained_release_tags[$CURRENT_TAG]=1
+for retained_backup in "${newest_successful_backups[@]}"; do
+  [[ -f $retained_backup/release.json ]] || continue
+  retained_tag=$(sed -n \
+    's/^[[:space:]]*{"tag":"\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*$/\1/p' \
+    "$retained_backup/release.json" | head -n 1)
+  [[ -n $retained_tag ]] && retained_release_tags[$retained_tag]=1
+done
+for old_release in "$release_root"/v*.*.*; do
+  [[ -d $old_release ]] || continue
+  old_tag=${old_release##*/}
+  [[ -n ${retained_release_tags[$old_tag]:-} ]] && continue
+  resolved_release=$(realpath "$old_release")
+  if [[ $resolved_release != "$release_root"/* ]]; then
+    echo "Cleanup warning: refusing unsafe release path: $resolved_release" >&2
+    continue
+  fi
+  git -C "$repository_dir" worktree remove --force "$resolved_release" \
+    || echo "Cleanup warning: could not remove release $old_tag" >&2
+done
+git -C "$repository_dir" worktree prune \
+  || echo "Cleanup warning: git worktree prune failed" >&2
+docker image prune --force \
+  --filter "label=org.opencontainers.image.source=https://github.com/jiumao2/PKUBA_Miniprogram" \
+  >/dev/null || echo "Cleanup warning: PKUBA image prune failed" >&2
+set -e

@@ -402,7 +402,6 @@ export function DrawMappingPage({
           >
             {statusLabels[dataset.season_status] ?? dataset.season_status}
           </span>
-          <span>赛季 v{dataset.season_version}</span>
         </div>
       </header>
 

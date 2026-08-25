@@ -6394,6 +6394,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -7623,6 +7639,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -9374,6 +9406,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {

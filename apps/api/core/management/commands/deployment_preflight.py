@@ -12,6 +12,7 @@ from core.models import (
     Division,
     Game,
     GameMediaAsset,
+    GameMediaUploadStaging,
     MediaPurgeJob,
     RescheduleRequest,
     ScoresheetEditLease,
@@ -38,6 +39,12 @@ def deployment_state() -> dict[str, object]:
             status__in=[MediaPurgeJob.Status.QUEUED, MediaPurgeJob.Status.BUILDING],
         ).count(),
         "edit_leases": ScoresheetEditLease.objects.filter(expires_at__gt=now).count(),
+        "media_uploads": GameMediaUploadStaging.objects.filter(
+            status__in=[
+                GameMediaUploadStaging.Status.STAGING,
+                GameMediaUploadStaging.Status.STORED,
+            ]
+        ).count(),
         "due_reschedules": RescheduleRequest.objects.filter(
             status__in=[
                 RescheduleRequest.Status.WAITING_OPPONENT,
@@ -52,6 +59,7 @@ def deployment_state() -> dict[str, object]:
         "teams": Team.objects.count(),
         "games": Game.objects.count(),
         "media_assets": GameMediaAsset.objects.count(),
+        "media_upload_staging": GameMediaUploadStaging.objects.count(),
         "core_migrations": MigrationRecorder.Migration.objects.filter(app="core").count(),
     }
     return {

@@ -1,7 +1,16 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 import pytest
+from django.db import connections
 
 from core.models import Account, AdminAuditLog, AdminProfile
-from core.services.admin_accounts import AdminAccountError, promote_admin, set_admin_active
+from core.services.admin_accounts import (
+    AdminAccountError,
+    demote_superadmin,
+    promote_admin,
+    set_admin_active,
+)
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -67,3 +76,41 @@ def test_superadmin_can_deactivate_another_when_one_remains():
         action="ADMIN_ACCOUNT_DEACTIVATED",
         object_id=target.id,
     ).exists()
+
+
+def test_concurrent_mutual_demotion_has_one_success_and_one_stable_conflict():
+    first = account("mutual-superadmin-a", Account.Role.SUPERADMIN)
+    second = account("mutual-superadmin-b", Account.Role.SUPERADMIN)
+    barrier = Barrier(2)
+
+    def submit(actor_id, target_id) -> str:
+        connections.close_all()
+        try:
+            actor = Account.objects.get(id=actor_id)
+            target = Account.objects.get(id=target_id)
+            barrier.wait(timeout=5)
+            demote_superadmin(
+                actor=actor,
+                target_id=target.id,
+                expected_version=target.version,
+            )
+            return "DEMOTED"
+        except AdminAccountError as error:
+            return error.code
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(
+            executor.map(
+                lambda pair: submit(*pair),
+                [(first.id, second.id), (second.id, first.id)],
+            )
+        )
+
+    assert sorted(outcomes) == ["ACTOR_STATE_CHANGED", "DEMOTED"]
+    assert Account.objects.filter(
+        role=Account.Role.SUPERADMIN,
+        is_active=True,
+    ).count() == 1
+    assert AdminAuditLog.objects.filter(action="SUPERADMIN_DEMOTED_TO_ADMIN").count() == 1

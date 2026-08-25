@@ -820,7 +820,13 @@ def release_edit_lease(
 
 
 def force_takeover_edit_lease(
-    *, scoresheet_id, actor: Account, client_id: str, surface: str, confirmed: bool
+    *,
+    scoresheet_id,
+    actor: Account,
+    client_id: str,
+    surface: str,
+    confirmed: bool,
+    archived_correction_confirmed: bool = False,
 ) -> tuple[ScoresheetEditLease, str]:
     if not actor.is_pkuba_superadmin:
         raise ScoresheetError("SUPERADMIN_REQUIRED", "强制接管仅限超级管理员。", status=403)
@@ -832,7 +838,7 @@ def force_takeover_edit_lease(
             scoresheet,
             actor=actor,
             surface=surface,
-            allow_archived_correction=True,
+            allow_archived_correction=archived_correction_confirmed,
         )
         _assert_correction_permission(scoresheet, actor)
         _assert_recognition_inactive(scoresheet, actor=actor)
@@ -1614,51 +1620,66 @@ def apply_recognition_regions(
     surface: str,
     regions: list[str],
 ) -> GameScoresheet:
-    try:
-        run = ScoresheetRecognitionRun.objects.get(id=run_id, scoresheet_id=scoresheet_id)
-        scoresheet = GameScoresheet.objects.get(id=scoresheet_id)
-    except (ScoresheetRecognitionRun.DoesNotExist, GameScoresheet.DoesNotExist) as error:
-        raise ScoresheetError("RECOGNITION_NOT_FOUND", "识别结果不存在。", status=404) from error
     allowed = set(REGIONS)
     selected = set(regions)
     if not selected or not selected.issubset(allowed):
         raise ScoresheetError("RECOGNITION_REGIONS_INVALID", "请选择合法的识别区域。")
-    candidate = merge_recognition_result(
-        scoresheet.draft,
-        run.provider_result,
-        scoresheet.roster_snapshot,
-        run_id=str(run.id),
-    )
-    merged = copy.deepcopy(scoresheet.draft)
-    if "SOURCE_GAME" in selected:
-        merged["header"] = candidate["header"]
-    if "TEAM_A" in selected:
-        merged["teams"][0] = candidate["teams"][0]
-    if "TEAM_B" in selected:
-        merged["teams"][1] = candidate["teams"][1]
-    if "RUNNING_SCORE" in selected:
-        merged["score_events"] = candidate["score_events"]
-    if "SUMMARY" in selected:
-        merged["stated_period_scores"] = candidate["stated_period_scores"]
-        merged["final_score"] = candidate["final_score"]
-    if "OFFICIALS" in selected:
-        merged["officials"] = candidate["officials"]
-    merged["recognition"] = candidate["recognition"]
-    saved = save_draft_changes(
-        scoresheet_id=scoresheet_id,
-        actor=actor,
-        expected_version=expected_version,
-        lease_token=lease_token,
-        client_id=client_id,
-        surface=surface,
-        changes=[{"path": "/", "operation": "SET", "value": merged}],
-        change_type="RECOGNITION_MERGE",
-        explicit_save=True,
-        allow_recognition_replace=True,
-    )
-    run.applied_draft_version = saved.draft_version
-    run.save(update_fields=["applied_draft_version", "updated_at"])
-    return saved
+    with transaction.atomic():
+        try:
+            scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
+            run = ScoresheetRecognitionRun.objects.select_for_update().get(
+                id=run_id,
+                scoresheet_id=scoresheet_id,
+            )
+        except (ScoresheetRecognitionRun.DoesNotExist, GameScoresheet.DoesNotExist) as error:
+            raise ScoresheetError(
+                "RECOGNITION_NOT_FOUND", "识别结果不存在。", status=404
+            ) from error
+        recognition_diff(scoresheet, run)
+        if run.source_asset_id != scoresheet.source_asset_id:
+            raise ScoresheetError(
+                "RECOGNITION_SUPERSEDED", "识别结果不属于当前原图。", status=409
+            )
+        if run.applied_draft_version is not None:
+            raise ScoresheetError(
+                "RECOGNITION_ALREADY_APPLIED", "该识别结果已经应用。", status=409
+            )
+        candidate = merge_recognition_result(
+            scoresheet.draft,
+            run.provider_result,
+            scoresheet.roster_snapshot,
+            run_id=str(run.id),
+        )
+        merged = copy.deepcopy(scoresheet.draft)
+        if "SOURCE_GAME" in selected:
+            merged["header"] = candidate["header"]
+        if "TEAM_A" in selected:
+            merged["teams"][0] = candidate["teams"][0]
+        if "TEAM_B" in selected:
+            merged["teams"][1] = candidate["teams"][1]
+        if "RUNNING_SCORE" in selected:
+            merged["score_events"] = candidate["score_events"]
+        if "SUMMARY" in selected:
+            merged["stated_period_scores"] = candidate["stated_period_scores"]
+            merged["final_score"] = candidate["final_score"]
+        if "OFFICIALS" in selected:
+            merged["officials"] = candidate["officials"]
+        merged["recognition"] = candidate["recognition"]
+        saved = save_draft_changes(
+            scoresheet_id=scoresheet_id,
+            actor=actor,
+            expected_version=expected_version,
+            lease_token=lease_token,
+            client_id=client_id,
+            surface=surface,
+            changes=[{"path": "/", "operation": "SET", "value": merged}],
+            change_type="RECOGNITION_MERGE",
+            explicit_save=True,
+            allow_recognition_replace=True,
+        )
+        run.applied_draft_version = saved.draft_version
+        run.save(update_fields=["applied_draft_version", "updated_at"])
+        return saved
 
 
 def sync_scoresheet(scoresheet: GameScoresheet, after_event: int) -> list[ScoresheetChangeLog]:

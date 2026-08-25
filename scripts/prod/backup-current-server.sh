@@ -8,7 +8,7 @@ umask 077
   exit 1
 }
 
-for command_name in docker sha256sum tar; do
+for command_name in docker head sha256sum tar; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "Missing command: $command_name" >&2
     exit 1
@@ -24,9 +24,11 @@ backup_root=${PKUBA_BOOTSTRAP_BACKUP_ROOT:-/opt/pkuba/backups}
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup_dir=$backup_root/$timestamp-pre-automation
 media_volume=${PKUBA_MEDIA_VOLUME:-${compose_project}_private-media}
+archive_volume=${PKUBA_ARCHIVE_VOLUME:-${compose_project}_archive-staging}
 
 mkdir -p "$backup_dir"
 docker volume inspect "$media_volume" >/dev/null
+docker volume inspect "$archive_volume" >/dev/null
 
 container_for_service() {
   docker ps -aq \
@@ -77,20 +79,45 @@ docker run --rm --entrypoint sh \
   postgres:17-alpine \
   -ec 'tar -C /source -czf /backup/private-media.tar.gz .'
 tar -tzf "$backup_dir/private-media.tar.gz" >/dev/null
+docker run --rm --entrypoint sh \
+  -v "$archive_volume:/source:ro" \
+  -v "$backup_dir:/backup" \
+  postgres:17-alpine \
+  -ec 'tar -C /source -czf /backup/archive-staging.tar.gz .'
+tar -tzf "$backup_dir/archive-staging.tar.gz" >/dev/null
+
+docker run --rm --entrypoint sh \
+  -v "$media_volume:/source:ro" -v "$backup_dir:/backup" postgres:17-alpine \
+  -ec 'cd /source && find . -type f -exec sha256sum "{}" ";" | sort -k2 > /backup/private-media.files.sha256'
+docker run --rm --entrypoint sh \
+  -v "$archive_volume:/source:ro" -v "$backup_dir:/backup" postgres:17-alpine \
+  -ec 'cd /source && find . -type f -exec sha256sum "{}" ";" | sort -k2 > /backup/archive-staging.files.sha256'
 
 {
   printf 'created_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf 'compose_project=%s\n' "$compose_project"
   printf 'database_container=%s\n' "$db_container"
   printf 'media_volume=%s\n' "$media_volume"
+  printf 'archive_volume=%s\n' "$archive_volume"
   docker ps -a \
     --filter "label=com.docker.compose.project=$compose_project" \
     --format 'container={{.Names}} image={{.Image}} status={{.Status}}'
 } >"$backup_dir/MANIFEST.txt"
 
+cat >"$backup_dir/MANIFEST.env" <<EOF
+CREATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+BACKUP_KIND=pre_automation_consistent
+COMPOSE_PROJECT=$compose_project
+DATABASE_CONTAINER=$db_container
+MEDIA_VOLUME=$media_volume
+ARCHIVE_VOLUME=$archive_volume
+EOF
+
 (
   cd "$backup_dir"
-  sha256sum database.dump private-media.tar.gz MANIFEST.txt >SHA256SUMS
+  sha256sum database.dump private-media.tar.gz archive-staging.tar.gz \
+    private-media.files.sha256 archive-staging.files.sha256 MANIFEST.txt \
+    MANIFEST.env >SHA256SUMS
   sha256sum --check SHA256SUMS
 )
 

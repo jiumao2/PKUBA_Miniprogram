@@ -1029,6 +1029,128 @@ class GameMediaAsset(UUIDModel):
         ]
 
 
+class GameMediaUploadStaging(UUIDModel):
+    """Durable hand-off between streamed uploads and authoritative media assets."""
+
+    class Status(models.TextChoices):
+        STAGING = "STAGING", "等待写入"
+        STORED = "STORED", "等待入库"
+        PROMOTED = "PROMOTED", "已转为正式资料"
+        FAILED = "FAILED", "处理失败"
+
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.PROTECT,
+        related_name="media_upload_staging_rows",
+    )
+    kind = models.CharField(max_length=20, choices=GameMediaAsset.Kind.choices)
+    intended_asset_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    replacement_asset = models.ForeignKey(
+        GameMediaAsset,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="replacement_staging_rows",
+    )
+    expected_version = models.PositiveIntegerField(null=True, blank=True)
+    file_key = models.CharField(max_length=512, unique=True)
+    original_filename = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=80)
+    file_sha256 = models.CharField(max_length=64)
+    byte_size = models.PositiveBigIntegerField()
+    width = models.PositiveIntegerField()
+    height = models.PositiveIntegerField()
+    scoresheet_complete_confirmed = models.BooleanField(default=False)
+    uploaded_by = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="game_media_upload_staging_rows",
+    )
+    operation = models.CharField(max_length=120, blank=True)
+    idempotency_key_digest = models.CharField(max_length=64, blank=True)
+    request_digest = models.CharField(max_length=64, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.STAGING,
+    )
+    promoted_asset = models.OneToOneField(
+        GameMediaAsset,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="upload_staging_row",
+    )
+    promoted_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    error_code = models.CharField(max_length=64, blank=True)
+    error_message = models.TextField(blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(replacement_asset__isnull=True, expected_version__isnull=True)
+                    | Q(replacement_asset__isnull=False, expected_version__isnull=False)
+                ),
+                name="media_stage_replace_version_pair",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(kind="SCORESHEET")
+                    | Q(scoresheet_complete_confirmed=True)
+                ),
+                name="media_stage_scoresheet_confirmed",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(status="PROMOTED", promoted_asset__isnull=False)
+                    | ~Q(status="PROMOTED")
+                ),
+                name="media_stage_promotion_has_asset",
+            ),
+            models.UniqueConstraint(
+                fields=["uploaded_by", "operation", "idempotency_key_digest"],
+                condition=~Q(idempotency_key_digest=""),
+                name="uniq_media_stage_idempotency",
+            ),
+            models.UniqueConstraint(
+                fields=["replacement_asset"],
+                condition=Q(
+                    status__in=["STAGING", "STORED"],
+                    replacement_asset__isnull=False,
+                ),
+                name="uniq_pending_media_replacement",
+            ),
+            models.UniqueConstraint(
+                fields=["game"],
+                condition=Q(
+                    kind="SCORESHEET",
+                    replacement_asset__isnull=True,
+                    status__in=["STAGING", "STORED"],
+                ),
+                name="uniq_pending_scoresheet_upload",
+            ),
+            models.UniqueConstraint(
+                fields=["game"],
+                condition=Q(
+                    kind="GROUP_PHOTO",
+                    replacement_asset__isnull=True,
+                    status__in=["STAGING", "STORED"],
+                ),
+                name="uniq_pending_group_photo_upload",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["status", "created_at"],
+                name="media_stage_status_created",
+            )
+        ]
+
+
 class GameScoresheet(UUIDModel):
     """The single authoritative, cross-surface draft for one game."""
 

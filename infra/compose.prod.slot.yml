@@ -56,6 +56,8 @@ services:
     env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
     environment: *release-environment
     command: python manage.py expire_reschedules --loop
+    volumes:
+      - private-media:/app/.local/media
     networks: [runtime]
 
   scoresheet-worker:

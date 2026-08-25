@@ -259,6 +259,10 @@ export default function App() {
     '--inspector-pane-size': `${paneLayout.inspector * 100}%`,
   } as CSSProperties;
   const effectiveReadOnly = state.readOnly || !state.online;
+  const archivedRoute = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('archived_view') === '1' || Boolean(params.get('archived_correction'));
+  }, []);
   const returnHref = useMemo(() => {
     const gameId = state.document?.game_prior?.game_id || editorRoute.gameId;
     const params = new URLSearchParams({ page: 'media' });
@@ -344,6 +348,7 @@ export default function App() {
               document={state.document}
               onRequestUpload={() => setGameBrowserOpen(true)}
               onReloadSource={state.reloadSource}
+              allowUpload={!archivedRoute}
             />
             <PaneResizer
               label="调整原图与标准记录表宽度"
@@ -425,6 +430,7 @@ export default function App() {
           onUpload={state.uploadForGame}
           onReupload={state.reupload}
           initialGameId={editorRoute.gameId}
+          allowUploads={!archivedRoute}
         />
       ) : null}
       {state.error ? (

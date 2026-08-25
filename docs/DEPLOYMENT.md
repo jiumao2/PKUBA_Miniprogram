@@ -34,7 +34,7 @@ API / Web 镜像（tag + commit tag + 不可变 digest）
 - 镜像部署只接受 `ghcr.io/jiumao2/pkuba-*@sha256:...`，不接受可变 tag。
 - 部署账号只接受四参数 `deploy` 命令；禁止 PTY、端口转发、密码登录和任意 shell。
 - Caddy gateway、data、blue、green 使用独立 Compose project；现有 `pkuba-ip-test_*` 数据卷只作为 external volume 复用。不得复制、重建或执行 `down -v`。
-- 迁移前等待记录表识别、归档、照片清理、编辑租约及到期调赛处理结束，最长
+- 迁移前等待记录表识别、比赛图片持久化暂存、归档、照片清理、编辑租约及到期调赛处理结束，最长
   15 分钟；超时安全退出且不会进入维护模式。
 - writer fence 内同时生成 PostgreSQL dump、私有媒体包和归档包，并写同一 manifest、大小和 SHA-256。该一致点用于确认数据损坏后的成对恢复；普通应用回切绝不恢复其中任一数据资源。
 - 旧应用栈切流后保留 24 小时且 worker 保持停止。只有旧应用与新 schema/data contract 经过兼容测试时才能回切；无法兼容时不得伪装成普通蓝绿发布。
@@ -110,8 +110,8 @@ chmod 700 /root/pkuba-prod-tools/*.sh
 /root/pkuba-prod-tools/backup-current-server.sh
 ```
 
-脚本会短暂停止 API 和写入 worker，生成 PostgreSQL custom dump、完整私有媒体
-tar、清单和 SHA-256，然后恢复原服务。Caddy 保持运行，这一次旧配置可能短暂显示
+脚本会短暂停止 API 和写入 worker，生成 PostgreSQL custom dump、完整私有媒体与
+归档暂存 tar、逐文件清单和 SHA-256，然后恢复原服务。Caddy 保持运行，这一次旧配置可能短暂显示
 502；以后自动发布使用正式 503 维护页。记录输出的备份目录，逐项确认
 `SHA256SUMS` 通过后再继续。
 
@@ -207,8 +207,10 @@ known-hosts 使用非 22 端口时，主机部分必须写成 `[host]:port`。�
 
 候选或切流后的普通应用故障只把 Caddy upstream 切回仍保留的旧应用栈，并确认
 `database_restored=0`、`media_restored=0`、`archive_restored=0`；不得自动重建数据库。
-只有已经确认数据损坏时，才先停写和保全现场，再由独立事故恢复流程使用同一
-manifest 成对恢复数据库、媒体和归档。若旧应用无法读取新 schema，禁止直接回切，
+只有已经确认数据损坏时，才先停写和保全现场，再由核心开发者执行
+`sudo /usr/local/sbin/pkuba-restore-paired-data BACKUP_DIR RESTORE_PAIRED_DATA`，
+使用同一 manifest 成对恢复数据库、媒体、归档以及与该快照匹配的应用版本。脚本会先
+保存损坏现场；任何一步失败都保持维护状态。若旧应用无法读取新 schema，禁止直接回切，
 必须保持维护状态并执行预先演练的兼容处理。
 
 GitHub 日志会给出服务器部署日志末尾和恢复目录，但不会显示 `.env`。人工灾难恢复

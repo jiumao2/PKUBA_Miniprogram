@@ -14,8 +14,9 @@ Usage: sudo bootstrap-server.sh \
   --current-api-image ghcr.io/jiumao2/pkuba-api@sha256:64_HEX_DIGEST \
   --current-web-image ghcr.io/jiumao2/pkuba-web@sha256:64_HEX_DIGEST
 
-The backup directory must contain SHA256SUMS, database.dump and
-private-media.tar.gz from a consistent stopped-writer backup.
+The backup directory must contain SHA256SUMS, MANIFEST.env, database.dump,
+both volume archives and both per-file SHA manifests from one stopped-writer
+backup.
 EOF
 }
 
@@ -54,8 +55,14 @@ done
 [[ -f $github_read_key_file ]] || die "missing GitHub repository read key"
 [[ -d $backup_dir ]] || die "missing consistent backup directory"
 [[ -f $backup_dir/SHA256SUMS ]] || die "backup has no SHA256SUMS"
+[[ -f $backup_dir/MANIFEST.env ]] || die "backup has no MANIFEST.env"
 [[ -f $backup_dir/database.dump ]] || die "backup has no database.dump"
 [[ -f $backup_dir/private-media.tar.gz ]] || die "backup has no private-media.tar.gz"
+[[ -f $backup_dir/archive-staging.tar.gz ]] || die "backup has no archive-staging.tar.gz"
+[[ -f $backup_dir/private-media.files.sha256 ]] \
+  || die "backup has no private-media.files.sha256"
+[[ -f $backup_dir/archive-staging.files.sha256 ]] \
+  || die "backup has no archive-staging.files.sha256"
 (cd "$backup_dir" && sha256sum --check SHA256SUMS)
 
 [[ $current_tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid current tag"
@@ -98,6 +105,8 @@ install -o root -g root -m 755 "$script_dir/deploy-release.sh" \
   /usr/local/sbin/pkuba-deploy-release
 install -o root -g root -m 755 "$script_dir/deploy-blue-green.sh" \
   /usr/local/sbin/pkuba-deploy-blue-green
+install -o root -g root -m 700 "$script_dir/restore-paired-data.sh" \
+  /usr/local/sbin/pkuba-restore-paired-data
 printf '%s\n' \
   "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-deploy-blue-green *" \
   >/etc/sudoers.d/pkuba-deploy

@@ -4,7 +4,7 @@ import copy
 import hashlib
 import io
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from django.conf import settings as django_settings
@@ -57,6 +57,7 @@ from core.services.scoresheets import (
     _build_stats,
     acknowledge_warnings,
     acquire_edit_lease,
+    apply_recognition_regions,
     force_takeover_edit_lease,
     publish_scoresheet,
     release_edit_lease,
@@ -1056,6 +1057,60 @@ def test_publish_endpoint_replays_same_idempotency_key(tmp_path):
     assert ApiIdempotencyRecord.objects.filter(operation="scoresheet.publish").count() == 1
 
 
+def test_recognition_retry_endpoint_replays_same_idempotency_key(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    latest = scoresheet.recognition_runs.order_by("-created_at").first()
+    assert latest is not None
+    latest.status = ScoresheetRecognitionRun.Status.FAILED
+    latest.last_error_code = "PROVIDER_FAILED"
+    latest.save(update_fields=["status", "last_error_code", "updated_at"])
+    scoresheet.status = GameScoresheet.Status.RECOGNITION_FAILED
+    scoresheet.save(update_fields=["status", "updated_at"])
+    lease_token = obtain_lease(scoresheet, setup["admin"], "web-idempotency")
+    payload = {
+        "expected_version": scoresheet.draft_version,
+        "lease_token": lease_token,
+        "client_id": "web-idempotency",
+        "surface": ScoresheetEditLease.Surface.WEB,
+    }
+    client = Client()
+    client.force_login(setup["admin"])
+    path = f"/api/v1/scoresheets/{scoresheet.id}/recognition/retry"
+
+    with override_settings(QWEN_API_KEY="test-key"):
+        first = client.post(
+            path,
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="scoresheet-recognition-retry-test",
+        )
+        replayed = client.post(
+            path,
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="scoresheet-recognition-retry-test",
+        )
+        conflicting = client.post(
+            path,
+            data=json.dumps({**payload, "expected_version": payload["expected_version"] + 1}),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="scoresheet-recognition-retry-test",
+        )
+
+    assert first.status_code == 200, first.content
+    assert replayed.status_code == 200
+    assert replayed.json()["id"] == first.json()["id"]
+    assert conflicting.status_code == 409
+    assert conflicting.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert scoresheet.recognition_runs.filter(
+        trigger=ScoresheetRecognitionRun.Trigger.MANUAL_RETRY
+    ).count() == 1
+    assert ApiIdempotencyRecord.objects.filter(
+        operation="scoresheet.recognition.retry"
+    ).count() == 1
+
+
 def test_web_edit_is_returned_by_miniapp_sync_endpoint(tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path):
         setup, _, _, _, scoresheet = create_scoresheet()
@@ -1132,6 +1187,70 @@ def test_miniapp_bearer_can_write_without_csrf_cookie(tmp_path):
 
     assert saved.status_code == 200
     assert saved.json()["draft"]["header"]["crew_chief"] == "MINI-NO-CSRF"
+
+
+@pytest.mark.parametrize("surface", ["WEB", "MINIAPP"])
+def test_scoresheet_get_root_roundtrip_accepts_same_recognition_timestamp_instant(
+    tmp_path,
+    surface,
+):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    authoritative_applied_at = "2026-08-25T04:05:06.123456+00:00"
+    draft = copy.deepcopy(scoresheet.draft)
+    draft["recognition"] = {
+        "run_id": "roundtrip-recognition",
+        "notes": "服务器识别来源",
+        "table_personnel": [],
+        "problem_paths": [],
+        "issues": [],
+        "applied_at": authoritative_applied_at,
+    }
+    scoresheet.draft = draft
+    scoresheet.save(update_fields=["draft", "updated_at"])
+
+    client = Client(enforce_csrf_checks=surface == "MINIAPP")
+    headers = {}
+    if surface == "WEB":
+        client.force_login(setup["admin"])
+    else:
+        headers["HTTP_AUTHORIZATION"] = f"Bearer {issue_session(setup['admin'])}"
+    lease = client.post(
+        f"/api/v1/scoresheets/{scoresheet.id}/lease",
+        data=json.dumps({"client_id": f"{surface.lower()}-roundtrip", "surface": surface}),
+        content_type="application/json",
+        **headers,
+    )
+    assert lease.status_code == 200
+    detail = client.get(f"/api/v1/scoresheets/{scoresheet.id}", **headers)
+    assert detail.status_code == 200
+    incoming = detail.json()["draft"]
+    incoming["recognition"]["applied_at"] = "2026-08-25T04:05:06.123Z"
+    incoming["header"]["crew_chief"] = f"{surface} 往返裁判"
+
+    saved = client.patch(
+        f"/api/v1/scoresheets/{scoresheet.id}/draft",
+        data=json.dumps(
+            {
+                "expected_version": detail.json()["draft_version"],
+                "lease_token": lease.json()["lease_token"],
+                "client_id": f"{surface.lower()}-roundtrip",
+                "surface": surface,
+                "changes": [{"path": "/", "operation": "SET", "value": incoming}],
+            }
+        ),
+        content_type="application/json",
+        **headers,
+    )
+
+    assert saved.status_code == 200, saved.content
+    scoresheet.refresh_from_db()
+    assert scoresheet.draft["header"]["crew_chief"] == f"{surface} 往返裁判"
+    assert datetime.fromisoformat(
+        scoresheet.draft["recognition"]["applied_at"].replace("Z", "+00:00")
+    ) == datetime.fromisoformat(authoritative_applied_at)
+    assert scoresheet.draft["recognition"]["run_id"] == "roundtrip-recognition"
+    assert scoresheet.draft["recognition"]["notes"] == "服务器识别来源"
 
 
 def test_retryable_recognition_uses_initial_call_plus_three_retries(tmp_path, monkeypatch):
@@ -1244,6 +1363,112 @@ def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, mon
     assert scoresheet.change_logs.filter(
         event_type="RECOGNITION_STORED_NOT_APPLIED"
     ).exists()
+
+
+@pytest.mark.parametrize(
+    ("status", "source_offset", "provider_result", "expected_code"),
+    [
+        (
+            ScoresheetRecognitionRun.Status.FAILED,
+            0,
+            {"header": {"crew_chief": "不应写入的识别结果"}},
+            "RECOGNITION_NOT_READY",
+        ),
+        (
+            ScoresheetRecognitionRun.Status.SUPERSEDED,
+            0,
+            {"header": {"crew_chief": "不应写入的识别结果"}},
+            "RECOGNITION_NOT_READY",
+        ),
+        (
+            ScoresheetRecognitionRun.Status.SUCCEEDED,
+            1,
+            {"header": {"crew_chief": "不应写入的识别结果"}},
+            "RECOGNITION_SUPERSEDED",
+        ),
+        (ScoresheetRecognitionRun.Status.SUCCEEDED, 0, {}, "RECOGNITION_NOT_READY"),
+    ],
+)
+def test_apply_recognition_revalidates_locked_current_run_without_writes(
+    tmp_path,
+    status,
+    source_offset,
+    provider_result,
+    expected_code,
+):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    run = scoresheet.recognition_runs.get()
+    run.status = status
+    run.source_version = scoresheet.source_version + source_offset
+    run.provider_result = provider_result
+    run.save(update_fields=["status", "source_version", "provider_result", "updated_at"])
+    token = obtain_lease(scoresheet, setup["admin"], "recognition-apply-guard")
+    before_draft = copy.deepcopy(scoresheet.draft)
+    before_version = scoresheet.draft_version
+    before_events = scoresheet.change_logs.count()
+
+    with pytest.raises(ScoresheetError) as blocked:
+        apply_recognition_regions(
+            scoresheet_id=scoresheet.id,
+            run_id=run.id,
+            actor=setup["admin"],
+            expected_version=before_version,
+            lease_token=token,
+            client_id="recognition-apply-guard",
+            surface=ScoresheetEditLease.Surface.WEB,
+            regions=["SOURCE_GAME"],
+        )
+
+    assert blocked.value.code == expected_code
+    scoresheet.refresh_from_db()
+    run.refresh_from_db()
+    assert scoresheet.draft == before_draft
+    assert scoresheet.draft_version == before_version
+    assert scoresheet.change_logs.count() == before_events
+    assert run.applied_draft_version is None
+
+
+def test_apply_recognition_accepts_only_current_successful_provider_result(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    run = scoresheet.recognition_runs.get()
+    run.status = ScoresheetRecognitionRun.Status.SUCCEEDED
+    run.provider_result = {"header": {"crew_chief": "当前识别裁判"}}
+    run.save(update_fields=["status", "provider_result", "updated_at"])
+    token = obtain_lease(scoresheet, setup["admin"], "recognition-apply-current")
+
+    saved = apply_recognition_regions(
+        scoresheet_id=scoresheet.id,
+        run_id=run.id,
+        actor=setup["admin"],
+        expected_version=scoresheet.draft_version,
+        lease_token=token,
+        client_id="recognition-apply-current",
+        surface=ScoresheetEditLease.Surface.WEB,
+        regions=["SOURCE_GAME"],
+    )
+
+    run.refresh_from_db()
+    assert saved.draft["header"]["crew_chief"] == "当前识别裁判"
+    assert run.applied_draft_version == saved.draft_version
+
+    event_count = saved.change_logs.count()
+    with pytest.raises(ScoresheetError) as repeated:
+        apply_recognition_regions(
+            scoresheet_id=saved.id,
+            run_id=run.id,
+            actor=setup["admin"],
+            expected_version=saved.draft_version,
+            lease_token=token,
+            client_id="recognition-apply-current",
+            surface=ScoresheetEditLease.Surface.WEB,
+            regions=["SOURCE_GAME"],
+        )
+    assert repeated.value.code == "RECOGNITION_ALREADY_APPLIED"
+    saved.refresh_from_db()
+    assert saved.draft_version == run.applied_draft_version
+    assert saved.change_logs.count() == event_count
 
 
 def test_reupload_supersedes_old_claim_and_resets_attempt_budget(tmp_path, monkeypatch):
@@ -1522,6 +1747,17 @@ def test_archived_published_scoresheet_requires_explicit_web_correction_and_repu
             assert read_only is True
             assert blocked_token is None
             assert "已归档赛季" in reason
+
+        with pytest.raises(ScoresheetError) as force_without_record_confirmation:
+            force_takeover_edit_lease(
+                scoresheet_id=scoresheet.id,
+                actor=setup["admin"],
+                client_id="archive-force-without-confirmation",
+                surface=ScoresheetEditLease.Surface.WEB,
+                confirmed=True,
+                archived_correction_confirmed=False,
+            )
+        assert force_without_record_confirmation.value.code == "SEASON_ARCHIVED"
 
         change_count = scoresheet.change_logs.count()
         audit_count = AdminAuditLog.objects.count()

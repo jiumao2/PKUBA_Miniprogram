@@ -8,7 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 def utc_now() -> datetime:
-    return datetime.now(UTC)
+    value = datetime.now(UTC)
+    return value.replace(microsecond=(value.microsecond // 1000) * 1000)
 
 
 MANUAL_TABLE_PERSONNEL_RUN_ID = "manual-table-personnel"

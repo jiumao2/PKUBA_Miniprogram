@@ -359,12 +359,12 @@ export function AdminWorkspace() {
         )}
 
         {page !== "admins" && loading && (
-          <StatePanel title="正在读取赛程" detail="数据来自本地 Django API。" />
+          <StatePanel title="正在读取赛程" detail="请稍候。" />
         )}
         {page !== "admins" && error && (
           <StatePanel
             title="暂时无法连接后端"
-            detail={`${error}。请确认 Docker Desktop 与 API 服务已启动后刷新。`}
+            detail={`${error}。请稍后重试；如持续失败，请联系核心开发者。`}
             tone="error"
           />
         )}

@@ -49,4 +49,12 @@ describe('source photo pane', () => {
     expect(onReloadSource).toHaveBeenCalledOnce();
     expect(screen.getByRole('img', { name: '上传的篮球记录表' }).getAttribute('src')).not.toBe(before);
   });
+
+  it('hides every source mutation entry during archived viewing and correction', () => {
+    const onRequestUpload = vi.fn();
+    render(<SourcePane document={null} onRequestUpload={onRequestUpload} allowUpload={false} />);
+
+    expect(screen.getByLabelText('没有可查看的记录表原图')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /导入|上传/ })).not.toBeInTheDocument();
+  });
 });

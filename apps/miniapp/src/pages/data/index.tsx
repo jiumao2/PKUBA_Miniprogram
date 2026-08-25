@@ -40,19 +40,32 @@ export default function DataPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestVersion = useRef(0);
+  const seasonRequestVersion = useRef(0);
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
-  useDidShow(() => syncTabBar(3));
+  useDidShow(() => {
+    syncTabBar(3);
+    setRefreshVersion((value) => value + 1);
+  });
   useEffect(() => {
+    const version = ++seasonRequestVersion.current;
     void api.getCurrentSeason().then((season) => {
+      if (version !== seasonRequestVersion.current) return;
       setDivisions(season.divisions);
       const initial = season.divisions.find((division) => division.code === "men-a") ?? season.divisions[0];
-      setDivisionId((current) => current || initial?.id || "");
+      setDivisionId((current) => season.divisions.some((division) => division.id === current)
+        ? current
+        : initial?.id || "");
       if (!initial) setLoading(false);
     }).catch((reason) => {
+      if (version !== seasonRequestVersion.current) return;
       setError(messageOf(reason));
       setLoading(false);
     });
-  }, []);
+    return () => {
+      seasonRequestVersion.current += 1;
+    };
+  }, [refreshVersion]);
   useEffect(() => {
     if (!divisionId) return;
     const version = requestVersion.current + 1;
@@ -90,7 +103,7 @@ export default function DataPage() {
     }).finally(() => {
       if (requestVersion.current === version) setLoading(false);
     });
-  }, [divisionId, order, playerPage, playerSort, tab, teamSort]);
+  }, [divisionId, order, playerPage, playerSort, refreshVersion, tab, teamSort]);
 
   const sorts = tab === "teams" ? TEAM_SORTS : PLAYER_SORTS;
   function selectSort(nextSort: string) {

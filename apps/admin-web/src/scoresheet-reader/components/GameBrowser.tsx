@@ -16,6 +16,7 @@ interface GameBrowserProps {
   onUpload: (gameId: string, file: File) => Promise<void>;
   onReupload: (documentId: string, file: File) => Promise<void>;
   initialGameId?: string;
+  allowUploads?: boolean;
 }
 
 const stateLabels: Record<GameSummary['scoresheet_state'], string> = {
@@ -40,6 +41,7 @@ export function GameBrowser({
   onUpload,
   onReupload,
   initialGameId = '',
+  allowUploads = true,
 }: GameBrowserProps) {
   const [queryDraft, setQueryDraft] = useState(query);
   const [selectedGame, setSelectedGame] = useState<GameSummary | null>(null);
@@ -143,7 +145,7 @@ export function GameBrowser({
                 {openingGameId === game.id ? '打开中' : (game.document_id ? stateLabels[game.scoresheet_state] : (game.ready ? '待上传' : '球队待定'))}
               </span>
               </button>
-              {game.document_id && game.ready ? (
+              {allowUploads && game.document_id && game.ready ? (
                 <button
                   type="button"
                   className="game-reupload-button"
@@ -180,7 +182,7 @@ export function GameBrowser({
             </button>
           </nav>
         ) : null}
-        <footer>
+        {allowUploads ? <footer>
           <div>
             {selectedGame ? <><strong>{selectedGame.team_a_name} — {selectedGame.team_b_name}</strong><span>名单不含球衣号码，号码仍由图片读取</span></> : <span>选择未上传比赛以导入照片；已有结果可直接点击打开</span>}
           </div>
@@ -212,7 +214,7 @@ export function GameBrowser({
           <button className="confirm-button" disabled={!selectedGame || uploading} onClick={() => fileInput.current?.click()}>
             <Upload size={15} /> {uploading ? '正在上传并排队…' : '上传并识别'}
           </button>
-        </footer>
+        </footer> : null}
       </section>
     </div>
   );

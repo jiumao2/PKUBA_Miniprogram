@@ -706,7 +706,16 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
     ) =>
       send<ScoresheetLeaseResponse>(
         `/api/v1/scoresheets/${scoresheetId}/lease/force`,
-        json("POST", { client_id: clientId, surface, confirmed: true }, token),
+        json(
+          "POST",
+          {
+            client_id: clientId,
+            surface,
+            confirmed: true,
+            archived_correction_confirmed: false,
+          },
+          token,
+        ),
       ),
     saveScoresheetDraft: (
       scoresheetId: string,
@@ -772,10 +781,11 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       scoresheetId: string,
       context: ScoresheetMutationContext,
       token: string,
+      idempotencyKey = createIdempotencyKey(),
     ) =>
       send<Record<string, unknown>>(
         `/api/v1/scoresheets/${scoresheetId}/recognition/retry`,
-        json("POST", context, token),
+        json("POST", context, token, idempotencyKey),
       ),
     getScoresheetRecognitionCapabilities: (token: string) =>
       send<ScoresheetRecognitionCapability>(
@@ -1724,6 +1734,7 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       expectedVersion: number,
       scoresheetCompleteConfirmed: boolean,
       file: File,
+      idempotencyKey = createIdempotencyKey(),
     ) => {
       const form = new FormData();
       form.append("expected_version", String(expectedVersion));
@@ -1735,7 +1746,7 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       return parseAdminResponse<GameMediaAsset>(
         await fetchAdmin(`/api/v1/admin/game-media/${assetId}/replace`, {
           method: "POST",
-          headers: csrfHeaders(),
+          headers: { "Idempotency-Key": idempotencyKey, ...csrfHeaders() },
           body: form,
         }),
       );
@@ -1833,12 +1844,18 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       scoresheetId: string,
       clientId: string,
       surface: ScoresheetSurface,
+      archivedCorrectionConfirmed = false,
     ) =>
       parseAdminResponse<ScoresheetLeaseResponse>(
         await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/lease/force`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...csrfHeaders() },
-          body: JSON.stringify({ client_id: clientId, surface, confirmed: true }),
+          body: JSON.stringify({
+            client_id: clientId,
+            surface,
+            confirmed: true,
+            archived_correction_confirmed: archivedCorrectionConfirmed,
+          }),
         }),
       ),
     saveScoresheetDraft: async (

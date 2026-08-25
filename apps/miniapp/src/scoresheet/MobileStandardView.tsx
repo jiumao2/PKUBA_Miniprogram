@@ -340,7 +340,7 @@ function PlayerDrawer({ player, priorNames, disabled, onChange, onClose }: {
       ) : <LabeledInput disabled={disabled} label="姓名" value={player.name} onChange={(value) => set("name", value)} />}
       <LabeledInput
         disabled={disabled}
-        inputType="number"
+        inputType="text"
         invalid={!jerseyValid}
         label="球衣号码"
         value={player.jersey_number}
