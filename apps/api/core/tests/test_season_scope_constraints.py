@@ -589,3 +589,40 @@ def test_core_season_scope_constraints_are_installed():
         )
         installed = {row[0] for row in cursor.fetchall()}
     assert installed == expected
+
+
+def test_existing_rows_are_covered_by_validated_season_scope_foreign_keys():
+    expected = {
+        "team_division_same_season",
+        "team_import_same_season",
+        "game_division_same_season",
+        "game_period_same_season",
+        "game_group_same_division",
+        "game_home_same_division",
+        "game_away_same_division",
+        "game_home_slot_same_division",
+        "game_away_slot_same_division",
+        "game_import_same_season",
+        "leader_team_same_season",
+        "capacity_period_same_season",
+        "override_period_same_season",
+        "slot_family_same_season",
+        "grid_period_same_season",
+        "grid_venue_same_season",
+        "slot_lock_same_season",
+        "reservation_period_same_season",
+        "reservation_venue_same_season",
+        "reservation_game_same_season",
+        "import_draft_same_season",
+        "draw_team_same_season",
+        "draw_source_game_same_season",
+    }
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT conname, convalidated FROM pg_constraint WHERE conname = ANY(%s)",
+            [list(expected)],
+        )
+        states = dict(cursor.fetchall())
+
+    assert set(states) == expected
+    assert all(states.values())

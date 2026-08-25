@@ -9,6 +9,23 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 
+const WEAPP_WEBPACK_CACHE_NAMES = new Set(["production-weapp", "development-weapp"]);
+
+export function clearWeappWebpackCaches(appRoot, cacheNames) {
+  const cacheRoot = join(appRoot, "node_modules", ".cache", "webpack");
+  for (const cacheName of cacheNames) {
+    if (!WEAPP_WEBPACK_CACHE_NAMES.has(cacheName)) {
+      throw new Error(`拒绝清理未知微信构建缓存：${cacheName}`);
+    }
+    rmSync(join(cacheRoot, cacheName), {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200,
+    });
+  }
+}
+
 export function listFiles(root, current = root) {
   if (!existsSync(current)) return [];
   return readdirSync(current, { withFileTypes: true }).flatMap((entry) => {

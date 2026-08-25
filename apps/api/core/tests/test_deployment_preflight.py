@@ -28,6 +28,26 @@ def test_deployment_preflight_reports_safe_business_counts():
     }
     assert payload["counts"]["seasons"] == 0
     assert payload["counts"]["core_migrations"] >= 1
+    assert payload["season_integrity"]["ok"] is True
+    assert payload["season_integrity"]["violations"] == {}
+
+
+def test_deployment_preflight_blocks_season_integrity_violations(monkeypatch):
+    monkeypatch.setattr(
+        "core.management.commands.deployment_preflight.audit_season_integrity",
+        lambda: {"team_scope": 1, "game_scope": 0},
+    )
+
+    with pytest.raises(CommandError) as error:
+        call_command("deployment_preflight", "--wait-seconds=60", "--json")
+
+    payload = json.loads(str(error.value))
+    assert payload["ready"] is False
+    assert payload["season_integrity"] == {
+        "ok": False,
+        "checks": {"team_scope": 1, "game_scope": 0},
+        "violations": {"team_scope": 1},
+    }
 
 
 def test_deployment_preflight_blocks_active_archive_worker_lease():

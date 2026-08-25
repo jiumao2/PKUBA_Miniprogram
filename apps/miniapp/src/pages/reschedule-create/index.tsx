@@ -1,5 +1,5 @@
 import { Button, Picker, Text, View } from "@tarojs/components";
-import Taro, { useDidShow } from "@tarojs/taro";
+import Taro, { useDidShow, useRouter } from "@tarojs/taro";
 import { useMemo, useState } from "react";
 import type { RescheduleGame, RescheduleTarget } from "@pkuba/api-client";
 
@@ -7,8 +7,16 @@ import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
 import { formatDate } from "../../format";
 import "../../role-workspace.css";
+import {
+  parseRescheduleEntryMode,
+  RESCHEDULE_ENTRY_COPY,
+  targetsForEntryMode,
+} from "./mode";
 
 export default function RescheduleCreatePage() {
+  const router = useRouter();
+  const entryMode = parseRescheduleEntryMode(router.params.mode);
+  const entryCopy = RESCHEDULE_ENTRY_COPY[entryMode];
   const [games, setGames] = useState<RescheduleGame[]>([]);
   const [targets, setTargets] = useState<RescheduleTarget[]>([]);
   const [gameIndex, setGameIndex] = useState(0);
@@ -22,10 +30,12 @@ export default function RescheduleCreatePage() {
     setTargets([]);
     setDateIndex(0);
     setPeriodIndex(0);
-    setTargets(await api.getRescheduleTargets(game.id, token));
+    const availableTargets = await api.getRescheduleTargets(game.id, token);
+    setTargets(targetsForEntryMode(availableTargets, entryMode));
   };
 
   useDidShow(() => {
+    void Taro.setNavigationBarTitle({ title: entryCopy.title });
     const token = getMiniAppSession();
     if (!token) {
       setLoading(false);
@@ -68,7 +78,7 @@ export default function RescheduleCreatePage() {
     const token = getMiniAppSession();
     if (!token || !selectedGame || !selectedTarget) return;
     const confirmation = await Taro.showModal({
-      title: "提交调赛申请",
+      title: `提交${entryCopy.title}申请`,
       content: `${formatDate(selectedTarget.date)} ${selectedTarget.start_time}。提交后原比赛会被锁定，具体场地将在调赛生效并更新正式赛程后公布。`,
       confirmText: "提交申请",
       confirmColor: "#c91f26",
@@ -94,7 +104,10 @@ export default function RescheduleCreatePage() {
 
   return (
     <View className="page reschedule-create-page">
-      <Text className="page-title">发起调赛</Text>
+      <Text className="page-title">{entryCopy.title}</Text>
+      {entryMode === "cross_week" && (
+        <Text className="flow-guidance">{RESCHEDULE_ENTRY_COPY.cross_week.guidance}</Text>
+      )}
       {loading && <View className="state"><Text className="state-detail">正在核对可申请比赛和容量…</Text></View>}
       {!loading && !selectedGame && (
         <View className="state"><Text className="state-detail">当前没有满足政策和截止时间的可调比赛。</Text></View>
@@ -141,7 +154,7 @@ export default function RescheduleCreatePage() {
               >
                 <View className="flow-picker">
                   <Text className="flow-picker-title">{selectedTarget?.start_time}</Text>
-                  <Text className="flow-picker-meta">{selectedTarget?.request_type === "SAME_WEEK" ? "同周调赛" : "跨周调赛"}</Text>
+                  <Text className="flow-picker-meta">{entryCopy.targetLabel}</Text>
                 </View>
               </Picker>
               <Text className="flow-helper">系统会在提交时内部预留可用场地，调赛生效并更新正式赛程后公布。</Text>
@@ -151,7 +164,7 @@ export default function RescheduleCreatePage() {
             </>
           )}
           {!loading && !targets.length && (
-            <View className="flow-feedback">这场比赛当前没有同时满足容量、场地和球队冲突检查的目标时段。</View>
+            <View className="flow-feedback">{entryCopy.emptyMessage}</View>
           )}
         </View>
       )}
@@ -165,5 +178,5 @@ function gameLabel(game: RescheduleGame) {
 }
 
 function targetLabel(target: RescheduleTarget) {
-  return `${target.start_time} · ${target.request_type === "SAME_WEEK" ? "同周" : "跨周"}`;
+  return target.start_time;
 }

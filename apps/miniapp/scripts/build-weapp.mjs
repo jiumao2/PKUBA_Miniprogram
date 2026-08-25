@@ -7,7 +7,12 @@ import {
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { listFiles, syncWeappOutput, validateWeappOutput } from "./weapp-artifacts.mjs";
+import {
+  clearWeappWebpackCaches,
+  listFiles,
+  syncWeappOutput,
+  validateWeappOutput,
+} from "./weapp-artifacts.mjs";
 
 const require = createRequire(import.meta.url);
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -73,6 +78,9 @@ if (!allowInsecureLocal) {
   }
 }
 
+// Taro/webpack can retain an empty page module after a source file is restored.
+// A production candidate must always rebuild page modules from the current source.
+clearWeappWebpackCaches(appRoot, ["production-weapp"]);
 rmSync(stagingRoot, { recursive: true, force: true });
 const build = spawnSync(process.execPath, [cliPath, "build", "--type", "weapp"], {
   cwd: appRoot,

@@ -453,13 +453,16 @@ EOF
 (
   cd "$backup_dir"
   sha256sum database.dump private-media.tar.gz archive-staging.tar.gz \
-    private-media.files.sha256 archive-staging.files.sha256 MANIFEST.env \
+    private-media.files.sha256 archive-staging.files.sha256 \
+    previous-release.env MANIFEST.env \
     >SHA256SUMS
   sha256sum --check SHA256SUMS
 )
 
 echo "Applying compatible migrations from the candidate image."
 compose_candidate run --rm --no-deps api python manage.py migrate --noinput
+compose_candidate run --rm --no-deps api python manage.py audit_season_integrity --json \
+  >"$backup_dir/season-integrity-after-migrate.json"
 compose_candidate run --rm --no-deps api python manage.py check --deploy
 compose_candidate run --rm --no-deps api python manage.py showmigrations core --plan \
   >"$backup_dir/core-migrations.txt"

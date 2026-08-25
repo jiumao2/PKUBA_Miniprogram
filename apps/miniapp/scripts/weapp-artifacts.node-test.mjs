@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 
-import { validateWeappOutput } from "./weapp-artifacts.mjs";
+import { clearWeappWebpackCaches, validateWeappOutput } from "./weapp-artifacts.mjs";
 
 function fixture(pageJavaScript) {
   const root = mkdtempSync(join(tmpdir(), "pkuba-weapp-artifacts-"));
@@ -45,5 +45,29 @@ test("rejects missing registered page artifacts", () => {
     assert.throws(() => validateWeappOutput(root), /缺少有效的 \.wxml/);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("clears stale empty-page webpack caches before build and watch", () => {
+  const appRoot = mkdtempSync(join(tmpdir(), "pkuba-weapp-cache-"));
+  const webpackRoot = join(appRoot, "node_modules", ".cache", "webpack");
+  const productionCache = join(webpackRoot, "production-weapp");
+  const developmentCache = join(webpackRoot, "development-weapp");
+  const unrelatedCache = join(webpackRoot, "another-target");
+  for (const cacheRoot of [productionCache, developmentCache, unrelatedCache]) {
+    mkdirSync(cacheRoot, { recursive: true });
+    writeFileSync(
+      join(cacheRoot, "empty-admin-module.cache"),
+      '1010:function(){}',
+    );
+  }
+
+  try {
+    clearWeappWebpackCaches(appRoot, ["production-weapp", "development-weapp"]);
+    assert.equal(existsSync(productionCache), false);
+    assert.equal(existsSync(developmentCache), false);
+    assert.equal(existsSync(unrelatedCache), true);
+  } finally {
+    rmSync(appRoot, { recursive: true, force: true });
   }
 });

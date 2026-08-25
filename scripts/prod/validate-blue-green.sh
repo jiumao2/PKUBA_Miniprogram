@@ -77,6 +77,10 @@ grep -Fq 'rollback_type=application_only' \
   "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'database_restored=0' \
   "$repo_root/scripts/prod/deploy-blue-green.sh"
+grep -Fq 'previous-release.env MANIFEST.env' \
+  "$repo_root/scripts/prod/deploy-blue-green.sh"
+grep -Fq 'audit_season_integrity --json' \
+  "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'PKUBA_OLD_SLOT_RETENTION_SECONDS:-86400' \
   "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'PKUBA_PRODUCTION_AUTOMATION_ARMED=0' \
@@ -89,6 +93,21 @@ grep -Fq 'RESTORE_PAIRED_DATA' \
   "$repo_root/scripts/prod/restore-paired-data.sh"
 grep -Fq 'archive-staging.files.sha256' \
   "$repo_root/scripts/prod/restore-paired-data.sh"
+grep -Fq 'pkuba-parse-release-state' \
+  "$repo_root/scripts/prod/restore-paired-data.sh"
+! grep -Fq 'source "$backup_dir/previous-release.env"' \
+  "$repo_root/scripts/prod/restore-paired-data.sh"
+grep -Fq 'audit_season_integrity --json' \
+  "$repo_root/scripts/prod/restore-paired-data.sh"
+parser_line=$(grep -n 'parsed_state=$(bash "$state_parser"' \
+  "$repo_root/scripts/prod/restore-paired-data.sh" | head -n 1 | cut -d: -f1)
+stop_line=$(grep -n 'Stopping both application slots before touching paired data' \
+  "$repo_root/scripts/prod/restore-paired-data.sh" | head -n 1 | cut -d: -f1)
+restore_line=$(grep -n 'Restoring PostgreSQL from the verified deployment snapshot' \
+  "$repo_root/scripts/prod/restore-paired-data.sh" | head -n 1 | cut -d: -f1)
+[[ -n $parser_line && -n $stop_line && -n $restore_line \
+  && $parser_line -lt $stop_line && $parser_line -lt $restore_line ]] \
+  || { echo "release state must be parsed before services or paired data are touched" >&2; exit 1; }
 grep -Fq 'MANIFEST.env' \
   "$repo_root/scripts/prod/backup-current-server.sh"
 grep -Fq 'database_restored=1' \
@@ -97,5 +116,43 @@ grep -Fq 'media_restored=1' \
   "$repo_root/scripts/prod/restore-paired-data.sh"
 grep -Fq 'archive_restored=1' \
   "$repo_root/scripts/prod/restore-paired-data.sh"
+
+state_fixture=$state_dir/release-state-fixture
+mkdir -p "$state_fixture"
+cat >"$state_fixture/previous-release.env" <<'EOF'
+ACTIVE_SLOT=blue
+CURRENT_TAG=v1.2.3
+CURRENT_COMMIT=0123456789abcdef0123456789abcdef01234567
+CURRENT_API_IMAGE=ghcr.io/jiumao2/pkuba-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+CURRENT_WEB_IMAGE=ghcr.io/jiumao2/pkuba-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+CURRENT_RELEASE_DIR=/opt/pkuba/deploy/releases/v1.2.3
+SWITCHED_AT=2026-08-25T00:00:00Z
+EOF
+bash "$repo_root/scripts/prod/parse-release-state.sh" \
+  "$state_fixture/previous-release.env" >/dev/null
+(
+  cd "$state_fixture"
+  sha256sum previous-release.env >SHA256SUMS
+)
+injection_marker=$state_fixture/injection-marker
+printf 'UNEXPECTED=$(touch %s)\n' "$injection_marker" \
+  >>"$state_fixture/previous-release.env"
+if (cd "$state_fixture" && sha256sum --check SHA256SUMS >/dev/null 2>&1); then
+  echo "tampered previous-release.env unexpectedly passed its checksum" >&2
+  exit 1
+fi
+# A rewritten checksum manifest must not turn semantically hostile state into a
+# valid restore input. Fixed-key parsing still fails before any data operation.
+(
+  cd "$state_fixture"
+  sha256sum previous-release.env >SHA256SUMS
+  sha256sum --check SHA256SUMS >/dev/null
+)
+if bash "$repo_root/scripts/prod/parse-release-state.sh" \
+  "$state_fixture/previous-release.env" >/dev/null 2>&1; then
+  echo "tampered previous-release.env unexpectedly passed fixed-key parsing" >&2
+  exit 1
+fi
+[[ ! -e $injection_marker ]]
 
 echo "Blue/green deployment files are structurally valid."

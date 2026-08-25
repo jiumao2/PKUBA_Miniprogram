@@ -41,9 +41,12 @@ for required in \
   private-media.tar.gz \
   private-media.files.sha256 \
   archive-staging.tar.gz \
-  archive-staging.files.sha256; do
+  archive-staging.files.sha256 \
+  previous-release.env; do
   [[ -f $backup_dir/$required ]] || die "backup is missing $required"
 done
+(grep -Eq '^[0-9a-f]{64}  previous-release\.env$' "$backup_dir/SHA256SUMS") \
+  || die "backup checksum manifest does not protect previous-release.env"
 (cd "$backup_dir" && sha256sum --check SHA256SUMS)
 
 config_file=${PKUBA_DEPLOY_CONFIG:-/etc/pkuba-deploy.conf}
@@ -54,6 +57,7 @@ fi
 
 isolated=${PKUBA_RESTORE_ISOLATED:-0}
 deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/deploy}
+release_root=${PKUBA_RELEASE_ROOT:-$deploy_root/releases}
 state_dir=${PKUBA_DEPLOY_STATE_DIR:-$deploy_root/state}
 log_root=$deploy_root/logs
 lock_file=${PKUBA_DEPLOY_LOCK_FILE:-/var/lock/pkuba-deploy.lock}
@@ -71,6 +75,27 @@ green_web_port=${PKUBA_GREEN_WEB_PORT:-18081}
 email_profile=${PKUBA_ENABLE_EMAIL_PROFILE:-0}
 current_state=$state_dir/current.env
 maintenance_file=$state_dir/maintenance.enabled
+
+# A paired deployment backup belongs to the application state captured before
+# migration. Parse and validate that state before stopping services or touching
+# the database/media/archive volumes. Backup contents are data, never shell.
+state_parser=${PKUBA_RELEASE_STATE_PARSER:-/usr/local/libexec/pkuba-parse-release-state}
+if [[ ! -x $state_parser ]]; then
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  state_parser=$script_dir/parse-release-state.sh
+fi
+[[ -f $state_parser ]] || die "release state parser is unavailable"
+parsed_state=$(bash "$state_parser" "$backup_dir/previous-release.env") \
+  || die "previous release state is invalid"
+IFS=$'\t' read -r \
+  ACTIVE_SLOT CURRENT_TAG CURRENT_COMMIT CURRENT_API_IMAGE CURRENT_WEB_IMAGE CURRENT_RELEASE_DIR \
+  <<<"$parsed_state"
+expected_release_dir=$(realpath -m "$release_root/$CURRENT_TAG")
+CURRENT_RELEASE_DIR=$(realpath -m "$CURRENT_RELEASE_DIR")
+[[ $CURRENT_RELEASE_DIR == "$expected_release_dir" ]] \
+  || die "previous release directory does not match its tag"
+[[ -f $CURRENT_RELEASE_DIR/infra/compose.prod.slot.yml ]] \
+  || die "matching application release is unavailable"
 
 mkdir -p "$state_dir" "$log_root"
 touch "$lock_file"
@@ -173,6 +198,16 @@ restore_volume "$media_volume" private-media.tar.gz private-media.files.sha256
 echo "Restoring and verifying the archive staging volume."
 restore_volume "$archive_volume" archive-staging.tar.gz archive-staging.files.sha256
 
+echo "Auditing restored season-scoped relationships before any service starts."
+docker run --rm \
+  --network "container:$db_container" \
+  --env-file "$env_file" \
+  -e PKUBA_RELEASE_TAG="$CURRENT_TAG" \
+  -e PKUBA_GIT_COMMIT="$CURRENT_COMMIT" \
+  "$CURRENT_API_IMAGE" \
+  python manage.py audit_season_integrity --json \
+  >"$incident_dir/season-integrity.json"
+
 if [[ $isolated == 1 ]]; then
   restore_complete=1
   restart_allowed=1
@@ -182,20 +217,6 @@ if [[ $isolated == 1 ]]; then
   rm -f "$maintenance_file"
   exit 0
 fi
-
-# A paired deployment backup belongs to the application state captured before
-# migration. Restore that exact slot/images before reopening traffic.
-# shellcheck disable=SC1090
-source "$backup_dir/previous-release.env"
-: "${ACTIVE_SLOT:?missing ACTIVE_SLOT in previous-release.env}"
-: "${CURRENT_TAG:?missing CURRENT_TAG in previous-release.env}"
-: "${CURRENT_COMMIT:?missing CURRENT_COMMIT in previous-release.env}"
-: "${CURRENT_API_IMAGE:?missing CURRENT_API_IMAGE in previous-release.env}"
-: "${CURRENT_WEB_IMAGE:?missing CURRENT_WEB_IMAGE in previous-release.env}"
-: "${CURRENT_RELEASE_DIR:?missing CURRENT_RELEASE_DIR in previous-release.env}"
-[[ $ACTIVE_SLOT == blue || $ACTIVE_SLOT == green ]] || die "invalid restored slot"
-[[ -f $CURRENT_RELEASE_DIR/infra/compose.prod.slot.yml ]] \
-  || die "matching application release is unavailable"
 
 slot_api_port=$blue_api_port
 [[ $ACTIVE_SLOT == green ]] && slot_api_port=$green_api_port

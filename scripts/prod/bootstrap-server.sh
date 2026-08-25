@@ -107,6 +107,9 @@ install -o root -g root -m 755 "$script_dir/deploy-blue-green.sh" \
   /usr/local/sbin/pkuba-deploy-blue-green
 install -o root -g root -m 700 "$script_dir/restore-paired-data.sh" \
   /usr/local/sbin/pkuba-restore-paired-data
+install -d -o root -g root -m 755 /usr/local/libexec
+install -o root -g root -m 755 "$script_dir/parse-release-state.sh" \
+  /usr/local/libexec/pkuba-parse-release-state
 printf '%s\n' \
   "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-deploy-blue-green *" \
   >/etc/sudoers.d/pkuba-deploy

@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import {
+  clearWeappWebpackCaches,
   outputFingerprint,
   syncWeappOutput,
   validateWeappOutput,
@@ -25,6 +26,9 @@ const initial = spawnSync(process.execPath, [join(appRoot, "scripts", "build-wea
 if (initial.error) throw initial.error;
 if (initial.status !== 0) process.exit(initial.status ?? 1);
 
+// Keep incremental caching during this watch process, but never start from a
+// stale development module left by an older source tree.
+clearWeappWebpackCaches(appRoot, ["development-weapp"]);
 rmSync(stagingRoot, { recursive: true, force: true });
 const watcher = spawn(process.execPath, [cliPath, "build", "--type", "weapp", "--watch"], {
   cwd: appRoot,

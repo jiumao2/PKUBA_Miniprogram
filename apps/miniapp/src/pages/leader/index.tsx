@@ -1,20 +1,20 @@
 import { Button, Text, View } from "@tarojs/components";
 import { useDidShow } from "@tarojs/taro";
 import { useState } from "react";
-import type { Game, MiniAppMe, RescheduleGame, RescheduleRequest } from "@pkuba/api-client";
+import type { Game, MiniAppMe, RescheduleRequest } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
 import { GameTimeline } from "../../components/game-timeline";
 import { navigateToOnce } from "../../navigation";
 import { gameDetailRoute } from "../../routes";
+import { RESCHEDULE_ENTRY_COPY } from "../reschedule-create/mode";
 import "../../role-workspace.css";
 import "./index.css";
 
 export default function LeaderWorkspacePage() {
   const [me, setMe] = useState<MiniAppMe | null>(null);
   const [games, setGames] = useState<Game[]>([]);
-  const [eligible, setEligible] = useState<RescheduleGame[]>([]);
   const [requests, setRequests] = useState<RescheduleRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -31,13 +31,11 @@ export default function LeaderWorkspacePage() {
       .then(async (current) => {
         setMe(current);
         if (!current.leader_binding) return;
-        const [teamGames, eligibleGames, requestItems] = await Promise.all([
+        const [teamGames, requestItems] = await Promise.all([
           api.getGames(`?team_id=${encodeURIComponent(current.leader_binding.team_id)}`),
-          api.getEligibleRescheduleGames(token),
           api.listRescheduleRequests(token),
         ]);
         setGames(teamGames);
-        setEligible(eligibleGames);
         setRequests(requestItems);
       })
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "读取失败"))
@@ -64,14 +62,30 @@ export default function LeaderWorkspacePage() {
             <Text className="workspace-meta">账号 · {me?.account.username}</Text>
           </View>
 
-          <View className="workspace-actions">
+          <View className="leader-reschedule-list">
             <Button
-              className="workspace-action primary"
-              onClick={() => void navigateToOnce("/pages/reschedule-create/index")}
+              className="leader-reschedule-action is-primary"
+              onClick={() => void navigateToOnce("/pages/reschedule-create/index?mode=same_week")}
             >
-              发起调赛
-              <Text className="workspace-count">{eligible.length} 场可申请</Text>
+              <View className="leader-reschedule-copy">
+                <Text className="leader-reschedule-title">{RESCHEDULE_ENTRY_COPY.same_week.title}</Text>
+                <Text className="leader-reschedule-description">{RESCHEDULE_ENTRY_COPY.same_week.shortDescription}</Text>
+              </View>
+              <Text className="leader-reschedule-arrow">›</Text>
             </Button>
+            <Button
+              className="leader-reschedule-action"
+              onClick={() => void navigateToOnce("/pages/reschedule-create/index?mode=cross_week")}
+            >
+              <View className="leader-reschedule-copy">
+                <Text className="leader-reschedule-title">{RESCHEDULE_ENTRY_COPY.cross_week.title}</Text>
+                <Text className="leader-reschedule-description">{RESCHEDULE_ENTRY_COPY.cross_week.shortDescription}</Text>
+              </View>
+              <Text className="leader-reschedule-arrow">›</Text>
+            </Button>
+          </View>
+
+          <View className="workspace-actions leader-secondary-actions">
             <Button
               className="workspace-action"
               onClick={() => void navigateToOnce("/pages/reschedule-requests/index")}
@@ -80,7 +94,7 @@ export default function LeaderWorkspacePage() {
               <Text className="workspace-count">{activeRequests.length} 项进行中</Text>
             </Button>
             <Button
-              className="workspace-action wide"
+              className="workspace-action"
               onClick={() => void navigateToOnce("/pages/special-reschedule/index")}
             >
               特殊原因调赛与抽签说明

@@ -316,6 +316,8 @@ rollback_required=1
 
 echo "Applying database migrations from $release_tag."
 compose_new run --rm --no-deps api python manage.py migrate --noinput
+compose_new run --rm --no-deps api python manage.py audit_season_integrity --json \
+  >"$backup_dir/season-integrity-after-migrate.json"
 compose_new run --rm --no-deps api python manage.py check --deploy
 compose_new run --rm --no-deps api python manage.py showmigrations core --plan \
   >"$backup_dir/core-migrations.txt"

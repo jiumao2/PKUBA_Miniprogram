@@ -16,6 +16,10 @@ from django.core.management.base import BaseCommand, CommandError
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict
 
+from core.management.commands.audit_season_integrity import (
+    audit_season_integrity_with_cursor,
+)
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -130,6 +134,15 @@ def _verify_restored_database(database_url: str, manifest: dict[str, object]) ->
                     )
             cursor.execute("SELECT app, name FROM django_migrations")
             actual_migrations = {f"{app}.{name}" for app, name in cursor.fetchall()}
+            integrity_checks = audit_season_integrity_with_cursor(cursor)
+            integrity_violations = {
+                name: count for name, count in integrity_checks.items() if count
+            }
+            if integrity_violations:
+                raise CommandError(
+                    "恢复后的数据库包含跨赛季关联："
+                    + json.dumps(integrity_violations, ensure_ascii=False, sort_keys=True)
+                )
     if actual_migrations != expected_migrations:
         raise CommandError("恢复后的 Django 迁移版本与备份清单不一致。")
 

@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.migrations.recorder import MigrationRecorder
 from django.utils import timezone
 
+from core.management.commands.audit_season_integrity import audit_season_integrity
 from core.models import (
     ArchiveJob,
     Division,
@@ -24,6 +25,10 @@ from core.models import (
 
 def deployment_state() -> dict[str, object]:
     now = timezone.now()
+    integrity_checks = audit_season_integrity()
+    integrity_violations = {
+        name: count for name, count in integrity_checks.items() if count
+    }
     busy = {
         "recognition_runs": ScoresheetRecognitionRun.objects.filter(
             status__in=[
@@ -63,9 +68,14 @@ def deployment_state() -> dict[str, object]:
         "core_migrations": MigrationRecorder.Migration.objects.filter(app="core").count(),
     }
     return {
-        "ready": not any(busy.values()),
+        "ready": not any(busy.values()) and not integrity_violations,
         "checked_at": now.isoformat(),
         "busy": busy,
+        "season_integrity": {
+            "ok": not integrity_violations,
+            "checks": integrity_checks,
+            "violations": integrity_violations,
+        },
         "counts": counts,
     }
 
@@ -82,6 +92,9 @@ class Command(BaseCommand):
         deadline = time.monotonic() + max(options["wait_seconds"], 0)
         while True:
             state = deployment_state()
+            if not state["season_integrity"]["ok"]:
+                message = json.dumps(state, ensure_ascii=False, sort_keys=True)
+                raise CommandError(message)
             if state["ready"]:
                 break
             if time.monotonic() >= deadline:

@@ -187,13 +187,17 @@ CHECKS = {
 }
 
 
-def audit_season_integrity() -> dict[str, int]:
+def audit_season_integrity_with_cursor(cursor) -> dict[str, int]:
     results: dict[str, int] = {}
-    with connection.cursor() as cursor:
-        for name, sql in CHECKS.items():
-            cursor.execute(sql)
-            results[name] = int(cursor.fetchone()[0])
+    for name, sql in CHECKS.items():
+        cursor.execute(sql)
+        results[name] = int(cursor.fetchone()[0])
     return results
+
+
+def audit_season_integrity() -> dict[str, int]:
+    with connection.cursor() as cursor:
+        return audit_season_integrity_with_cursor(cursor)
 
 
 class Command(BaseCommand):

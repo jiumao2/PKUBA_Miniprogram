@@ -1,1 +1,44 @@
 .leader-workspace-page .game-timeline { margin-top: 0; }
+
+.leader-reschedule-list {
+  margin-top: 28rpx;
+  border-top: 2rpx solid #272421;
+  border-bottom: 1rpx solid #d7d2ca;
+}
+
+.leader-reschedule-action {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 112rpx;
+  margin: 0;
+  padding: 20rpx 4rpx;
+  border: 0;
+  border-bottom: 1rpx solid #e1ddd6;
+  border-radius: 0;
+  background: transparent;
+  color: #171614;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.leader-reschedule-action:last-child { border-bottom: 0; }
+.leader-reschedule-action::after { border: 0; }
+.leader-reschedule-action:active { background: #f5f1eb; }
+.leader-reschedule-action.is-primary .leader-reschedule-title { color: #c91f26; }
+
+.leader-reschedule-copy {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.leader-reschedule-title,
+.leader-reschedule-description {
+  display: block;
+}
+
+.leader-reschedule-title { font-size: 31rpx; font-weight: 900; }
+.leader-reschedule-description { margin-top: 5rpx; color: #6f6b65; font-size: 26rpx; font-weight: 600; }
+.leader-reschedule-arrow { margin-left: 18rpx; color: #8b857d; font-size: 42rpx; font-weight: 400; }
+.leader-secondary-actions { margin-top: 18rpx; }
