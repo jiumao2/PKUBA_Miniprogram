@@ -29,8 +29,27 @@ for base_image in python:3.13-slim node:24-alpine caddy:2.10-alpine; do
   fi
 done
 
-"${compose[@]}" up -d --build
-"${compose[@]}" exec -T api python manage.py migrate --noinput
+"${compose[@]}" build
+"${compose[@]}" up -d db mailpit
+
+database_ready=0
+for _ in $(seq 1 60); do
+  if "${compose[@]}" exec -T db pg_isready -U pkuba -d pkuba >/dev/null 2>&1; then
+    database_ready=1
+    break
+  fi
+  sleep 1
+done
+if [[ "$database_ready" != "1" ]]; then
+  echo "PKUBA WSL database did not become ready in 60 seconds." >&2
+  exit 1
+fi
+
+# Run migrations before starting services whose health checks depend on the
+# migrated schema and fresh worker heartbeats. This also supports a truly empty
+# local database without a circular API/worker/Web readiness dependency.
+"${compose[@]}" run --rm --no-deps api python manage.py migrate --noinput
+"${compose[@]}" up -d
 
 for _ in $(seq 1 60); do
   if curl --fail --silent --show-error \

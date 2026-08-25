@@ -7,7 +7,7 @@ from datetime import time
 from uuid import UUID
 
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import transaction
+from django.db import connection, transaction
 
 from core.models import (
     Account,
@@ -55,10 +55,10 @@ DEFAULT_CAPACITIES = {
     "p1": {PeriodCapacity.DayType.WEEKDAY: 1, PeriodCapacity.DayType.WEEKEND: 3},
     "p2": {PeriodCapacity.DayType.WEEKDAY: 0, PeriodCapacity.DayType.WEEKEND: 3},
     "p3": {PeriodCapacity.DayType.WEEKDAY: 0, PeriodCapacity.DayType.WEEKEND: 3},
-    "p4": {PeriodCapacity.DayType.WEEKDAY: 1, PeriodCapacity.DayType.WEEKEND: 1},
+    "p4": {PeriodCapacity.DayType.WEEKDAY: 0, PeriodCapacity.DayType.WEEKEND: 0},
     "p5": {PeriodCapacity.DayType.WEEKDAY: 0, PeriodCapacity.DayType.WEEKEND: 2},
     "p6": {PeriodCapacity.DayType.WEEKDAY: 0, PeriodCapacity.DayType.WEEKEND: 2},
-    "p7": {PeriodCapacity.DayType.WEEKDAY: 1, PeriodCapacity.DayType.WEEKEND: 1},
+    "p7": {PeriodCapacity.DayType.WEEKDAY: 0, PeriodCapacity.DayType.WEEKEND: 0},
     "p8": {PeriodCapacity.DayType.WEEKDAY: 1, PeriodCapacity.DayType.WEEKEND: 0},
 }
 
@@ -120,7 +120,17 @@ def _normalize_capacities(raw: dict) -> dict[str, int]:
     return normalized
 
 
-def _normalize_configuration(payload: dict) -> dict:
+def _next_division_code(*, gender: str, used_codes: set[str]) -> str:
+    prefix = "women" if gender == Division.Gender.WOMEN else "men"
+    index = 1
+    while f"{prefix}-{index}" in used_codes:
+        index += 1
+    code = f"{prefix}-{index}"
+    used_codes.add(code)
+    return code
+
+
+def _normalize_configuration(payload: dict, *, season: Season) -> dict:
     name = _validate_text(str(payload["name"]), "赛季名称", 120)
     competition_type = str(payload["competition_type"])
     if competition_type not in Season.CompetitionType.values:
@@ -130,21 +140,29 @@ def _normalize_configuration(payload: dict) -> dict:
     if ends_on < starts_on:
         raise SeasonManagementError("INVALID_DATE_RANGE", "赛季结束日期不能早于开始日期。")
     year = int(payload["year"])
-    if year < 2000 or year > 2100:
-        raise SeasonManagementError("INVALID_YEAR", "赛季年份必须在 2000 至 2100 之间。")
+    if year < 1:
+        raise SeasonManagementError("INVALID_YEAR", "赛季年份必须是正整数。")
 
+    existing_division_codes = {
+        str(item.id): item.code for item in season.divisions.only("id", "code")
+    }
+    used_division_codes = {code.casefold() for code in existing_division_codes.values()}
     divisions = []
     for order, raw in enumerate(payload["divisions"], start=1):
         gender = str(raw["gender"])
         if gender not in Division.Gender.values:
             raise SeasonManagementError("INVALID_GENDER", "组别性别分类无效。")
+        row_id = str(raw.get("id") or "")
+        code = existing_division_codes.get(row_id)
+        if code is None:
+            code = _next_division_code(gender=gender, used_codes=used_division_codes)
         divisions.append(
             {
                 "id": raw.get("id"),
-                "code": _validate_code(str(raw["code"]), "组别", 32),
+                "code": code,
                 "name": _validate_text(str(raw["name"]), "组别名称", 80),
                 "gender": gender,
-                "sort_order": int(raw.get("sort_order", order)),
+                "sort_order": order,
             }
         )
     if not divisions:
@@ -158,22 +176,32 @@ def _normalize_configuration(payload: dict) -> dict:
                 "id": raw.get("id"),
                 "name": _validate_text(str(raw["name"]), "场地名称", 80),
                 "active": bool(raw.get("active", True)),
-                "sort_order": int(raw.get("sort_order", order)),
+                "sort_order": order,
             }
         )
     if not venues or not any(row["active"] for row in venues):
         raise SeasonManagementError("ACTIVE_VENUE_REQUIRED", "至少保留一个自动分配场地。")
     _validate_unique(venues, "name", "场地名称")
 
+    existing_period_codes = {
+        str(item.id): item.code.lower() for item in season.periods.only("id", "code")
+    }
     periods = []
     for order, raw in enumerate(payload["periods"], start=1):
+        row_id = str(raw.get("id") or "")
+        code = existing_period_codes.get(row_id)
+        if code is None:
+            raise SeasonManagementError(
+                "CANONICAL_PERIOD_MISSING",
+                "标准时段必须引用当前赛季中的既有记录。",
+            )
         periods.append(
             {
                 "id": raw.get("id"),
-                "code": _validate_code(str(raw["code"]), "时段", 16),
-                "name": _validate_text(str(raw.get("name") or raw["code"]), "时段名称", 40),
+                "code": code,
+                "name": _validate_text(str(raw.get("name") or code), "时段名称", 40),
                 "start_time": raw["start_time"],
-                "sort_order": int(raw.get("sort_order", order)),
+                "sort_order": order,
                 "default_capacities": _normalize_capacities(raw),
             }
         )
@@ -190,8 +218,6 @@ def _normalize_configuration(payload: dict) -> dict:
         target_date = raw["date"]
         period_code = _validate_code(str(raw["period_code"]), "时段", 16)
         capacity = int(raw["capacity"])
-        if target_date < starts_on or target_date > ends_on:
-            raise SeasonManagementError("OVERRIDE_OUTSIDE_SEASON", "特殊日期必须在赛季日期范围内。")
         if period_code not in expected_codes:
             raise SeasonManagementError("TARGET_PERIOD_INVALID", "特殊日期引用了无效时段。")
         if capacity < 0:
@@ -214,7 +240,6 @@ def _normalize_configuration(payload: dict) -> dict:
     }
     slot_families = []
     prefix_owners: dict[tuple[str, str], tuple[UUID, str, int]] = {}
-    family_orders: set[int] = set()
     for order, raw in enumerate(payload.get("slot_families", []), start=1):
         try:
             division_id = UUID(str(raw["division_id"]))
@@ -257,12 +282,6 @@ def _normalize_configuration(payload: dict) -> dict:
             raise SeasonManagementError(
                 "INVALID_SLOT_COUNT", "淘汰赛和保级赛签位数必须是不少于 2 的偶数。"
             )
-        sort_order = int(raw.get("sort_order", order))
-        if sort_order in family_orders:
-            raise SeasonManagementError(
-                "DUPLICATE_SORT_ORDER", "签位方案顺序不能重复。"
-            )
-        family_orders.add(sort_order)
         namespace_key = (division["gender"], prefix)
         owner = prefix_owners.get(namespace_key)
         if owner is not None and owner != (division_id, stage, round_number):
@@ -279,11 +298,11 @@ def _normalize_configuration(payload: dict) -> dict:
                 "round_number": round_number,
                 "prefix": prefix,
                 "slot_count": slot_count,
-                "sort_order": sort_order,
+                "sort_order": order,
             }
         )
 
-    # V3.2 的赛程列属于独立 ScheduleGridDraft，不再作为赛季基础配置保存。
+    # 当前 V3.3 赛程列属于独立 ScheduleGridDraft，不再作为赛季基础配置保存。
     # 保留空字段一段时间只为兼容已生成的管理端类型；传入旧字段会被忽略。
     grid_columns: list[dict] = []
 
@@ -466,7 +485,7 @@ def preview_season_configuration(
         raise SeasonManagementError("SEASON_ARCHIVED", "已归档赛季只读。")
     if season.version != expected_version:
         raise SeasonManagementError("VERSION_CONFLICT", "赛季配置已更新，请刷新后重试。")
-    normalized = _normalize_configuration(payload)
+    normalized = _normalize_configuration(payload, season=season)
     _validate_slot_family_team_counts(season, normalized)
     active_requests = _active_requests_for_removed_venues(season, normalized)
     over_capacity = _over_capacity_from_normalized(season, normalized)
@@ -665,8 +684,20 @@ def create_season(
 ) -> Season:
     if competition_type not in Season.CompetitionType.values:
         raise SeasonManagementError("INVALID_COMPETITION_TYPE", "赛事类型无效。")
+    if year <= 0:
+        raise SeasonManagementError("INVALID_YEAR", "年份必须为正整数。")
     if ends_on < starts_on:
         raise SeasonManagementError("INVALID_DATE_RANGE", "赛季结束日期不能早于开始日期。")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s))",
+            [f"pkuba:season:{competition_type}:{year}"],
+        )
+    if Season.objects.filter(competition_type=competition_type, year=year).exists():
+        raise SeasonManagementError(
+            "SEASON_ALREADY_EXISTS",
+            "同一赛事类型和年份的赛季已经存在。",
+        )
     source = None
     if template_season_id:
         source = Season.objects.select_for_update().filter(id=template_season_id).first()
@@ -731,7 +762,7 @@ def update_season_configuration(
         raise SeasonManagementError("SEASON_NOT_FOUND", "赛季不存在。")
     if season.status == Season.Status.ARCHIVED:
         raise SeasonManagementError("SEASON_ARCHIVED", "已归档赛季只读。")
-    normalized = _normalize_configuration(payload)
+    normalized = _normalize_configuration(payload, season=season)
     if season.version != expected_version:
         raise SeasonManagementError("VERSION_CONFLICT", "赛季配置已更新，请刷新后重试。")
     _validate_slot_family_team_counts(season, normalized)
@@ -743,27 +774,6 @@ def update_season_configuration(
             "MAINTENANCE_CONFIRMATION_REQUIRED",
             "进行中或归档赛季必须先预览影响并完成二次确认。",
         )
-    outside_games = (
-        season.games.exclude(status=Game.Status.VOID)
-        .filter(date__lt=normalized["starts_on"])
-        .exists()
-        or season.games.exclude(status=Game.Status.VOID)
-        .filter(date__gt=normalized["ends_on"])
-        .exists()
-    )
-    outside_reservations = (
-        season.reservations.filter(status=SlotReservation.Status.ACTIVE)
-        .filter(date__lt=normalized["starts_on"])
-        .exists()
-        or season.reservations.filter(status=SlotReservation.Status.ACTIVE)
-        .filter(date__gt=normalized["ends_on"])
-        .exists()
-    )
-    if outside_games or outside_reservations:
-        raise SeasonManagementError(
-            "DATE_RANGE_IN_USE", "新的赛季日期范围不能排除现有比赛或有效预留。"
-        )
-
     affected_request_ids = {
         UUID(item) for item in _active_requests_for_removed_venues(season, normalized)
     }
@@ -797,7 +807,7 @@ def update_season_configuration(
     _ensure_ids_belong(normalized["venues"], existing_venues, "场地")
     _ensure_ids_belong(normalized["periods"], existing_periods, "时段")
 
-    # 签位族仍属于赛季基础配置；V3.2 草稿列使用独立版本，不能在此事务中改动。
+    # 签位族仍属于赛季基础配置；V3.3 草稿列使用独立版本，不能在此事务中改动。
     season.schedule_slot_families.all().delete()
 
     kept_division_ids = {row["id"] for row in normalized["divisions"] if row["id"]}

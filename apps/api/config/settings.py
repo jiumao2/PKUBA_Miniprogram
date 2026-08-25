@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -49,6 +50,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "core.middleware.SystemWriteFenceMiddleware",
+    "core.middleware.MaintenanceAdminAllowlistMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -56,6 +59,16 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+_maintenance_cidrs = os.getenv(
+    "PKUBA_MAINTENANCE_ALLOW_CIDRS",
+    "127.0.0.1/32,::1/128" if DEBUG else "",
+)
+PKUBA_MAINTENANCE_ALLOW_CIDRS = tuple(
+    ipaddress.ip_network(value.strip(), strict=False)
+    for value in _maintenance_cidrs.split(",")
+    if value.strip()
+)
 
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [
@@ -100,6 +113,14 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.getenv("LOCAL_MEDIA_ROOT", BASE_DIR / ".local" / "media"))
 ARCHIVE_ROOT = Path(os.getenv("LOCAL_ARCHIVE_ROOT", BASE_DIR / ".local" / "archives"))
 PG_DUMP_BINARY = os.getenv("PG_DUMP_BINARY", "pg_dump")
+PKUBA_REQUIRED_WORKERS = tuple(
+    value.strip()
+    for value in os.getenv("PKUBA_REQUIRED_WORKERS", "scoresheet,archive,expiry").split(",")
+    if value.strip()
+)
+PKUBA_WORKER_HEARTBEAT_MAX_AGE = int(
+    os.getenv("PKUBA_WORKER_HEARTBEAT_MAX_AGE", "150")
+)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SESSION_COOKIE_HTTPONLY = True

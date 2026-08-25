@@ -1,0 +1,105 @@
+services:
+  api:
+    image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
+    container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-api
+    restart: unless-stopped
+    env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
+    environment: &release-environment
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:?PKUBA_RELEASE_TAG is required}
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:?PKUBA_GIT_COMMIT is required}
+      PKUBA_REQUIRED_WORKERS: ${PKUBA_REQUIRED_WORKERS:-scoresheet,archive,expiry}
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 600
+    expose: ["8000"]
+    ports:
+      - "127.0.0.1:${PKUBA_SLOT_API_PORT:?PKUBA_SLOT_API_PORT is required}:8000"
+    volumes:
+      - private-media:/app/.local/media
+      - archive-staging:/app/.local/archives
+    networks: [runtime]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import http.client,sys; c=http.client.HTTPConnection('127.0.0.1',8000,timeout=5); c.request('GET','/api/v1/health/ready',headers={'Host':'api','X-Forwarded-Proto':'https'}); r=c.getresponse(); r.read(); c.close(); sys.exit(0 if r.status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 6s
+      retries: 18
+      start_period: 15s
+
+  web:
+    image: ${PKUBA_WEB_IMAGE:?PKUBA_WEB_IMAGE is required}
+    container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-web
+    restart: unless-stopped
+    environment:
+      PKUBA_SLOT_API_UPSTREAM: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-api:8000
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:?PKUBA_RELEASE_TAG is required}
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:?PKUBA_GIT_COMMIT is required}
+    volumes:
+      - ./infra/Caddyfile.slot:/etc/caddy/Caddyfile:ro
+    expose: ["8080"]
+    ports:
+      - "127.0.0.1:${PKUBA_SLOT_WEB_PORT:?PKUBA_SLOT_WEB_PORT is required}:8080"
+    networks: [runtime]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/_deployment/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  expiry:
+    image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
+    container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-expiry
+    restart: unless-stopped
+    env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
+    environment: *release-environment
+    command: python manage.py expire_reschedules --loop
+    networks: [runtime]
+
+  scoresheet-worker:
+    image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
+    container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-scoresheet-worker
+    restart: unless-stopped
+    env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
+    environment: *release-environment
+    command: python manage.py process_scoresheets --poll-seconds 2
+    volumes:
+      - private-media:/app/.local/media
+    networks: [runtime]
+
+  archive-worker:
+    image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
+    container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-archive-worker
+    restart: unless-stopped
+    env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
+    environment: *release-environment
+    command: python manage.py process_archives --loop --poll-seconds 2
+    volumes:
+      - private-media:/app/.local/media
+      - archive-staging:/app/.local/archives
+    networks: [runtime]
+
+  outbox:
+    image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
+    container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-outbox
+    restart: unless-stopped
+    profiles: ["email"]
+    env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
+    environment: *release-environment
+    command: python manage.py process_outbox --loop
+    networks: [runtime]
+
+volumes:
+  private-media:
+    external: true
+    name: ${PKUBA_MEDIA_VOLUME:?PKUBA_MEDIA_VOLUME is required}
+  archive-staging:
+    external: true
+    name: ${PKUBA_ARCHIVE_VOLUME:?PKUBA_ARCHIVE_VOLUME is required}
+
+networks:
+  runtime:
+    external: true
+    name: ${PKUBA_RUNTIME_NETWORK:-pkuba-production}

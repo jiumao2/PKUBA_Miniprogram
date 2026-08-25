@@ -65,6 +65,48 @@ def promote_admin(
 
 
 @transaction.atomic
+def demote_superadmin(
+    *,
+    actor: Account,
+    target_id: object,
+    expected_version: int,
+) -> Account:
+    _require_superadmin(actor)
+    target = Account.objects.select_for_update().get(id=target_id)
+    if target.version != expected_version:
+        raise AdminAccountError("账号已被其他操作修改，请刷新。", "VERSION_CONFLICT")
+    if target.id == actor.id:
+        raise AdminAccountError("不能降级当前登录的超级管理员账号。", "SELF_DEMOTION_FORBIDDEN")
+    if target.role != Account.Role.SUPERADMIN:
+        raise AdminAccountError("只能降级超级管理员。", "TARGET_NOT_SUPERADMIN")
+    if target.is_active:
+        active_superadmin_ids = list(
+            Account.objects.select_for_update()
+            .filter(role=Account.Role.SUPERADMIN, is_active=True)
+            .values_list("id", flat=True)
+        )
+        if len(active_superadmin_ids) <= 1:
+            raise AdminAccountError(
+                "不能降级最后一个有效超级管理员。",
+                "LAST_SUPERADMIN_PROTECTED",
+            )
+
+    before = _snapshot(target)
+    target.role = Account.Role.ADMIN
+    target.version += 1
+    target.save(update_fields=["role", "version"])
+    AdminAuditLog.objects.create(
+        actor=actor,
+        action="SUPERADMIN_DEMOTED_TO_ADMIN",
+        object_type="Account",
+        object_id=target.id,
+        before=before,
+        after=_snapshot(target),
+    )
+    return target
+
+
+@transaction.atomic
 def set_admin_active(
     *,
     actor: Account,

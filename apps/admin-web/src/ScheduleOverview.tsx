@@ -1,4 +1,4 @@
-import type { Game } from "@pkuba/api-client";
+import { formatOfficialScore, type Game } from "@pkuba/api-client";
 
 import {
   formatGameDate,
@@ -59,8 +59,9 @@ export function ScheduleOverview({
 
 function AdminTimelineGame({ game }: { game: Game }) {
   const women = game.division_gender === "WOMEN";
-  const hasScore = game.home_score !== null && game.away_score !== null;
-  const scoreLabel = hasScore ? `${game.home_score}:${game.away_score}` : "尚无比分";
+  const score = formatOfficialScore(game.home_score, game.away_score);
+  const hasScore = score !== null;
+  const scoreLabel = score ?? "尚无比分";
 
   return (
     <article
@@ -82,7 +83,7 @@ function AdminTimelineGame({ game }: { game: Game }) {
       <div className="admin-timeline-team-row">
         <strong title={game.away_name}>{game.away_name}</strong>
         <span className={`admin-timeline-score ${hasScore ? "has-score" : "no-score"}`}>
-          {hasScore ? game.away_score : "vs"}
+          {hasScore ? game.away_score : ""}
         </span>
       </div>
       <div className="admin-timeline-game-footline">

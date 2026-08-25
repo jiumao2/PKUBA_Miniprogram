@@ -205,14 +205,8 @@ export function LoginScreen({
                 {qrState === "confirmed" && <span className="qr-overlay">正在登录…</span>}
                 {qrState === "expired" && <span className="qr-overlay">二维码已失效</span>}
               </div>
-              {webChallenge && (
-                <div className="verification-code">
-                  <span>浏览器校验码</span>
-                  <strong>{webChallenge.verification_code}</strong>
-                </div>
-              )}
               <p className="qr-instruction">
-                打开 PKUBA 小程序，在“我的”中选择“扫码登录管理后台”，扫码后核对校验码并确认。
+                打开 PKUBA 小程序，在“我的”中选择“扫码登录管理后台”，扫码并确认本次登录。
               </p>
               <p className="qr-status" aria-live="polite">
                 {qrState === "loading" && "正在生成二维码…"}

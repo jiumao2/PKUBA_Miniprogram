@@ -154,7 +154,6 @@ class AdminPasswordChangeIn(Schema):
 class AdminWebLoginChallengeOut(Schema):
     scan_payload: str
     browser_token: str
-    verification_code: str
     expires_at: datetime
     expires_in: int
 
@@ -173,7 +172,6 @@ class AdminWebLoginConfirmIn(Schema):
 class AdminWebLoginConfirmOut(Schema):
     status: str
     username: str
-    verification_code: str
     expires_at: datetime
 
 
@@ -191,10 +189,6 @@ def _admin_web_login_token_digest(token: str) -> str:
 
 def _admin_web_login_browser_digest(token: str) -> str:
     return _digest(f"admin-web-login-browser|{token}")
-
-
-def _admin_web_login_verification_code(token: str) -> str:
-    return _digest(f"admin-web-login-verification|{token}")[:6].upper()
 
 
 def _admin_web_login_status(challenge: WebLoginChallenge | None) -> dict[str, object]:
@@ -558,13 +552,9 @@ def admin_web_login_challenge(request: HttpRequest):
         "challenge_id": str(challenge.id),
         "browser_digest": _admin_web_login_browser_digest(browser_token),
     }
-    verification_code = _admin_web_login_verification_code(challenge_token)
     return {
-        "scan_payload": (
-            f"{ADMIN_WEB_LOGIN_SCAN_PREFIX}:{verification_code}:{challenge_token}"
-        ),
+        "scan_payload": f"{ADMIN_WEB_LOGIN_SCAN_PREFIX}:{challenge_token}",
         "browser_token": browser_token,
-        "verification_code": verification_code,
         "expires_at": expires_at,
         "expires_in": ADMIN_WEB_LOGIN_TTL_SECONDS,
     }
@@ -633,28 +623,25 @@ def admin_web_login_confirm(request: HttpRequest, payload: AdminWebLoginConfirmI
                 {"code": "WEB_LOGIN_CHALLENGE_EXPIRED", "message": "二维码已过期，请在网页刷新。"},
             )
         if challenge.confirmed_at is not None:
-            if challenge.account_id != account.id:
-                return Status(
-                    409,
-                    {
-                        "code": "WEB_LOGIN_CHALLENGE_ALREADY_CONFIRMED",
-                        "message": "该二维码已由另一账号确认。",
-                    },
-                )
-        else:
-            challenge.account = account
-            challenge.confirmed_at = now
-            challenge.save(update_fields=["account", "confirmed_at", "updated_at"])
-            AdminAuditLog.objects.create(
-                actor=account,
-                action="ADMIN_WEB_LOGIN_CONFIRMED",
-                object_type="WebLoginChallenge",
-                object_id=challenge.id,
+            return Status(
+                409,
+                {
+                    "code": "WEB_LOGIN_CHALLENGE_ALREADY_CONFIRMED",
+                    "message": "该二维码已经确认，不能重复使用。",
+                },
             )
+        challenge.account = account
+        challenge.confirmed_at = now
+        challenge.save(update_fields=["account", "confirmed_at", "updated_at"])
+        AdminAuditLog.objects.create(
+            actor=account,
+            action="ADMIN_WEB_LOGIN_CONFIRMED",
+            object_type="WebLoginChallenge",
+            object_id=challenge.id,
+        )
     return {
         "status": "CONFIRMED",
         "username": account.username,
-        "verification_code": _admin_web_login_verification_code(token),
         "expires_at": challenge.expires_at,
     }
 

@@ -25,6 +25,10 @@ export function mutateScoresheet(
   return deriveScoreEvents(draft);
 }
 
+export function sanitizeJerseyInput(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
 export function replaceTeam(
   document: ScoresheetDocument,
   side: TeamSide,

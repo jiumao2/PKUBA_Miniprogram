@@ -8,22 +8,16 @@ export type CalendarCell = {
 };
 
 export function buildSeasonCalendar(
-  startDate: string,
-  endDate: string,
+  anchorDate: string,
   days: Array<{ date: string; game_count: number }>,
 ): CalendarCell[] {
   const counts = new Map(days.map((day) => [day.date, day.game_count]));
-  const start = parseDate(startDate);
-  const end = parseDate(endDate);
-  const mondayOffset = (start.getUTCDay() + 6) % 7;
-  const cells: CalendarCell[] = Array.from({ length: mondayOffset }, (_, index) => ({
-    key: `before-${index}`,
-    outside: true,
-    date: "",
-    gameCount: 0,
-  }));
-  const cursor = new Date(start);
-  while (cursor <= end) {
+  const anchor = parseDate(anchorDate);
+  const mondayOffset = (anchor.getUTCDay() + 6) % 7;
+  const cursor = new Date(anchor);
+  cursor.setUTCDate(cursor.getUTCDate() - mondayOffset - 14);
+  const cells: CalendarCell[] = [];
+  for (let index = 0; index < 35; index += 1) {
     const date = utcDateKey(cursor);
     cells.push({
       key: date,
@@ -32,10 +26,6 @@ export function buildSeasonCalendar(
       gameCount: counts.get(date) ?? 0,
     });
     cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  const trailing = (7 - (cells.length % 7)) % 7;
-  for (let index = 0; index < trailing; index += 1) {
-    cells.push({ key: `after-${index}`, outside: true, date: "", gameCount: 0 });
   }
   return cells;
 }
@@ -46,7 +36,8 @@ export function densityLevel(value: number, maxValue: number) {
 }
 
 export function localDateKey(value: Date) {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  const beijing = new Date(value.getTime() + 8 * 60 * 60 * 1000);
+  return utcDateKey(beijing);
 }
 
 export function shortDate(value: string) {

@@ -534,7 +534,7 @@ class Command(BaseCommand):
                 season=season,
                 division=division,
                 name=name,
-                defaults={"short_name": ""},
+                defaults={},
             )
             existing = list(team.roster.order_by("name"))
             if existing:

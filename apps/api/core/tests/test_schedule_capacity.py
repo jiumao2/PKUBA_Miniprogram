@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from core.models import DatePeriodCapacityOverride, SlotReservation
@@ -73,21 +75,44 @@ def test_daily_ledger_uses_sparse_override_and_live_games_plus_active_reservatio
     }
 
 
-def test_ledger_clamps_requested_range_to_season_and_returns_every_canonical_slot():
+def test_ledger_accepts_explicit_range_outside_planning_dates():
     setup = reschedule_setup()
+    target_date = setup["season"].starts_on - timedelta(days=1)
 
     rows = capacity_ledger(
         season=setup["season"],
-        starts_on=setup["season"].starts_on,
-        ends_on=setup["season"].starts_on,
+        starts_on=target_date,
+        ends_on=target_date,
     )
 
+    assert {row["date"] for row in rows} == {target_date}
     assert [row["period_code"] for row in rows] == [
         code.upper()
         for code in setup["season"].periods.order_by("sort_order", "code").values_list(
             "code", flat=True
         )
     ]
+
+
+def test_default_ledger_expands_to_admin_override_outside_planning_dates():
+    setup = reschedule_setup()
+    target_date = setup["season"].ends_on + timedelta(days=3)
+    DatePeriodCapacityOverride.objects.create(
+        season=setup["season"],
+        date=target_date,
+        period=setup["period"],
+        capacity=2,
+        note="校历外补赛日",
+    )
+
+    rows = capacity_ledger(season=setup["season"])
+
+    assert rows[-1]["date"] == target_date
+    assert next(
+        row
+        for row in rows
+        if row["date"] == target_date and row["period_id"] == setup["period"].id
+    )["effective_capacity"] == 2
 
 
 def test_legacy_inferred_override_is_preserved_but_not_used_as_capacity():

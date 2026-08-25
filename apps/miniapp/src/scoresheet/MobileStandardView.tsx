@@ -50,6 +50,7 @@ import {
   priorPlayerNames,
   removeRecognitionPersonnel,
   replaceTeam,
+  sanitizeJerseyInput,
   setOfficialName,
   setPlayerRow,
   setTeamFoulCount,
@@ -343,7 +344,7 @@ function PlayerDrawer({ player, priorNames, disabled, onChange, onClose }: {
         invalid={!jerseyValid}
         label="球衣号码"
         value={player.jersey_number}
-        onChange={(value) => { const normalized = value.replace(/\D/g, "").slice(0, 2); if (isValidJerseyNumber(normalized)) set("jersey_number", normalized); }}
+        onChange={(value) => set("jersey_number", sanitizeJerseyInput(value))}
       />
       <Picker disabled={disabled} mode="selector" range={["未上场", "替补", "首发"]} value={Math.max(0, ["none", "substitute", "starter"].indexOf(player.participation))} onChange={(event) => set("participation", (["none", "substitute", "starter"] as const)[Number(event.detail.value)] ?? "none", true)}>
         <View className="drawer-choice"><Text>上场状态</Text><Text>{participationLabel(player.participation)}</Text></View>

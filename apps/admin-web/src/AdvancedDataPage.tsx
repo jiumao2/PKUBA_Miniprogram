@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AdvancedModel,
   AdvancedMutation,
@@ -60,13 +60,17 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
   const [modelKey, setModelKey] = useState("");
   const [records, setRecords] = useState<AdvancedRecordList | null>(null);
   const [selected, setSelected] = useState<AdvancedRecord | null>(null);
+  const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("");
+  const [direction, setDirection] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mutation, setMutation] = useState<AdvancedMutation | null>(null);
   const [mutationText, setMutationText] = useState("{}");
   const [preview, setPreview] = useState<AdvancedMutationPreview | null>(null);
+  const requestGenerationRef = useRef(0);
 
   const model = models.find((item) => item.key === modelKey) ?? null;
   const orderedFields = useMemo(
@@ -88,35 +92,52 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const loadRecords = async (key = modelKey) => {
+  const loadRecords = async ({
+    key = modelKey,
+    offset = 0,
+    search = query,
+    sortField = sort,
+    sortDirection = direction,
+  }: {
+    key?: string;
+    offset?: number;
+    search?: string;
+    sortField?: string;
+    sortDirection?: "asc" | "desc";
+  } = {}) => {
     if (!key) return;
+    const generation = ++requestGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
-      const next = await client.listAdvancedRecords(key);
+      const next = await client.listAdvancedRecords(key, offset, 50, {
+        search,
+        sort: sortField,
+        direction: sortDirection,
+      });
+      if (generation !== requestGenerationRef.current) return;
       setRecords(next);
       setSelected(null);
       setMutation(null);
       setPreview(null);
     } catch (reason: unknown) {
+      if (generation !== requestGenerationRef.current) return;
       setError(reason instanceof Error ? reason.message : "无法读取高级数据记录");
     } finally {
-      setLoading(false);
+      if (generation === requestGenerationRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadRecords();
+    setQueryInput("");
+    setQuery("");
+    setSort("");
+    setDirection("desc");
+    void loadRecords({ key: modelKey, offset: 0, search: "", sortField: "", sortDirection: "desc" });
+    return () => {
+      requestGenerationRef.current += 1;
+    };
   }, [modelKey]);
-
-  const visibleRecords = useMemo(() => {
-    if (!records) return [];
-    const needle = query.trim().toLocaleLowerCase();
-    if (!needle) return records.items;
-    return records.items.filter((item) =>
-      JSON.stringify(item.values).toLocaleLowerCase().includes(needle),
-    );
-  }, [query, records]);
 
   const openMutation = (operation: "CREATE" | "UPDATE" | "DELETE") => {
     const next: AdvancedMutation = {
@@ -161,7 +182,7 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
         impact_hash: preview.impact_hash,
         confirmed: true,
       });
-      await loadRecords(model.key);
+      await loadRecords({ key: model.key, offset: records?.offset ?? 0 });
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "高级数据修改失败");
     } finally {
@@ -202,14 +223,36 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
             <h2>{model?.label ?? "高级数据"}</h2>
             <p>完整字段仅用于核心开发者审计；调赛预留场地在生效前仍会脱敏，业务状态必须在对应事务页面修改。</p>
           </div>
-          <div>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const nextQuery = queryInput.trim();
+            setQuery(nextQuery);
+            void loadRecords({ offset: 0, search: nextQuery });
+          }}>
             <input
-              aria-label="筛选当前页记录"
-              placeholder="筛选当前 50 条记录"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              aria-label="搜索全部记录"
+              placeholder="搜索全部记录"
+              value={queryInput}
+              onChange={(event) => setQueryInput(event.target.value)}
             />
-            <button className="secondary-action" type="button" onClick={() => void loadRecords()}>
+            <button className="secondary-action" type="submit">搜索</button>
+            <select aria-label="排序字段" value={sort} onChange={(event) => {
+              const nextSort = event.target.value;
+              setSort(nextSort);
+              void loadRecords({ offset: 0, sortField: nextSort });
+            }}>
+              <option value="">默认排序</option>
+              {orderedFields.map((field) => <option key={field.name} value={field.name}>{field.name}</option>)}
+            </select>
+            <select aria-label="排序方向" value={direction} onChange={(event) => {
+              const nextDirection = event.target.value as "asc" | "desc";
+              setDirection(nextDirection);
+              void loadRecords({ offset: 0, sortDirection: nextDirection });
+            }}>
+              <option value="desc">降序</option>
+              <option value="asc">升序</option>
+            </select>
+            <button className="secondary-action" type="button" onClick={() => void loadRecords({ offset: records?.offset ?? 0 })}>
               刷新
             </button>
             {model?.mutation_mode === "VALIDATED_MASTER" && (
@@ -217,7 +260,7 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
                 新建
               </button>
             )}
-          </div>
+          </form>
         </header>
 
         {error && <pre className="advanced-error" role="alert">{error}</pre>}
@@ -235,7 +278,7 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
                 </tr>
               </thead>
               <tbody>
-                {visibleRecords.map((record) => (
+                {records.items.map((record) => (
                   <tr
                     className={selected?.id === record.id ? "selected" : ""}
                     key={record.id}
@@ -250,6 +293,13 @@ export function AdvancedDataPage({ client }: { client: AdminClient }) {
                 ))}
               </tbody>
             </table>
+            <div className="advanced-pagination">
+              <span>{records.total === 0 ? "0 条" : `${records.offset + 1}–${Math.min(records.offset + records.items.length, records.total)} / ${records.total} 条`}</span>
+              <div>
+                <button className="secondary-action" disabled={loading || records.offset === 0} type="button" onClick={() => void loadRecords({ offset: Math.max(0, records.offset - records.limit) })}>上一页</button>
+                <button className="secondary-action" disabled={loading || records.offset + records.limit >= records.total} type="button" onClick={() => void loadRecords({ offset: records.offset + records.limit })}>下一页</button>
+              </div>
+            </div>
           </div>
         )}
       </section>

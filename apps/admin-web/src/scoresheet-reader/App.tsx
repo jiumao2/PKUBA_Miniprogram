@@ -413,9 +413,14 @@ export default function App() {
       {gameBrowserOpen ? (
         <GameBrowser
           games={state.games}
+          total={state.gamesTotal}
+          page={state.gamesPage}
+          pageSize={state.gamesPageSize}
+          scope={state.gamesScope}
+          query={state.gamesQuery}
           loading={state.gamesLoading}
           onClose={() => setGameBrowserOpen(false)}
-          onRefresh={state.loadGames}
+          onLoad={state.loadGames}
           onOpen={state.openDocument}
           onUpload={state.uploadForGame}
           onReupload={state.reupload}

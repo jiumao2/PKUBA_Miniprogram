@@ -40,15 +40,20 @@ export function GameMediaWorkbench({
   seasons,
   seasonId,
   initialGameId = "",
+  isSuperadmin = false,
   onSeasonChange,
 }: {
   client: AdminClient;
   seasons: AdminSeason[];
   seasonId: string;
   initialGameId?: string;
+  isSuperadmin?: boolean;
   onSeasonChange: (seasonId: string) => void;
 }) {
   const [games, setGames] = useState<ScoresheetQueueItem[]>([]);
+  const [gamesTotal, setGamesTotal] = useState(0);
+  const [gamesPage, setGamesPage] = useState(1);
+  const [divisionNames, setDivisionNames] = useState<string[]>([]);
   const [assets, setAssets] = useState<GameMediaAsset[]>([]);
   const [gamesLoading, setGamesLoading] = useState(false);
   const [assetsLoading, setAssetsLoading] = useState(false);
@@ -64,6 +69,8 @@ export function GameMediaWorkbench({
   const [message, setMessage] = useState("");
   const gamesRequest = useRef(0);
   const assetsRequest = useRef(0);
+  const initialTargetLoaded = useRef(false);
+  const pageSize = 20;
 
   const selectedSeason = seasons.find((item) => item.id === seasonId) ?? null;
   const archived = selectedSeason?.status === "ARCHIVED";
@@ -78,17 +85,39 @@ export function GameMediaWorkbench({
     setGamesLoading(true);
     setGamesError("");
     try {
-      const result = await client.listScoresheets(seasonId);
-      if (request === gamesRequest.current) setGames(result);
+      const [result, linked] = await Promise.all([
+        client.getScoresheetQueuePage({
+          seasonId,
+          scope: "ALL",
+          query,
+          divisionName: division,
+          processing,
+          page: gamesPage,
+          pageSize,
+        }),
+        initialGameId && !initialTargetLoaded.current
+          ? client.getScoresheetQueuePage({ gameId: initialGameId, page: 1, pageSize: 1 })
+          : Promise.resolve(null),
+      ]);
+      if (request === gamesRequest.current) {
+        const linkedGame = linked?.items[0];
+        setGames(linkedGame && !result.items.some((item) => item.game_id === linkedGame.game_id)
+          ? [linkedGame, ...result.items]
+          : result.items);
+        setGamesTotal(result.total);
+        setDivisionNames(result.division_names);
+        initialTargetLoaded.current = true;
+      }
     } catch (reason: unknown) {
       if (request === gamesRequest.current) {
         setGames([]);
+        setGamesTotal(0);
         setGamesError(reason instanceof Error ? reason.message : "无法读取比赛与记录表状态");
       }
     } finally {
       if (request === gamesRequest.current) setGamesLoading(false);
     }
-  }, [client, seasonId]);
+  }, [client, division, gamesPage, initialGameId, processing, query, seasonId]);
 
   const loadAssets = useCallback(async () => {
     const request = ++assetsRequest.current;
@@ -118,10 +147,18 @@ export function GameMediaWorkbench({
     setQuery("");
     setDivision("");
     setProcessing("");
+    setGamesPage(1);
+    setGamesTotal(0);
+    setDivisionNames([]);
+    initialTargetLoaded.current = false;
     setMessage("");
-    void loadGames();
     void loadAssets();
-  }, [loadAssets, loadGames]);
+  }, [loadAssets, seasonId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadGames(), query ? 250 : 0);
+    return () => window.clearTimeout(timer);
+  }, [loadGames, query]);
 
   const assetsByGame = useMemo(() => {
     const grouped = new Map<string, GameMediaAsset[]>();
@@ -133,28 +170,7 @@ export function GameMediaWorkbench({
     return grouped;
   }, [assets]);
 
-  const divisions = useMemo(
-    () => Array.from(new Set(games.map((game) => game.division_name))).sort((a, b) => a.localeCompare(b, "zh-CN")),
-    [games],
-  );
-  const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
-  const visibleGames = useMemo(() => games.filter((game) => {
-    const matchesQuery = !normalizedQuery || [
-      game.game_label,
-      game.home_name,
-      game.away_name,
-      game.division_name,
-      game.date,
-      game.venue,
-    ].some((value) => value.toLocaleLowerCase("zh-CN").includes(normalizedQuery));
-    if (!matchesQuery || (division && game.division_name !== division)) return false;
-    if (processing === "UPLOAD") return !game.source_asset_id;
-    if (processing === "SCORESHEET_REVIEW") {
-      return Boolean(game.source_asset_id) && game.status !== "PUBLISHED" && !recognitionStatuses.has(game.status);
-    }
-    if (processing === "COMPLETE") return game.status === "PUBLISHED";
-    return true;
-  }), [assetsByGame, division, games, normalizedQuery, processing]);
+  const visibleGames = games;
 
   useEffect(() => {
     setSelectedGameId((current) => {
@@ -190,11 +206,6 @@ export function GameMediaWorkbench({
     const params = new URLSearchParams({ page: "media", season_id: seasonId, game_id: selectedGameId });
     window.history.replaceState(null, "", `/?${params.toString()}`);
   }, [seasonId, selectedGameId]);
-
-  const pendingUploadCount = games.filter((game) => !game.source_asset_id).length;
-  const scoresheetReviewCount = games.filter((game) => (
-    Boolean(game.source_asset_id) && game.status !== "PUBLISHED" && !recognitionStatuses.has(game.status)
-  )).length;
 
   const replace = async () => {
     if (!selectedAsset || !replacementFile) {
@@ -265,18 +276,18 @@ export function GameMediaWorkbench({
           </label>
           <label className="media-search-field">
             <span>球队或比赛</span>
-            <div><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索球队、日期或场地" /></div>
+            <div><Search size={15} /><input value={query} onChange={(event) => { setGamesPage(1); setQuery(event.target.value); }} placeholder="搜索球队、日期或场地" /></div>
           </label>
           <label>
             <span>组别</span>
-            <select value={division} onChange={(event) => setDivision(event.target.value)}>
+            <select value={division} onChange={(event) => { setGamesPage(1); setDivision(event.target.value); }}>
               <option value="">全部组别</option>
-              {divisions.map((item) => <option value={item} key={item}>{item}</option>)}
+              {divisionNames.map((item) => <option value={item} key={item}>{item}</option>)}
             </select>
           </label>
           <label>
             <span>处理状态</span>
-            <select value={processing} onChange={(event) => setProcessing(event.target.value as ProcessingFilter)}>
+            <select value={processing} onChange={(event) => { setGamesPage(1); setProcessing(event.target.value as ProcessingFilter); }}>
               <option value="">全部状态</option>
               <option value="UPLOAD">待上传记录表</option>
               <option value="SCORESHEET_REVIEW">待核对记录表</option>
@@ -285,9 +296,8 @@ export function GameMediaWorkbench({
           </label>
         </div>
         <div className="media-summary-line" aria-label="比赛资料摘要">
-          <span><strong>{games.length}</strong> 场比赛</span>
-          <span><strong>{pendingUploadCount}</strong> 场待上传记录表</span>
-          <span><strong>{scoresheetReviewCount}</strong> 场待核对记录表</span>
+          <span><strong>{gamesTotal}</strong> 场符合条件</span>
+          <span>第 <strong>{gamesPage}</strong> / {Math.max(1, Math.ceil(gamesTotal / pageSize))} 页</span>
           <button type="button" onClick={() => { void loadGames(); void loadAssets(); }} disabled={gamesLoading || assetsLoading}>
             <RefreshCw size={14} className={gamesLoading || assetsLoading ? "spin" : undefined} />刷新
           </button>
@@ -297,7 +307,7 @@ export function GameMediaWorkbench({
       {archived && (
         <div className="media-archive-notice" role="status">
           <Archive size={17} />
-          <span><strong>已归档赛季</strong>　资料元数据可查阅，上传、替换与删除操作均已关闭。</span>
+          <span><strong>已归档赛季</strong>　照片保持只读；超级管理员可对已有正式版本的记录表发起受控纠错。</span>
         </div>
       )}
 
@@ -321,7 +331,7 @@ export function GameMediaWorkbench({
                     onClick={() => setSelectedGameId(game.game_id)}
                   >
                     <span className="media-game-when"><strong>{formatDate(game.date)}</strong><small>{game.start_time} · {game.division_name}</small></span>
-                    <span className="media-game-matchup"><strong>{game.home_name}</strong><em>vs</em><strong>{game.away_name}</strong></span>
+                    <span className="media-game-matchup"><strong>{game.home_name}</strong><em aria-hidden>—</em><strong>{game.away_name}</strong></span>
                     <span className="media-game-meta">
                       <span className={`scoresheet-state state-${game.status.toLocaleLowerCase()}`}>{scoresheetStatusLabels[game.status] ?? game.status}</span>
                       <span><ImageIcon size={13} />{photos.length}</span>
@@ -331,6 +341,13 @@ export function GameMediaWorkbench({
               })}
               {!gamesLoading && !visibleGames.length && <div className="media-empty-state"><strong>没有匹配的比赛</strong><span>请调整搜索、组别或处理状态。</span></div>}
             </div>
+          )}
+          {gamesTotal > 0 && (
+            <nav className="media-index-pagination" aria-label="比赛资料分页">
+              <button type="button" disabled={gamesLoading || gamesPage <= 1} onClick={() => setGamesPage((value) => value - 1)}>上一页</button>
+              <span>{gamesPage} / {Math.max(1, Math.ceil(gamesTotal / pageSize))}</span>
+              <button type="button" disabled={gamesLoading || gamesPage * pageSize >= gamesTotal} onClick={() => setGamesPage((value) => value + 1)}>下一页</button>
+            </nav>
           )}
         </aside>
 
@@ -342,7 +359,7 @@ export function GameMediaWorkbench({
               <header className="media-game-header">
                 <div>
                   <p>{selectedGame.division_name}</p>
-                  <h2><span>{selectedGame.home_name}</span><em>vs</em><span>{selectedGame.away_name}</span></h2>
+                  <h2><span>{selectedGame.home_name}</span><em aria-hidden>—</em><span>{selectedGame.away_name}</span></h2>
                 </div>
                 <dl>
                   <div><dt><CalendarDays size={14} />比赛时间</dt><dd>{selectedGame.date}　{selectedGame.start_time}</dd></div>
@@ -372,9 +389,24 @@ export function GameMediaWorkbench({
                     </button>
                   )}
                   {archived && selectedGame.scoresheet_id && (
-                    <button className="media-secondary-action" type="button" onClick={() => window.location.assign(scoresheetHref(seasonId, selectedGame.game_id))}>
-                      查看记录表<ExternalLink size={15} />
-                    </button>
+                    <div className="media-archived-scoresheet-actions">
+                      <button className="media-secondary-action" type="button" onClick={() => window.location.assign(scoresheetHref(seasonId, selectedGame.game_id))}>
+                        查看记录表<ExternalLink size={15} />
+                      </button>
+                      {isSuperadmin && selectedGame.status === "PUBLISHED" && (
+                        <button
+                          className="media-primary-action"
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm("确认纠正这张已归档记录表？修改必须重新校验并发布，新旧版本和操作者都会保留在审计中。")) {
+                              window.location.assign(scoresheetHref(seasonId, selectedGame.game_id, true));
+                            }
+                          }}
+                        >
+                          受控纠错<ExternalLink size={15} />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </section>
@@ -529,14 +561,16 @@ function scoresheetActionTitle(game: ScoresheetQueueItem) {
 }
 
 function scoresheetActionDetail(game: ScoresheetQueueItem, archived: boolean) {
-  if (archived) return "归档赛季只读；进入编辑器后不能修改或重新发布。";
+  if (archived) return "归档资料默认只读；超级管理员明确确认后可纠错并发布新版本。";
   if (!game.source_asset_id) return "进入全屏编辑器后选择照片，上传完成会自动开始识别。";
   if (game.status === "PUBLISHED") return "可查看已发布内容和导出文件；后续修改仍受编辑租约保护。";
   return "进入全屏编辑器继续校对语义字段、校验并发布。";
 }
 
-function scoresheetHref(seasonId: string, gameId: string) {
-  return `/scoresheet.html?${new URLSearchParams({ season_id: seasonId, game_id: gameId }).toString()}`;
+function scoresheetHref(seasonId: string, gameId: string, archivedCorrection = false) {
+  const params = new URLSearchParams({ season_id: seasonId, game_id: gameId });
+  if (archivedCorrection) params.set("archived_correction", "1");
+  return `/scoresheet.html?${params.toString()}`;
 }
 
 function recognitionLabel(status: string) {

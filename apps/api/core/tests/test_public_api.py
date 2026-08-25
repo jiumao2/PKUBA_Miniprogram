@@ -169,6 +169,55 @@ def _create_game_on(game: Game, *, code: str, match_date):
     )
 
 
+def test_home_summary_accumulates_complete_dates_without_splitting_a_day():
+    target_season = season()
+    game = placeholder_game(target_season)
+    today = timezone.localdate()
+    Game.objects.filter(id=game.id).update(date=today)
+    game.refresh_from_db()
+    for index in range(1, 4):
+        _create_game_on(game, code=f"TODAY-{index}", match_date=today)
+    for index in range(3):
+        _create_game_on(
+            game,
+            code=f"TOMORROW-{index}",
+            match_date=today + timedelta(days=1),
+        )
+
+    payload = Client().get("/api/v1/public/home").json()
+
+    assert payload["mode"] == "TODAY"
+    assert payload["display_date"] == today.isoformat()
+    assert payload["total_games"] == 7
+    assert [row["date"] for row in payload["games"]] == [
+        *([today.isoformat()] * 4),
+        *([(today + timedelta(days=1)).isoformat()] * 3),
+    ]
+
+
+def test_home_summary_starts_at_next_matchday_when_today_has_no_game():
+    target_season = season()
+    game = placeholder_game(target_season)
+    today = timezone.localdate()
+    first_date = today + timedelta(days=1)
+    second_date = today + timedelta(days=3)
+    Game.objects.filter(id=game.id).update(date=first_date)
+    game.refresh_from_db()
+    _create_game_on(game, code="NEXT-1", match_date=first_date)
+    for index in range(5):
+        _create_game_on(game, code=f"NEXT-LATER-{index}", match_date=second_date)
+
+    payload = Client().get("/api/v1/public/home").json()
+
+    assert payload["mode"] == "NEXT_DAY"
+    assert payload["display_date"] == first_date.isoformat()
+    assert payload["total_games"] == 7
+    assert {row["date"] for row in payload["games"]} == {
+        first_date.isoformat(),
+        second_date.isoformat(),
+    }
+
+
 def test_schedule_days_centres_today_and_loads_both_directions_without_overlap():
     target_season = season()
     game = placeholder_game(target_season)

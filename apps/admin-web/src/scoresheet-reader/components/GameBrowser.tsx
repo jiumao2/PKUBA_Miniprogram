@@ -1,12 +1,17 @@
 import { CalendarDays, MapPin, RefreshCw, Search, Upload, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GameSummary } from '../types';
+import { useEffect, useRef, useState } from 'react';
+import type { GameQueueQuery, GameQueueScope, GameSummary } from '../types';
 
 interface GameBrowserProps {
   games: GameSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  scope: GameQueueScope;
+  query: string;
   loading: boolean;
   onClose: () => void;
-  onRefresh: () => Promise<void>;
+  onLoad: (query: GameQueueQuery) => Promise<void>;
   onOpen: (documentId: string) => Promise<void>;
   onUpload: (gameId: string, file: File) => Promise<void>;
   onReupload: (documentId: string, file: File) => Promise<void>;
@@ -23,32 +28,36 @@ const stateLabels: Record<GameSummary['scoresheet_state'], string> = {
 
 export function GameBrowser({
   games,
+  total,
+  page,
+  pageSize,
+  scope,
+  query,
   loading,
   onClose,
-  onRefresh,
+  onLoad,
   onOpen,
   onUpload,
   onReupload,
   initialGameId = '',
 }: GameBrowserProps) {
-  const [query, setQuery] = useState('');
+  const [queryDraft, setQueryDraft] = useState(query);
   const [selectedGame, setSelectedGame] = useState<GameSummary | null>(null);
   const [uploading, setUploading] = useState(false);
   const [openingGameId, setOpeningGameId] = useState<string | null>(null);
   const [reuploadDocumentId, setReuploadDocumentId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
-  const visibleGames = useMemo(() => games.filter((game) => {
-    if (!normalizedQuery) return true;
-    return [
-      game.competition,
-      game.division,
-      game.team_a_name,
-      game.team_b_name,
-      game.date,
-      game.venue,
-    ].some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedQuery));
-  }), [games, normalizedQuery]);
+  const visibleGames = games;
+
+  useEffect(() => setQueryDraft(query), [query]);
+
+  useEffect(() => {
+    if (queryDraft === query) return undefined;
+    const timer = window.setTimeout(() => {
+      void onLoad({ query: queryDraft, scope, page: 1, pageSize });
+    }, queryDraft ? 250 : 0);
+    return () => window.clearTimeout(timer);
+  }, [onLoad, pageSize, query, queryDraft, scope]);
 
   useEffect(() => {
     if (!initialGameId) return;
@@ -59,9 +68,12 @@ export function GameBrowser({
 
   useEffect(() => {
     if (!games.some((game) => game.scoresheet_state === 'recognizing')) return undefined;
-    const timer = window.setInterval(() => void onRefresh(), 1500);
+    const timer = window.setInterval(
+      () => void onLoad({ query, scope, page, pageSize }),
+      1500,
+    );
     return () => window.clearInterval(timer);
-  }, [games, onRefresh]);
+  }, [games, onLoad, page, pageSize, query, scope]);
 
   return (
     <div className="game-browser-backdrop" role="presentation" onMouseDown={(event) => {
@@ -79,12 +91,27 @@ export function GameBrowser({
         <div className="game-browser-tools">
           <label className="game-search">
             <Search size={15} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索球队、组别、日期或地点" autoFocus />
+            <input value={queryDraft} onChange={(event) => setQueryDraft(event.target.value)} placeholder="搜索球队、组别、日期或地点" autoFocus />
           </label>
-          <button className="secondary-action" onClick={() => void onRefresh()} disabled={loading}>
+          <select
+            aria-label="记录表状态"
+            value={scope}
+            onChange={(event) => void onLoad({
+              query: queryDraft,
+              scope: event.target.value as GameQueueScope,
+              page: 1,
+              pageSize,
+            })}
+          >
+            <option value="ACTION_REQUIRED">待处理</option>
+            <option value="IN_PROGRESS">识别中</option>
+            <option value="PUBLISHED">已发布</option>
+            <option value="ALL">全部</option>
+          </select>
+          <button className="secondary-action" onClick={() => void onLoad({ query, scope, page, pageSize })} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'spin' : undefined} /> 刷新
           </button>
-          <span>{visibleGames.length} / {games.length} 场</span>
+          <span>{visibleGames.length} / {total} 场</span>
         </div>
         <div className="game-list" aria-label="可选比赛">
           {visibleGames.map((game) => (
@@ -110,7 +137,7 @@ export function GameBrowser({
               }}
             >
               <span className="game-date"><CalendarDays size={14} />{game.date}<small>{game.scheduled_time}</small></span>
-              <span className="game-matchup"><strong>{game.team_a_name}</strong><em>VS</em><strong>{game.team_b_name}</strong><small>{game.division}</small></span>
+              <span className="game-matchup"><strong>{game.team_a_name}</strong><em aria-hidden>—</em><strong>{game.team_b_name}</strong><small>{game.division}</small></span>
               <span className="game-venue"><MapPin size={13} />{game.venue || '地点待定'}</span>
               <span className={`game-ready state-${game.document_id ? game.scoresheet_state : (game.ready ? 'not_uploaded' : 'disabled')}`}>
                 {openingGameId === game.id ? '打开中' : (game.document_id ? stateLabels[game.scoresheet_state] : (game.ready ? '待上传' : '球队待定'))}
@@ -134,9 +161,28 @@ export function GameBrowser({
           ))}
           {!loading && visibleGames.length === 0 ? <div className="game-list-empty">没有匹配的比赛</div> : null}
         </div>
+        {total > 0 ? (
+          <nav className="game-browser-pagination" aria-label="记录表比赛分页">
+            <button
+              type="button"
+              disabled={loading || page <= 1}
+              onClick={() => void onLoad({ query, scope, page: page - 1, pageSize })}
+            >
+              上一页
+            </button>
+            <span>{page} / {Math.max(1, Math.ceil(total / pageSize))}</span>
+            <button
+              type="button"
+              disabled={loading || page * pageSize >= total}
+              onClick={() => void onLoad({ query, scope, page: page + 1, pageSize })}
+            >
+              下一页
+            </button>
+          </nav>
+        ) : null}
         <footer>
           <div>
-            {selectedGame ? <><strong>{selectedGame.team_a_name} vs {selectedGame.team_b_name}</strong><span>名单不含球衣号码，号码仍由图片读取</span></> : <span>选择未上传比赛以导入照片；已有结果可直接点击打开</span>}
+            {selectedGame ? <><strong>{selectedGame.team_a_name} — {selectedGame.team_b_name}</strong><span>名单不含球衣号码，号码仍由图片读取</span></> : <span>选择未上传比赛以导入照片；已有结果可直接点击打开</span>}
           </div>
           <input
             ref={fileInput}

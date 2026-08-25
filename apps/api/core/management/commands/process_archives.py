@@ -10,6 +10,7 @@ from core.services.archive_exports import (
     cleanup_expired_archives,
     process_claimed_job,
 )
+from core.services.worker_health import touch_worker_heartbeat
 
 
 class Command(BaseCommand):
@@ -23,11 +24,17 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         worker = f"{socket.gethostname()}:{id(self)}"
         while True:
+            touch_worker_heartbeat("archive", worker)
             cleanup_expired_archives()
             job = claim_next_job(worker)
             if job is not None:
                 self.stdout.write(f"Processing {job.__class__.__name__} {job.id}")
                 process_claimed_job(job)
+            touch_worker_heartbeat(
+                "archive",
+                worker,
+                details={"last_job_id": str(job.id) if job is not None else ""},
+            )
             if options["once"] or not options["loop"]:
                 break
             if job is None:

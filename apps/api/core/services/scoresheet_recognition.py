@@ -37,6 +37,7 @@ from core.scoresheet_v2.recognition import (
 )
 from core.services.inbox_tasks import sync_scoresheet_recognition_tasks
 from core.services.scoresheets import _event_locked, _revision_locked
+from core.services.worker_health import touch_worker_heartbeat
 
 RETRY_DELAYS = (30, 30, 30)
 WORKER_LEASE_SECONDS = 5 * 60
@@ -64,6 +65,7 @@ class RecognitionAttemptError(RuntimeError):
 class ClaimedRun:
     run_id: uuid.UUID
     worker_token: uuid.UUID
+    worker_name: str = "scoresheet-worker"
 
 
 def _retry_after(value: str | None) -> int | None:
@@ -140,7 +142,7 @@ def claim_next_run(worker_name: str) -> ClaimedRun | None:
                 "max_attempts": run.max_attempts,
             },
         )
-        return ClaimedRun(run_id=run.id, worker_token=token)
+        return ClaimedRun(run_id=run.id, worker_token=token, worker_name=worker_name)
 
 
 def _renew_worker_lease(claim: ClaimedRun) -> bool:
@@ -161,6 +163,7 @@ def _worker_lease_heartbeat(claim: ClaimedRun, stop: Event) -> None:
             try:
                 if not _renew_worker_lease(claim):
                     return
+                touch_worker_heartbeat("scoresheet", claim.worker_name)
             except Exception:  # noqa: BLE001 - keep renewing after transient database failures.
                 logger.exception("Failed to renew scoresheet recognition worker lease")
                 close_old_connections()

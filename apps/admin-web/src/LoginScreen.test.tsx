@@ -17,9 +17,8 @@ const account = {
 };
 
 const webChallenge = {
-  scan_payload: "PKUBA_ADMIN_WEB_LOGIN:1:A1B2C3:abcdefghijklmnopqrstuvwxyzABCDEFGH12345678",
+  scan_payload: "PKUBA_ADMIN_WEB_LOGIN:1:abcdefghijklmnopqrstuvwxyzABCDEFGH12345678",
   browser_token: "browser-secret",
-  verification_code: "A1B2C3",
   expires_at: new Date(Date.now() + 300_000).toISOString(),
   expires_in: 300,
 };
@@ -58,7 +57,6 @@ describe("LoginScreen", () => {
       "true",
     );
     await screen.findByAltText("管理员网页登录二维码");
-    expect(screen.getByText("A1B2C3")).toBeTruthy();
     expect(client.createWebLoginChallenge).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/扫码登录管理后台/)).toBeTruthy();
   });

@@ -141,13 +141,13 @@ function GroupTable({ group, gender }: { group: GroupStandings; gender: string }
             <Text className="matrix-team-cell">球队</Text>
             {group.entries.map((entry) => (
               <Text className="matrix-cell matrix-opponent" key={entry.team_id}>
-                {entry.team_short_name}
+                {entry.team_name}
               </Text>
             ))}
           </View>
           {group.entries.map((entry) => (
             <View className="matrix-row" key={entry.team_id}>
-              <Text className="matrix-team-cell">{entry.team_short_name}</Text>
+              <Text className="matrix-team-cell">{entry.team_name}</Text>
               {group.entries.map((opponent) => (
                 <MatrixCell
                   entry={entry}

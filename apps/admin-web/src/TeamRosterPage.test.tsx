@@ -58,7 +58,6 @@ const dataset: RosterDataset = {
       season_id: season.id,
       division_id: season.divisions[0].id,
       name: "信息科学技术学院",
-      short_name: "",
       active: true,
       version: 3,
       players: [

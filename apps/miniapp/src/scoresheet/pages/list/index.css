@@ -42,6 +42,37 @@
   font-size: 28rpx;
 }
 
+.sheet-list-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8rpx;
+  margin-bottom: 20rpx;
+  padding: 6rpx;
+  border-radius: 14rpx;
+  background: #e8e5df;
+}
+
+.sheet-list-filter {
+  min-width: 0;
+  height: 68rpx;
+  border: 0;
+  border-radius: 10rpx;
+  background: transparent;
+  color: #625e57;
+  font-size: 25rpx;
+  font-weight: 750;
+  line-height: 68rpx;
+}
+
+.sheet-list-filter::after {
+  border: 0;
+}
+
+.sheet-list-filter.is-active {
+  background: #fff;
+  color: #9f2925;
+}
+
 .sheet-list-items {
   overflow: hidden;
   border: 1rpx solid #d9d5cd;
@@ -144,6 +175,31 @@
   padding: 28rpx;
   font-size: 27rpx;
   text-align: center;
+}
+
+.sheet-list-pagination {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 20rpx;
+  margin-top: 20rpx;
+  color: #68645d;
+  font-size: 25rpx;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet-list-pagination button {
+  height: 72rpx;
+  border: 1rpx solid #d3cfc7;
+  border-radius: 12rpx;
+  background: #fff;
+  color: #292725;
+  font-size: 26rpx;
+  line-height: 70rpx;
+}
+
+.sheet-list-pagination button::after {
+  border: 0;
 }
 
 .sheet-list-message {

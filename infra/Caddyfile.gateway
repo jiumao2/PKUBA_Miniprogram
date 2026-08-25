@@ -1,0 +1,50 @@
+{
+	email {$ACME_EMAIL}
+}
+
+import /srv/deployment-state/upstreams.caddy
+
+(deployment_maintenance_json) {
+	@deployment_maintenance file {
+		root /srv/deployment-state
+		try_files /maintenance.enabled
+	}
+	handle @deployment_maintenance {
+		header Cache-Control "no-store"
+		header Content-Type "application/json; charset=utf-8"
+		header Retry-After "120"
+		respond `{"code":"DEPLOYMENT_MAINTENANCE","message":"系统正在更新，请稍后重试。"}` 503
+	}
+}
+
+(deployment_maintenance_text) {
+	@deployment_maintenance file {
+		root /srv/deployment-state
+		try_files /maintenance.enabled
+	}
+	handle @deployment_maintenance {
+		header Cache-Control "no-store"
+		header Content-Type "text/plain; charset=utf-8"
+		header Retry-After "120"
+		respond "系统正在更新，请稍后重试。" 503
+	}
+}
+
+api.{$PKUBA_DOMAIN} {
+	encode zstd gzip
+	handle /api/v1/health/live {
+		import active_api
+	}
+	import deployment_maintenance_json
+	handle {
+		import active_api
+	}
+}
+
+admin.{$PKUBA_DOMAIN} {
+	encode zstd gzip
+	import deployment_maintenance_text
+	handle {
+		import active_web
+	}
+}

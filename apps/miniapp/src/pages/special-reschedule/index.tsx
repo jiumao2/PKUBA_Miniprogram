@@ -1,8 +1,10 @@
-import { Text, View } from "@tarojs/components";
+import { Button, Text, View } from "@tarojs/components";
+import Taro from "@tarojs/taro";
 
 import "./index.css";
 
 export default function SpecialReschedulePage() {
+  const email = "pkubaoutward@163.com";
   return (
     <View className="page special-page">
       <Text className="page-title">特殊原因调赛</Text>
@@ -28,8 +30,8 @@ export default function SpecialReschedulePage() {
         </View>
       </View>
       <View className="contact-line">
-        <Text className="contact-label">组委会公邮</Text>
-        <Text className="contact-value">pkubaoutward@163.com</Text>
+        <View><Text className="contact-label">组委会公邮</Text><Text className="contact-value">{email}</Text></View>
+        <Button className="contact-copy" onClick={() => void Taro.setClipboardData({ data: email })}>复制邮箱</Button>
       </View>
     </View>
   );

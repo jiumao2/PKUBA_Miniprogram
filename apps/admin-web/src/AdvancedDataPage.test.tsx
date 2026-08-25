@@ -41,6 +41,9 @@ describe("AdvancedDataPage", () => {
         total: 1,
         offset: 0,
         limit: 50,
+        search: "",
+        sort: "",
+        direction: "desc",
         items: [
           {
             id: "10000000-0000-0000-0000-000000000001",
@@ -73,5 +76,42 @@ describe("AdvancedDataPage", () => {
     expect(screen.getAllByText("pbkdf2_sha256$full-hash")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "新建" })).toBeNull();
     expect(screen.queryByRole("button", { name: "编辑" })).toBeNull();
+  });
+
+  it("uses server-wide search and pagination instead of filtering the first page", async () => {
+    const listAdvancedRecords = vi.fn()
+      .mockResolvedValueOnce({
+        model: "accounts", label: "账号", mutation_mode: "READ_ONLY",
+        total: 101, offset: 0, limit: 50, search: "", sort: "", direction: "desc",
+        items: [{ id: "first", model: "account", values: { username: "first-page", status: "ACTIVE" } }],
+      })
+      .mockResolvedValueOnce({
+        model: "accounts", label: "账号", mutation_mode: "READ_ONLY",
+        total: 101, offset: 0, limit: 50, search: "target", sort: "", direction: "desc",
+        items: [{ id: "target", model: "account", values: { username: "target-user", status: "ACTIVE" } }],
+      })
+      .mockResolvedValueOnce({
+        model: "accounts", label: "账号", mutation_mode: "READ_ONLY",
+        total: 101, offset: 50, limit: 50, search: "target", sort: "", direction: "desc", items: [],
+      });
+    const client = {
+      listAdvancedModels: vi.fn().mockResolvedValue(models),
+      listAdvancedRecords,
+    } as unknown as AdminClient;
+    const user = userEvent.setup();
+    render(<AdvancedDataPage client={client} />);
+
+    expect(await screen.findByText("first-page")).toBeTruthy();
+    await user.type(screen.getByLabelText("搜索全部记录"), "target");
+    await user.click(screen.getByRole("button", { name: "搜索" }));
+    expect(await screen.findByText("target-user")).toBeTruthy();
+    expect(listAdvancedRecords).toHaveBeenLastCalledWith(
+      "accounts", 0, 50, { search: "target", sort: "", direction: "desc" },
+    );
+
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    expect(listAdvancedRecords).toHaveBeenLastCalledWith(
+      "accounts", 50, 50, { search: "target", sort: "", direction: "desc" },
+    );
   });
 });

@@ -657,22 +657,6 @@ h2 {
   animation: qr-overlay-enter 160ms ease-out both;
 }
 
-.verification-code {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-top: 14px;
-  color: var(--pkuba-muted);
-  font-size: 12px;
-}
-
-.verification-code strong {
-  color: var(--pkuba-ink);
-  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 17px;
-  letter-spacing: .14em;
-}
-
 .qr-instruction {
   max-width: 31em;
   margin: 19px 0 0;

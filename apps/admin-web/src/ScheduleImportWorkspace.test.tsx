@@ -149,7 +149,7 @@ const validatedBatch: ScheduleImport = {
   id: "40000000-0000-0000-0000-000000000001",
   season_id: season.id,
   status: "VALIDATED",
-  template_version: "3.2.0",
+  template_version: "3.3.0",
   file_sha256: "a".repeat(64),
   source_kind: "XLSX",
   issues: [
@@ -419,7 +419,7 @@ describe("ScheduleImportWorkspace", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     await user.click(screen.getByRole("button", { name: "保存网格列" }));
     await waitFor(() => expect(updateSeasonConfiguration).toHaveBeenCalledOnce());
-    // V3.2 ignores the retired season-level grid configuration. Dynamic columns
+    // V3.3 ignores the retired season-level grid configuration. Dynamic columns
     // live only in the independent schedule draft / workbook header.
     expect(updateSeasonConfiguration.mock.calls[0][1].grid_columns).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "前往赛季和组别" }));

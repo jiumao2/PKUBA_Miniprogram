@@ -18,15 +18,22 @@
     "build": "npm run build:packages && npm --workspace @pkuba/admin-web run build && npm --workspace @pkuba/miniapp run build:weapp",
     "build:packages": "npm --workspace @pkuba/design-tokens run build && npm --workspace @pkuba/scoresheet-domain run build && npm --workspace @pkuba/api-client run build",
     "test": "npm --workspace @pkuba/scoresheet-domain run test && npm --workspace @pkuba/admin-web run test && npm --workspace @pkuba/miniapp run test",
-    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present"
+    "check:powershell": "node scripts/check-powershell-encoding.mjs",
+    "typecheck": "npm run check:powershell && npm run build:packages && npm run typecheck --workspaces --if-present",
+    "audit:production": "node scripts/check-npm-audit.mjs"
   },
   "engines": {
     "node": ">=24 <25",
     "npm": ">=11 <12"
   },
+  "overrides": {
+    "swiper": "$swiper",
+    "webpack": "5.104.1"
+  },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "openapi-typescript": "^7.10.1",
+    "swiper": "12.1.4",
     "typescript": "^5.9.2"
   }
 }

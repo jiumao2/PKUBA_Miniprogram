@@ -120,6 +120,25 @@ export interface GameSummary {
   scoresheet_state: 'not_uploaded' | 'recognizing' | 'recognized' | 'recognition_failed' | 'confirmed';
 }
 
+export type GameQueueScope = 'ALL' | 'ACTION_REQUIRED' | 'IN_PROGRESS' | 'PUBLISHED';
+
+export interface GameQueueQuery {
+  seasonId?: string;
+  gameId?: string;
+  scope?: GameQueueScope;
+  query?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface GameSummaryPage {
+  items: GameSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+  division_names: string[];
+}
+
 export interface GameDetail extends GameSummary {
   prior: GamePriorSnapshot | null;
 }

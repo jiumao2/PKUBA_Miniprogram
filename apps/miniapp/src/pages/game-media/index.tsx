@@ -1,12 +1,13 @@
 import { Button, Image, Text, View } from "@tarojs/components";
 import Taro, { useDidShow, useRouter } from "@tarojs/taro";
 import { useMemo, useRef, useState } from "react";
-import type {
-  GameMediaAsset,
-  GameMediaCollection,
-  MiniAppMe,
-  PublicGameDetail,
-  PublicScoresheetStat,
+import {
+  formatOfficialScore,
+  type GameMediaAsset,
+  type GameMediaCollection,
+  type MiniAppMe,
+  type PublicGameDetail,
+  type PublicScoresheetStat,
 } from "@pkuba/api-client";
 
 import {
@@ -38,10 +39,12 @@ export default function GameDetailPage() {
   const [uploadingTarget, setUploadingTarget] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
+  const [privateError, setPrivateError] = useState("");
   const requestVersionRef = useRef(0);
 
   const loadPrivate = async (requestVersion: number) => {
     setPrivateLoading(true);
+    setPrivateError("");
     try {
       const identity = await resolveMiniAppIdentity();
       if (requestVersion !== requestVersionRef.current) return;
@@ -53,13 +56,18 @@ export default function GameDetailPage() {
       try {
         const media = await api.getGameMedia(gameId, identity.token);
         if (requestVersion === requestVersionRef.current) setCollection(media);
-      } catch {
-        if (requestVersion === requestVersionRef.current) setCollection(null);
+      } catch (reason: unknown) {
+        if (requestVersion === requestVersionRef.current) {
+          setPrivateError(
+            reason instanceof Error ? reason.message : "比赛私有资料读取失败，请重试。",
+          );
+        }
       }
-    } catch {
+    } catch (reason: unknown) {
       if (requestVersion === requestVersionRef.current) {
-        setMe(null);
-        setCollection(null);
+        setPrivateError(
+          reason instanceof Error ? reason.message : "身份核对失败，请重试。",
+        );
       }
     } finally {
       if (requestVersion === requestVersionRef.current) setPrivateLoading(false);
@@ -132,21 +140,34 @@ export default function GameDetailPage() {
         sizeType: ["original"],
       });
       setUploadingTarget(`new:${kind}`);
+      const failures: string[] = [];
+      let successCount = 0;
       for (let index = 0; index < selected.tempFiles.length; index += 1) {
         const file = selected.tempFiles[index];
-        await uploadGameMedia(
-          detail.game.id,
-          file.tempFilePath,
-          kind,
-          confirmed,
-          token,
-          (value) => setProgress(Math.round(
-            ((index + value / 100) / selected.tempFiles.length) * 100,
-          )),
-        );
+        try {
+          await uploadGameMedia(
+            detail.game.id,
+            file.tempFilePath,
+            kind,
+            confirmed,
+            token,
+            (value) => setProgress(Math.round(
+              ((index + value / 100) / selected.tempFiles.length) * 100,
+            )),
+          );
+          successCount += 1;
+        } catch (reason: unknown) {
+          failures.push(
+            `第 ${index + 1} 张：${reason instanceof Error ? reason.message : "上传失败"}`,
+          );
+        }
       }
-      Taro.showToast({ title: "上传完成", icon: "success" });
-      await load();
+      if (successCount > 0) await load();
+      if (failures.length === 0) {
+        Taro.showToast({ title: "上传完成", icon: "success" });
+      } else {
+        setMessage(`已上传 ${successCount} 张，失败 ${failures.length} 张。${failures.join("；")}`);
+      }
     } catch (reason: unknown) {
       const text = reason instanceof Error ? reason.message : "图片上传失败";
       if (!text.includes("cancel")) setMessage(text);
@@ -276,17 +297,22 @@ export default function GameDetailPage() {
         onDelete={(asset) => void deleteAsset(asset)}
       />
     </View>}
+    {privateError && <View className="private-media-error">
+      <Text>{privateError}</Text>
+      <Button onClick={() => void loadPrivate(requestVersionRef.current)}>重新读取私有资料</Button>
+    </View>}
     {message && <View className="media-feedback"><Text>{message}</Text></View>}
   </View>;
 }
 
 function GameHeading({ detail }: { detail: PublicGameDetail }) {
   const game = detail.game;
+  const score = formatOfficialScore(game.home_score, game.away_score, " : ");
   return <View className={`detail-game-heading ${game.division_gender === "WOMEN" ? "is-women" : ""}`}>
     <Text className="detail-division">{game.division_name} · {formatDate(game.date)} {game.start_time}</Text>
     <View className="detail-matchup">
       <Text>{game.home_name}</Text>
-      <Text className="detail-score">{scoreLabel(game.home_score, game.away_score)}</Text>
+      {score && <Text className="detail-score">{score}</Text>}
       <Text>{game.away_name}</Text>
     </View>
     <Text className="detail-venue">{game.venue_name}</Text>
@@ -455,10 +481,6 @@ function DetailSkeleton() {
     <View className="detail-skeleton-block" />
     <View className="detail-skeleton-block short" />
   </View>;
-}
-
-function scoreLabel(homeScore: number | null, awayScore: number | null) {
-  return homeScore === null || awayScore === null ? "vs" : `${homeScore} : ${awayScore}`;
 }
 
 function mediaKindLabel(kind: string) {

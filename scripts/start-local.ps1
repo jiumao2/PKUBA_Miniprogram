@@ -27,12 +27,36 @@ if ($AdminUsername) {
     Invoke-PkubaCompose run --rm api python manage.py create_local_admin $AdminUsername
 }
 
+$previousApiBase = $env:PKUBA_API_BASE_URL
+$previousAdminWeb = $env:PKUBA_ADMIN_WEB_URL
+$previousInsecureMiniapp = $env:PKUBA_ALLOW_INSECURE_MINIAPP_URL
 Push-Location $root
 try {
+    $env:PKUBA_API_BASE_URL = 'http://127.0.0.1:8000'
+    $env:PKUBA_ADMIN_WEB_URL = 'http://127.0.0.1:5173'
+    $env:PKUBA_ALLOW_INSECURE_MINIAPP_URL = '1'
     & npm --workspace @pkuba/miniapp run build:weapp
     if ($LASTEXITCODE -ne 0) { throw '微信小程序构建失败。' }
 }
 finally {
+    if ($null -eq $previousApiBase) {
+        Remove-Item Env:PKUBA_API_BASE_URL -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:PKUBA_API_BASE_URL = $previousApiBase
+    }
+    if ($null -eq $previousAdminWeb) {
+        Remove-Item Env:PKUBA_ADMIN_WEB_URL -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:PKUBA_ADMIN_WEB_URL = $previousAdminWeb
+    }
+    if ($null -eq $previousInsecureMiniapp) {
+        Remove-Item Env:PKUBA_ALLOW_INSECURE_MINIAPP_URL -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:PKUBA_ALLOW_INSECURE_MINIAPP_URL = $previousInsecureMiniapp
+    }
     Pop-Location
 }
 

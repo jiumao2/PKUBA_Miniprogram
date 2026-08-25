@@ -289,6 +289,38 @@ def _calendar_dates(season: Season) -> list[date]:
     return [season.starts_on + timedelta(days=offset) for offset in range(count)]
 
 
+def _grid_dates_from_sheet(sheet, *, end_column: int) -> list[date]:
+    dates: list[date] = []
+    ended = False
+    last_row = min(sheet.max_row, GRID_START_ROW + MAX_DATA_ROWS - 1)
+    for row_index in range(GRID_START_ROW, last_row + 1):
+        values = [sheet.cell(row_index, column).value for column in range(1, end_column + 1)]
+        if all(value in (None, "") for value in values):
+            if dates:
+                ended = True
+            continue
+        if ended:
+            raise ScheduleImportError(
+                "赛程网格的日期行必须连续，中间不能留出整行空白。",
+                "GRID_DATE_ROWS_NOT_CONTIGUOUS",
+            )
+        target_date = _cell_date(sheet.cell(row_index, 1))
+        if target_date is None:
+            raise ScheduleImportError(
+                f"赛程网格第 {row_index} 行日期无效。",
+                "GRID_DATE_INVALID",
+            )
+        if dates and target_date != dates[-1] + timedelta(days=1):
+            raise ScheduleImportError(
+                "赛程网格日期必须逐日连续且不能重复。",
+                "GRID_DATES_NOT_CONSECUTIVE",
+            )
+        dates.append(target_date)
+    if not dates:
+        raise ScheduleImportError("赛程网格至少需要一个日期。", "GRID_DATES_REQUIRED")
+    return dates
+
+
 def schedule_import_readiness(season: Season) -> dict[str, object]:
     divisions = list(Division.objects.filter(season=season).order_by("sort_order", "name"))
     families = _slot_families(season)
@@ -419,6 +451,7 @@ def generate_schedule_template(
     *,
     columns: list[ParsedGridColumn] | None = None,
     cells: dict[tuple[date, int], tuple[str, bool]] | None = None,
+    calendar_dates: list[date] | None = None,
 ) -> bytes:
     _require_template_ready(season)
     divisions = list(season.divisions.order_by("sort_order", "name"))
@@ -430,7 +463,7 @@ def generate_schedule_template(
             "当前赛季没有可用于空白模板的默认时段，请先检查赛季时段。",
             "NO_DEFAULT_GRID_COLUMNS",
         )
-    dates = _calendar_dates(season)
+    dates = calendar_dates or _calendar_dates(season)
 
     workbook = Workbook()
     instructions = workbook.active
@@ -592,7 +625,8 @@ def generate_schedule_template(
     grid_sheet.cell(
         3,
         1,
-        "日期和星期已自动生成；在网格中填写 A1vsA2，女子比赛写 A1vsA2（女）。"
+        "日期和星期已自动生成；如需特殊日期，可保持逐日连续地扩展日期行。"
+        "在网格中填写 A1vsA2，女子比赛写 A1vsA2（女）。"
         "时间与场地表头可以编辑，场地末尾加（仅决赛）会把该列限制为决赛。",
     )
     grid_sheet.cell(3, 1).font = Font(color="66766F", italic=True)
@@ -1175,30 +1209,14 @@ def _parse_grid(
     configured_columns = _parse_grid_columns(season, sheet)
     expected_end_column = GRID_START_COLUMN + len(configured_columns) - 1
 
-    expected_dates = _calendar_dates(season)
-    for offset, expected_date in enumerate(expected_dates, start=GRID_START_ROW):
-        actual_date = _cell_date(sheet.cell(offset, 1))
-        if actual_date != expected_date:
-            issues.append(
-                _issue(
-                    "GRID_DATES_CHANGED",
-                    f"第 {offset} 行日期应为 {expected_date.isoformat()}。",
-                    cell=sheet.cell(offset, 1).coordinate,
-                )
-            )
-    expected_end_row = GRID_START_ROW + len(expected_dates) - 1
-    for row in range(expected_end_row + 1, min(sheet.max_row, MAX_DATA_ROWS) + 1):
-        if any(
-            sheet.cell(row, column).value not in (None, "")
-            for column in range(1, expected_end_column + 1)
-        ):
-            issues.append(
-                _issue(
-                    "EXTRA_GRID_ROW",
-                    "赛程网格包含赛季日期范围外的额外数据行。",
-                    cell=sheet.cell(row, 1).coordinate,
-                )
-            )
+    try:
+        expected_dates = _grid_dates_from_sheet(
+            sheet,
+            end_column=expected_end_column,
+        )
+    except ScheduleImportError as error:
+        issues.append(_issue(error.code, error.message))
+        return {}, configured_columns
 
     namespace_slots: dict[tuple[str, str], ParsedSlot] = {}
     for slot in slots.values():

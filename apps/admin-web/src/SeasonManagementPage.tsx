@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type DragEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AdminSeason,
   CapacityLedgerRow,
@@ -9,6 +9,7 @@ import type {
 } from "@pkuba/api-client";
 
 import { CapacityCalendar } from "./CapacityCalendar";
+import { useAdminDirtySource } from "./dirtyGuard";
 import { buildSeasonConfigurationPayload } from "./season-configuration-payload";
 import { SeasonLifecyclePanel } from "./SeasonLifecyclePanel";
 import "./season-management.css";
@@ -20,6 +21,7 @@ type PeriodDraft = SeasonConfiguration["periods"][number] & { key: string };
 type SlotFamilyDraft = SeasonConfiguration["slot_families"][number] & { key: string };
 type GridColumnDraft = SeasonConfiguration["grid_columns"][number] & { key: string };
 type OverrideDraft = SeasonConfiguration["date_capacity_overrides"][number] & { key: string };
+type OrderedCollection = "divisions" | "slot_families" | "venues" | "periods";
 type ConfigurationDraft = Omit<
   SeasonConfiguration,
   | "divisions"
@@ -60,11 +62,32 @@ function nextSortOrder(rows: Array<{ sort_order: number }>) {
   return Math.max(0, ...rows.map((row) => row.sort_order)) + 1;
 }
 
-function nextCode(rows: Array<{ code: string }>, prefix: string) {
-  const used = new Set(rows.map((row) => row.code.toLowerCase()));
-  let index = rows.length + 1;
-  while (used.has(`${prefix}${index}`)) index += 1;
-  return `${prefix}${index}`;
+function continuousOrder<T extends { sort_order: number }>(rows: T[]): T[] {
+  return rows.map((row, index) => ({ ...row, sort_order: index + 1 }));
+}
+
+function moveOrderedRow<T extends { key: string; sort_order: number }>(
+  rows: T[],
+  sourceKey: string,
+  targetKey: string,
+): T[] {
+  const sourceIndex = rows.findIndex((row) => row.key === sourceKey);
+  const targetIndex = rows.findIndex((row) => row.key === targetKey);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return rows;
+  const next = [...rows];
+  const [moved] = next.splice(sourceIndex, 1);
+  next.splice(targetIndex, 0, moved);
+  return continuousOrder(next);
+}
+
+function moveOrderedRowBy<T extends { key: string; sort_order: number }>(
+  rows: T[],
+  key: string,
+  offset: -1 | 1,
+): T[] {
+  const index = rows.findIndex((row) => row.key === key);
+  const target = rows[index + offset];
+  return index < 0 || !target ? rows : moveOrderedRow(rows, key, target.key);
 }
 
 function nextVenueName(rows: Array<{ name: string }>) {
@@ -98,14 +121,22 @@ function expectedFamilyGames(stage: string, slotCount: number) {
 function toDraft(configuration: SeasonConfiguration): ConfigurationDraft {
   return {
     ...configuration,
-    divisions: configuration.divisions.map((row) => ({ ...row, key: row.id })),
-    venues: configuration.venues.map((row) => ({ ...row, key: row.id })),
-    periods: configuration.periods.map((row) => ({
+    divisions: continuousOrder([...configuration.divisions]
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((row) => ({ ...row, key: row.id }))),
+    venues: continuousOrder([...configuration.venues]
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((row) => ({ ...row, key: row.id }))),
+    periods: continuousOrder([...configuration.periods]
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((row) => ({
       ...row,
       default_capacities: { ...row.default_capacities },
       key: row.id,
-    })),
-    slot_families: configuration.slot_families.map((row) => ({ ...row, key: row.id })),
+    }))),
+    slot_families: continuousOrder([...configuration.slot_families]
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((row) => ({ ...row, key: row.id }))),
     grid_columns: configuration.grid_columns.map((row) => ({ ...row, key: row.id })),
     date_capacity_overrides: configuration.date_capacity_overrides.map((row) => ({
       ...row,
@@ -133,11 +164,15 @@ export function SeasonManagementPage({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  useAdminDirtySource(`season-management:${seasonId}`, dirty);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"success" | "error">("success");
   const [showCreate, setShowCreate] = useState(false);
+  const [dragging, setDragging] = useState<{ collection: OrderedCollection; key: string } | null>(null);
+  const loadGeneration = useRef(0);
 
   const loadConfiguration = async (id = seasonId) => {
+    const generation = ++loadGeneration.current;
     if (!id) {
       setConfiguration(null);
       setDraft(null);
@@ -152,20 +187,25 @@ export function SeasonManagementPage({
         client.getSeasonConfiguration(id),
         client.getCapacityLedger(id),
       ]);
+      if (generation !== loadGeneration.current) return;
       setConfiguration(next);
       setDraft(toDraft(next));
       setLedger(ledgerRows);
       setDirty(false);
     } catch (reason: unknown) {
+      if (generation !== loadGeneration.current) return;
       setMessageTone("error");
       setMessage(reason instanceof Error ? reason.message : "无法读取赛季配置");
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadConfiguration();
+    return () => {
+      loadGeneration.current += 1;
+    };
   }, [seasonId]);
 
   const activeVenueCount = draft?.venues.filter((row) => row.active).length ?? 0;
@@ -185,12 +225,60 @@ export function SeasonManagementPage({
     ) ?? 0,
     [draft?.slot_families],
   );
+  const editable = draft?.editable ?? false;
 
   const markChanged = (next: ConfigurationDraft) => {
     setDraft(next);
     setDirty(true);
     setMessage(null);
   };
+  const reorderCollection = (
+    collection: OrderedCollection,
+    sourceKey: string,
+    targetKey: string,
+  ) => {
+    if (!draft) return;
+    const nextRows = moveOrderedRow(
+      draft[collection] as Array<{ key: string; sort_order: number }>,
+      sourceKey,
+      targetKey,
+    );
+    markChanged({ ...draft, [collection]: nextRows } as ConfigurationDraft);
+  };
+  const moveCollectionBy = (
+    collection: OrderedCollection,
+    key: string,
+    offset: -1 | 1,
+  ) => {
+    if (!draft) return;
+    const nextRows = moveOrderedRowBy(
+      draft[collection] as Array<{ key: string; sort_order: number }>,
+      key,
+      offset,
+    );
+    markChanged({ ...draft, [collection]: nextRows } as ConfigurationDraft);
+  };
+  const sortableRow = (
+    collection: OrderedCollection,
+    key: string,
+  ) => ({
+    draggable: editable,
+    onDragStart: (event: DragEvent<HTMLElement>) => {
+      event.dataTransfer.effectAllowed = "move";
+      setDragging({ collection, key });
+    },
+    onDragOver: (event: DragEvent<HTMLElement>) => {
+      if (editable && dragging?.collection === collection) event.preventDefault();
+    },
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      if (dragging?.collection === collection) {
+        reorderCollection(collection, dragging.key, key);
+      }
+      setDragging(null);
+    },
+    onDragEnd: () => setDragging(null),
+  });
   const updateDivision = (key: string, patch: Partial<DivisionDraft>) => {
     if (!draft) return;
     markChanged({ ...draft, divisions: draft.divisions.map((row) => row.key === key ? { ...row, ...patch } : row) });
@@ -329,11 +417,10 @@ export function SeasonManagementPage({
       <h2>尚无赛季</h2>
       <p>先创建赛季，再配置组别、标准场地、时段与容量。</p>
       <button className="primary-action" type="button" onClick={() => setShowCreate(true)}>新建赛季</button>
-      {showCreate && <CreateSeasonDialog client={client} seasons={seasons} sourceSeasonId={seasonId} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onDataChanged(created.id); onSeasonChange(created.id); }} />}
+      {showCreate && <CreateSeasonDialog client={client} seasons={seasons} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onDataChanged(created.id); onSeasonChange(created.id); }} />}
     </section>;
   }
 
-  const editable = draft.editable;
   return <div className="season-management">
     <div className="season-management-toolbar">
       <label>管理赛季<select value={seasonId} onChange={(event) => {
@@ -372,22 +459,21 @@ export function SeasonManagementPage({
       <div className="season-core-grid">
         <label className="season-name-field">赛季名称<input disabled={!editable} value={draft.name} onChange={(event) => markChanged({ ...draft, name: event.target.value })} /></label>
         <label>赛事类型<select disabled={!editable} value={draft.competition_type} onChange={(event) => markChanged({ ...draft, competition_type: event.target.value })}><option value="PKU_CUP">北大杯</option><option value="FRESHMAN_CUP">新生杯</option></select></label>
-        <label>赛季年份<input disabled={!editable} min="2000" max="2100" type="number" value={draft.year} onChange={(event) => markChanged({ ...draft, year: Number(event.target.value) })} /></label>
-        <label>开始日期<input disabled={!editable} type="date" value={draft.starts_on} onChange={(event) => markChanged({ ...draft, starts_on: event.target.value })} /></label>
-        <label>结束日期<input disabled={!editable} type="date" value={draft.ends_on} onChange={(event) => markChanged({ ...draft, ends_on: event.target.value })} /></label>
+        <label>赛季年份<input disabled={!editable} min="1" step="1" type="number" value={draft.year} onChange={(event) => markChanged({ ...draft, year: Number(event.target.value) })} /></label>
+        <label>计划开始日期<input disabled={!editable} type="date" value={draft.starts_on} onChange={(event) => markChanged({ ...draft, starts_on: event.target.value })} /><small>用于模板和日历的默认范围，不限制特殊日期比赛。</small></label>
+        <label>计划结束日期<input disabled={!editable} type="date" value={draft.ends_on} onChange={(event) => markChanged({ ...draft, ends_on: event.target.value })} /><small>范围外比赛、预留和容量例外仍会保留。</small></label>
         <label>时区<input disabled value={draft.timezone} /></label>
       </div>
     </section>
 
     <section className="season-config-section">
-      <div className="season-section-heading"><div><h2>赛事组别</h2><p>球队、签位和比赛均归属于组别。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, divisions: [...draft.divisions, { id: "", key: nextKey("division"), code: nextCode(draft.divisions, "division-"), name: "新组别", gender: "MEN", sort_order: nextSortOrder(draft.divisions), version: 1, team_count: 0, group_count: 0, game_count: 0 }] })}>＋ 添加组别</button>}</div>
+      <div className="season-section-heading"><div><h2>赛事组别</h2><p>球队、签位和比赛均归属于组别。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, divisions: [...draft.divisions, { id: "", key: nextKey("division"), code: "", name: "新组别", gender: "MEN", sort_order: nextSortOrder(draft.divisions), version: 1, team_count: 0, group_count: 0, game_count: 0 }] })}>＋ 添加组别</button>}</div>
       <div className="division-config-table">
-        <div className="division-config-row division-config-head"><span>顺序</span><span>代码</span><span>名称</span><span>分类</span><span>已关联</span><span /></div>
-        {draft.divisions.map((row) => {
+        <div className="division-config-row division-config-head"><span>移动</span><span>名称</span><span>分类</span><span>已关联</span><span /></div>
+        {draft.divisions.map((row, index) => {
           const referenced = row.team_count + row.group_count + row.game_count > 0;
-          return <div className="division-config-row" key={row.key}>
-            <input aria-label={`${row.name}顺序`} disabled={!editable} min="0" type="number" value={row.sort_order} onChange={(event) => updateDivision(row.key, { sort_order: Number(event.target.value) })} />
-            <input aria-label={`${row.name}代码`} disabled={!editable} value={row.code} onChange={(event) => updateDivision(row.key, { code: event.target.value })} />
+          return <div className={`division-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("divisions", row.key)}>
+            <OrderControls editable={editable} index={index} label={row.name} total={draft.divisions.length} onMove={(offset) => moveCollectionBy("divisions", row.key, offset)} />
             <input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updateDivision(row.key, { name: event.target.value })} />
             <select aria-label={`${row.name}分类`} disabled={!editable} value={row.gender} onChange={(event) => updateDivision(row.key, { gender: event.target.value })}><option value="MEN">男子</option><option value="WOMEN">女子</option></select>
             <span className="resource-usage">{row.team_count} 队 · {row.group_count} 组 · {row.game_count} 场</span>
@@ -439,11 +525,9 @@ export function SeasonManagementPage({
         })}
       </div>
       <div className="slot-family-table">
-        <div className="slot-family-row slot-family-head"><span>顺序</span><span>组别 / 球队</span><span>阶段</span><span>轮次</span><span>字母</span><span>签位数</span><span>自动比赛数</span><span /></div>
-        {[...draft.slot_families]
-          .sort((left, right) => left.sort_order - right.sort_order)
-          .map((row) => <div className="slot-family-row" key={row.key}>
-            <input aria-label={`${row.division_name}${row.stage_name}顺序`} disabled={!editable} min="0" type="number" value={row.sort_order} onChange={(event) => updateSlotFamily(row.key, { sort_order: Number(event.target.value) })} />
+        <div className="slot-family-row slot-family-head"><span>移动</span><span>组别 / 球队</span><span>阶段</span><span>轮次</span><span>字母</span><span>签位数</span><span>自动比赛数</span><span /></div>
+        {draft.slot_families.map((row, index) => <div className={`slot-family-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("slot_families", row.key)}>
+            <OrderControls editable={editable} index={index} label={`${row.division_name}${row.stage_name}${row.prefix}`} total={draft.slot_families.length} onMove={(offset) => moveCollectionBy("slot_families", row.key, offset)} />
             <select aria-label={`${row.prefix}签位组别`} disabled={!editable} value={row.division_id} onChange={(event) => {
               const division = draft.divisions.find((item) => item.id === event.target.value);
               if (!division) return;
@@ -486,11 +570,9 @@ export function SeasonManagementPage({
         {editable && <button className="text-action" type="button" onClick={addVenue}>＋ 添加场地</button>}
       </div>
       <div className="venue-config-table simplified" aria-label="标准场地">
-        <div className="venue-config-row venue-config-head"><span>顺序</span><span>场地名称</span><span>自动分配</span><span>已关联</span><span /></div>
-        {[...draft.venues]
-          .sort((left, right) => left.sort_order - right.sort_order)
-          .map((row) => <div className="venue-config-row" key={row.key}>
-            <input aria-label={`${row.name}顺序`} disabled={!editable} min="1" type="number" value={row.sort_order} onChange={(event) => updateVenue(row.key, { sort_order: Number(event.target.value) })} />
+        <div className="venue-config-row venue-config-head"><span>移动</span><span>场地名称</span><span>自动分配</span><span>已关联</span><span /></div>
+        {draft.venues.map((row, index) => <div className={`venue-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("venues", row.key)}>
+            <OrderControls editable={editable} index={index} label={row.name} total={draft.venues.length} onMove={(offset) => moveCollectionBy("venues", row.key, offset)} />
             <input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updateVenue(row.key, { name: event.target.value })} />
             <label className="venue-active-toggle"><input checked={row.active} disabled={!editable} type="checkbox" onChange={(event) => updateVenue(row.key, { active: event.target.checked })} /><span>{row.active ? "启用" : "停用"}</span></label>
             <span className="resource-usage">{row.game_count} 场正式比赛</span>
@@ -500,12 +582,11 @@ export function SeasonManagementPage({
     </section>
 
     <section className="season-config-section">
-      <div className="season-section-heading"><div><h2>标准时段</h2><p>系统已预设 8 个固定代码；通常只需核对显示名称和默认时间，无需手动添加。</p></div><span>固定 8 个</span></div>
+      <div className="season-section-heading"><div><h2>标准时段</h2><p>系统已预设 8 个标准时段；通常只需核对显示名称和默认时间，无需手动添加。</p></div><span>固定 8 个</span></div>
       <div className="period-config-table">
-        <div className="period-config-row period-config-head"><span>顺序</span><span>代码</span><span>名称</span><span>默认时间</span><span>已关联</span></div>
-        {draft.periods.map((row) => <div className="period-config-row" key={row.key}>
-          <input aria-label={`${row.name}顺序`} disabled min="0" type="number" value={row.sort_order} />
-          <input aria-label={`${row.name}代码`} disabled value={row.code.toUpperCase()} />
+        <div className="period-config-row period-config-head"><span>移动</span><span>名称</span><span>默认时间</span><span>已关联</span></div>
+        {draft.periods.map((row, index) => <div className={`period-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("periods", row.key)}>
+          <OrderControls editable={editable} index={index} label={row.name} total={draft.periods.length} onMove={(offset) => moveCollectionBy("periods", row.key, offset)} />
           <input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updatePeriod(row.key, { name: event.target.value })} />
           <input aria-label={`${row.name}默认时间`} disabled={!editable} type="time" value={row.start_time.slice(0, 5)} onChange={(event) => updatePeriod(row.key, { start_time: event.target.value })} />
           <span className="resource-usage">{row.game_count} 场 · {row.active_reservation_count} 个预留</span>
@@ -518,7 +599,7 @@ export function SeasonManagementPage({
       <div className="capacity-default-table">
         <div className="capacity-default-row capacity-default-head"><span>时段</span><span>默认时间</span><span>周中</span><span>周末</span></div>
         {draft.periods.map((period) => <div className="capacity-default-row" key={period.key}>
-          <strong>{period.code.toUpperCase()} · {period.name}</strong><span>{period.start_time.slice(0, 5)}</span>
+          <strong>{period.name}</strong><span>{period.start_time.slice(0, 5)}</span>
           {(["WEEKDAY", "WEEKEND"] as const).map((dayType) => {
             const value = period.default_capacities[dayType] ?? 0;
             return <label className={`capacity-number ${value === 0 ? "zero" : "open"}`} key={dayType}>
@@ -530,12 +611,12 @@ export function SeasonManagementPage({
     </section>
 
     <section className="season-config-section capacity-section">
-      <div className="season-section-heading"><div><h2>特殊日期容量</h2><p>默认不设置。仅由管理员为节假日、补赛日等例外填写，系统不会根据已排比赛自动生成或补高。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, date_capacity_overrides: [...draft.date_capacity_overrides, { id: "", key: nextKey("override"), date: draft.starts_on, period_code: draft.periods[0]?.code.toUpperCase() ?? "P1", capacity: 0, note: "" }] })}>＋ 添加例外</button>}</div>
+      <div className="season-section-heading"><div><h2>特殊日期容量</h2><p>默认不设置。仅由管理员为节假日、补赛日等例外填写，系统不会根据已排比赛自动生成或补高。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, date_capacity_overrides: [...draft.date_capacity_overrides, { id: "", key: nextKey("override"), date: "", period_code: draft.periods[0]?.code.toUpperCase() ?? "P1", capacity: 0, note: "" }] })}>＋ 添加例外</button>}</div>
       {draft.date_capacity_overrides.length ? <div className="capacity-override-table">
         <div className="capacity-override-row capacity-override-head"><span>日期</span><span>时段</span><span>容量</span><span>备注</span><span /></div>
         {draft.date_capacity_overrides.map((row) => <div className="capacity-override-row" key={row.key}>
-          <input aria-label="特殊日期" disabled={!editable} min={draft.starts_on} max={draft.ends_on} type="date" value={row.date} onChange={(event) => updateOverride(row.key, { date: event.target.value })} />
-          <select aria-label="特殊日期时段" disabled={!editable} value={row.period_code.toUpperCase()} onChange={(event) => updateOverride(row.key, { period_code: event.target.value })}>{draft.periods.map((period) => <option key={period.id} value={period.code.toUpperCase()}>{period.code.toUpperCase()} · {period.name}</option>)}</select>
+          <input aria-label="特殊日期" disabled={!editable} required type="date" value={row.date} onChange={(event) => updateOverride(row.key, { date: event.target.value })} />
+          <select aria-label="特殊日期时段" disabled={!editable} value={row.period_code.toUpperCase()} onChange={(event) => updateOverride(row.key, { period_code: event.target.value })}>{draft.periods.map((period) => <option key={period.id} value={period.code.toUpperCase()}>{period.name}</option>)}</select>
           <label className="capacity-number"><input aria-label="特殊日期容量" disabled={!editable} min="0" type="number" value={row.capacity} onChange={(event) => updateOverride(row.key, { capacity: Number(event.target.value) })} /><span>场</span></label>
           <input aria-label="特殊日期备注" disabled={!editable} placeholder="如：清明假期" value={row.note} onChange={(event) => updateOverride(row.key, { note: event.target.value })} />
           <button aria-label="删除特殊日期容量" className="row-remove" disabled={!editable} type="button" onClick={() => markChanged({ ...draft, date_capacity_overrides: draft.date_capacity_overrides.filter((item) => item.key !== row.key) })}>×</button>
@@ -554,14 +635,27 @@ export function SeasonManagementPage({
       <button className="primary-action" disabled={!dirty || busy} type="button" onClick={() => void submit()}>{busy ? "正在保存…" : "预览并保存"}</button>
     </div>}
     {message && <p className={`season-management-message ${messageTone}`} role="status">{message}</p>}
-    {showCreate && <CreateSeasonDialog client={client} seasons={seasons} sourceSeasonId={seasonId} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onDataChanged(created.id); onSeasonChange(created.id); }} />}
+    {showCreate && <CreateSeasonDialog client={client} seasons={seasons} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onDataChanged(created.id); onSeasonChange(created.id); }} />}
   </div>;
 }
 
-function CreateSeasonDialog({ client, seasons, sourceSeasonId, onClose, onCreated }: {
+function OrderControls({ editable, index, label, total, onMove }: {
+  editable: boolean;
+  index: number;
+  label: string;
+  total: number;
+  onMove: (offset: -1 | 1) => void;
+}) {
+  return <div className="row-order-controls">
+    <span className="row-drag-handle" aria-hidden title="拖动排序">⋮⋮</span>
+    <button aria-label={`上移${label}`} disabled={!editable || index === 0} type="button" onClick={() => onMove(-1)}>↑</button>
+    <button aria-label={`下移${label}`} disabled={!editable || index === total - 1} type="button" onClick={() => onMove(1)}>↓</button>
+  </div>;
+}
+
+function CreateSeasonDialog({ client, seasons, onClose, onCreated }: {
   client: AdminClient;
   seasons: AdminSeason[];
-  sourceSeasonId: string;
   onClose: () => void;
   onCreated: (created: SeasonConfiguration) => Promise<void>;
 }) {
@@ -572,7 +666,7 @@ function CreateSeasonDialog({ client, seasons, sourceSeasonId, onClose, onCreate
     year: defaultYear,
     starts_on: `${defaultYear}-03-01`,
     ends_on: `${defaultYear}-05-31`,
-    template_season_id: sourceSeasonId || null,
+    template_season_id: null,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -589,10 +683,10 @@ function CreateSeasonDialog({ client, seasons, sourceSeasonId, onClose, onCreate
       <form className="season-create-form" onSubmit={(event) => void submit(event)}>
         <label className="wide">赛季名称<input autoFocus required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
         <label>赛事类型<select value={form.competition_type} onChange={(event) => setForm({ ...form, competition_type: event.target.value })}><option value="PKU_CUP">北大杯</option><option value="FRESHMAN_CUP">新生杯</option></select></label>
-        <label>赛季年份<input min="2000" max="2100" required type="number" value={form.year} onChange={(event) => setForm({ ...form, year: Number(event.target.value) })} /></label>
+        <label>赛季年份<input min="1" step="1" required type="number" value={form.year} onChange={(event) => setForm({ ...form, year: Number(event.target.value) })} /></label>
         <label>开始日期<input required type="date" value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} /></label>
         <label>结束日期<input required type="date" value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} /></label>
-        <label className="wide">配置来源<select aria-label="配置来源" value={form.template_season_id ?? ""} onChange={(event) => setForm({ ...form, template_season_id: event.target.value || null })}><option value="">系统默认配置</option>{seasons.map((season) => <option key={season.id} value={season.id}>沿用 {season.year} · {season.name} 的组别、场地、签位与容量</option>)}</select><small>比赛时段始终使用当前系统默认值；第三页的场地时段组合在赛程编排中独立编辑，不从历史赛季复制。</small></label>
+        <label className="wide">配置来源<select aria-label="配置来源" value={form.template_season_id ?? ""} onChange={(event) => setForm({ ...form, template_season_id: event.target.value || null })}><option value="">系统默认配置（推荐）</option>{seasons.map((season) => <option key={season.id} value={season.id}>明确沿用 {season.year} · {season.name} 的组别、场地、签位与容量</option>)}</select><small>默认从当前代码生成组别、三个标准场地、八个标准时段和容量；只有主动选择时才沿用历史配置。比赛时段始终使用当前系统默认值。</small></label>
         {error && <p className="dialog-error wide" role="alert">{error}</p>}
         <div className="dialog-actions wide"><button className="secondary-action" type="button" onClick={onClose}>取消</button><button className="primary-action" disabled={busy} type="submit">{busy ? "正在创建…" : "创建赛季"}</button></div>
       </form>

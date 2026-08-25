@@ -54,7 +54,6 @@ class TeamRosterOut(Schema):
     season_id: UUID
     division_id: UUID
     name: str
-    short_name: str
     active: bool
     version: int
     players: list[RosterPlayerOut]
@@ -190,7 +189,6 @@ def _serialize_team(team: Team) -> dict[str, object]:
         "season_id": team.season_id,
         "division_id": team.division_id,
         "name": team.name,
-        "short_name": team.short_name,
         "active": team.active,
         "version": team.version,
         "players": [

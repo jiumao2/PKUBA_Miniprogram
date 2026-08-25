@@ -4,6 +4,10 @@
 .rule-title, .rule-body { display: block; }
 .rule-title { font-size: 31rpx; font-weight: 900; }
 .rule-body { margin-top: 10rpx; color: #5f5a54; font-size: 28rpx; line-height: 1.7; }
-.contact-line { display: flex; align-items: baseline; justify-content: space-between; margin-top: 34rpx; padding: 22rpx 0; border-bottom: 2rpx solid #272421; }
+.contact-line { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 34rpx; padding: 22rpx 0; border-bottom: 2rpx solid #272421; }
+.contact-line > view { display: grid; gap: 6rpx; }
+.contact-label, .contact-value { display: block; }
 .contact-label { color: #6f6b65; font-size: 27rpx; }
 .contact-value { font-size: 28rpx; font-weight: 850; }
+.contact-copy { min-width: 150rpx; min-height: 76rpx; margin: 0; padding: 0 24rpx; color: #272421; border: 1rpx solid #938c83; border-radius: 8rpx; background: transparent; font-size: 27rpx; font-weight: 800; line-height: 76rpx; }
+.contact-copy::after { border: 0; }

@@ -57,6 +57,9 @@ class AdvancedRecordListOut(Schema):
     total: int
     offset: int
     limit: int
+    search: str
+    sort: str
+    direction: str
     items: list[AdvancedRecordOut]
 
 
@@ -203,10 +206,24 @@ def list_advanced_records(
     model_key: str,
     offset: int = 0,
     limit: int = 50,
+    search: str = "",
+    sort: str = "",
+    direction: str = "desc",
 ):
     del request
     try:
-        return _response(list_records(get_spec(model_key), offset=offset, limit=limit))
+        if direction not in {"asc", "desc"}:
+            raise AdvancedDataError("SORT_DIRECTION_INVALID", "排序方向无效。")
+        return _response(
+            list_records(
+                get_spec(model_key),
+                offset=offset,
+                limit=limit,
+                search=search,
+                sort=sort,
+                direction=direction,
+            )
+        )
     except AdvancedDataError as error:
         return _error(error)
 

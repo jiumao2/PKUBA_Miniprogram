@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   ApiError,
   type AdminSeason,
@@ -67,6 +74,7 @@ export function ArchiveManagementPage({
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
 
   const season = seasons.find((item) => item.id === seasonId) ?? seasons[0];
   const hasActiveJob =
@@ -75,26 +83,38 @@ export function ArchiveManagementPage({
 
   const load = useCallback(async () => {
     if (!season) return;
+    const generation = ++loadGenerationRef.current;
     try {
-      const [nextStorage, nextSeasonJobs, nextSystemJobs, nextPurgeJobs] = await Promise.all([
+      const [nextStorage, nextSeasonJobs, nextSystemJobs, nextPurgeJobs, nextPurgePreview] = await Promise.all([
         client.getArchiveStorageSummary(),
         client.listSeasonExports(season.id),
         client.listSystemBackups(),
         client.listMediaPurgeJobs(season.id),
+        season.status === "ARCHIVED"
+          ? client.previewMediaPurge(season.id)
+          : Promise.resolve(null),
       ]);
+      if (loadGenerationRef.current !== generation) return;
       setStorage(nextStorage);
       setSeasonJobs(nextSeasonJobs.items);
       setSystemJobs(nextSystemJobs.items);
       setPurgeJobs(nextPurgeJobs.items);
-      if (season.status === "ARCHIVED") {
-        setPurgePreview(await client.previewMediaPurge(season.id));
-      } else {
-        setPurgePreview(null);
-      }
+      setPurgePreview(nextPurgePreview);
     } catch (reason: unknown) {
+      if (loadGenerationRef.current !== generation) return;
       setError(reason instanceof Error ? reason.message : "无法读取备份状态");
     }
   }, [client, season?.id, season?.status]);
+
+  useEffect(() => {
+    loadGenerationRef.current += 1;
+    setExternalCopyConfirmed(false);
+    setPurgePreview(null);
+    setSeasonJobs([]);
+    setPurgeJobs([]);
+    setNotice(null);
+    setError(null);
+  }, [season?.id]);
 
   useEffect(() => {
     void load();
@@ -173,6 +193,11 @@ export function ArchiveManagementPage({
 
   const applyPurge = async () => {
     if (!season || !purgePreview) return;
+    if (purgePreview.season_id !== season.id) {
+      setExternalCopyConfirmed(false);
+      setError("赛季已经切换，请重新读取照片清理预览。");
+      return;
+    }
     if (!externalCopyConfirmed) {
       setError("请先确认数据包和照片包已经保存到服务器外。");
       return;

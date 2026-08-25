@@ -170,12 +170,19 @@ def valid_document(scoresheet: GameScoresheet) -> dict[str, object]:
     return document
 
 
-def obtain_lease(scoresheet: GameScoresheet, actor: Account, client_id: str = "web-1") -> str:
+def obtain_lease(
+    scoresheet: GameScoresheet,
+    actor: Account,
+    client_id: str = "web-1",
+    *,
+    archived_correction_confirmed: bool = False,
+) -> str:
     _, token, read_only, _reason = acquire_edit_lease(
         scoresheet_id=scoresheet.id,
         actor=actor,
         client_id=client_id,
         surface=ScoresheetEditLease.Surface.WEB,
+        archived_correction_confirmed=archived_correction_confirmed,
     )
     assert read_only is False
     assert token
@@ -676,12 +683,12 @@ def test_unassigned_table_personnel_can_be_saved_before_recognition(tmp_path):
     token = obtain_lease(scoresheet, setup["admin"], "manual-personnel-tab")
     incoming = copy.deepcopy(scoresheet.draft)
     incoming["recognition"] = {
-        "run_id": "client-forged-run",
-        "notes": "client metadata must not be trusted",
+        "run_id": "manual-table-personnel",
+        "notes": "",
         "table_personnel": ["无法归类人员"],
-        "problem_paths": ["/forged"],
+        "problem_paths": [],
         "issues": [],
-        "applied_at": "not-a-date",
+        "applied_at": timezone.now().isoformat(),
     }
 
     saved = save_draft_changes(
@@ -737,6 +744,219 @@ def test_unassigned_table_personnel_can_be_saved_before_recognition(tmp_path):
     )
     assert saved.draft["recognition"] is None
     assert saved.draft["status"] == "draft"
+
+
+def test_recognition_source_fields_are_server_owned_and_problems_only_shrink(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    scoresheet.draft["recognition"] = {
+        "run_id": "server-run",
+        "notes": "模型原始备注",
+        "table_personnel": ["原人员"],
+        "problem_paths": ["/teams/0/players/0/name", "/officials/scorer/name"],
+        "issues": [
+            {
+                "code": "MODEL_WARNING",
+                "path": "/officials/scorer/name",
+                "message": "待人工核对",
+                "observed": None,
+                "expected": None,
+            }
+        ],
+        "applied_at": timezone.now().isoformat(),
+    }
+    scoresheet.save(update_fields=["draft", "updated_at"])
+    token = obtain_lease(scoresheet, setup["admin"], "recognition-guard")
+
+    forged = copy.deepcopy(scoresheet.draft)
+    forged["header"]["crew_chief"] = "正常人工修改"
+    forged["recognition"]["run_id"] = "client-forged"
+    with pytest.raises(ScoresheetDocumentError) as root_locked:
+        save_draft_changes(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=token,
+            client_id="recognition-guard",
+            surface=ScoresheetEditLease.Surface.WEB,
+            changes=[{"path": "/", "operation": "SET", "value": forged}],
+        )
+    assert root_locked.value.code == "SCORESHEET_FIELD_LOCKED"
+    scoresheet.refresh_from_db()
+    assert scoresheet.draft["header"]["crew_chief"] != "正常人工修改"
+
+    for field, forged_value in (
+        ("run_id", "client-forged"),
+        ("notes", "伪造备注"),
+        ("applied_at", "2099-01-01T00:00:00+00:00"),
+    ):
+        for operation in ("SET", "DELETE"):
+            with pytest.raises(ScoresheetDocumentError) as patch_locked:
+                save_draft_changes(
+                    scoresheet_id=scoresheet.id,
+                    actor=setup["admin"],
+                    expected_version=scoresheet.draft_version,
+                    lease_token=token,
+                    client_id="recognition-guard",
+                    surface=ScoresheetEditLease.Surface.WEB,
+                    changes=[
+                        {
+                            "path": f"/recognition/{field}",
+                            "operation": operation,
+                            "value": forged_value,
+                        }
+                    ],
+                )
+            assert patch_locked.value.code == "SCORESHEET_FIELD_LOCKED"
+
+    original_crew_chief = scoresheet.draft["header"]["crew_chief"]
+    with pytest.raises(ScoresheetDocumentError) as mixed_locked:
+        save_draft_changes(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=token,
+            client_id="recognition-guard",
+            surface=ScoresheetEditLease.Surface.WEB,
+            changes=[
+                {"path": "/header/crew_chief", "value": "不能部分写入"},
+                {"path": "/recognition/run_id", "value": "client-forged"},
+            ],
+        )
+    assert mixed_locked.value.code == "SCORESHEET_FIELD_LOCKED"
+    scoresheet.refresh_from_db()
+    assert scoresheet.draft["header"]["crew_chief"] == original_crew_chief
+
+    forbidden_problem_edits = (
+        {
+            "path": "/recognition/problem_paths",
+            "value": [*scoresheet.draft["recognition"]["problem_paths"], "/header/venue"],
+        },
+        {"path": "/recognition/problem_paths/0", "operation": "DELETE"},
+        {"path": "/recognition/issues/0/message", "operation": "DELETE"},
+        {
+            "path": "/recognition/issues",
+            "value": [
+                {
+                    **scoresheet.draft["recognition"]["issues"][0],
+                    "message": "客户端改写的问题",
+                }
+            ],
+        },
+    )
+    for change in forbidden_problem_edits:
+        with pytest.raises(ScoresheetDocumentError) as problem_locked:
+            save_draft_changes(
+                scoresheet_id=scoresheet.id,
+                actor=setup["admin"],
+                expected_version=scoresheet.draft_version,
+                lease_token=token,
+                client_id="recognition-guard",
+                surface=ScoresheetEditLease.Surface.WEB,
+                changes=[change],
+            )
+        assert problem_locked.value.code == "SCORESHEET_FIELD_LOCKED"
+
+    forged_problem_document = copy.deepcopy(scoresheet.draft)
+    forged_problem_document["recognition"]["issues"].append(
+        {
+            "code": "CLIENT_WARNING",
+            "path": "/header/venue",
+            "message": "客户端新增的问题",
+            "observed": None,
+            "expected": None,
+        }
+    )
+    with pytest.raises(ScoresheetDocumentError) as document_locked:
+        save_draft_changes(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=token,
+            client_id="recognition-guard",
+            surface=ScoresheetEditLease.Surface.WEB,
+            changes=[{"path": "/", "operation": "SET", "value": forged_problem_document}],
+        )
+    assert document_locked.value.code == "SCORESHEET_FIELD_LOCKED"
+
+    reduced = copy.deepcopy(scoresheet.draft)
+    reduced["recognition"]["problem_paths"] = ["/officials/scorer/name"]
+    reduced["recognition"]["issues"] = []
+    saved = save_draft_changes(
+        scoresheet_id=scoresheet.id,
+        actor=setup["admin"],
+        expected_version=scoresheet.draft_version,
+        lease_token=token,
+        client_id="recognition-guard",
+        surface=ScoresheetEditLease.Surface.WEB,
+        changes=[{"path": "/", "operation": "SET", "value": reduced}],
+    )
+    assert saved.draft["recognition"]["problem_paths"] == ["/officials/scorer/name"]
+    assert saved.draft["recognition"]["issues"] == []
+
+
+def test_scoresheet_queue_is_server_prioritized_searchable_and_paginated(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, _, _, _, scoresheet = create_scoresheet()
+    scoresheet.status = GameScoresheet.Status.DRAFT
+    scoresheet.save(update_fields=["status", "updated_at"])
+
+    client = Client()
+    client.force_login(setup["admin"])
+    first_page = client.get(
+        "/api/v1/scoresheets/",
+        {"scope": "ACTION_REQUIRED", "page": 1, "page_size": 1},
+    )
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    assert first_payload["total"] == 2
+    assert first_payload["division_names"] == [setup["division"].name]
+    assert len(first_payload["items"]) == 1
+    assert first_payload["items"][0]["game_id"] == str(scoresheet.game_id)
+    assert first_payload["items"][0]["status"] == GameScoresheet.Status.DRAFT
+
+    second_page = client.get(
+        "/api/v1/scoresheets/",
+        {"scope": "ACTION_REQUIRED", "page": 2, "page_size": 1},
+    )
+    assert second_page.status_code == 200
+    assert second_page.json()["items"][0]["status"] == GameScoresheet.Status.NO_SOURCE
+
+    search = client.get(
+        "/api/v1/scoresheets/",
+        {"scope": "ALL", "query": "测试球队 1", "page": 1, "page_size": 20},
+    )
+    assert search.status_code == 200
+    assert search.json()["total"] == 1
+    assert search.json()["items"][0]["game_id"] == str(scoresheet.game_id)
+
+    in_progress = client.get(
+        "/api/v1/scoresheets/",
+        {"scope": "IN_PROGRESS", "page": 1, "page_size": 20},
+    )
+    assert in_progress.status_code == 200
+    assert in_progress.json()["total"] == 0
+
+    exact = client.get(
+        "/api/v1/scoresheets/",
+        {"game_id": scoresheet.game_id, "page": 1, "page_size": 1},
+    )
+    assert exact.status_code == 200
+    assert exact.json()["total"] == 1
+    assert exact.json()["items"][0]["game_id"] == str(scoresheet.game_id)
+
+    upload_only = client.get(
+        "/api/v1/scoresheets/",
+        {
+            "season_id": setup["season"].id,
+            "processing": "UPLOAD",
+            "page": 1,
+            "page_size": 20,
+        },
+    )
+    assert upload_only.status_code == 200
+    assert upload_only.json()["total"] == 1
+    assert upload_only.json()["items"][0]["status"] == GameScoresheet.Status.NO_SOURCE
 
 
 def test_publish_does_not_require_region_reviews_and_keeps_field_change_log(tmp_path):
@@ -1252,6 +1472,129 @@ def test_published_source_correction_is_superadmin_only_and_old_publication_stay
         assert blocked_lease.status_code == 200
         assert blocked_lease.json()["read_only"] is True
         assert "普通管理员" in blocked_lease.json()["read_only_reason"]
+
+
+def test_archived_published_scoresheet_requires_explicit_web_correction_and_republishes(
+    tmp_path,
+):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, game, _, _, scoresheet = create_scoresheet()
+        token = obtain_lease(scoresheet, setup["admin"])
+        scoresheet = make_ready(scoresheet, setup["admin"], token)
+        first_publication = publish_scoresheet(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=token,
+            client_id="web-1",
+            surface=ScoresheetEditLease.Surface.WEB,
+        )
+        scoresheet.refresh_from_db()
+
+        prearchive_token = obtain_lease(scoresheet, setup["admin"], "archive-correction")
+        game.season.status = game.season.Status.ARCHIVED
+        game.season.save(update_fields=["status", "updated_at"])
+
+        with pytest.raises(ScoresheetError) as stale_lease:
+            save_draft_changes(
+                scoresheet_id=scoresheet.id,
+                actor=setup["admin"],
+                expected_version=scoresheet.draft_version,
+                lease_token=prearchive_token,
+                client_id="archive-correction",
+                surface=ScoresheetEditLease.Surface.WEB,
+                changes=[{"path": "/officials/0/name", "value": "不应写入"}],
+            )
+        assert stale_lease.value.code == "SEASON_ARCHIVED"
+
+        for actor, surface, confirmed in (
+            (setup["admin"], ScoresheetEditLease.Surface.WEB, False),
+            (setup["ordinary_admin"], ScoresheetEditLease.Surface.WEB, True),
+            (setup["admin"], ScoresheetEditLease.Surface.MINIAPP, True),
+        ):
+            _, blocked_token, read_only, reason = acquire_edit_lease(
+                scoresheet_id=scoresheet.id,
+                actor=actor,
+                client_id=f"blocked-{surface}-{actor.id}",
+                surface=surface,
+                archived_correction_confirmed=confirmed,
+            )
+            assert read_only is True
+            assert blocked_token is None
+            assert "已归档赛季" in reason
+
+        change_count = scoresheet.change_logs.count()
+        audit_count = AdminAuditLog.objects.count()
+        read_client = Client()
+        read_client.force_login(setup["admin"])
+        assert read_client.get(f"/api/v1/scoresheets/{scoresheet.id}").status_code == 200
+        assert read_client.get(f"/api/v1/scoresheets/{scoresheet.id}/sync").status_code == 200
+        assert scoresheet.change_logs.count() == change_count
+        assert AdminAuditLog.objects.count() == audit_count
+
+        lease, correction_token, read_only, _ = acquire_edit_lease(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            client_id="archive-correction",
+            surface=ScoresheetEditLease.Surface.WEB,
+            resume_token=prearchive_token,
+            archived_correction_confirmed=True,
+        )
+        assert read_only is False
+        assert correction_token == prearchive_token
+        assert lease is not None and lease.archived_correction is True
+        assert AdminAuditLog.objects.filter(
+            action="ARCHIVED_SCORESHEET_CORRECTION_OPENED",
+            object_id=scoresheet.id,
+        ).count() == 1
+
+        save_draft_changes(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=correction_token,
+            client_id="archive-correction",
+            surface=ScoresheetEditLease.Surface.WEB,
+            changes=[{"path": "/officials/0/name", "value": "归档纠错记录员"}],
+            explicit_save=True,
+        )
+        scoresheet.refresh_from_db()
+        validate_scoresheet(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=correction_token,
+            client_id="archive-correction",
+            surface=ScoresheetEditLease.Surface.WEB,
+        )
+        scoresheet.refresh_from_db()
+        warning_ids = [row["id"] for row in scoresheet.validation_report.get("warnings", [])]
+        if warning_ids:
+            acknowledge_warnings(
+                scoresheet_id=scoresheet.id,
+                actor=setup["admin"],
+                expected_version=scoresheet.draft_version,
+                lease_token=correction_token,
+                client_id="archive-correction",
+                surface=ScoresheetEditLease.Surface.WEB,
+                warning_ids=warning_ids,
+            )
+            scoresheet.refresh_from_db()
+        second_publication = publish_scoresheet(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=correction_token,
+            client_id="archive-correction",
+            surface=ScoresheetEditLease.Surface.WEB,
+        )
+
+        assert second_publication.publication_number == 2
+        assert second_publication.supersedes_id == first_publication.id
+        assert second_publication.snapshot["officials"][0]["name"] == "归档纠错记录员"
+        assert ScoresheetPublication.objects.filter(scoresheet=scoresheet).count() == 2
+        game.season.refresh_from_db()
+        assert game.season.status == game.season.Status.ARCHIVED
 
 
 def test_publish_rejects_tampered_validation_and_stale_game_prior(tmp_path):

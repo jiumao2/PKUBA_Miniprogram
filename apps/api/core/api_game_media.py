@@ -143,7 +143,7 @@ def _serialize_asset(
         "game_code": asset.game.code,
         "game_label": (
             f"{asset.game.division.name} · "
-            f"{asset.game.home_display} vs {asset.game.away_display}"
+            f"{asset.game.home_display} — {asset.game.away_display}"
         ),
         "kind": asset.kind,
         "storage_status": asset.storage_status,

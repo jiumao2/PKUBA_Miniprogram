@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from django.db import IntegrityError, transaction
 from django.test import override_settings
 from django.utils import timezone
 from openpyxl import load_workbook
@@ -213,7 +214,6 @@ def test_confirm_replaces_unreferenced_setup_snapshot_preserves_00_and_closes_re
     }
     assert RosterPlayer.objects.get(name="张三").jersey_number == "00"
     assert RosterPlayer.objects.get(name="李四").jersey_number == ""
-    assert Team.objects.get(name="新球队").short_name == ""
     setup["season"].refresh_from_db()
     assert setup["season"].version == 2
     assert roster_import_readiness(setup["season"])["ready"] is False
@@ -307,6 +307,33 @@ def test_online_add_and_published_maintenance_use_stable_ids_versions_and_previe
     assert updated.version == team.version + 1
     assert updated.roster.filter(name="李四", jersey_number="8").exists()
     assert AdminAuditLog.objects.filter(action="roster.team.save", object_id=team.id).exists()
+
+
+def test_active_jersey_numbers_are_unique_in_service_and_database():
+    setup = _setup()
+    with pytest.raises(RosterManagementError) as duplicate:
+        create_team_with_roster(
+            actor=setup["actor"],
+            season=setup["season"],
+            division_id=setup["divisions"][0].id,
+            name="号码冲突球队",
+            players=[
+                {"name": "张三", "jersey_number": "7", "active": True},
+                {"name": "李四", "jersey_number": "7", "active": True},
+            ],
+            expected_season_version=setup["season"].version,
+        )
+    assert duplicate.value.code == "DUPLICATE_JERSEY_NUMBER"
+
+    team = Team.objects.create(
+        season=setup["season"],
+        division=setup["divisions"][0],
+        name="数据库约束球队",
+    )
+    RosterPlayer.objects.create(team=team, name="王一", jersey_number="8", active=True)
+    RosterPlayer.objects.create(team=team, name="王二", jersey_number="8", active=False)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        RosterPlayer.objects.create(team=team, name="王三", jersey_number="8", active=True)
 
 
 REFERENCE_PATH = Path(

@@ -7,6 +7,11 @@ import time
 from django.core.management.base import BaseCommand
 
 from core.services.scoresheet_recognition import run_once
+from core.services.system_write_fence import (
+    SystemWriteFenceActive,
+    shared_system_write_access,
+)
+from core.services.worker_health import touch_worker_heartbeat
 
 
 class Command(BaseCommand):
@@ -19,7 +24,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         worker_name = f"{socket.gethostname()}:{os.getpid()}"
         while True:
-            outcome = run_once(worker_name)
+            touch_worker_heartbeat("scoresheet", worker_name)
+            try:
+                with shared_system_write_access():
+                    outcome = run_once(worker_name)
+            except SystemWriteFenceActive:
+                outcome = None
+            touch_worker_heartbeat("scoresheet", worker_name, details={"last_outcome": outcome})
             if outcome:
                 self.stdout.write(outcome)
             if options["once"]:

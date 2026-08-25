@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import socket
 import time
 from datetime import timedelta
 
@@ -11,6 +13,11 @@ from django.utils import timezone
 
 from core.models import EmailOutbox
 from core.services.inbox_tasks import create_email_failure_tasks
+from core.services.system_write_fence import (
+    SystemWriteFenceActive,
+    shared_system_write_access,
+)
+from core.services.worker_health import touch_worker_heartbeat
 
 
 class Command(BaseCommand):
@@ -21,8 +28,15 @@ class Command(BaseCommand):
         parser.add_argument("--interval", type=int, default=10)
 
     def handle(self, *args, **options):
+        worker = f"{socket.gethostname()}:{os.getpid()}"
         while True:
-            sent = self.process_one()
+            touch_worker_heartbeat("outbox", worker)
+            try:
+                with shared_system_write_access():
+                    sent = self.process_one()
+            except SystemWriteFenceActive:
+                sent = False
+            touch_worker_heartbeat("outbox", worker, details={"sent": sent})
             if not options["loop"]:
                 break
             if not sent:

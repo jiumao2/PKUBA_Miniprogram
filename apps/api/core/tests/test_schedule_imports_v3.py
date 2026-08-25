@@ -151,7 +151,7 @@ def _setup():
 def _filled_workbook(setup) -> bytes:
     workbook = load_workbook(BytesIO(generate_schedule_template(setup["season"])))
     grid = workbook["赛程网格"]
-    # V3.2 的列头属于工作簿本身：测试把默认网格改成两列常规场地和一列决赛场地。
+    # V3.3 的列头属于工作簿本身：测试把默认网格改成两列常规场地和一列决赛场地。
     grid.cell(5, GRID_START_COLUMN + 2, "18:30")
     grid.cell(6, GRID_START_COLUMN + 2, "邱德拔（仅决赛）")
     grid.cell(5, GRID_START_COLUMN + 3).value = None

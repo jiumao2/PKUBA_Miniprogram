@@ -18,6 +18,9 @@ export default defineConfig({
     PKUBA_API_BASE_URL: JSON.stringify(
       process.env.PKUBA_API_BASE_URL ?? "http://localhost:8088",
     ),
+    PKUBA_ADMIN_WEB_URL: JSON.stringify(
+      process.env.PKUBA_ADMIN_WEB_URL ?? "http://localhost:5173",
+    ),
   },
   mini: {
     postcss: {

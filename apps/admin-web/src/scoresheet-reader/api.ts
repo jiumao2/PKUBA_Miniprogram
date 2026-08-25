@@ -5,7 +5,9 @@ import type {
   DocumentChangeLogPage,
   DocumentRecognitionResponse,
   GameDetail,
+  GameQueueQuery,
   GameSummary,
+  GameSummaryPage,
   RecognitionDiff,
   RecognitionRun,
   ScoresheetDocument,
@@ -178,6 +180,7 @@ async function acquire(documentId: string): Promise<LeaseSession> {
       clientId(),
       'WEB',
       resumeToken,
+      new URLSearchParams(window.location.search).get('archived_correction') === '1',
     )) as unknown as RawLease;
     const session = {
       token: response.lease_token,
@@ -335,6 +338,13 @@ async function loadRawDetail(documentId: string): Promise<RawDetail> {
   return raw;
 }
 
+async function loadGameSummary(gameId: string): Promise<GameSummary> {
+  const page = await admin.getScoresheetQueuePage({ gameId, page: 1, pageSize: 1 });
+  const game = (page.items as unknown as RawQueue[]).map(gameFromQueue)[0];
+  if (!game) throw new Error('比赛不存在或当前账号无权查看。');
+  return game;
+}
+
 export const api = {
   async health(): Promise<{ status: string; recognition: string; master_data: string }> {
     const capability = await admin.getScoresheetRecognitionCapabilities();
@@ -353,25 +363,23 @@ export const api = {
     return response.json() as Promise<TemplateDefinition>;
   },
 
-  async games(seasonId = ""): Promise<GameSummary[]> {
-    const rows = (await admin.listScoresheets(seasonId || undefined)) as unknown as RawQueue[];
-    return rows.map(gameFromQueue);
+  async games(options: GameQueueQuery = {}): Promise<GameSummaryPage> {
+    const page = await admin.getScoresheetQueuePage(options);
+    return {
+      ...page,
+      items: (page.items as unknown as RawQueue[]).map(gameFromQueue),
+    };
   },
 
   async game(id: string): Promise<GameDetail> {
-    const game = ((await admin.listScoresheets()) as unknown as RawQueue[])
-      .map(gameFromQueue)
-      .find((row) => row.id === id);
-    if (!game) throw new Error('比赛不存在或当前账号无权查看。');
+    const game = await loadGameSummary(id);
     const detail = game.document_id ? documentFromDetail(await loadRawDetail(game.document_id)) : null;
     return { ...game, prior: detail?.game_prior ?? null };
   },
 
   async createGameDocument(gameId: string, file: File): Promise<DocumentRecognitionResponse> {
     await admin.uploadAdminGameMedia(gameId, 'SCORESHEET', true, file);
-    const game = ((await admin.listScoresheets()) as unknown as RawQueue[])
-      .map(gameFromQueue)
-      .find((row) => row.id === gameId);
+    const game = await loadGameSummary(gameId);
     if (!game?.document_id) throw new Error('记录表原图已上传，但服务端未创建共享草稿。');
     clearLease(game.document_id);
     await acquire(game.document_id);

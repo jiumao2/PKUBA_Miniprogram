@@ -13,6 +13,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+const emptyGamePage = {
+  items: [], total: 0, page: 1, page_size: 20, division_names: [],
+};
+
 beforeEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
@@ -23,6 +27,11 @@ beforeEach(() => {
     serverRevision: 0,
     template: makeTemplate(),
     games: [],
+    gamesTotal: 0,
+    gamesPage: 1,
+    gamesPageSize: 20,
+    gamesScope: 'ACTION_REQUIRED',
+    gamesQuery: '',
     gamesLoading: false,
     recognitionMode: 'mock',
     validation: null,
@@ -92,7 +101,7 @@ describe('editor persistence and history', () => {
     });
     vi.spyOn(api, 'streamRecognition').mockResolvedValue(succeeded);
     vi.spyOn(api, 'document').mockResolvedValue(recognized);
-    vi.spyOn(api, 'games').mockResolvedValue([]);
+    vi.spyOn(api, 'games').mockResolvedValue(emptyGamePage);
     const manualStart = vi.spyOn(api, 'createRecognition');
 
     await useEditorStore.getState().uploadForGame(
@@ -140,7 +149,7 @@ describe('editor persistence and history', () => {
       document: replacement,
       recognition_run: run,
     });
-    vi.spyOn(api, 'games').mockResolvedValue([]);
+    vi.spyOn(api, 'games').mockResolvedValue(emptyGamePage);
 
     const file = new File(['same image'], 'same.png', { type: 'image/png' });
     await useEditorStore.getState().reupload(current.id, file);
@@ -184,7 +193,7 @@ describe('editor persistence and history', () => {
 
   it('opens with a blank template when no real document can be restored', async () => {
     vi.spyOn(api, 'template').mockResolvedValue(makeTemplate());
-    vi.spyOn(api, 'games').mockResolvedValue([]);
+    vi.spyOn(api, 'games').mockResolvedValue(emptyGamePage);
     vi.spyOn(api, 'health').mockResolvedValue({ status: 'ok', recognition: 'mock', master_data: 'ready' });
     useEditorStore.setState({ document: null, template: null, loading: true });
 
@@ -205,7 +214,7 @@ describe('editor persistence and history', () => {
     document.source.original_url = '/api/v1/documents/real-document/source';
     localStorage.setItem('scoresheet-reader:last-document-id', document.id);
     vi.spyOn(api, 'template').mockResolvedValue(makeTemplate());
-    vi.spyOn(api, 'games').mockResolvedValue([]);
+    vi.spyOn(api, 'games').mockResolvedValue(emptyGamePage);
     vi.spyOn(api, 'health').mockResolvedValue({ status: 'ok', recognition: 'mock', master_data: 'ready' });
     vi.spyOn(api, 'document').mockResolvedValue(document);
     vi.spyOn(api, 'latestRecognition').mockResolvedValue(null);
@@ -229,11 +238,13 @@ describe('editor persistence and history', () => {
     localStorage.setItem('scoresheet-reader:last-document-id', 'unrelated-document');
     window.history.replaceState(null, '', '/scoresheet.html?season_id=season-2026&game_id=linked-game');
     vi.spyOn(api, 'template').mockResolvedValue(makeTemplate());
-    const gamesSpy = vi.spyOn(api, 'games').mockResolvedValue([{
+    const gamesSpy = vi.spyOn(api, 'games').mockResolvedValue(emptyGamePage);
+    vi.spyOn(api, 'game').mockResolvedValue({
       id: 'linked-game', competition: '正式比赛', division: '女篮', date: '2026-08-22',
       scheduled_time: '20:00', venue: '第一体育馆', team_a_name: '物院', team_b_name: '化院',
       ready: true, unavailable_reason: '', document_id: 'linked-document', scoresheet_state: 'recognized',
-    }]);
+      prior: document.game_prior,
+    });
     vi.spyOn(api, 'health').mockResolvedValue({ status: 'ok', recognition: 'mock', master_data: 'ready' });
     const documentSpy = vi.spyOn(api, 'document').mockResolvedValue(document);
     vi.spyOn(api, 'latestRecognition').mockResolvedValue(null);
@@ -241,7 +252,9 @@ describe('editor persistence and history', () => {
 
     await useEditorStore.getState().initialize();
 
-    expect(gamesSpy).toHaveBeenCalledWith('season-2026');
+    expect(gamesSpy).toHaveBeenCalledWith({
+      seasonId: 'season-2026', scope: 'ACTION_REQUIRED', page: 1, pageSize: 20,
+    });
     expect(documentSpy).toHaveBeenCalledWith('linked-document');
     expect(useEditorStore.getState().document?.id).toBe('linked-document');
     expect(useEditorStore.getState().seasonId).toBe('season-2026');
@@ -251,7 +264,7 @@ describe('editor persistence and history', () => {
     const legacy = makeDocument('synthetic-preview');
     localStorage.setItem('scoresheet-reader:last-document-id', legacy.id);
     vi.spyOn(api, 'template').mockResolvedValue(makeTemplate());
-    vi.spyOn(api, 'games').mockResolvedValue([]);
+    vi.spyOn(api, 'games').mockResolvedValue(emptyGamePage);
     vi.spyOn(api, 'health').mockResolvedValue({ status: 'ok', recognition: 'mock', master_data: 'ready' });
     vi.spyOn(api, 'document').mockResolvedValue(legacy);
     useEditorStore.setState({ document: null, template: null, loading: true });
@@ -395,7 +408,7 @@ describe('editor persistence and history', () => {
       status: 'valid', issues: [], checked_at: '2026-08-21T00:00:00Z',
     });
     vi.spyOn(api, 'confirm').mockResolvedValue(confirmed);
-    vi.spyOn(api, 'games').mockResolvedValue([]);
+    vi.spyOn(api, 'games').mockResolvedValue(emptyGamePage);
     vi.spyOn(api, 'leaseState').mockReturnValue(null);
     vi.spyOn(api, 'sync').mockResolvedValue({
       current_version: 1,

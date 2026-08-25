@@ -10,6 +10,7 @@ import {
 type AdminClient = ReturnType<typeof createAdminClient>;
 type PendingAction =
   | { type: "promote"; account: AdminManagedAccount }
+  | { type: "demote"; account: AdminManagedAccount }
   | { type: "active"; account: AdminManagedAccount; active: boolean };
 
 export function AdminAccountsPage({
@@ -60,7 +61,10 @@ export function AdminAccountsPage({
     try {
       if (pending.type === "promote") {
         await client.promoteAdmin(pending.account.id, pending.account.version);
-        setMessage(`${accountName(pending.account)} 已升级为超级管理员；系统不提供降级操作。`);
+        setMessage(`${accountName(pending.account)} 已升级为超级管理员。`);
+      } else if (pending.type === "demote") {
+        await client.demoteSuperadmin(pending.account.id, pending.account.version);
+        setMessage(`${accountName(pending.account)} 已降级为普通管理员，审计日志已生成。`);
       } else {
         await client.setAdminActive(
           pending.account.id,
@@ -122,7 +126,7 @@ export function AdminAccountsPage({
           <p className="eyebrow">权限边界</p>
           <h2>管理员账户</h2>
           <p>
-            普通管理员只能升级为超级管理员，应用内永久不提供降级。停用与恢复是独立操作，且系统会保护最后一个有效超级管理员。
+            超级管理员可以升级普通管理员，也可以降级其他超级管理员。系统禁止自我降级，并保护最后一个有效超级管理员。
           </p>
         </div>
         <button className="secondary-action" disabled={loading} onClick={() => void load()} type="button">
@@ -211,6 +215,15 @@ export function AdminAccountsPage({
                       升级
                     </button>
                   )}
+                  {item.role === "SUPERADMIN" && item.id !== account.id && (
+                    <button
+                      className="text-action destructive"
+                      onClick={() => setPending({ type: "demote", account: item })}
+                      type="button"
+                    >
+                      降级
+                    </button>
+                  )}
                   <button
                     className={item.is_active ? "text-action destructive" : "text-action"}
                     onClick={() =>
@@ -257,12 +270,16 @@ function accountName(account: AdminManagedAccount): string {
 
 function confirmationTitle(action: PendingAction): string {
   if (action.type === "promote") return `升级 ${accountName(action.account)}？`;
+  if (action.type === "demote") return `降级 ${accountName(action.account)}？`;
   return `${action.active ? "恢复" : "停用"} ${accountName(action.account)}？`;
 }
 
 function confirmationDetail(action: PendingAction): string {
   if (action.type === "promote") {
-    return "升级后该账号可执行赛季、赛程和账号级危险操作，并且应用内不能降级。";
+    return "升级后该账号可执行赛季、赛程和账号级危险操作。";
+  }
+  if (action.type === "demote") {
+    return "降级后该账号保留普通管理员权限，但不能再执行赛季、赛程和账号级危险操作；最后一个有效超级管理员不能被降级。";
   }
   if (action.active) return "恢复后，该账号将重新获得原有管理员权限。";
   return "停用会立即阻止该账号继续登录；最后一个有效超级管理员不能被停用。";

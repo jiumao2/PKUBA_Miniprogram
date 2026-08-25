@@ -113,6 +113,41 @@ def _update_payload(configuration: dict[str, object]) -> dict[str, object]:
     }
 
 
+def test_superadmin_cannot_create_duplicate_competition_type_and_year():
+    actor = _superadmin()
+    client = Client(enforce_csrf_checks=True)
+    csrf_token = login_admin(client, actor)
+    payload = {
+        "name": "2035 北大杯",
+        "competition_type": Season.CompetitionType.PKU_CUP,
+        "year": 2035,
+        "starts_on": "2035-03-01",
+        "ends_on": "2035-05-31",
+        "template_season_id": None,
+    }
+
+    first = client.post(
+        "/api/v1/admin/seasons",
+        data=json.dumps(payload),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+    second = client.post(
+        "/api/v1/admin/seasons",
+        data=json.dumps({**payload, "name": "同年重复赛季"}),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+    assert second.json()["code"] == "SEASON_ALREADY_EXISTS"
+    assert Season.objects.filter(
+        competition_type=Season.CompetitionType.PKU_CUP,
+        year=2035,
+    ).count() == 1
+
+
 def test_superadmin_can_create_setup_season_from_historical_configuration():
     setup = reschedule_setup()
     source_period = setup["season"].periods.order_by("sort_order").first()
@@ -190,6 +225,12 @@ def test_default_pku_cup_leaves_schedule_grid_to_independent_draft():
         "五四东三",
     ]
     assert created["date_capacity_overrides"] == []
+    capacities = {
+        row["start_time"][:5]: row["default_capacities"]
+        for row in created["periods"]
+    }
+    assert capacities["18:30"] == {"WEEKDAY": 0, "WEEKEND": 0}
+    assert capacities["20:30"] == {"WEEKDAY": 0, "WEEKEND": 0}
     assert Venue.objects.filter(season_id=created["id"], is_standard=True).count() == 3
     assert not Venue.objects.filter(season_id=created["id"], name="邱德拔").exists()
     assert created["grid_columns"] == []
@@ -279,12 +320,13 @@ def test_configuration_update_is_atomic_versioned_and_audited():
     assert updated["name"] == "下一届北大杯（筹备）"
     assert updated["version"] == created["version"] + 1
     assert [row["name"] for row in updated["divisions"]] == ["男甲", "女甲"]
-    assert updated["divisions"][0]["sort_order"] == 0
+    assert updated["divisions"][0]["sort_order"] == 1
+    assert updated["divisions"][1]["code"] == "women-1"
     assert updated["periods"][0]["default_capacities"] == {
         "WEEKDAY": 1,
         "WEEKEND": 3,
     }
-    assert updated["periods"][0]["sort_order"] == 0
+    assert updated["periods"][0]["sort_order"] == 1
     assert AdminAuditLog.objects.filter(
         action="SEASON_CONFIGURATION_UPDATED", object_id=created["id"]
     ).exists()

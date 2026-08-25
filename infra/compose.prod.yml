@@ -29,6 +29,7 @@ services:
     environment:
       PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
       PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
+      PKUBA_REQUIRED_WORKERS: ${PKUBA_REQUIRED_WORKERS:-scoresheet,archive,expiry}
     command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 600
     expose:
       - "8000"

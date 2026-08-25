@@ -1,4 +1,11 @@
 {
   "desc": "PKUBA 当前公开赛季页面",
-  "rules": [{ "action": "allow", "page": "*" }]
+  "rules": [
+    { "action": "allow", "page": "pages/home/index" },
+    { "action": "allow", "page": "pages/schedule/index" },
+    { "action": "allow", "page": "pages/standings/index" },
+    { "action": "allow", "page": "pages/data/index" },
+    { "action": "allow", "page": "pages/game-media/index" },
+    { "action": "disallow", "page": "*" }
+  ]
 }

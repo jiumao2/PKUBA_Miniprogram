@@ -96,8 +96,10 @@ install -o root -g root -m 755 "$script_dir/deploy-gateway.sh" \
   /usr/local/sbin/pkuba-deploy-gateway
 install -o root -g root -m 755 "$script_dir/deploy-release.sh" \
   /usr/local/sbin/pkuba-deploy-release
+install -o root -g root -m 755 "$script_dir/deploy-blue-green.sh" \
+  /usr/local/sbin/pkuba-deploy-blue-green
 printf '%s\n' \
-  "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-deploy-release *" \
+  "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-deploy-blue-green *" \
   >/etc/sudoers.d/pkuba-deploy
 chmod 440 /etc/sudoers.d/pkuba-deploy
 visudo --check --file=/etc/sudoers.d/pkuba-deploy >/dev/null
@@ -135,15 +137,18 @@ PKUBA_DEPLOY_PREFLIGHT_WAIT_SECONDS=900
 PKUBA_DEPLOY_MIN_HEADROOM_BYTES=2147483648
 PKUBA_ENFORCE_DATA_GATE=$((1 - allow_synthetic_test_data))
 PKUBA_ENABLE_EMAIL_PROFILE=0
+PKUBA_PRODUCTION_AUTOMATION_ARMED=0
 EOF
 chmod 600 /etc/pkuba-deploy.conf
 
 cat >"$state_dir/current.env" <<EOF
+ACTIVE_SLOT=uninitialized
 CURRENT_TAG=$current_tag
 CURRENT_COMMIT=$current_commit
 CURRENT_API_IMAGE=$current_api_image
 CURRENT_WEB_IMAGE=$current_web_image
 CURRENT_RELEASE_DIR=$current_release_dir
+BASELINE_CONVERSION_REQUIRED=1
 EOF
 chmod 600 "$state_dir/current.env"
 
@@ -154,5 +159,6 @@ Next one-time checks:
 1. docker login ghcr.io with a read:packages-only token.
 2. Add the private half of $deploy_public_key_file to PROD_SSH_PRIVATE_KEY.
 3. Pin this server's host key in PROD_SSH_KNOWN_HOSTS.
-4. Test the forced command with a known release before disabling root/password SSH.
+4. Do not run the forced deploy command yet: blue/green baseline conversion is still required.
+5. Keep PKUBA_PRODUCTION_AUTOMATION_ARMED=0 until isolated rehearsals pass.
 EOF

@@ -128,6 +128,30 @@ def test_team_leaderboard_uses_completed_and_forfeit_games_only():
     assert body["items"][2]["games_played"] == 1
 
 
+def test_team_leaderboard_includes_every_active_zero_game_team():
+    season, division, _teams, _games = _setup()
+    zero_game_team = Team.objects.create(
+        season=season,
+        division=division,
+        name="零场球队",
+        active=True,
+    )
+
+    response = Client().get(
+        "/api/v1/public/leaderboards/teams",
+        {"division_id": division.id, "sort": "total_points", "order": "desc"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 4
+    row = next(item for item in body["items"] if item["team_id"] == str(zero_game_team.id))
+    assert row["games_played"] == 0
+    assert row["wins"] == 0
+    assert row["points_for"] == 0
+    assert row["points_per_game"] == 0.0
+
+
 def test_player_leaderboard_counts_only_current_publication():
     _season, division, teams, games = _setup()
     actor = Account.objects.create_user(

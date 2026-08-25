@@ -68,4 +68,23 @@ describe("ScheduleOverview", () => {
     expect(html).toContain("38");
     expect(html).toContain("二体二号场");
   });
+
+  it("keeps both team names but never renders VS for an unscored game", () => {
+    const html = renderToStaticMarkup(
+      <ScheduleOverview
+        gameDays={groupGamesByDate([{
+          ...baseGame,
+          status: "SCHEDULED",
+          home_score: null,
+          away_score: null,
+        }])}
+        today="2026-05-10"
+      />,
+    );
+
+    expect(html).toContain("甲队");
+    expect(html).toContain("乙队");
+    expect(html).toContain("尚无比分");
+    expect(html).not.toMatch(/>\s*vs\s*</i);
+  });
 });

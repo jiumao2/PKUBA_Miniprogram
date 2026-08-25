@@ -14,6 +14,7 @@ from django.utils import timezone
 from core.models import (
     Account,
     AdminAuditLog,
+    DatePeriodCapacityOverride,
     Game,
     Period,
     RescheduleRequest,
@@ -254,6 +255,7 @@ def available_reschedule_targets(
     occupancy: defaultdict[tuple[date, UUID], int] = defaultdict(int)
     occupied_venues: defaultdict[tuple[date, UUID], set[UUID]] = defaultdict(set)
     team_conflicts: set[tuple[date, UUID]] = set()
+    candidate_dates = [game.season.starts_on, game.season.ends_on, game.date]
     team_ids = {game.home_team_id, game.away_team_id}
     formal_rows = (
         Game.objects.filter(season=game.season)
@@ -268,6 +270,7 @@ def available_reschedule_targets(
     )
     venue_ids_by_name = {item.name: item.id for item in venues}
     for row in formal_rows:
+        candidate_dates.append(row["date"])
         key = (row["date"], row["period_id"])
         occupancy[key] += 1
         if row["venue_name"] in venue_ids_by_name:
@@ -285,6 +288,7 @@ def available_reschedule_targets(
         "request__game__away_team_id",
     )
     for row in active_reservation_rows:
+        candidate_dates.append(row["date"])
         key = (row["date"], row["period_id"])
         occupancy[key] += 1
         occupied_venues[key].add(row["venue_id"])
@@ -293,9 +297,16 @@ def available_reschedule_targets(
             or row["request__game__away_team_id"] in team_ids
         ):
             team_conflicts.add(key)
+    candidate_dates.extend(
+        DatePeriodCapacityOverride.objects.filter(
+            season=game.season,
+            origin=DatePeriodCapacityOverride.Origin.ADMIN,
+        ).values_list("date", flat=True)
+    )
     targets: list[dict[str, object]] = []
-    target_date = game.season.starts_on
-    while target_date <= game.season.ends_on:
+    target_date = min(candidate_dates)
+    candidate_end = max(candidate_dates)
+    while target_date <= candidate_end:
         submit_deadline, confirmation_deadline = reschedule_deadlines(
             game.date,
             target_date,
@@ -385,9 +396,6 @@ def submit_reschedule(
     )
     if now >= game_start:
         _raise("GAME_ALREADY_STARTED", "比赛已经开始，不能申请调赛。")
-    if target_date < game.season.starts_on or target_date > game.season.ends_on:
-        _raise("TARGET_OUTSIDE_SEASON", "目标日期不在本赛季范围内。")
-
     try:
         target_period = Period.objects.get(id=target_period_id, season_id=game.season_id)
     except Period.DoesNotExist:

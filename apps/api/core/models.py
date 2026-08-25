@@ -115,7 +115,7 @@ class Season(UUIDModel):
 
     name = models.CharField(max_length=120)
     competition_type = models.CharField(max_length=24, choices=CompetitionType.choices)
-    year = models.PositiveSmallIntegerField()
+    year = models.PositiveIntegerField()
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.SETUP)
     timezone = models.CharField(max_length=64, default="Asia/Shanghai")
     starts_on = models.DateField()
@@ -232,7 +232,6 @@ class Team(UUIDModel):
         related_name="created_teams",
     )
     name = models.CharField(max_length=120)
-    short_name = models.CharField(max_length=32, blank=True)
     active = models.BooleanField(default=True)
     version = models.PositiveIntegerField(default=1)
 
@@ -314,6 +313,13 @@ class RosterPlayer(UUIDModel):
 
     class Meta:
         ordering = ["name", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["team", "jersey_number"],
+                condition=Q(active=True) & ~Q(jersey_number=""),
+                name="uniq_active_roster_jersey_per_team",
+            )
+        ]
 
 
 class SeasonLeaderBinding(UUIDModel):
@@ -692,10 +698,6 @@ class ScheduleGridDraftCell(UUIDModel):
     def clean(self):
         if self.column_id and self.draft_id and self.column.draft_id != self.draft_id:
             raise ValidationError("草稿单元格与列必须属于同一草稿。")
-        if self.draft_id and not (
-            self.draft.season.starts_on <= self.date <= self.draft.season.ends_on
-        ):
-            raise ValidationError("草稿单元格日期必须在赛季范围内。")
         if not self.matchup.strip():
             raise ValidationError("草稿比赛内容不能为空。")
 
@@ -1006,6 +1008,11 @@ class GameMediaAsset(UUIDModel):
                 fields=["game"],
                 condition=Q(kind="SCORESHEET", deleted_at__isnull=True),
                 name="uniq_active_scoresheet_per_game",
+            ),
+            models.UniqueConstraint(
+                fields=["game"],
+                condition=Q(kind="GROUP_PHOTO", deleted_at__isnull=True),
+                name="uniq_active_group_photo_per_game",
             ),
             models.UniqueConstraint(
                 fields=["game", "kind", "file_sha256"],
@@ -1349,11 +1356,31 @@ class ScoresheetEditLease(UUIDModel):
     token_hash = models.CharField(max_length=64, unique=True)
     client_id = models.CharField(max_length=96)
     surface = models.CharField(max_length=16, choices=Surface.choices)
+    archived_correction = models.BooleanField(default=False)
     last_heartbeat_at = models.DateTimeField()
     expires_at = models.DateTimeField()
 
     class Meta:
         indexes = [models.Index(fields=["expires_at"])]
+
+
+class WorkerHeartbeat(UUIDModel):
+    class Kind(models.TextChoices):
+        SCORESHEET = "scoresheet", "记录表识别"
+        ARCHIVE = "archive", "归档"
+        EXPIRY = "expiry", "调赛过期"
+        OUTBOX = "outbox", "邮件发送"
+
+    kind = models.CharField(max_length=24, choices=Kind.choices, unique=True)
+    instance_id = models.CharField(max_length=128)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    release_tag = models.CharField(max_length=64, blank=True)
+    git_commit = models.CharField(max_length=64, blank=True)
+    details = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ["kind"]
+        indexes = [models.Index(fields=["last_seen_at"], name="worker_last_seen_idx")]
 
 
 class InboxItem(UUIDModel):

@@ -67,7 +67,7 @@ describe('formal top bar', () => {
       />,
     );
 
-    expect(screen.getByText('数学 vs 外院')).toBeVisible();
+    expect(screen.getByText('数学 — 外院')).toBeVisible();
     expect(screen.getByText('2026 北大杯 · 待人工核对')).toBeVisible();
     expect(screen.queryByText(/^v\d+/)).not.toBeInTheDocument();
   });

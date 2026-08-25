@@ -1,16 +1,21 @@
 .schedule-editor-layout {
   display: grid;
   grid-template-columns: minmax(320px, .9fr) minmax(440px, 1.25fr);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 640px;
   border-top: 1px solid var(--pkuba-line);
 }
 
 .schedule-browser {
+  min-width: 0;
   padding: 28px 28px 0 0;
   border-right: 1px solid var(--pkuba-line);
 }
 
 .schedule-editor-detail {
+  min-width: 0;
   padding: 28px 0 0 34px;
 }
 
@@ -336,4 +341,19 @@
   .schedule-editor-layout { grid-template-columns: 1fr; }
   .schedule-browser { padding-right: 0; border-right: 0; }
   .schedule-editor-detail { padding-left: 0; border-top: 1px solid var(--pkuba-line); }
+}
+
+@media (max-width: 560px) {
+  .schedule-editor-layout,
+  .schedule-browser,
+  .schedule-editor-detail,
+  .schedule-editor-detail form { min-width: 0; max-width: 100%; }
+  .schedule-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .draw-managed-participants { grid-column: 1; }
+  .operation-heading,
+  .adjustability-banner { align-items: stretch; flex-direction: column; gap: 8px; }
+  .schedule-editor-filters { grid-template-columns: minmax(0, 1fr); }
+  .schedule-editor-filters input { grid-column: 1; }
+  .schedule-editor-game span,
+  .schedule-editor-game small { overflow-wrap: anywhere; }
 }

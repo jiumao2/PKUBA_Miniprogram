@@ -9,6 +9,7 @@ from uuid import UUID
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, models, transaction
+from django.db.models.functions import Cast
 
 from core import models as core_models
 
@@ -251,13 +252,43 @@ def serialize_instance(instance: models.Model) -> dict[str, object]:
     }
 
 
-def list_records(spec: ModelSpec, *, offset: int, limit: int) -> dict[str, object]:
+def list_records(
+    spec: ModelSpec,
+    *,
+    offset: int,
+    limit: int,
+    search: str = "",
+    sort: str = "",
+    direction: str = "desc",
+) -> dict[str, object]:
     offset = max(0, offset)
     limit = min(100, max(1, limit))
+    if direction not in {"asc", "desc"}:
+        raise AdvancedDataError("SORT_DIRECTION_INVALID", "排序方向无效。")
     query = spec.model.objects.all()
-    field_names = {field.name for field in spec.model._meta.concrete_fields}
-    if "created_at" in field_names:
-        query = query.order_by("-created_at")
+    concrete_fields = list(spec.model._meta.concrete_fields)
+    fields_by_name = {field.name: field for field in concrete_fields}
+    search = search.strip()[:160]
+    if search:
+        predicates = models.Q()
+        annotations: dict[str, object] = {}
+        for index, field in enumerate(concrete_fields):
+            if isinstance(field, models.BinaryField):
+                continue
+            alias = f"_advanced_search_{index}"
+            annotations[alias] = Cast(field.attname, output_field=models.TextField())
+            predicates |= models.Q(**{f"{alias}__icontains": search})
+        if annotations:
+            query = query.annotate(**annotations).filter(predicates)
+
+    if sort:
+        field = fields_by_name.get(sort)
+        if field is None:
+            raise AdvancedDataError("SORT_FIELD_INVALID", "排序字段不存在。")
+        prefix = "-" if direction == "desc" else ""
+        query = query.order_by(f"{prefix}{field.attname}", spec.model._meta.pk.name)
+    elif "created_at" in fields_by_name:
+        query = query.order_by("-created_at", spec.model._meta.pk.name)
     else:
         query = query.order_by(spec.model._meta.pk.name)
     total = query.count()
@@ -268,6 +299,9 @@ def list_records(spec: ModelSpec, *, offset: int, limit: int) -> dict[str, objec
         "total": total,
         "offset": offset,
         "limit": limit,
+        "search": search,
+        "sort": sort,
+        "direction": direction,
         "items": [serialize_instance(item) for item in query[offset : offset + limit]],
     }
 

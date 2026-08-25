@@ -477,11 +477,13 @@ def download_archive(request: HttpRequest, job_id: UUID, ticket: str):
     path = _safe_artifact_path(job.artifact_key)
     if not path.is_file():
         return Status(404, {"code": "ARCHIVE_FILE_MISSING", "message": "归档文件不存在。"})
-    ArchiveJob.objects.filter(id=job.id).update(
-        download_count=models.F("download_count") + 1,
-        last_downloaded_at=timezone.now(),
-    )
-    return _range_response(path, job.filename, request.headers.get("Range"))
+    response = _range_response(path, job.filename, request.headers.get("Range"))
+    if response.status_code in {200, 206}:
+        ArchiveJob.objects.filter(id=job.id).update(
+            download_count=models.F("download_count") + 1,
+            last_downloaded_at=timezone.now(),
+        )
+    return response
 
 
 @router.post(

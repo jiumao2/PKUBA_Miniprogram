@@ -26,7 +26,7 @@ const draft: ScheduleDraft = {
   season_id: season.id,
   season_version: season.version,
   version: 2,
-  template_version: "3.2.0",
+  template_version: "3.3.0",
   source_name: "",
   updated_at: "2026-08-21T00:00:00Z",
   periods: [
@@ -93,7 +93,7 @@ const batch = {
   id: "batch-1",
   season_id: season.id,
   status: "VALIDATED",
-  template_version: "3.2.0",
+  template_version: "3.3.0",
   file_sha256: "0".repeat(64),
   summary: {
     existing_game_count: 0,
@@ -187,7 +187,7 @@ function renderWorkspace(client = clientWith()) {
 }
 
 describe("SchedulePlannerWorkspace", () => {
-  it("presents one three-step planner with editable grid and V3.2 sheet guidance", async () => {
+  it("presents one three-step planner with editable grid and V3.3 sheet guidance", async () => {
     renderWorkspace();
     expect(await screen.findByRole("heading", { name: "赛程网格" })).toBeTruthy();
     expect(screen.getByText("编排草稿")).toBeTruthy();

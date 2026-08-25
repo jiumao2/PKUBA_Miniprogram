@@ -1617,6 +1617,74 @@
         ]
       }
     },
+    "/api/v1/admin/accounts/{account_id}/demote": {
+      "post": {
+        "operationId": "core_api_admin_demote_superadmin_account",
+        "summary": "Demote Superadmin Account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccountOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpectedVersionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/accounts/{account_id}/active": {
       "post": {
         "operationId": "core_api_admin_change_admin_active",
@@ -1742,6 +1810,16 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -4598,6 +4676,36 @@
               "default": 50,
               "title": "Limit",
               "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "default": "",
+              "title": "Search",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "default": "",
+              "title": "Sort",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "default": "desc",
+              "title": "Direction",
+              "type": "string"
             },
             "required": false
           }
@@ -8080,6 +8188,75 @@
           },
           {
             "in": "query",
+            "name": "game_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Game Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "default": "ALL",
+              "enum": [
+                "ALL",
+                "ACTION_REQUIRED",
+                "IN_PROGRESS",
+                "PUBLISHED"
+              ],
+              "title": "Scope",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "processing",
+            "schema": {
+              "default": "",
+              "enum": [
+                "",
+                "UPLOAD",
+                "SCORESHEET_REVIEW",
+                "COMPLETE"
+              ],
+              "title": "Processing",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "division_name",
+            "schema": {
+              "default": "",
+              "title": "Division Name",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "default": "",
+              "title": "Query",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
             "name": "page",
             "schema": {
               "default": 1,
@@ -8092,7 +8269,7 @@
             "in": "query",
             "name": "page_size",
             "schema": {
-              "default": 100,
+              "default": 20,
               "title": "Page Size",
               "type": "integer"
             },
@@ -10083,6 +10260,10 @@
             "title": "Database",
             "type": "string"
           },
+          "migrations": {
+            "title": "Migrations",
+            "type": "string"
+          },
           "media": {
             "title": "Media",
             "type": "string"
@@ -10090,6 +10271,13 @@
           "archive": {
             "title": "Archive",
             "type": "string"
+          },
+          "workers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Workers",
+            "type": "object"
           }
         },
         "required": [
@@ -10098,8 +10286,10 @@
           "release_tag",
           "git_commit",
           "database",
+          "migrations",
           "media",
-          "archive"
+          "archive",
+          "workers"
         ],
         "title": "HealthOut",
         "type": "object"
@@ -10701,10 +10891,6 @@
             "title": "Team Name",
             "type": "string"
           },
-          "team_short_name": {
-            "title": "Team Short Name",
-            "type": "string"
-          },
           "played": {
             "title": "Played",
             "type": "integer"
@@ -10738,7 +10924,6 @@
           "rank",
           "team_id",
           "team_name",
-          "team_short_name",
           "played",
           "wins",
           "losses",
@@ -12158,10 +12343,6 @@
             "title": "Browser Token",
             "type": "string"
           },
-          "verification_code": {
-            "title": "Verification Code",
-            "type": "string"
-          },
           "expires_at": {
             "format": "date-time",
             "title": "Expires At",
@@ -12175,7 +12356,6 @@
         "required": [
           "scan_payload",
           "browser_token",
-          "verification_code",
           "expires_at",
           "expires_in"
         ],
@@ -12235,10 +12415,6 @@
             "title": "Username",
             "type": "string"
           },
-          "verification_code": {
-            "title": "Verification Code",
-            "type": "string"
-          },
           "expires_at": {
             "format": "date-time",
             "title": "Expires At",
@@ -12248,7 +12424,6 @@
         "required": [
           "status",
           "username",
-          "verification_code",
           "expires_at"
         ],
         "title": "AdminWebLoginConfirmOut",
@@ -13159,18 +13334,13 @@
           "slot_count": {
             "title": "Slot Count",
             "type": "integer"
-          },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
           }
         },
         "required": [
           "division_id",
           "stage",
           "prefix",
-          "slot_count",
-          "sort_order"
+          "slot_count"
         ],
         "title": "ScheduleSlotFamilyIn",
         "type": "object"
@@ -13189,10 +13359,6 @@
             ],
             "title": "Id"
           },
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -13200,17 +13366,11 @@
           "gender": {
             "title": "Gender",
             "type": "string"
-          },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
           }
         },
         "required": [
-          "code",
           "name",
-          "gender",
-          "sort_order"
+          "gender"
         ],
         "title": "SeasonDivisionConfigurationIn",
         "type": "object"
@@ -13229,10 +13389,6 @@
             ],
             "title": "Id"
           },
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -13241,10 +13397,6 @@
             "format": "time",
             "title": "Start Time",
             "type": "string"
-          },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
           },
           "default_capacities": {
             "additionalProperties": {
@@ -13255,10 +13407,8 @@
           }
         },
         "required": [
-          "code",
           "name",
           "start_time",
-          "sort_order",
           "default_capacities"
         ],
         "title": "SeasonPeriodConfigurationIn",
@@ -13282,10 +13432,6 @@
             "title": "Name",
             "type": "string"
           },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
-          },
           "active": {
             "title": "Active",
             "type": "boolean"
@@ -13293,7 +13439,6 @@
         },
         "required": [
           "name",
-          "sort_order",
           "active"
         ],
         "title": "SeasonVenueConfigurationIn",
@@ -17246,6 +17391,18 @@
             "title": "Limit",
             "type": "integer"
           },
+          "search": {
+            "title": "Search",
+            "type": "string"
+          },
+          "sort": {
+            "title": "Sort",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/AdvancedRecordOut"
@@ -17261,6 +17418,9 @@
           "total",
           "offset",
           "limit",
+          "search",
+          "sort",
+          "direction",
           "items"
         ],
         "title": "AdvancedRecordListOut",
@@ -18484,10 +18644,6 @@
             "title": "Name",
             "type": "string"
           },
-          "short_name": {
-            "title": "Short Name",
-            "type": "string"
-          },
           "active": {
             "title": "Active",
             "type": "boolean"
@@ -18509,7 +18665,6 @@
           "season_id",
           "division_id",
           "name",
-          "short_name",
           "active",
           "version",
           "players"
@@ -20032,13 +20187,21 @@
           "page_size": {
             "title": "Page Size",
             "type": "integer"
+          },
+          "division_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Division Names",
+            "type": "array"
           }
         },
         "required": [
           "items",
           "total",
           "page",
-          "page_size"
+          "page_size",
+          "division_names"
         ],
         "title": "ScoresheetQueuePageOut",
         "type": "object"
@@ -21422,6 +21585,11 @@
             "default": "",
             "title": "Lease Token",
             "type": "string"
+          },
+          "archived_correction_confirmed": {
+            "default": false,
+            "title": "Archived Correction Confirmed",
+            "type": "boolean"
           }
         },
         "required": [
@@ -21448,6 +21616,11 @@
           "lease_token": {
             "title": "Lease Token",
             "type": "string"
+          },
+          "archived_correction_confirmed": {
+            "default": false,
+            "title": "Archived Correction Confirmed",
+            "type": "boolean"
           }
         },
         "required": [
@@ -21476,6 +21649,11 @@
             "default": "",
             "title": "Lease Token",
             "type": "string"
+          },
+          "archived_correction_confirmed": {
+            "default": false,
+            "title": "Archived Correction Confirmed",
+            "type": "boolean"
           },
           "confirmed": {
             "title": "Confirmed",

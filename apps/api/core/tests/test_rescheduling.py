@@ -79,6 +79,23 @@ def test_submit_atomically_locks_game_and_reserves_first_venue():
     assert SlotReservation.objects.count() == 1
 
 
+def test_submit_accepts_target_outside_planning_date_range():
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    target_date = setup["season"].ends_on + timedelta(days=1)
+
+    request = submit_reschedule(
+        actor=setup["accounts"][0],
+        game_id=game.id,
+        expected_game_version=game.version,
+        target_date=target_date,
+        target_period_id=setup["period"].id,
+        now=valid_submission_time(game.date, target_date),
+    )
+
+    assert request.reservation.date == target_date
+
+
 def test_same_week_acceptance_atomically_converts_reservation():
     setup = reschedule_setup()
     game = setup["games"][0]

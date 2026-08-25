@@ -73,32 +73,17 @@ export default function HomePage() {
 
 function GameDensity({ dashboard }: { dashboard: HomeDashboard }) {
   const days = dashboard.daily_game_counts;
-  if (!days.length || !dashboard.calendar_start_date || !dashboard.calendar_end_date) {
-    return (
-      <View className="game-density game-density-empty">
-        <View className="game-density-heading">
-          <Text className="game-density-title">比赛日历</Text>
-          <Text className="game-density-total">暂无赛程</Text>
-        </View>
-      </View>
-    );
-  }
-
-  const maxGames = Math.max(...days.map((day) => day.game_count));
-  const totalGames = days.reduce((total, day) => total + day.game_count, 0);
-  const cells = buildSeasonCalendar(
-    dashboard.calendar_start_date,
-    dashboard.calendar_end_date,
-    days,
-  );
   const today = localDateKey(new Date());
+  const cells = buildSeasonCalendar(today, days);
+  const maxGames = Math.max(0, ...cells.map((day) => day.gameCount));
+  const totalGames = cells.reduce((total, day) => total + day.gameCount, 0);
 
   return (
     <View className="game-density">
       <View className="game-density-heading">
         <Text className="game-density-title">比赛日历</Text>
         <Text className="game-density-total">
-          {shortDate(dashboard.calendar_start_date)}—{shortDate(dashboard.calendar_end_date)} · {totalGames} 场
+          {shortDate(cells[0].date)}—{shortDate(cells[cells.length - 1].date)} · {totalGames} 场
         </Text>
       </View>
       <View className="game-density-weekdays" aria-hidden>
@@ -154,7 +139,7 @@ function Matchday({ dashboard, onSchedule }: { dashboard: HomeDashboard; onSched
       </View>
       <GameTimeline
         games={dashboard.games}
-        showDates={recentResults}
+        showDates={recentResults || dashboard.games.some((game) => game.date !== dashboard.display_date)}
         onGameClick={(game) => void navigateToOnce(gameDetailRoute(game.id))}
       />
       <Button className="text-button" onClick={onSchedule}>

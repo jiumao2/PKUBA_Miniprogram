@@ -38,7 +38,8 @@ jobs:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: apps/api/pyproject.toml
-      - run: python -m pip install -e "apps/api[dev]"
+      - run: python -m pip install -r apps/api/requirements-dev.lock
+      - run: python -m pip install --no-deps -e apps/api
       - run: ruff check apps/api
       - run: python apps/api/manage.py makemigrations --check --dry-run
       - run: python apps/api/manage.py migrate
@@ -46,31 +47,40 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    env:
+      PKUBA_API_BASE_URL: https://api.pkuba.cn
+      PKUBA_ADMIN_WEB_URL: https://admin.pkuba.cn
     steps:
       - uses: actions/checkout@v4
-      - name: Validate production Compose template
-        run: >-
-          PKUBA_ENV_FILE=.env.production.example
-          docker compose
-          --project-directory .
-          --env-file .env.production.example
-          -f infra/compose.prod.yml
-          config --quiet
-      - name: Validate production Caddy and deployment scripts
-        run: |
-          docker run --rm \
-            -e PKUBA_DOMAIN=example.com \
-            -e ACME_EMAIL=admin@example.com \
-            -e PKUBA_RELEASE_TAG=v0.0.0 \
-            -e PKUBA_GIT_COMMIT=0000000000000000000000000000000000000000 \
-            -v "$PWD/infra/Caddyfile:/etc/caddy/Caddyfile:ro" \
-            caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
-          bash -n scripts/prod/*.sh
+      - name: Validate blue/green Compose, Caddy and deployment scripts
+        run: bash scripts/prod/validate-blue-green.sh
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
       - run: npm ci
+      - run: npm run check:powershell
+      - run: npm ls --all --omit=optional
+      - run: npm run audit:production
+      - name: Reject missing or insecure mini program production URLs
+        run: |
+          if env -u PKUBA_API_BASE_URL -u PKUBA_ADMIN_WEB_URL \
+            npm --workspace @pkuba/miniapp run build:weapp; then
+            echo "missing production URLs unexpectedly passed" >&2
+            exit 1
+          fi
+          if PKUBA_API_BASE_URL=http://localhost:8088 \
+            PKUBA_ADMIN_WEB_URL=http://localhost:5173 \
+            npm --workspace @pkuba/miniapp run build:weapp; then
+            echo "insecure local production URLs unexpectedly passed" >&2
+            exit 1
+          fi
+          if PKUBA_API_BASE_URL=https://unapproved.example \
+            PKUBA_ADMIN_WEB_URL=https://admin.pkuba.cn \
+            npm --workspace @pkuba/miniapp run build:weapp; then
+            echo "unapproved production API host unexpectedly passed" >&2
+            exit 1
+          fi
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -86,7 +96,8 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - run: python -m pip install -e apps/api
+      - run: python -m pip install -r apps/api/requirements.lock
+      - run: python -m pip install --no-deps -e apps/api
       - run: npm ci
       - run: python apps/api/manage.py export_openapi --output docs/openapi.json
         env:

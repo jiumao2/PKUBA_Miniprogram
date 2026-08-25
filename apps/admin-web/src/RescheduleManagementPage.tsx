@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type AdminReschedulePage,
@@ -41,8 +41,10 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
   const [voteRequestId, setVoteRequestId] = useState("");
   const [candidates, setCandidates] = useState<RescheduleVoterTeam[]>([]);
   const [selectedVoters, setSelectedVoters] = useState<string[]>([]);
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError("");
     try {
@@ -54,6 +56,7 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
         page,
         pageSize: 30,
       });
+      if (generation !== loadGeneration.current) return;
       setDataset(next);
       setSelectedId((current) =>
         next.items.some((item) => item.id === current)
@@ -61,14 +64,20 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
           : next.items[0]?.id ?? "",
       );
     } catch (reason: unknown) {
+      if (generation !== loadGeneration.current) return;
       setDataset(null);
       setError(reason instanceof Error ? reason.message : "无法读取调赛申请");
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, [client, page, query, requestType, status, view]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => {
+      loadGeneration.current += 1;
+    };
+  }, [load]);
 
   const selected = dataset?.items.find((item) => item.id === selectedId) ?? null;
   const pages = Math.max(Math.ceil((dataset?.total ?? 0) / 30), 1);
@@ -227,7 +236,7 @@ function RequestRow({ item, selected, onSelect }: { item: AdminRescheduleRequest
   return (
     <button className={`reschedule-row ${selected ? "active" : ""} ${item.game.division_gender === "WOMEN" ? "women" : "men"}`} onClick={onSelect} type="button">
       <span className="reschedule-row-meta"><strong>{item.game.division_name}</strong>{item.request_type_label}<i className={`reschedule-state ${statusClass(item.status)}`}>{item.status_label}</i></span>
-      <b>{item.original_home_name}<em>vs</em>{item.original_away_name}</b>
+      <b>{item.original_home_name}<em aria-hidden>—</em>{item.original_away_name}</b>
       <span className="reschedule-row-route">{shortDate(item.original_date)} {item.original_start_time} <i>→</i> {shortDate(item.target_date)} {item.target_start_time}</span>
       <small>申请方：{item.requester_team_name}{item.resources.issues.length ? ` · ${item.resources.issues.length} 项资源异常` : ""}</small>
     </button>
@@ -250,7 +259,7 @@ function RequestDetail({ item, busy, voting, candidates, selectedVoters, setSele
   return (
     <>
       <header className="reschedule-detail-heading">
-        <div><p className="eyebrow">{item.game.division_name} · {item.request_type_label}</p><h2>{item.original_home_name} vs {item.original_away_name}</h2><span>申请方：{item.requester_team_name}</span></div>
+        <div><p className="eyebrow">{item.game.division_name} · {item.request_type_label}</p><h2>{item.original_home_name}　—　{item.original_away_name}</h2><span>申请方：{item.requester_team_name}</span></div>
         <i className={`reschedule-state ${statusClass(item.status)}`}>{item.status_label}</i>
       </header>
       {overdue && <div className="reschedule-overdue">球队确认时限已到，等待系统过期任务处理；页面不会自行释放锁或预留。</div>}

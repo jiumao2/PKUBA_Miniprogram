@@ -3,6 +3,8 @@ import { hasRecognitionResult } from '@pkuba/scoresheet-domain';
 import { api } from './api';
 import type {
   DocumentChangeLogEntry,
+  GameQueueQuery,
+  GameQueueScope,
   GameSummary,
   RecognitionDiff,
   RecognitionRun,
@@ -18,6 +20,7 @@ const RECOGNITION_POLL_INTERVAL_MS = 500;
 const RECOGNITION_POLL_LIMIT = 360;
 let activeSave: Promise<void> | null = null;
 let recognitionWatchGeneration = 0;
+let gameQueueGeneration = 0;
 
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -67,6 +70,11 @@ interface EditorState {
   serverRevision: number;
   template: TemplateDefinition | null;
   games: GameSummary[];
+  gamesTotal: number;
+  gamesPage: number;
+  gamesPageSize: number;
+  gamesScope: GameQueueScope;
+  gamesQuery: string;
   gamesLoading: boolean;
   recognitionMode: string;
   validation: ValidationReport | null;
@@ -89,7 +97,7 @@ interface EditorState {
   leaseHolder: { username: string; surface: 'WEB' | 'MINIAPP'; expires_at: string } | null;
   seasonId: string;
   initialize: () => Promise<void>;
-  loadGames: () => Promise<void>;
+  loadGames: (options?: GameQueueQuery) => Promise<void>;
   openDocument: (documentId: string) => Promise<void>;
   uploadForGame: (gameId: string, file: File) => Promise<void>;
   reupload: (documentId: string, file: File) => Promise<void>;
@@ -122,6 +130,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   serverRevision: 0,
   template: null,
   games: [],
+  gamesTotal: 0,
+  gamesPage: 1,
+  gamesPageSize: 20,
+  gamesScope: 'ACTION_REQUIRED',
+  gamesQuery: '',
   gamesLoading: false,
   recognitionMode: 'automatic',
   validation: null,
@@ -150,12 +163,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const params = new URLSearchParams(window.location.search);
       const seasonId = params.get('season_id') ?? '';
       const requestedGameId = params.get('game_id') ?? '';
-      const [template, games, health] = await Promise.all([
+      const initialQueue: GameQueueQuery = {
+        seasonId,
+        scope: 'ACTION_REQUIRED',
+        page: 1,
+        pageSize: 20,
+      };
+      const [template, gamePage, requestedGame, health] = await Promise.all([
         api.template(),
-        api.games(seasonId).catch(() => [] as GameSummary[]),
+        api.games(initialQueue).catch(() => ({
+          items: [], total: 0, page: 1, page_size: 20, division_names: [],
+        })),
+        requestedGameId ? api.game(requestedGameId).catch(() => null) : Promise.resolve(null),
         api.health().catch(() => ({ status: 'ok', recognition: 'automatic', master_data: 'empty' })),
       ]);
-      const requestedDocumentId = games.find((game) => game.id === requestedGameId)?.document_id;
+      const games = requestedGame && !requestedGame.document_id
+        && !gamePage.items.some((game) => game.id === requestedGame.id)
+        ? [requestedGame, ...gamePage.items]
+        : gamePage.items;
+      const requestedDocumentId = requestedGame?.document_id;
       const lastId = requestedGameId ? requestedDocumentId : localStorage.getItem(LAST_DOCUMENT_KEY);
       let document: ScoresheetDocument | null = null;
       if (lastId) {
@@ -172,6 +198,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({
         template,
         games,
+        gamesTotal: gamePage.total,
+        gamesPage: gamePage.page,
+        gamesPageSize: gamePage.page_size,
+        gamesScope: 'ACTION_REQUIRED',
+        gamesQuery: '',
         recognitionMode: health.recognition,
         document,
         recognitionRun,
@@ -201,11 +232,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
-  loadGames: async () => {
+  loadGames: async (options = {}) => {
+    const current = get();
+    const query: GameQueueQuery = {
+      seasonId: options.seasonId ?? current.seasonId,
+      scope: options.scope ?? current.gamesScope,
+      query: options.query ?? current.gamesQuery,
+      page: options.page ?? current.gamesPage,
+      pageSize: options.pageSize ?? current.gamesPageSize,
+    };
+    const generation = ++gameQueueGeneration;
     set({ gamesLoading: true });
     try {
-      set({ games: await api.games(get().seasonId), gamesLoading: false });
+      const result = await api.games(query);
+      if (generation !== gameQueueGeneration) return;
+      set({
+        games: result.items,
+        gamesTotal: result.total,
+        gamesPage: result.page,
+        gamesPageSize: result.page_size,
+        gamesScope: query.scope ?? 'ACTION_REQUIRED',
+        gamesQuery: query.query ?? '',
+        gamesLoading: false,
+      });
     } catch (error) {
+      if (generation !== gameQueueGeneration) return;
       set({
         gamesLoading: false,
         error: error instanceof Error ? error.message : '比赛列表加载失败',

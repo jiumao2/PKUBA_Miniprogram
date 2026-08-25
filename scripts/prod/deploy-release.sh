@@ -3,6 +3,9 @@ set -Eeuo pipefail
 
 umask 077
 
+echo "deployment error: the in-place deploy path is retired; use pkuba-deploy-blue-green" >&2
+exit 64
+
 die() {
   echo "deployment error: $*" >&2
   exit 1

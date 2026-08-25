@@ -132,7 +132,9 @@ def build_team_leaderboard(
         games = games.filter(division=division)
 
     team_map = {team.id: team for team in teams}
-    totals: dict[UUID, _TeamAccumulator] = defaultdict(_TeamAccumulator)
+    totals: dict[UUID, _TeamAccumulator] = {
+        team_id: _TeamAccumulator() for team_id in team_map
+    }
     for game in games:
         if game.home_team_id not in team_map or game.away_team_id not in team_map:
             continue
@@ -154,16 +156,19 @@ def build_team_leaderboard(
     rows: list[dict] = []
     exact_metrics: dict[UUID, dict[str, int | Fraction]] = {}
     for team_id, total in totals.items():
-        if total.games_played == 0:
-            continue
         team = team_map[team_id]
         point_difference = total.points_for - total.points_against
+        ratio_denominator = total.games_played or 1
         exact_metrics[team_id] = {
-            "points_per_game": Fraction(total.points_for, total.games_played),
+            "points_per_game": Fraction(total.points_for, ratio_denominator),
             "total_points": total.points_for,
-            "points_against_per_game": Fraction(total.points_against, total.games_played),
-            "point_difference_per_game": Fraction(point_difference, total.games_played),
-            "win_percentage": Fraction(total.wins, total.games_played),
+            "points_against_per_game": Fraction(
+                total.points_against, ratio_denominator
+            ),
+            "point_difference_per_game": Fraction(
+                point_difference, ratio_denominator
+            ),
+            "win_percentage": Fraction(total.wins, ratio_denominator),
             "wins": total.wins,
             "games_played": total.games_played,
         }

@@ -186,7 +186,6 @@ def build_standings(season: Season) -> dict[str, object]:
                 "rank": rank,
                 "team_id": standing.team.id,
                 "team_name": standing.team.name,
-                "team_short_name": standing.team.short_name or standing.team.name,
                 "played": standing.played,
                 "wins": standing.wins,
                 "losses": standing.losses,

@@ -21,6 +21,7 @@ import type {
 } from "@pkuba/api-client";
 
 import { buildSeasonConfigurationPayload } from "./season-configuration-payload";
+import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type GridColumnDraft = SeasonConfiguration["grid_columns"][number] & { key: string };
@@ -83,6 +84,7 @@ export function ScheduleImportWorkspace({
   const [configuration, setConfiguration] = useState<SeasonConfiguration | null>(null);
   const [gridColumns, setGridColumns] = useState<GridColumnDraft[]>([]);
   const [gridDirty, setGridDirty] = useState(false);
+  useAdminDirtySource(`schedule-import-columns:${season.id}`, gridDirty);
   const [file, setFile] = useState<File | null>(null);
   const [batch, setBatch] = useState<ScheduleImport | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -96,8 +98,10 @@ export function ScheduleImportWorkspace({
   const [resetAcknowledged, setResetAcknowledged] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
 
   const loadContext = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setBusy("context");
     setError(null);
     try {
@@ -106,6 +110,7 @@ export function ScheduleImportWorkspace({
         client.getScheduleImportResetPreview(season.id),
         client.getSeasonConfiguration(season.id),
       ]);
+      if (generation !== loadGeneration.current) return;
       setReadiness(nextReadiness);
       setResetPreview(nextReset);
       setConfiguration(nextConfiguration);
@@ -114,9 +119,10 @@ export function ScheduleImportWorkspace({
       );
       setGridDirty(false);
     } catch (reason: unknown) {
+      if (generation !== loadGeneration.current) return;
       setError(reason instanceof Error ? reason.message : "无法读取导入前置条件");
     } finally {
-      setBusy(null);
+      if (generation === loadGeneration.current) setBusy(null);
     }
   }, [client, season.id]);
 
@@ -132,6 +138,9 @@ export function ScheduleImportWorkspace({
     setMessage(null);
     if (fileInput.current) fileInput.current.value = "";
     void loadContext();
+    return () => {
+      loadGeneration.current += 1;
+    };
   }, [loadContext]);
 
   const errors = batch?.issues.filter((issue) => issue.severity === "ERROR") ?? [];
@@ -499,7 +508,12 @@ export function ScheduleImportWorkspace({
               操作赛季
               <select
                 value={season.id}
-                onChange={(event) => onSeasonChange(event.target.value)}
+                onChange={(event) => {
+                  const nextSeasonId = event.target.value;
+                  void confirmAdminNavigation().then((confirmed) => {
+                    if (confirmed) onSeasonChange(nextSeasonId);
+                  });
+                }}
               >
                 {seasons.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -736,7 +750,7 @@ export function ScheduleImportWorkspace({
               <div className="game-preview-row" role="row" key={game.code}>
                 <span><strong>{game.code}</strong><small>第 {game.round_number} 轮</small></span>
                 <span>{game.division_name}<small>{game.stage_name}{game.group_code ? ` · ${game.group_code}` : ""}</small></span>
-                <span>{game.home_slot_label || game.home_slot_code}<small>vs {game.away_slot_label || game.away_slot_code}</small></span>
+                <span>{game.home_slot_label || game.home_slot_code}<small>{game.away_slot_label || game.away_slot_code}</small></span>
                 <span>{game.date ?? "未定位"}<small>{game.start_time ?? game.period_name ?? "—"}</small></span>
                 <span>{game.venue_name ?? "—"}<small>{game.cell}</small></span>
               </div>

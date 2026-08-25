@@ -1,0 +1,7 @@
+(active_api) {
+	reverse_proxy pkuba-blue-api:8000
+}
+
+(active_web) {
+	reverse_proxy pkuba-blue-web:8080
+}

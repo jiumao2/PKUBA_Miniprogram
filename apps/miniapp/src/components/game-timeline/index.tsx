@@ -1,5 +1,5 @@
 import { Text, View } from "@tarojs/components";
-import type { Game } from "@pkuba/api-client";
+import { formatOfficialScore, type Game } from "@pkuba/api-client";
 
 import { formatDate } from "../../format";
 import "./index.css";
@@ -49,7 +49,8 @@ export function GameTimeline({
 
 function TimelineGame({ game, onClick }: { game: Game; onClick?: (game: Game) => void }) {
   const women = game.division_gender === "WOMEN";
-  const hasScore = game.home_score !== null && game.away_score !== null;
+  const score = formatOfficialScore(game.home_score, game.away_score);
+  const hasScore = score !== null;
   return (
     <View
       className={`timeline-game ${women ? "timeline-women" : "timeline-men"} ${onClick ? "is-clickable" : ""}`}
@@ -70,7 +71,7 @@ function TimelineGame({ game, onClick }: { game: Game; onClick?: (game: Game) =>
       <View className="timeline-team-row">
         <Text className="timeline-team">{game.away_name}</Text>
         <Text className={`timeline-score ${hasScore ? "has-score" : "no-score"}`}>
-          {hasScore ? game.away_score : "vs"}
+          {hasScore ? game.away_score : ""}
         </Text>
       </View>
       <View className="timeline-game-footline">

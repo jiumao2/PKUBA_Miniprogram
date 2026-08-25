@@ -216,7 +216,6 @@ export function ScheduleDayScroller({
         <DirectionalState
           loading={beforeLoading}
           error={beforeError}
-          finished={!hasPrevious}
           onRetry={() => void loadBefore()}
         />
         {days.map((day) => (
@@ -235,7 +234,6 @@ export function ScheduleDayScroller({
         <DirectionalState
           loading={afterLoading}
           error={afterError}
-          finished={!hasNext}
           onRetry={() => void loadAfter()}
         />
       </View>
@@ -253,17 +251,14 @@ export function ScheduleDayScroller({
 function DirectionalState({
   loading,
   error,
-  finished,
   onRetry,
 }: {
   loading: boolean;
   error: string;
-  finished: boolean;
   onRetry: () => void;
 }) {
   if (loading) return <View className="direction-state pulse"><Text>正在加载</Text></View>;
   if (error) return <Button className="direction-retry" onClick={onRetry}>{error} · 重新加载</Button>;
-  if (finished) return null;
   return null;
 }
 

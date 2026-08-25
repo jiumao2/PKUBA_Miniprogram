@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 from itertools import combinations
 from pathlib import PurePath
 from uuid import UUID, uuid4
 
 from django.db import transaction
+from django.db.models import Max, Min
 from django.utils.text import get_valid_filename
 from openpyxl import load_workbook
 
@@ -28,17 +29,15 @@ from core.services.schedule_imports_v3 import (
     GRID_START_COLUMN,
     GRID_START_ROW,
     MATCHUP_PATTERN,
-    MAX_DATA_ROWS,
     MAX_GRID_COLUMNS,
     TEMPLATE_VERSION,
     WEEKDAY_LABELS,
     WOMEN_SUFFIX_PATTERN,
     ParsedGridColumn,
     ScheduleImportError,
-    _calendar_dates,
-    _cell_date,
     _default_grid_columns,
     _game_identity,
+    _grid_dates_from_sheet,
     _normalize_venue_name,
     _parse_grid_columns,
     _preflight_xlsx,
@@ -52,6 +51,11 @@ from core.services.schedule_imports_v3 import (
 def _require_superadmin(actor: Account) -> None:
     if not actor.is_pkuba_superadmin:
         raise ScheduleImportError("只有超级管理员可以编排赛程。", "PERMISSION_DENIED")
+
+
+def _assert_season_mutable(season: Season) -> None:
+    if season.status == Season.Status.ARCHIVED:
+        raise ScheduleImportError("已归档赛季只读。", "SEASON_ARCHIVED")
 
 
 def _column_specs(draft: ScheduleGridDraft) -> list[ParsedGridColumn]:
@@ -75,13 +79,16 @@ def _draft_cells_for_workbook(
 ) -> tuple[dict[tuple[date, int], tuple[str, bool]], dict[str, bool]]:
     cells: dict[tuple[date, int], tuple[str, bool]] = {}
     leader_adjustable_by_cell: dict[str, bool] = {}
-    start = draft.season.starts_on
+    date_rows = {
+        target_date: index
+        for index, target_date in enumerate(_draft_calendar_dates(draft), start=GRID_START_ROW)
+    }
     for item in draft.cells.select_related("column").all():
         cells[(item.date, item.column.sort_order)] = (
             item.matchup,
             item.leader_adjustable,
         )
-        row = GRID_START_ROW + (item.date - start).days
+        row = date_rows[item.date]
         column = item.column.sort_order + GRID_START_COLUMN - 1
         from openpyxl.utils import get_column_letter
 
@@ -89,6 +96,17 @@ def _draft_cells_for_workbook(
             f"赛程网格!{get_column_letter(column)}{row}"
         ] = item.leader_adjustable
     return cells, leader_adjustable_by_cell
+
+
+def _draft_calendar_dates(draft: ScheduleGridDraft) -> list[date]:
+    bounds = draft.cells.aggregate(first=Min("date"), last=Max("date"))
+    start = min(
+        item for item in (draft.season.starts_on, bounds["first"]) if item is not None
+    )
+    end = max(
+        item for item in (draft.season.ends_on, bounds["last"]) if item is not None
+    )
+    return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
 
 
 def _create_default_columns(draft: ScheduleGridDraft) -> None:
@@ -116,6 +134,14 @@ def get_or_create_schedule_draft(
     *, actor: Account, season: Season
 ) -> ScheduleGridDraft:
     _require_superadmin(actor)
+    if season.status == Season.Status.ARCHIVED:
+        draft = ScheduleGridDraft.objects.filter(season=season).first()
+        if draft is None:
+            raise ScheduleImportError(
+                "已归档赛季没有保存过赛程草稿，且不能新建草稿。",
+                "SEASON_ARCHIVED",
+            )
+        return draft
     draft, created = ScheduleGridDraft.objects.get_or_create(
         season=season,
         defaults={"updated_by": actor},
@@ -243,7 +269,7 @@ def serialize_schedule_draft(draft: ScheduleGridDraft) -> dict[str, object]:
         ],
         "dates": [
             {"date": item.isoformat(), "weekday": WEEKDAY_LABELS[item.weekday()]}
-            for item in _calendar_dates(season)
+            for item in _draft_calendar_dates(draft)
         ],
         "periods": [
             {
@@ -277,6 +303,7 @@ def replace_schedule_draft(
     source_sha256: str | None = None,
 ) -> ScheduleGridDraft:
     _require_superadmin(actor)
+    _assert_season_mutable(season)
     draft = get_or_create_schedule_draft(actor=actor, season=season)
     draft = ScheduleGridDraft.objects.select_for_update().get(id=draft.id)
     if draft.version != expected_version:
@@ -342,8 +369,6 @@ def replace_schedule_draft(
             raise ScheduleImportError(
                 "草稿单元格日期或列标识无效。", "INVALID_DRAFT_CELL"
             ) from error
-        if not season.starts_on <= target_date <= season.ends_on:
-            raise ScheduleImportError("草稿日期超出赛季范围。", "DATE_OUT_OF_RANGE")
         if column_id not in seen_ids:
             raise ScheduleImportError("草稿单元格引用了未知列。", "UNKNOWN_DRAFT_COLUMN")
         key = (target_date, column_id)
@@ -415,6 +440,7 @@ def import_schedule_draft_xlsx(
     source_name: str,
 ) -> ScheduleGridDraft:
     _require_superadmin(actor)
+    _assert_season_mutable(season)
     _preflight_xlsx(content)
     try:
         workbook = load_workbook(BytesIO(content), data_only=False, keep_links=False)
@@ -435,22 +461,10 @@ def import_schedule_draft_xlsx(
 
     sheet = workbook["赛程网格"]
     specs = _parse_grid_columns(season, sheet)
-    expected_dates = _calendar_dates(season)
-    for row_index, expected_date in enumerate(expected_dates, start=GRID_START_ROW):
-        if _cell_date(sheet.cell(row_index, 1)) != expected_date:
-            raise ScheduleImportError(
-                f"赛程网格第 {row_index} 行日期应为 {expected_date.isoformat()}。",
-                "GRID_DATES_CHANGED",
-            )
-    end_row = GRID_START_ROW + len(expected_dates) - 1
-    for row_index in range(end_row + 1, min(sheet.max_row, MAX_DATA_ROWS) + 1):
-        if any(
-            sheet.cell(row_index, column_index).value not in (None, "")
-            for column_index in range(1, GRID_START_COLUMN + len(specs))
-        ):
-            raise ScheduleImportError(
-                "赛程网格包含赛季范围外的数据行。", "EXTRA_GRID_ROW"
-            )
+    expected_dates = _grid_dates_from_sheet(
+        sheet,
+        end_column=GRID_START_COLUMN + len(specs) - 1,
+    )
 
     column_payload: list[dict[str, object]] = []
     column_ids: dict[int, UUID] = {}
@@ -500,6 +514,7 @@ def export_schedule_draft_xlsx(*, actor: Account, season: Season) -> bytes:
         season,
         columns=_column_specs(draft),
         cells=cells,
+        calendar_dates=_draft_calendar_dates(draft),
     )
 
 
@@ -508,6 +523,7 @@ def validate_schedule_draft(
     *, actor: Account, season: Season, expected_version: int
 ) -> ScheduleImportBatch:
     _require_superadmin(actor)
+    _assert_season_mutable(season)
     draft = get_or_create_schedule_draft(actor=actor, season=season)
     draft = ScheduleGridDraft.objects.select_for_update().get(id=draft.id)
     if draft.version != expected_version:
@@ -519,6 +535,7 @@ def validate_schedule_draft(
         season,
         columns=_column_specs(draft),
         cells=cells,
+        calendar_dates=_draft_calendar_dates(draft),
     )
     return validate_schedule_upload(
         actor=actor,

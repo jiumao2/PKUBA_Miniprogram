@@ -134,7 +134,6 @@ def _active_lease_locked(scoresheet: GameScoresheet) -> ScoresheetEditLease | No
 
 
 def _assert_version(scoresheet: GameScoresheet, expected_version: int) -> None:
-    _assert_scoresheet_operable(scoresheet)
     if scoresheet.draft_version != expected_version:
         raise ScoresheetError(
             "VERSION_CONFLICT",
@@ -143,11 +142,40 @@ def _assert_version(scoresheet: GameScoresheet, expected_version: int) -> None:
         )
 
 
-def _assert_scoresheet_operable(scoresheet: GameScoresheet) -> None:
-    if scoresheet.game.season.status != scoresheet.game.season.Status.PUBLISHED:
+def _assert_scoresheet_operable(
+    scoresheet: GameScoresheet,
+    *,
+    actor: Account | None = None,
+    surface: str = "",
+    allow_archived_correction: bool = False,
+) -> None:
+    season_status = scoresheet.game.season.status
+    if season_status == scoresheet.game.season.Status.PUBLISHED:
+        pass
+    elif (
+        season_status == scoresheet.game.season.Status.ARCHIVED
+        and allow_archived_correction
+        and actor is not None
+        and actor.is_pkuba_superadmin
+        and surface == ScoresheetEditLease.Surface.WEB
+        and scoresheet.current_publication_id is not None
+    ):
+        pass
+    else:
+        message = (
+            "已归档赛季整体只读；只有超级管理员通过网页端明确确认后，"
+            "才能纠正已有正式发布版本的记录表。"
+            if season_status == scoresheet.game.season.Status.ARCHIVED
+            else "只有已公开赛季可以维护记录表或赛果。"
+        )
+        code = (
+            "SEASON_ARCHIVED"
+            if season_status == scoresheet.game.season.Status.ARCHIVED
+            else "SEASON_NOT_PUBLISHED"
+        )
         raise ScoresheetError(
-            "SEASON_NOT_PUBLISHED",
-            "只有已公开赛季可以维护记录表或赛果。",
+            code,
+            message,
             status=409,
         )
     if not scoresheet.game.home_team_id or not scoresheet.game.away_team_id:
@@ -165,6 +193,42 @@ def _assert_correction_permission(scoresheet: GameScoresheet, actor: Account) ->
             "已发布记录表的纠错和重新发布仅限超级管理员。",
             status=403,
         )
+
+
+def _record_archived_correction_opened(
+    scoresheet: GameScoresheet,
+    lease: ScoresheetEditLease,
+    *,
+    actor: Account,
+    client_id: str,
+    surface: str,
+    event_type: str,
+) -> None:
+    _event_locked(
+        scoresheet,
+        event_type,
+        actor=actor,
+        client_id=client_id,
+        surface=surface,
+        payload={"lease_id": str(lease.id), "expires_at": lease.expires_at.isoformat()},
+    )
+    AdminAuditLog.objects.create(
+        actor=actor,
+        action="ARCHIVED_SCORESHEET_CORRECTION_OPENED",
+        object_type="GameScoresheet",
+        object_id=scoresheet.id,
+        before={
+            "season_status": scoresheet.game.season.status,
+            "current_publication_id": str(scoresheet.current_publication_id),
+            "draft_version": scoresheet.draft_version,
+        },
+        after={
+            "lease_id": str(lease.id),
+            "client_id": client_id[:96],
+            "surface": surface,
+        },
+        metadata={"game_id": str(scoresheet.game_id)},
+    )
 
 
 ACTIVE_RECOGNITION_STATUSES = {
@@ -272,6 +336,10 @@ def _semantic_document(document: dict[str, Any]) -> dict[str, Any]:
         "final_score": document.get("final_score") or {},
         "officials": _keyed(list(document.get("officials") or []), "role"),
         "table_personnel": list(recognition.get("table_personnel") or []),
+        "recognition_review": {
+            "problem_paths": list(recognition.get("problem_paths") or []),
+            "issues": list(recognition.get("issues") or []),
+        },
     }
 
 
@@ -578,6 +646,7 @@ def acquire_edit_lease(
     client_id: str,
     surface: str,
     resume_token: str = "",
+    archived_correction_confirmed: bool = False,
 ) -> tuple[ScoresheetEditLease | None, str | None, bool, str]:
     if not actor.is_pkuba_admin:
         raise ScoresheetError("ADMIN_REQUIRED", "该操作仅限管理员。", status=403)
@@ -589,7 +658,12 @@ def acquire_edit_lease(
         except GameScoresheet.DoesNotExist as error:
             raise ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404) from error
         try:
-            _assert_scoresheet_operable(scoresheet)
+            _assert_scoresheet_operable(
+                scoresheet,
+                actor=actor,
+                surface=surface,
+                allow_archived_correction=archived_correction_confirmed,
+            )
         except ScoresheetError as error:
             return None, None, True, str(error)
         if scoresheet.current_publication_id and not actor.is_pkuba_superadmin:
@@ -619,6 +693,9 @@ def acquire_edit_lease(
                 f"{'网页' if lease.surface == 'WEB' else '小程序'}编辑。",
             )
         now = timezone.now()
+        archived_correction = (
+            scoresheet.game.season.status == scoresheet.game.season.Status.ARCHIVED
+        )
         if lease is not None:
             valid_resume = bool(resume_token) and secrets.compare_digest(
                 lease.token_hash,
@@ -628,13 +705,26 @@ def acquire_edit_lease(
                 return lease, None, True, "本标签页的编辑凭据已失效，请等待当前租约释放。"
             lease.last_heartbeat_at = now
             lease.expires_at = now + timedelta(seconds=LEASE_SECONDS)
+            opened_archived_correction = archived_correction and not lease.archived_correction
+            if opened_archived_correction:
+                lease.archived_correction = True
             lease.save(
                 update_fields=[
+                    "archived_correction",
                     "last_heartbeat_at",
                     "expires_at",
                     "updated_at",
                 ]
             )
+            if opened_archived_correction:
+                _record_archived_correction_opened(
+                    scoresheet,
+                    lease,
+                    actor=actor,
+                    client_id=client_id,
+                    surface=surface,
+                    event_type="ARCHIVED_CORRECTION_LEASE_RESUMED",
+                )
             return lease, resume_token, False, ""
         token = secrets.token_urlsafe(36)
         lease = ScoresheetEditLease.objects.create(
@@ -643,17 +733,28 @@ def acquire_edit_lease(
             token_hash=_token_digest(token),
             client_id=client_id[:96],
             surface=surface,
+            archived_correction=archived_correction,
             last_heartbeat_at=now,
             expires_at=now + timedelta(seconds=LEASE_SECONDS),
         )
-        _event_locked(
-            scoresheet,
-            "LEASE_ACQUIRED",
-            actor=actor,
-            client_id=client_id,
-            surface=surface,
-            payload={"expires_at": lease.expires_at.isoformat()},
-        )
+        if archived_correction:
+            _record_archived_correction_opened(
+                scoresheet,
+                lease,
+                actor=actor,
+                client_id=client_id,
+                surface=surface,
+                event_type="ARCHIVED_CORRECTION_LEASE_ACQUIRED",
+            )
+        else:
+            _event_locked(
+                scoresheet,
+                "LEASE_ACQUIRED",
+                actor=actor,
+                client_id=client_id,
+                surface=surface,
+                payload={"expires_at": lease.expires_at.isoformat()},
+            )
         return lease, token, False, ""
 
 
@@ -667,13 +768,18 @@ def heartbeat_edit_lease(
 ) -> ScoresheetEditLease:
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
-        _assert_scoresheet_operable(scoresheet)
         lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
             lease_token=lease_token,
             client_id=client_id,
             surface=surface,
+        )
+        _assert_scoresheet_operable(
+            scoresheet,
+            actor=actor,
+            surface=surface,
+            allow_archived_correction=lease.archived_correction,
         )
         now = timezone.now()
         lease.last_heartbeat_at = now
@@ -722,7 +828,12 @@ def force_takeover_edit_lease(
         raise ScoresheetError("CONFIRMATION_REQUIRED", "强制接管前必须二次确认。")
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
-        _assert_scoresheet_operable(scoresheet)
+        _assert_scoresheet_operable(
+            scoresheet,
+            actor=actor,
+            surface=surface,
+            allow_archived_correction=True,
+        )
         _assert_correction_permission(scoresheet, actor)
         _assert_recognition_inactive(scoresheet, actor=actor)
         previous = _active_lease_locked(scoresheet)
@@ -744,6 +855,9 @@ def force_takeover_edit_lease(
             token_hash=_token_digest(token),
             client_id=client_id[:96],
             surface=surface,
+            archived_correction=(
+                scoresheet.game.season.status == scoresheet.game.season.Status.ARCHIVED
+            ),
             last_heartbeat_at=now,
             expires_at=now + timedelta(seconds=LEASE_SECONDS),
         )
@@ -763,6 +877,15 @@ def force_takeover_edit_lease(
             before=before,
             after={"client_id": client_id, "surface": surface},
         )
+        if lease.archived_correction:
+            _record_archived_correction_opened(
+                scoresheet,
+                lease,
+                actor=actor,
+                client_id=client_id,
+                surface=surface,
+                event_type="ARCHIVED_CORRECTION_LEASE_FORCE_TAKEN",
+            )
         return lease, token
 
 
@@ -777,21 +900,31 @@ def save_draft_changes(
     changes: list[dict[str, Any]],
     change_type: str = "FIELD_EDIT",
     explicit_save: bool = False,
+    allow_recognition_replace: bool = False,
 ) -> GameScoresheet:
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
-        _assert_scoresheet_operable(scoresheet)
         _assert_correction_permission(scoresheet, actor)
-        _assert_version(scoresheet, expected_version)
-        _assert_lease_locked(
+        lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
             lease_token=lease_token,
             client_id=client_id,
             surface=surface,
         )
+        _assert_scoresheet_operable(
+            scoresheet,
+            actor=actor,
+            surface=surface,
+            allow_archived_correction=lease.archived_correction,
+        )
+        _assert_version(scoresheet, expected_version)
         before_document = copy.deepcopy(scoresheet.draft)
-        updated, changed_regions, normalized = apply_changes(scoresheet.draft, changes)
+        updated, changed_regions, normalized = apply_changes(
+            scoresheet.draft,
+            changes,
+            allow_recognition_replace=allow_recognition_replace,
+        )
         if not normalized:
             return scoresheet
         semantic_changes = _document_changes(before_document, updated)
@@ -870,14 +1003,20 @@ def review_region(
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
         _assert_correction_permission(scoresheet, actor)
-        _assert_version(scoresheet, expected_version)
-        _assert_lease_locked(
+        lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
             lease_token=lease_token,
             client_id=client_id,
             surface=surface,
         )
+        _assert_scoresheet_operable(
+            scoresheet,
+            actor=actor,
+            surface=surface,
+            allow_archived_correction=lease.archived_correction,
+        )
+        _assert_version(scoresheet, expected_version)
         regions = dict(scoresheet.reviewed_regions or {})
         if reviewed:
             regions[region] = {
@@ -915,14 +1054,20 @@ def validate_scoresheet(
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
         _assert_correction_permission(scoresheet, actor)
-        _assert_version(scoresheet, expected_version)
-        _assert_lease_locked(
+        lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
             lease_token=lease_token,
             client_id=client_id,
             surface=surface,
         )
+        _assert_scoresheet_operable(
+            scoresheet,
+            actor=actor,
+            surface=surface,
+            allow_archived_correction=lease.archived_correction,
+        )
+        _assert_version(scoresheet, expected_version)
         report = validate_document(scoresheet.draft, scoresheet.roster_snapshot)
         report["draft_version"] = scoresheet.draft_version
         report["source_version"] = scoresheet.source_version
@@ -982,14 +1127,20 @@ def acknowledge_warnings(
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
         _assert_correction_permission(scoresheet, actor)
-        _assert_version(scoresheet, expected_version)
-        _assert_lease_locked(
+        lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
             lease_token=lease_token,
             client_id=client_id,
             surface=surface,
         )
+        _assert_scoresheet_operable(
+            scoresheet,
+            actor=actor,
+            surface=surface,
+            allow_archived_correction=lease.archived_correction,
+        )
+        _assert_version(scoresheet, expected_version)
         if scoresheet.validation_draft_version != scoresheet.draft_version:
             raise ScoresheetError("VALIDATION_STALE", "请先重新执行服务端校验。", status=409)
         valid_ids = {row["id"] for row in scoresheet.validation_report.get("warnings", [])}
@@ -1122,14 +1273,20 @@ def publish_scoresheet(
         except GameScoresheet.DoesNotExist as error:
             raise ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404) from error
         _assert_correction_permission(scoresheet, actor)
-        _assert_version(scoresheet, expected_version)
-        _assert_lease_locked(
+        lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
             lease_token=lease_token,
             client_id=client_id,
             surface=surface,
         )
+        _assert_scoresheet_operable(
+            scoresheet,
+            actor=actor,
+            surface=surface,
+            allow_archived_correction=lease.archived_correction,
+        )
+        _assert_version(scoresheet, expected_version)
         if scoresheet.source_asset_id is None or scoresheet.source_asset.deleted_at:
             raise ScoresheetError("SOURCE_MISSING", "当前记录表原图不存在。", status=409)
         if scoresheet.validation_draft_version != scoresheet.draft_version:
@@ -1305,14 +1462,20 @@ def retry_recognition(
     with transaction.atomic():
         scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
         _assert_correction_permission(scoresheet, actor)
-        _assert_version(scoresheet, expected_version)
-        _assert_lease_locked(
+        lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
             lease_token=lease_token,
             client_id=client_id,
             surface=surface,
         )
+        _assert_scoresheet_operable(
+            scoresheet,
+            actor=actor,
+            surface=surface,
+            allow_archived_correction=lease.archived_correction,
+        )
+        _assert_version(scoresheet, expected_version)
         if scoresheet.source_asset_id is None:
             raise ScoresheetError("SOURCE_MISSING", "没有可供重试的当前记录表原图。", status=409)
         latest = _latest_recognition(scoresheet)
@@ -1491,6 +1654,7 @@ def apply_recognition_regions(
         changes=[{"path": "/", "operation": "SET", "value": merged}],
         change_type="RECOGNITION_MERGE",
         explicit_save=True,
+        allow_recognition_replace=True,
     )
     run.applied_draft_version = saved.draft_version
     run.save(update_fields=["applied_draft_version", "updated_at"])

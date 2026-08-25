@@ -169,7 +169,7 @@ export function ScheduleEditorPage({
         ) : (
           <form onSubmit={(event) => void submit(event)}>
             <div className="operation-heading">
-              <div><p>{selected.division_name}</p><h2>{selected.home_name} vs {selected.away_name}</h2></div>
+              <div><p>{selected.division_name}</p><h2>{selected.home_name}　—　{selected.away_name}</h2></div>
               <span className="version-mark">v{selected.version}</span>
             </div>
             {selected.active_reschedule_request_id && (
@@ -189,7 +189,7 @@ export function ScheduleEditorPage({
               {selected.participants_managed_by_draw ? (
                 <div className="draw-managed-participants">
                   <span>参赛双方由抽签映射管理</span>
-                  <strong>{selected.home_name} vs {selected.away_name}</strong>
+                  <strong>{selected.home_name}　—　{selected.away_name}</strong>
                   <small>如需更换球队，请前往“抽签映射”按比赛重新预览并保存。</small>
                 </div>
               ) : (
@@ -217,7 +217,7 @@ export function ScheduleEditorPage({
 }
 
 function score(game: MobileAdminGame) {
-  return game.home_score === null || game.away_score === null ? "vs" : `${game.home_score}:${game.away_score}`;
+  return game.home_score === null || game.away_score === null ? "" : `${game.home_score}:${game.away_score}`;
 }
 
 function numeric(value: string) {

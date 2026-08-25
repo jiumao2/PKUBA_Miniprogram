@@ -8,6 +8,6 @@
     "enhance": true,
     "minified": true,
     "postcss": true,
-    "urlCheck": false
+    "urlCheck": true
   }
 }

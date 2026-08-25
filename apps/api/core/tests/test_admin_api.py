@@ -9,6 +9,7 @@ from django.test import Client, override_settings
 from django.utils import timezone
 
 from core.models import Account, AdminAuditLog, Game, WebLoginChallenge
+from core.services.admin_accounts import AdminAccountError, demote_superadmin
 from core.services.wechat import issue_session
 from core.tests.factories import reschedule_setup
 from core.tests.test_schedule_imports_v3 import _filled_workbook, _setup
@@ -164,9 +165,8 @@ def test_failed_admin_login_never_locks_and_keeps_redacted_audit():
 
 
 def _web_login_token(scan_payload: str) -> str:
-    prefix, version, verification_code, token = scan_payload.split(":", 3)
+    prefix, version, token = scan_payload.split(":", 2)
     assert (prefix, version) == ("PKUBA_ADMIN_WEB_LOGIN", "1")
-    assert len(verification_code) == 6
     return token
 
 
@@ -186,6 +186,15 @@ def test_admin_web_login_is_session_bound_confirmed_by_miniapp_and_one_time():
     assert challenge_payload["browser_token"] not in session_snapshot
     assert browser.get("/api/v1/auth/admin/web-login/status").json()["status"] == "PENDING"
 
+    invalid_confirmation = miniapp.post(
+        "/api/v1/auth/admin/web-login/confirm",
+        data=json.dumps({"challenge_token": "not-a-real-high-entropy-token"}),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {issue_session(setup['admin'])}",
+    )
+    assert invalid_confirmation.status_code == 400
+    assert browser.get("/api/v1/auth/admin/web-login/status").json()["status"] == "PENDING"
+
     unconfirmed = browser.post(
         "/api/v1/auth/admin/web-login/consume",
         data=json.dumps({"browser_token": challenge_payload["browser_token"]}),
@@ -200,7 +209,6 @@ def test_admin_web_login_is_session_bound_confirmed_by_miniapp_and_one_time():
         HTTP_AUTHORIZATION=f"Bearer {issue_session(setup['admin'])}",
     )
     assert confirmed.status_code == 200
-    assert confirmed.json()["verification_code"] == challenge_payload["verification_code"]
     assert confirmed.json()["username"] == setup["admin"].username
     status = browser.get("/api/v1/auth/admin/web-login/status")
     assert status.json()["status"] == "CONFIRMED"
@@ -286,7 +294,7 @@ def test_admin_web_login_rejects_non_admin_expiry_and_other_account_confirmation
         HTTP_AUTHORIZATION=f"Bearer {issue_session(other_admin)}",
     )
     assert first_confirmation.status_code == 200
-    assert repeated_confirmation.status_code == 200
+    assert repeated_confirmation.status_code == 409
     assert other_confirmation.status_code == 409
 
     expired_browser = Client()
@@ -543,3 +551,90 @@ def test_superadmin_can_promote_admin_via_csrf_protected_api():
     }
     assert promoted.status_code == 200
     assert promoted.json()["role"] == Account.Role.SUPERADMIN
+
+
+def test_superadmin_can_demote_another_superadmin_with_audit():
+    actor = _setup()["actor"]
+    target = Account.objects.create_user(
+        username="demotion-target",
+        password="test-password",
+        role=Account.Role.SUPERADMIN,
+    )
+    client = Client(enforce_csrf_checks=True)
+    csrf_token = login_admin(client, actor)
+
+    response = client.post(
+        f"/api/v1/admin/accounts/{target.id}/demote",
+        data=json.dumps({"expected_version": target.version}),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == Account.Role.ADMIN
+    target.refresh_from_db()
+    assert target.role == Account.Role.ADMIN
+    assert target.version == 2
+    audit = AdminAuditLog.objects.get(
+        action="SUPERADMIN_DEMOTED_TO_ADMIN",
+        object_id=target.id,
+    )
+    assert audit.actor_id == actor.id
+    assert audit.before["role"] == Account.Role.SUPERADMIN
+    assert audit.after["role"] == Account.Role.ADMIN
+
+
+def test_superadmin_cannot_demote_self_or_use_a_stale_version():
+    actor = _setup()["actor"]
+    other = Account.objects.create_user(
+        username="demotion-version-target",
+        password="test-password",
+        role=Account.Role.SUPERADMIN,
+    )
+    client = Client(enforce_csrf_checks=True)
+    csrf_token = login_admin(client, actor)
+
+    self_response = client.post(
+        f"/api/v1/admin/accounts/{actor.id}/demote",
+        data=json.dumps({"expected_version": actor.version}),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+    stale_response = client.post(
+        f"/api/v1/admin/accounts/{other.id}/demote",
+        data=json.dumps({"expected_version": other.version + 1}),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf_token,
+    )
+
+    assert self_response.status_code == 400
+    assert self_response.json()["code"] == "SELF_DEMOTION_FORBIDDEN"
+    assert stale_response.status_code == 409
+    assert stale_response.json()["code"] == "VERSION_CONFLICT"
+    actor.refresh_from_db()
+    other.refresh_from_db()
+    assert actor.role == Account.Role.SUPERADMIN
+    assert other.role == Account.Role.SUPERADMIN
+
+
+def test_demotion_protects_last_active_superadmin_under_stale_actor_state():
+    actor = _setup()["actor"]
+    target = Account.objects.create_user(
+        username="last-active-demotion-target",
+        password="test-password",
+        role=Account.Role.SUPERADMIN,
+    )
+    actor.is_active = False
+    actor.save(update_fields=["is_active"])
+    actor.is_active = True
+
+    with pytest.raises(AdminAccountError) as blocked:
+        demote_superadmin(
+            actor=actor,
+            target_id=target.id,
+            expected_version=target.version,
+        )
+
+    assert blocked.value.code == "LAST_SUPERADMIN_PROTECTED"
+    target.refresh_from_db()
+    assert target.role == Account.Role.SUPERADMIN

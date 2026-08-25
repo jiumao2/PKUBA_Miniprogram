@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from uuid import UUID
 
-from django.db.models import Count
+from django.db.models import Count, Max, Min
 
 from core.models import (
     DatePeriodCapacityOverride,
@@ -111,8 +111,30 @@ def capacity_ledger(
     *, season: Season, starts_on: date | None = None, ends_on: date | None = None
 ) -> list[dict[str, object]]:
     """Return a live date/slot ledger without persisting a duplicate used counter."""
-    range_start = max(starts_on or season.starts_on, season.starts_on)
-    range_end = min(ends_on or season.ends_on, season.ends_on)
+    occupied_bounds = Game.objects.filter(season=season).exclude(
+        status=Game.Status.VOID
+    ).aggregate(first=Min("date"), last=Max("date"))
+    reservation_bounds = SlotReservation.objects.filter(
+        season=season,
+        status=SlotReservation.Status.ACTIVE,
+    ).aggregate(first=Min("date"), last=Max("date"))
+    override_bounds = DatePeriodCapacityOverride.objects.filter(
+        season=season,
+        origin=DatePeriodCapacityOverride.Origin.ADMIN,
+    ).aggregate(first=Min("date"), last=Max("date"))
+    known_dates = [
+        season.starts_on,
+        season.ends_on,
+        occupied_bounds["first"],
+        occupied_bounds["last"],
+        reservation_bounds["first"],
+        reservation_bounds["last"],
+        override_bounds["first"],
+        override_bounds["last"],
+    ]
+    known_dates = [item for item in known_dates if item is not None]
+    range_start = starts_on or min(known_dates)
+    range_end = ends_on or max(known_dates)
     if range_end < range_start:
         return []
     periods = list(season.periods.order_by("sort_order", "start_time"))

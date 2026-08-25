@@ -109,7 +109,7 @@ export default function RescheduleCreatePage() {
             onChange={(event) => void changeGame(Number(event.detail.value))}
           >
             <View className={`flow-picker ${selectedGame.division_gender === "WOMEN" ? "is-women" : ""}`}>
-              <Text className="flow-picker-title">{selectedGame.home_name} vs {selectedGame.away_name}</Text>
+              <Text className="flow-picker-title">{selectedGame.home_name}　—　{selectedGame.away_name}</Text>
               <Text className="flow-picker-meta">{formatDate(selectedGame.date)} · {selectedGame.start_time} · {selectedGame.venue_name}</Text>
             </View>
           </Picker>
@@ -161,7 +161,7 @@ export default function RescheduleCreatePage() {
 }
 
 function gameLabel(game: RescheduleGame) {
-  return `${formatDate(game.date)} ${game.start_time} · ${game.home_name} vs ${game.away_name}`;
+  return `${formatDate(game.date)} ${game.start_time} · ${game.home_name} — ${game.away_name}`;
 }
 
 function targetLabel(target: RescheduleTarget) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AdminSeason,
@@ -8,6 +8,7 @@ import type {
   createAdminClient,
 } from "@pkuba/api-client";
 
+import { useAdminDirtySource } from "./dirtyGuard";
 import "./draw-mapping.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -83,6 +84,7 @@ export function DrawMappingPage({
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
 
   const applyDataset = (
     next: DrawAssignmentDataset,
@@ -108,24 +110,32 @@ export function DrawMappingPage({
   };
 
   const loadDataset = async (targetSeasonId = seasonId) => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError(null);
     try {
-      applyDataset(await client.getDrawAssignments(targetSeasonId));
+      const next = await client.getDrawAssignments(targetSeasonId);
+      if (generation !== loadGeneration.current) return;
+      applyDataset(next);
     } catch (caught) {
+      if (generation !== loadGeneration.current) return;
       setDataset(null);
       setError(caught instanceof Error ? caught.message : "无法读取抽签映射。");
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadDataset();
+    return () => {
+      loadGeneration.current += 1;
+    };
   }, [seasonId]);
 
   const anyDirty =
     groupDirty || Object.values(gameDrafts).some((draft) => draft.dirty);
+  useAdminDirtySource(`draw-mapping:${seasonId}`, anyDirty);
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
       if (anyDirty) event.preventDefault();

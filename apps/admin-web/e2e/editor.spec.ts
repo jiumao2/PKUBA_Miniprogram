@@ -58,7 +58,7 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
 
   test('opens, edits, logs, undoes, redoes, autosaves and restores', async ({ page }) => {
     const recognition = await openDemoSheet(page);
-    await expect(recognition).toContainText('总计 0 tokens');
+    await expect(recognition).toContainText(/总计\s+[\d,]+\s+tokens/);
     await expect(page.locator('.document-state')).toContainText('示例学院甲 vs 示例学院乙');
     await expect(page.locator('.document-state')).not.toContainText(/v\d+/);
 

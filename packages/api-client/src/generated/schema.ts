@@ -582,6 +582,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/accounts/{account_id}/demote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Demote Superadmin Account */
+        post: operations["core_api_admin_demote_superadmin_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/accounts/{account_id}/active": {
         parameters: {
             query?: never;
@@ -2412,10 +2429,16 @@ export interface components {
             git_commit: string;
             /** Database */
             database: string;
+            /** Migrations */
+            migrations: string;
             /** Media */
             media: string;
             /** Archive */
             archive: string;
+            /** Workers */
+            workers: {
+                [key: string]: string;
+            };
         };
         /** DivisionOut */
         DivisionOut: {
@@ -2645,8 +2668,6 @@ export interface components {
             team_id: string;
             /** Team Name */
             team_name: string;
-            /** Team Short Name */
-            team_short_name: string;
             /** Played */
             played: number;
             /** Wins */
@@ -3237,8 +3258,6 @@ export interface components {
             scan_payload: string;
             /** Browser Token */
             browser_token: string;
-            /** Verification Code */
-            verification_code: string;
             /**
              * Expires At
              * Format: date-time
@@ -3264,8 +3283,6 @@ export interface components {
             status: string;
             /** Username */
             username: string;
-            /** Verification Code */
-            verification_code: string;
             /**
              * Expires At
              * Format: date-time
@@ -3686,28 +3703,20 @@ export interface components {
             prefix: string;
             /** Slot Count */
             slot_count: number;
-            /** Sort Order */
-            sort_order: number;
         };
         /** SeasonDivisionConfigurationIn */
         SeasonDivisionConfigurationIn: {
             /** Id */
             id?: string | null;
-            /** Code */
-            code: string;
             /** Name */
             name: string;
             /** Gender */
             gender: string;
-            /** Sort Order */
-            sort_order: number;
         };
         /** SeasonPeriodConfigurationIn */
         SeasonPeriodConfigurationIn: {
             /** Id */
             id?: string | null;
-            /** Code */
-            code: string;
             /** Name */
             name: string;
             /**
@@ -3715,8 +3724,6 @@ export interface components {
              * Format: time
              */
             start_time: string;
-            /** Sort Order */
-            sort_order: number;
             /** Default Capacities */
             default_capacities: {
                 [key: string]: number;
@@ -3728,8 +3735,6 @@ export interface components {
             id?: string | null;
             /** Name */
             name: string;
-            /** Sort Order */
-            sort_order: number;
             /** Active */
             active: boolean;
         };
@@ -5283,6 +5288,12 @@ export interface components {
             offset: number;
             /** Limit */
             limit: number;
+            /** Search */
+            search: string;
+            /** Sort */
+            sort: string;
+            /** Direction */
+            direction: string;
             /** Items */
             items: components["schemas"]["AdvancedRecordOut"][];
         };
@@ -5791,8 +5802,6 @@ export interface components {
             division_id: string;
             /** Name */
             name: string;
-            /** Short Name */
-            short_name: string;
             /** Active */
             active: boolean;
             /** Version */
@@ -6432,6 +6441,8 @@ export interface components {
             page: number;
             /** Page Size */
             page_size: number;
+            /** Division Names */
+            division_names: string[];
         };
         /**
          * DocumentStatus
@@ -7022,6 +7033,11 @@ export interface components {
              * @default
              */
             lease_token: string;
+            /**
+             * Archived Correction Confirmed
+             * @default false
+             */
+            archived_correction_confirmed: boolean;
         };
         /** LeaseCommandIn */
         LeaseCommandIn: {
@@ -7034,6 +7050,11 @@ export interface components {
             surface: "WEB" | "MINIAPP";
             /** Lease Token */
             lease_token: string;
+            /**
+             * Archived Correction Confirmed
+             * @default false
+             */
+            archived_correction_confirmed: boolean;
         };
         /** LeaseForceIn */
         LeaseForceIn: {
@@ -7049,6 +7070,11 @@ export interface components {
              * @default
              */
             lease_token: string;
+            /**
+             * Archived Correction Confirmed
+             * @default false
+             */
+            archived_correction_confirmed: boolean;
             /** Confirmed */
             confirmed: boolean;
         };
@@ -8228,6 +8254,50 @@ export interface operations {
             };
         };
     };
+    core_api_admin_demote_superadmin_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpectedVersionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
     core_api_admin_change_admin_active: {
         parameters: {
             query?: never;
@@ -8325,6 +8395,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10107,6 +10186,9 @@ export interface operations {
             query?: {
                 offset?: number;
                 limit?: number;
+                search?: string;
+                sort?: string;
+                direction?: string;
             };
             header?: never;
             path: {
@@ -12341,6 +12423,11 @@ export interface operations {
         parameters: {
             query?: {
                 season_id?: string | null;
+                game_id?: string | null;
+                scope?: "ALL" | "ACTION_REQUIRED" | "IN_PROGRESS" | "PUBLISHED";
+                processing?: "" | "UPLOAD" | "SCORESHEET_REVIEW" | "COMPLETE";
+                division_name?: string;
+                query?: string;
                 page?: number;
                 page_size?: number;
             };

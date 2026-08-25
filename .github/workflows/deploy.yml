@@ -34,7 +34,9 @@ jobs:
         env:
           VERSION_TAG: ${{ inputs.version_tag }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          PRODUCTION_DEPLOYMENTS_ENABLED: ${{ vars.PRODUCTION_DEPLOYMENTS_ENABLED }}
         run: |
+          [[ "$PRODUCTION_DEPLOYMENTS_ENABLED" == true ]]
           [[ "$CONFIRMATION" == DEPLOY ]]
           [[ "$VERSION_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           release_commit=$(git rev-parse "$VERSION_TAG^{commit}")

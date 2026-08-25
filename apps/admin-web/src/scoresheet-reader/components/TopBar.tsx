@@ -114,7 +114,7 @@ export function TopBar({
       <div className="document-state">
         <span className={`state-dot ${document?.status ?? 'empty'}`} />
         <div>
-          <strong>{document ? `${teamA} vs ${teamB}` : '尚未选择比赛'}</strong>
+          <strong>{document ? `${teamA} — ${teamB}` : '尚未选择比赛'}</strong>
           <span>{document ? `${competition || '未填写竞赛名称'} · ${statusLabel}` : '请选择比赛并上传记录表照片'}</span>
         </div>
       </div>

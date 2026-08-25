@@ -13,8 +13,6 @@
     "@pkuba/scoresheet-domain": "0.1.0",
     "@tarojs/components": "4.2.1",
     "@tarojs/helper": "4.2.1",
-    "@tarojs/plugin-framework-react": "4.2.1",
-    "@tarojs/plugin-platform-weapp": "4.2.1",
     "@tarojs/react": "4.2.1",
     "@tarojs/runtime": "4.2.1",
     "@tarojs/shared": "4.2.1",
@@ -25,11 +23,15 @@
   "devDependencies": {
     "@babel/preset-react": "7.29.7",
     "@tarojs/cli": "4.2.1",
+    "@tarojs/plugin-framework-react": "4.2.1",
+    "@tarojs/plugin-platform-weapp": "4.2.1",
     "@tarojs/webpack5-runner": "4.2.1",
     "@types/react": "^18.3.24",
+    "@vitejs/plugin-react": "4.7.0",
     "babel-preset-taro": "4.2.1",
     "typescript": "^5.9.2",
+    "vite": "4.5.14",
     "vitest": "^3.2.4",
-    "webpack": "5.91.0"
+    "webpack": "5.104.1"
   }
 }

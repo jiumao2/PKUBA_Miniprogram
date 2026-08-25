@@ -82,15 +82,12 @@ export default function MinePage() {
       const payload = parseAdminWebLoginPayload(scanned.result ?? "");
       const decision = await Taro.showModal({
         title: "确认登录管理后台",
-        content: `浏览器校验码：${payload.verificationCode}\n确认使用账号“${me.account.username}”登录？`,
+        content: `确认使用账号“${me.account.username}”完成本次网页登录？`,
         confirmText: "确认登录",
         confirmColor: "#c91f26",
       });
       if (!decision.confirm) return;
-      const confirmation = await api.confirmAdminWebLogin(payload.challengeToken, token);
-      if (confirmation.verification_code !== payload.verificationCode) {
-        throw new Error("登录校验码不一致，请刷新网页二维码后重试。");
-      }
+      await api.confirmAdminWebLogin(payload.challengeToken, token);
       Taro.showToast({ title: "已确认登录", icon: "success" });
     } catch (reason: unknown) {
       const message = reason instanceof Error ? reason.message : "扫码登录失败";
@@ -222,17 +219,16 @@ function genderClass(gender: string) {
 }
 
 function parseAdminWebLoginPayload(value: string) {
-  const [prefix, version, verificationCode, challengeToken, ...extra] = value.trim().split(":");
+  const [prefix, version, challengeToken, ...extra] = value.trim().split(":");
   if (
     prefix !== "PKUBA_ADMIN_WEB_LOGIN" ||
     version !== "1" ||
     extra.length > 0 ||
-    !/^[A-F0-9]{6}$/.test(verificationCode ?? "") ||
     !/^[A-Za-z0-9_-]{32,}$/.test(challengeToken ?? "")
   ) {
     throw new Error("这不是有效的 PKUBA 管理后台登录二维码。");
   }
-  return { verificationCode, challengeToken };
+  return { challengeToken };
 }
 
 function State({ title, detail }: { title: string; detail?: string }) {

@@ -13,6 +13,15 @@ export type {
   ScoresheetSurface,
 } from "@pkuba/scoresheet-domain";
 
+export function formatOfficialScore(
+  homeScore: number | null,
+  awayScore: number | null,
+  separator = ":",
+): string | null {
+  if (homeScore === null || awayScore === null) return null;
+  return `${homeScore}${separator}${awayScore}`;
+}
+
 export type Division = components["schemas"]["DivisionOut"];
 export type Season = components["schemas"]["SeasonOut"];
 export type Game = components["schemas"]["GameOut"];
@@ -390,6 +399,23 @@ export interface PagedResponse<T> {
   page_size: number;
 }
 
+export interface ScoresheetQueuePage extends PagedResponse<ScoresheetQueueItem> {
+  division_names: string[];
+}
+
+export type ScoresheetQueueScope = "ALL" | "ACTION_REQUIRED" | "IN_PROGRESS" | "PUBLISHED";
+
+export interface ScoresheetQueueQuery {
+  seasonId?: string;
+  gameId?: string;
+  scope?: ScoresheetQueueScope;
+  processing?: "" | "UPLOAD" | "SCORESHEET_REVIEW" | "COMPLETE";
+  divisionName?: string;
+  query?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface InboxSummary {
   open_count: number;
   display_count: string;
@@ -604,12 +630,21 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
         },
         body: JSON.stringify({ expected_version: expectedVersion }),
       }),
-    listScoresheets: (token: string, seasonId?: string) =>
-      collectPages<ScoresheetQueueItem>(
-        "/api/v1/scoresheets/",
-        seasonId ? `season_id=${encodeURIComponent(seasonId)}` : "",
+    getScoresheetQueuePage: (token: string, options: ScoresheetQueueQuery = {}) => {
+      const params = new URLSearchParams();
+      if (options.seasonId) params.set("season_id", options.seasonId);
+      if (options.gameId) params.set("game_id", options.gameId);
+      if (options.scope) params.set("scope", options.scope);
+      if (options.processing) params.set("processing", options.processing);
+      if (options.divisionName) params.set("division_name", options.divisionName);
+      if (options.query) params.set("query", options.query);
+      params.set("page", String(options.page ?? 1));
+      params.set("page_size", String(options.pageSize ?? 20));
+      return send<ScoresheetQueuePage>(
+        `/api/v1/scoresheets/?${params.toString()}`,
         bearer(token),
-      ),
+      );
+    },
     getScoresheet: (scoresheetId: string, token: string) =>
       send<ScoresheetDetail>(`/api/v1/scoresheets/${scoresheetId}`, bearer(token)),
     syncScoresheet: (
@@ -1497,12 +1532,26 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       parseAdminResponse<AdvancedModel[]>(
         await fetchAdmin("/api/v1/admin/advanced-data/models"),
       ),
-    listAdvancedRecords: async (modelKey: string, offset = 0, limit = 50) =>
+    listAdvancedRecords: async (
+      modelKey: string,
+      offset = 0,
+      limit = 50,
+      options: { search?: string; sort?: string; direction?: "asc" | "desc" } = {},
+    ) => {
+      const query = new URLSearchParams({
+        offset: String(offset),
+        limit: String(limit),
+      });
+      if (options.search?.trim()) query.set("search", options.search.trim());
+      if (options.sort) query.set("sort", options.sort);
+      if (options.direction) query.set("direction", options.direction);
+      return (
       parseAdminResponse<AdvancedRecordList>(
         await fetchAdmin(
-          `/api/v1/admin/advanced-data/${modelKey}?offset=${offset}&limit=${limit}`,
+          `/api/v1/admin/advanced-data/${modelKey}?${query.toString()}`,
         ),
-      ),
+      ));
+    },
     getAdvancedRecord: async (modelKey: string, objectId: string) =>
       parseAdminResponse<AdvancedRecord>(
         await fetchAdmin(`/api/v1/admin/advanced-data/${modelKey}/${objectId}`),
@@ -1533,6 +1582,14 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
     promoteAdmin: async (accountId: string, expectedVersion: number) =>
       parseAdminResponse<AdminManagedAccount>(
         await fetchAdmin(`/api/v1/admin/accounts/${accountId}/promote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify({ expected_version: expectedVersion }),
+        }),
+      ),
+    demoteSuperadmin: async (accountId: string, expectedVersion: number) =>
+      parseAdminResponse<AdminManagedAccount>(
+        await fetchAdmin(`/api/v1/admin/accounts/${accountId}/demote`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...csrfHeaders() },
           body: JSON.stringify({ expected_version: expectedVersion }),
@@ -1691,10 +1748,19 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           body: JSON.stringify({ expected_version: expectedVersion }),
         }),
       ),
-    listScoresheets: async (seasonId?: string) => {
+    getScoresheetQueuePage: async (options: ScoresheetQueueQuery = {}) => {
       const params = new URLSearchParams();
-      if (seasonId) params.set("season_id", seasonId);
-      return collectAdminPages<ScoresheetQueueItem>("/api/v1/scoresheets/", params);
+      if (options.seasonId) params.set("season_id", options.seasonId);
+      if (options.gameId) params.set("game_id", options.gameId);
+      if (options.scope) params.set("scope", options.scope);
+      if (options.processing) params.set("processing", options.processing);
+      if (options.divisionName) params.set("division_name", options.divisionName);
+      if (options.query) params.set("query", options.query);
+      params.set("page", String(options.page ?? 1));
+      params.set("page_size", String(options.pageSize ?? 20));
+      return parseAdminResponse<ScoresheetQueuePage>(
+        await fetchAdmin(`/api/v1/scoresheets/?${params.toString()}`),
+      );
     },
     getScoresheet: async (scoresheetId: string) =>
       parseAdminResponse<ScoresheetDetail>(
@@ -1715,6 +1781,7 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       clientId: string,
       surface: ScoresheetSurface,
       leaseToken = "",
+      archivedCorrectionConfirmed = false,
     ) =>
       parseAdminResponse<ScoresheetLeaseResponse>(
         await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/lease`, {
@@ -1724,6 +1791,7 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
             client_id: clientId,
             surface,
             lease_token: leaseToken,
+            archived_correction_confirmed: archivedCorrectionConfirmed,
           }),
         }),
       ),

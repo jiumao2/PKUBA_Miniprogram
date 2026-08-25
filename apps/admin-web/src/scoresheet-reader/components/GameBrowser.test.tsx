@@ -24,32 +24,43 @@ const games: GameSummary[] = [
   },
 ];
 
+const browserProps = {
+  games,
+  total: games.length,
+  page: 1,
+  pageSize: 20,
+  scope: 'ALL' as const,
+  query: '',
+  loading: false,
+  onClose: vi.fn(),
+  onLoad: vi.fn().mockResolvedValue(undefined),
+  onOpen: vi.fn().mockResolvedValue(undefined),
+  onUpload: vi.fn().mockResolvedValue(undefined),
+  onReupload: vi.fn().mockResolvedValue(undefined),
+};
+
 describe('game browser', () => {
   it('preselects the game supplied by the competition media deep link', async () => {
     render(
       <GameBrowser
-        games={games}
-        loading={false}
+        {...browserProps}
         initialGameId="ready"
-        onClose={vi.fn()}
-        onRefresh={vi.fn()}
-        onOpen={vi.fn()}
-        onUpload={vi.fn()}
-        onReupload={vi.fn()}
       />,
     );
 
-    expect(await screen.findByText('数学 vs 外院')).toBeVisible();
+    expect(await screen.findByText('数学 — 外院')).toBeVisible();
     expect(screen.getByRole('button', { name: /上传并识别/ })).toBeEnabled();
   });
 
-  it('filters games and prevents uploads for unresolved placeholders', async () => {
+  it('requests server-side filtering and prevents uploads for unresolved placeholders', async () => {
     const user = userEvent.setup();
-    render(<GameBrowser games={games} loading={false} onClose={vi.fn()} onRefresh={vi.fn()} onOpen={vi.fn()} onUpload={vi.fn()} onReupload={vi.fn()} />);
+    const onLoad = vi.fn().mockResolvedValue(undefined);
+    render(<GameBrowser {...browserProps} onLoad={onLoad} />);
     expect(screen.getByRole('button', { name: /半决赛胜者/ })).toBeDisabled();
     await user.type(screen.getByPlaceholderText(/搜索球队/), '数学');
-    expect(screen.getByRole('button', { name: /数学.*外院/ })).toBeVisible();
-    expect(screen.queryByRole('button', { name: /半决赛胜者/ })).not.toBeInTheDocument();
+    await vi.waitFor(() => expect(onLoad).toHaveBeenCalledWith({
+      query: '数学', scope: 'ALL', page: 1, pageSize: 20,
+    }));
   });
 
   it('opens an existing recognized document directly from its game row', async () => {
@@ -58,13 +69,9 @@ describe('game browser', () => {
     const close = vi.fn();
     render(
       <GameBrowser
-        games={games}
-        loading={false}
+        {...browserProps}
         onClose={close}
-        onRefresh={vi.fn()}
         onOpen={open}
-        onUpload={vi.fn()}
-        onReupload={vi.fn()}
       />,
     );
 
@@ -82,12 +89,8 @@ describe('game browser', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { container } = render(
       <GameBrowser
-        games={games}
-        loading={false}
+        {...browserProps}
         onClose={close}
-        onRefresh={vi.fn()}
-        onOpen={vi.fn()}
-        onUpload={vi.fn()}
         onReupload={reupload}
       />,
     );

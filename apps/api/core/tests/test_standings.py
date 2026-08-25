@@ -40,7 +40,6 @@ def _standings_setup():
             season=target_season,
             division=division,
             name=name,
-            short_name=name,
         )
         for name in ("甲队", "乙队", "丙队")
     ]

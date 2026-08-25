@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import zipfile
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -176,11 +177,30 @@ def test_full_backup_contains_verified_database_media_and_version(tmp_path, monk
         requested_by=setup["superadmin"],
     )
 
+    fence_events: list[str] = []
+
+    @contextmanager
+    def fake_fence():
+        fence_events.append("enter")
+        try:
+            yield
+        finally:
+            fence_events.append("exit")
+
     def fake_pg_dump(output: Path, *, snapshot: str | None = None):
+        assert fence_events == ["enter"]
         assert snapshot
         output.write_bytes(b"synthetic-postgresql-custom-dump")
 
+    original_sha256_path = archive_exports._sha256_path
+
+    def sha256_after_fence(path: Path) -> str:
+        assert fence_events == ["enter", "exit"]
+        return original_sha256_path(path)
+
+    monkeypatch.setattr(archive_exports, "exclusive_system_write_fence", fake_fence)
     monkeypatch.setattr(archive_exports, "_pg_dump", fake_pg_dump)
+    monkeypatch.setattr(archive_exports, "_sha256_path", sha256_after_fence)
     monkeypatch.setenv("PKUBA_GIT_COMMIT", "test-commit")
     with override_settings(MEDIA_ROOT=media, ARCHIVE_ROOT=archives):
         completed = process_archive_job(job)
@@ -196,6 +216,7 @@ def test_full_backup_contains_verified_database_media_and_version(tmp_path, monk
     )
     assert manifest["media_file_count"] == 1
     assert (extracted / "database.dump").read_bytes() == b"synthetic-postgresql-custom-dump"
+    assert fence_events == ["enter", "exit"]
 
 
 def test_archived_media_purge_keeps_metadata_and_is_idempotent(tmp_path):
@@ -453,6 +474,14 @@ def test_archive_admin_api_permissions_reauth_and_range_download(tmp_path, monke
             f"/api/v1/admin/archive-jobs/{job.id}/download-ticket",
             secure=True,
         )
+        invalid_range = client.get(
+            ticket.json()["url"],
+            HTTP_RANGE="bytes=99-100",
+            secure=True,
+        )
+        job.refresh_from_db()
+        assert invalid_range.status_code == 416
+        assert job.download_count == 0
         response = client.get(
             ticket.json()["url"],
             HTTP_RANGE="bytes=2-5",

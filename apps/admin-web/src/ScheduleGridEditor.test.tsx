@@ -15,7 +15,7 @@ const draft: ScheduleDraft = {
   season_id: "season-1",
   season_version: 1,
   version: 1,
-  template_version: "3.2.0",
+  template_version: "3.3.0",
   source_name: "",
   updated_at: "2026-08-21T00:00:00Z",
   periods: [

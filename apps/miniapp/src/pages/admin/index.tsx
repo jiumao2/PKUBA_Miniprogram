@@ -47,7 +47,7 @@ export default function AdminWorkspacePage() {
 
   const adminRole = dashboard?.admin_role;
   const copyAdminAddress = async () => {
-    await Taro.setClipboardData({ data: PKUBA_API_BASE_URL });
+    await Taro.setClipboardData({ data: PKUBA_ADMIN_WEB_URL });
   };
 
   if (!loading && !getMiniAppSession()) {

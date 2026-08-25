@@ -3,32 +3,26 @@ import { describe, expect, it } from "vitest";
 import { buildSeasonCalendar, densityLevel } from "./calendar";
 
 describe("home season calendar", () => {
-  it("fills every day across month and natural-week boundaries", () => {
-    const cells = buildSeasonCalendar("2026-03-28", "2026-04-02", [
+  it("always renders the current natural week plus two weeks on each side", () => {
+    const cells = buildSeasonCalendar("2026-04-01", [
       { date: "2026-03-28", game_count: 3 },
       { date: "2026-04-02", game_count: 1 },
     ]);
 
-    expect(cells).toHaveLength(14);
-    expect(cells.slice(0, 5).every((cell) => cell.outside)).toBe(true);
-    expect(cells.filter((cell) => !cell.outside).map((cell) => cell.date)).toEqual([
-      "2026-03-28",
-      "2026-03-29",
-      "2026-03-30",
-      "2026-03-31",
-      "2026-04-01",
-      "2026-04-02",
-    ]);
+    expect(cells).toHaveLength(35);
+    expect(cells[0].date).toBe("2026-03-16");
+    expect(cells[34].date).toBe("2026-04-19");
+    expect(cells.every((cell) => !cell.outside)).toBe(true);
     expect(cells.find((cell) => cell.date === "2026-03-31")?.gameCount).toBe(0);
+    expect(cells.find((cell) => cell.date === "2026-03-28")?.gameCount).toBe(3);
   });
 
-  it("renders a one-day Monday season as one complete week", () => {
-    const cells = buildSeasonCalendar("2026-03-23", "2026-03-23", [
-      { date: "2026-03-23", game_count: 2 },
-    ]);
-    expect(cells).toHaveLength(7);
-    expect(cells[0]).toMatchObject({ outside: false, gameCount: 2 });
-    expect(cells.slice(1).every((cell) => cell.outside)).toBe(true);
+  it("keeps exactly 35 cells across the year boundary", () => {
+    const cells = buildSeasonCalendar("2027-01-01", []);
+    expect(cells).toHaveLength(35);
+    expect(cells[0].date).toBe("2026-12-14");
+    expect(cells[34].date).toBe("2027-01-17");
+    expect(cells.filter((cell) => cell.date === "2027-01-01")).toHaveLength(1);
   });
 
   it("maps zero and positive counts to five visible levels", () => {

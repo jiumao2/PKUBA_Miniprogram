@@ -349,6 +349,11 @@ def upload_game_media(
                 "SCORESHEET_SOURCE_EXISTS",
                 "该比赛已有当前记录表；请刷新后从编辑器执行重传。",
             ) from error
+        if kind == GameMediaAsset.Kind.GROUP_PHOTO:
+            raise GameMediaError(
+                "GROUP_PHOTO_EXISTS",
+                "该比赛已有当前比赛合照，请使用重新上传。",
+            ) from error
         raise GameMediaError("DUPLICATE_MEDIA", "该比赛已上传过同一张图片。") from error
     except Exception:
         _discard_storage_object(stored_key)

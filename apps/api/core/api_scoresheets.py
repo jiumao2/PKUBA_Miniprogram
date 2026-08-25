@@ -7,7 +7,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from ninja import Header, Router, Schema, Status
@@ -130,6 +130,7 @@ class ScoresheetQueuePageOut(Schema):
     total: int
     page: int
     page_size: int
+    division_names: list[str]
 
 
 class ScoresheetDetailOut(Schema):
@@ -180,6 +181,7 @@ class LeaseAcquireIn(Schema):
     client_id: str
     surface: Literal["WEB", "MINIAPP"]
     lease_token: str = ""
+    archived_correction_confirmed: bool = False
 
 
 class LeaseCommandIn(LeaseAcquireIn):
@@ -391,7 +393,7 @@ def _detail(scoresheet: GameScoresheet) -> dict[str, Any]:
         "game": {
             "id": str(game.id),
             "code": game.code,
-            "label": f"{game.division.name} · {game.home_display} vs {game.away_display}",
+            "label": f"{game.division.name} · {game.home_display} — {game.away_display}",
             "date": game.date.isoformat(),
             "start_time": game.start_time.strftime("%H:%M"),
             "venue": game.venue_name,
@@ -482,8 +484,13 @@ def get_scoresheet_recognition_capabilities(request: HttpRequest):
 def list_scoresheets(
     request: HttpRequest,
     season_id: UUID | None = None,
+    game_id: UUID | None = None,
+    scope: Literal["ALL", "ACTION_REQUIRED", "IN_PROGRESS", "PUBLISHED"] = "ALL",
+    processing: Literal["", "UPLOAD", "SCORESHEET_REVIEW", "COMPLETE"] = "",
+    division_name: str = "",
+    query: str = "",
     page: int = 1,
-    page_size: int = 100,
+    page_size: int = 20,
 ):
     try:
         _require_admin(request)
@@ -500,6 +507,80 @@ def list_scoresheets(
             games = games.filter(
                 Q(season__status=Season.Status.PUBLISHED) | Q(scoresheet__isnull=False)
             )
+        if game_id:
+            games = games.filter(id=game_id)
+        division_names = list(
+            games.order_by()
+            .values_list("division__name", flat=True)
+            .distinct()
+            .order_by("division__name")
+        )
+        normalized_division = " ".join(division_name.split())[:80]
+        if normalized_division:
+            games = games.filter(division__name=normalized_division)
+        if scope == "ACTION_REQUIRED":
+            games = games.filter(
+                Q(scoresheet__isnull=True)
+                | Q(
+                    scoresheet__status__in=(
+                        GameScoresheet.Status.NO_SOURCE,
+                        GameScoresheet.Status.DRAFT,
+                        GameScoresheet.Status.RECOGNITION_FAILED,
+                        GameScoresheet.Status.READY,
+                    )
+                )
+            )
+        elif scope == "IN_PROGRESS":
+            games = games.filter(
+                scoresheet__status__in=(
+                    GameScoresheet.Status.RECOGNITION_QUEUED,
+                    GameScoresheet.Status.RECOGNIZING,
+                    GameScoresheet.Status.RETRY_WAIT,
+                )
+            )
+        elif scope == "PUBLISHED":
+            games = games.filter(scoresheet__status=GameScoresheet.Status.PUBLISHED)
+        if processing == "UPLOAD":
+            games = games.filter(
+                Q(scoresheet__isnull=True) | Q(scoresheet__source_asset_id__isnull=True)
+            )
+        elif processing == "SCORESHEET_REVIEW":
+            games = games.filter(scoresheet__source_asset_id__isnull=False).exclude(
+                scoresheet__status__in=(
+                    GameScoresheet.Status.PUBLISHED,
+                    GameScoresheet.Status.RECOGNITION_QUEUED,
+                    GameScoresheet.Status.RECOGNIZING,
+                    GameScoresheet.Status.RETRY_WAIT,
+                )
+            )
+        elif processing == "COMPLETE":
+            games = games.filter(scoresheet__status=GameScoresheet.Status.PUBLISHED)
+        normalized_query = " ".join(query.split())[:120]
+        if normalized_query:
+            games = games.filter(
+                Q(code__icontains=normalized_query)
+                | Q(season__name__icontains=normalized_query)
+                | Q(division__name__icontains=normalized_query)
+                | Q(home_team__name__icontains=normalized_query)
+                | Q(away_team__name__icontains=normalized_query)
+                | Q(home_slot__label__icontains=normalized_query)
+                | Q(away_slot__label__icontains=normalized_query)
+            )
+        games = games.annotate(
+            queue_priority=Case(
+                When(scoresheet__status=GameScoresheet.Status.RECOGNITION_FAILED, then=Value(0)),
+                When(scoresheet__status=GameScoresheet.Status.DRAFT, then=Value(1)),
+                When(scoresheet__status=GameScoresheet.Status.READY, then=Value(2)),
+                When(scoresheet__isnull=True, then=Value(3)),
+                When(scoresheet__status=GameScoresheet.Status.NO_SOURCE, then=Value(3)),
+                When(scoresheet__status=GameScoresheet.Status.RETRY_WAIT, then=Value(4)),
+                When(scoresheet__status=GameScoresheet.Status.RECOGNIZING, then=Value(5)),
+                When(scoresheet__status=GameScoresheet.Status.RECOGNITION_QUEUED, then=Value(6)),
+                When(scoresheet__status=GameScoresheet.Status.PUBLISHED, then=Value(7)),
+                default=Value(8),
+                output_field=IntegerField(),
+            )
+        ).order_by("queue_priority", "date", "start_time", "venue_name", "id")
         page = max(page, 1)
         page_size = min(max(page_size, 1), 100)
         total = games.count()
@@ -517,7 +598,7 @@ def list_scoresheets(
                     "game_id": game.id,
                     "game_code": game.code,
                     "game_label": (
-                        f"{game.division.name} · {game.home_display} vs {game.away_display}"
+                        f"{game.division.name} · {game.home_display} — {game.away_display}"
                     ),
                     "competition": game.season.name,
                     "division_name": game.division.name,
@@ -539,7 +620,13 @@ def list_scoresheets(
                     ),
                 }
             )
-        return {"items": rows, "total": total, "page": page, "page_size": page_size}
+        return {
+            "items": rows,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "division_names": division_names,
+        }
     except ScoresheetError as error:
         return _error(error)
 
@@ -610,6 +697,7 @@ def acquire_scoresheet_lease(request: HttpRequest, scoresheet_id: UUID, payload:
             client_id=payload.client_id,
             surface=payload.surface,
             resume_token=payload.lease_token,
+            archived_correction_confirmed=payload.archived_correction_confirmed,
         )
         return {
             "read_only": read_only,

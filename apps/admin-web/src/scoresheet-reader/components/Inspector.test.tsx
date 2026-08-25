@@ -43,6 +43,10 @@ describe('semantic inspector', () => {
     await user.type(jersey, '01');
     expect(screen.getByText('号码格式无效')).toBeInTheDocument();
     await user.clear(jersey);
+    await user.type(jersey, '100');
+    expect(jersey).toHaveValue('100');
+    expect(screen.getByText('号码格式无效')).toBeInTheDocument();
+    await user.clear(jersey);
     await user.type(jersey, '23');
     await user.selectOptions(screen.getByLabelText('上场状态'), 'starter');
     await user.click(screen.getByLabelText('队长（CAP）'));

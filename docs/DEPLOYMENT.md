@@ -1,9 +1,15 @@
-# PKUBA 生产部署与自动回滚
+# PKUBA 同机蓝绿部署方案（测试期草案，尚未启用）
 
-生产环境为阿里云 Ubuntu 24.04 单机，保留现有 Compose project
-`pkuba-ip-test` 及其 `postgres-data`、`private-media`、`archive-staging` 卷。
-管理站和 API 分别使用 `https://admin.pkuba.cn` 与
-`https://api.pkuba.cn`。日常发布只需在本地推送版本标签，不再登录服务器。
+项目当前仍处于测试阶段，独立复测结论为 **NO-GO**。现有服务器上的
+`pkuba-ip-test` 是单 project 测试栈，不是本方案已完成的生产基线。GitHub
+`PRODUCTION_DEPLOYMENTS_ENABLED`、服务器 `PKUBA_PRODUCTION_AUTOMATION_ARMED`
+和版本兼容合同必须继续保持关闭；本页目前只用于代码审查和隔离演练，禁止据此连接
+服务器执行切换。
+
+最终拓扑为：稳定 `pkuba-gateway` Caddy、稳定 `pkuba-data` PostgreSQL、独立
+`pkuba-blue`/`pkuba-green` 应用 project。现有 PostgreSQL、私有媒体和归档卷以
+external volume 复用，不复制到应用栈。管理站和 API 最终分别使用
+`https://admin.pkuba.cn` 与 `https://api.pkuba.cn`。
 
 ```text
 main 上的干净提交
@@ -18,7 +24,7 @@ API / Web 镜像（tag + commit tag + 不可变 digest）
         ↓
 预检 → 在线备份 → 维护模式 → 最终备份 → 迁移 → 验收
         ↓
-成功开放；任一步失败则恢复数据库和上一镜像
+成功开放；普通应用故障只切回旧应用，确认数据损坏时才成对恢复 DB/媒体/归档
 ```
 
 ## 不可违反的边界
@@ -27,18 +33,19 @@ API / Web 镜像（tag + commit tag + 不可变 digest）
   Django、微信、Qwen、SMTP 和 GHCR 凭据都不能进入 GitHub Actions 日志或仓库。
 - 镜像部署只接受 `ghcr.io/jiumao2/pkuba-*@sha256:...`，不接受可变 tag。
 - 部署账号只接受四参数 `deploy` 命令；禁止 PTY、端口转发、密码登录和任意 shell。
-- 不更改 Compose project 名，不复制或重建业务卷，不运行 `down -v`。
+- Caddy gateway、data、blue、green 使用独立 Compose project；现有 `pkuba-ip-test_*` 数据卷只作为 external volume 复用。不得复制、重建或执行 `down -v`。
 - 迁移前等待记录表识别、归档、照片清理、编辑租约及到期调赛处理结束，最长
   15 分钟；超时安全退出且不会进入维护模式。
-- 最终数据库 dump 在全部写入进程停止后生成，是自动回滚的权威恢复点。媒体卷在
-  写入暂停期间保持原样，不为每次发布重复复制。
-- 生产数据与私有媒体的完整灾难恢复仍使用“全系统原始备份”；发布回滚备份不能
-  替代跨磁盘、跨主机备份。
+- writer fence 内同时生成 PostgreSQL dump、私有媒体包和归档包，并写同一 manifest、大小和 SHA-256。该一致点用于确认数据损坏后的成对恢复；普通应用回切绝不恢复其中任一数据资源。
+- 旧应用栈切流后保留 24 小时且 worker 保持停止。只有旧应用与新 schema/data contract 经过兼容测试时才能回切；无法兼容时不得伪装成普通蓝绿发布。
+- 生产数据与私有媒体的灾难恢复仍需独立异地备份；部署一致点不能替代跨磁盘、跨主机备份。
 - 邮件 worker 默认不启动。所有邮件只发篮协公邮，启用前需单独完成授权码轮换与
   Mailpit 验收。
 - `scripts/deploy-wsl.ps1` 仅用于本机 Ubuntu WSL，严禁在生产服务器运行。
 
 ## GitHub 自动发布
+
+当前仅允许运行 CI、构建镜像和小程序 artifact；部署 job 受仓库变量显式关闭，服务器端即使被误调用也会因武装开关和兼容合同为 0 而失败。不得为消除 skipped job 而提前开启这些开关。
 
 `.github/workflows/release.yml` 是唯一正常发版入口：
 
@@ -140,10 +147,7 @@ docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' \
   --current-web-image ghcr.io/jiumao2/pkuba-web@sha256:WEB_DIGEST
 ```
 
-该脚本只检查现有卷、创建 `pkuba-deploy`、安装 ForcedCommand、建立只读仓库和
-当前版本清单，不重启现有容器。测试服务器尚含合成公开数据时可临时加
-`--allow-synthetic-test-data`；正式上线前必须清除合成数据，并把
-`/etc/pkuba-deploy.conf` 的 `PKUBA_ENFORCE_DATA_GATE` 恢复为 `1`。
+该脚本只检查现有卷、创建受限账号、安装 ForcedCommand、建立只读仓库和写入“尚未转换”的状态，不重启现有容器，也不会把当前单 project 变成蓝绿基线。执行后自动化仍强制关闭；必须先由后续独立的基线转换脚本和演练把 active slot 建立为 blue 或 green，当前版本尚未提供可批准执行的服务器转换流程。
 
 ### 5. 配置 GitHub production Environment
 
@@ -162,14 +166,11 @@ known-hosts 使用非 22 端口时，主机部分必须写成 `[host]:port`。�
 
 ### 6. 首次演练
 
-先在隔离 Compose project 验证一次成功发布，并分别制造迁移失败、API readiness
-失败、worker 启动失败和外部 HTTPS 失败；每次都应看到旧数据库、旧 digest 和旧
-业务计数恢复。随后对生产当前版本执行一次无数据变化重部署，再发布补丁标签。
-只有这些检查完成后，才禁用 root 密码登录；仍需保留个人密钥用于灾难恢复。
+只在本机或隔离服务器 Compose project 中演练，不连接现有测试服务器：候选 readiness 失败不切流、切流后 5xx 只回切应用、worker 卡死、数据库不可达、媒体只读、迁移不兼容，以及数据库/媒体同时损坏时按同一 manifest 成对恢复。每次都要保留日志证明普通故障没有恢复数据。全部通过并经用户明确批准进入上线阶段后，才设计并执行现有单 project 的一次性基线转换。
 
-## 日常发布
+## 日常发布（尚未开放）
 
-确认所有修改已提交并推送到 `main`，然后在仓库根目录运行：
+测试阶段不得创建用于部署的生产标签。未来只有独立报告改为 GO、基线转换与失败演练完成、用户明确要求上线后，才确认所有修改已提交并推送到 `main`，然后在仓库根目录运行：
 
 ```powershell
 ./scripts/release.ps1 -Version v0.3.0
@@ -204,9 +205,11 @@ known-hosts 使用非 22 端口时，主机部分必须写成 `[host]:port`。�
 
 ## 自动回滚与人工恢复
 
-迁移、API、worker、Caddy 或真实 HTTPS 验收任一步失败时，服务器会保持维护状态、
-停止新服务、重建数据库并恢复最终 dump，再启动上一组 digest。回滚成功后重新开放
-访问；回滚自身失败时不会暴露半完成系统，维护标记继续保留。
+候选或切流后的普通应用故障只把 Caddy upstream 切回仍保留的旧应用栈，并确认
+`database_restored=0`、`media_restored=0`、`archive_restored=0`；不得自动重建数据库。
+只有已经确认数据损坏时，才先停写和保全现场，再由独立事故恢复流程使用同一
+manifest 成对恢复数据库、媒体和归档。若旧应用无法读取新 schema，禁止直接回切，
+必须保持维护状态并执行预先演练的兼容处理。
 
 GitHub 日志会给出服务器部署日志末尾和恢复目录，但不会显示 `.env`。人工灾难恢复
 时先登录服务器查看：
@@ -223,26 +226,9 @@ cat /opt/pkuba/deploy/state/maintenance.enabled
 
 ## 本地 WSL 与生产严格分离
 
-`./scripts/deploy-wsl.ps1` 现在只安装/启动容器、迁移、检查 readiness、构建小程序
-和刷新端口代理，不导入旧数据、不生成演示赛季，也不创建或重置管理员。
+`./scripts/deploy-wsl.ps1` 只用于本机测试：启动容器、迁移、检查 readiness、构建小程序和刷新端口代理。它不得导入旧数据、生成演示赛季或创建/重置管理员，也不得复用于服务器。
 
-本地空库需要数据时必须单独显式执行：
-
-```powershell
-./scripts/initialize-wsl.ps1 -Mode Demo -Confirmation INITIALIZE_LOCAL_DATA
-./scripts/initialize-wsl.ps1 -Mode Legacy2026 \
-  -Confirmation INITIALIZE_LOCAL_DATA \
-  -LegacySource 'C:\Users\jiumao\Desktop\北大篮协小程序\Backup'
-```
-
-创建本地超级管理员也使用独立交互命令：
-
-```powershell
-./scripts/create-admin-wsl.ps1 -Username local-admin
-```
-
-任何这类初始化命令都不得在生产服务器或真实生产数据库运行。
-
+当前仓库仍保留若干本地 demo/legacy 初始化入口，独立报告要求首发前彻底删除；在用户确认精确删除清单前，本部署文档不再把它们列为可用流程。空库首启必须在隔离环境通过正常后台能力完成赛季、管理员与赛事配置，不得依赖这些入口。
 ## 小程序发布边界
 
 发布工作流以 `https://api.pkuba.cn` 构建并保存小程序 `dist/`，但不会替代微信平台

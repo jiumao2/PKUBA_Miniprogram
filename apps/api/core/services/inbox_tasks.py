@@ -126,7 +126,7 @@ def close_tasks(
 
 def _reschedule_summary(item: RescheduleRequest) -> tuple[str, str]:
     original = item.original_game_snapshot or {}
-    title = f"{item.game.home_display} vs {item.game.away_display}"
+    title = f"{item.game.home_display} — {item.game.away_display}"
     body = "\n".join(
         [
             f"{item.game.division.name} · {item.get_request_type_display()}",
@@ -192,13 +192,13 @@ def _reschedule_email_body(item: RescheduleRequest) -> str:
             (
                 f"原比赛：{original.get('date', '')} "
                 f"{original.get('start_time', '')} "
-                f"{item.game.home_display} vs {item.game.away_display} "
+                f"{item.game.home_display} — {item.game.away_display} "
                 f"{original.get('venue_name', '')}"
             ).strip(),
             (
                 f"调整后比赛：{item.target_date.isoformat()} "
                 f"{item.target_start_time.strftime('%H:%M')} "
-                f"{item.game.home_display} vs {item.game.away_display}"
+                f"{item.game.home_display} — {item.game.away_display}"
             ).strip(),
             _target_venue_notice(item),
             f"申请日期：{requested_at}",
@@ -402,7 +402,7 @@ def sync_scoresheet_recognition_tasks(
     )
     keep: set[str] = set()
     anomaly_key: str | None = None
-    game_label = f"{scoresheet.game.home_display} vs {scoresheet.game.away_display}"
+    game_label = f"{scoresheet.game.home_display} — {scoresheet.game.away_display}"
 
     if (
         run.status == ScoresheetRecognitionRun.Status.SUCCEEDED

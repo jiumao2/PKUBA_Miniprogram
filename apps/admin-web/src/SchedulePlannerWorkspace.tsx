@@ -21,6 +21,7 @@ import {
   ScheduleGridEditor,
   type ScheduleGridValue,
 } from "./ScheduleGridEditor";
+import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
 import "./schedule-planner.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -121,6 +122,7 @@ export function SchedulePlannerWorkspace({
   const serverVersionRef = useRef(0);
   const dirtyRef = useRef(false);
   const savePromiseRef = useRef<Promise<void> | null>(null);
+  const loadGeneration = useRef(0);
   const [draft, setDraft] = useState<ScheduleDraft | null>(null);
   const [working, setWorking] = useState<ScheduleGridValue | null>(null);
   const [readiness, setReadiness] = useState<ScheduleImportReadiness | null>(null);
@@ -155,6 +157,7 @@ export function SchedulePlannerWorkspace({
   }, []);
 
   const loadContext = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError(null);
     try {
@@ -163,6 +166,7 @@ export function SchedulePlannerWorkspace({
         client.getScheduleImportReadiness(season.id),
         client.getScheduleImportResetPreview(season.id),
       ]);
+      if (generation !== loadGeneration.current) return;
       applyServerDraft(nextDraft);
       setReadiness(nextReadiness);
       setResetPreview(nextReset);
@@ -170,9 +174,10 @@ export function SchedulePlannerWorkspace({
       setAcknowledged(false);
       setInspectorTab("pool");
     } catch (reason: unknown) {
+      if (generation !== loadGeneration.current) return;
       setError(reason instanceof Error ? reason.message : "无法读取赛程草稿");
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, [applyServerDraft, client, season.id]);
 
@@ -186,6 +191,9 @@ export function SchedulePlannerWorkspace({
     setResetAcknowledged(false);
     if (fileInput.current) fileInput.current.value = "";
     void loadContext();
+    return () => {
+      loadGeneration.current += 1;
+    };
   }, [loadContext]);
 
   useEffect(() => {
@@ -258,6 +266,18 @@ export function SchedulePlannerWorkspace({
     }
   }, [client, season.id]);
 
+  useAdminDirtySource(
+    `schedule-planner:${season.id}`,
+    dirtyRef.current
+      || saveStatus === "dirty"
+      || saveStatus === "saving"
+      || saveStatus === "conflict",
+    async () => {
+      await saveDraftNow();
+      return !dirtyRef.current && saveStatus !== "conflict";
+    },
+  );
+
   useEffect(() => {
     if (!revision) return;
     const timer = window.setTimeout(() => {
@@ -291,7 +311,7 @@ export function SchedulePlannerWorkspace({
     setError(null);
     try {
       const blob = await client.downloadScheduleTemplate(season.id);
-      triggerDownload(blob, `PKUBA_${season.year}_${season.name}_赛程模板_v3.2.xlsx`);
+      triggerDownload(blob, `PKUBA_${season.year}_${season.name}_赛程模板_v3.3.xlsx`);
       handleNotice("空白模板已开始下载；第三页表头和排期列可以直接修改");
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "模板下载失败");
@@ -519,7 +539,12 @@ export function SchedulePlannerWorkspace({
           <select
             id="planner-season"
             value={season.id}
-            onChange={(event) => onSeasonChange(event.target.value)}
+            onChange={(event) => {
+              const nextSeasonId = event.target.value;
+              void confirmAdminNavigation().then((confirmed) => {
+                if (confirmed) onSeasonChange(nextSeasonId);
+              });
+            }}
           >
             {seasons.map((item) => (
               <option key={item.id} value={item.id}>{item.name}</option>
@@ -580,7 +605,7 @@ export function SchedulePlannerWorkspace({
           <button type="button" disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}>
             上传 XLSX 到草稿
           </button>
-          <span>或拖到这里；V3.2 三页为填写说明 / 签位定义（仅提示） / 赛程网格，非空草稿会先确认整表替换</span>
+          <span>或拖到这里；V3.3 三页为填写说明 / 签位定义（仅提示） / 赛程网格，非空草稿会先确认整表替换</span>
         </div>
         <div className="planner-source-actions">
           <button type="button" disabled={Boolean(busy) || !readiness?.template_ready} onClick={() => void downloadTemplate()}>
@@ -732,7 +757,7 @@ export function SchedulePlannerWorkspace({
                       <div>
                         {batch.summary.games.slice(0, 80).map((game) => (
                           <p key={game.code}>
-                            <strong>{game.home_slot_code}vs{game.away_slot_code}</strong>
+                            <strong>{game.home_slot_code} — {game.away_slot_code}</strong>
                             <span>{game.date} · {game.start_time} · {game.venue_name}</span>
                           </p>
                         ))}

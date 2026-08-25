@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createAdminClient,
   createPkubaClient,
@@ -26,6 +26,7 @@ import { SchedulePlannerWorkspace } from "./SchedulePlannerWorkspace";
 import { ScheduleOverview } from "./ScheduleOverview";
 import { SeasonManagementPage } from "./SeasonManagementPage";
 import { TeamRosterPage } from "./TeamRosterPage";
+import { confirmAdminNavigation, hasUnsavedAdminWork } from "./dirtyGuard";
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
 const client = createPkubaClient(baseUrl);
@@ -92,12 +93,16 @@ export function AdminWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
+  const publicLoadGeneration = useRef(0);
+  const adminLoadGeneration = useRef(0);
+  const scheduleLoadGeneration = useRef(0);
   const adminClient = useMemo(
     () => createAdminClient(baseUrl, () => setAccount(null)),
     [],
   );
 
   const loadPublicData = useCallback(async () => {
+    const generation = ++publicLoadGeneration.current;
     setLoading(true);
     setError(null);
     try {
@@ -106,10 +111,12 @@ export function AdminWorkspace() {
         client.getGames(),
         adminClient.getCapacityLedger(nextSeason.id),
       ]);
+      if (generation !== publicLoadGeneration.current) return;
       setSeason(nextSeason);
       setGames(nextGames);
       setCapacityLedger(nextLedger);
     } catch (reason: unknown) {
+      if (generation !== publicLoadGeneration.current) return;
       if (reason instanceof ApiError && reason.code === "NO_PUBLIC_SEASON") {
         setSeason(null);
         setGames([]);
@@ -118,7 +125,7 @@ export function AdminWorkspace() {
         setError(reason instanceof Error ? reason.message : "无法读取赛事数据");
       }
     } finally {
-      setLoading(false);
+      if (generation === publicLoadGeneration.current) setLoading(false);
     }
   }, []);
 
@@ -126,33 +133,37 @@ export function AdminWorkspace() {
     preferredSeasonId?: string,
     includeScheduleGames = true,
   ) => {
+    const generation = ++adminLoadGeneration.current;
     const nextSeasons = await adminClient.listAdminSeasons();
-    setAdminSeasons(nextSeasons);
     const selected = selectAdminSeason(nextSeasons, preferredSeasonId);
+    const nextGames = selected && includeScheduleGames
+      ? await adminClient.listAdminScheduleGames(selected.id)
+      : [];
+    if (generation !== adminLoadGeneration.current) return;
+    setAdminSeasons(nextSeasons);
     if (!selected) {
       setSelectedAdminSeasonId("");
       setAdminGames([]);
       return;
     }
     setSelectedAdminSeasonId(selected.id);
-    setAdminGames(
-      includeScheduleGames
-        ? await adminClient.listAdminScheduleGames(selected.id)
-        : [],
-    );
+    setAdminGames(nextGames);
   }, []);
 
   const refreshPublicData = useCallback(async () => {
+    const generation = ++publicLoadGeneration.current;
     try {
       const nextSeason = await client.getCurrentSeason();
       const [nextGames, nextLedger] = await Promise.all([
         client.getGames(),
         adminClient.getCapacityLedger(nextSeason.id),
       ]);
+      if (generation !== publicLoadGeneration.current) return;
       setSeason(nextSeason);
       setGames(nextGames);
       setCapacityLedger(nextLedger);
     } catch (reason: unknown) {
+      if (generation !== publicLoadGeneration.current) return;
       if (reason instanceof ApiError && reason.code === "NO_PUBLIC_SEASON") {
         setSeason(null);
         setGames([]);
@@ -204,13 +215,28 @@ export function AdminWorkspace() {
 
   useEffect(() => {
     if (!selectedAdminSeasonId || account?.role !== "SUPERADMIN") return;
+    const generation = ++scheduleLoadGeneration.current;
     void adminClient
       .listAdminScheduleGames(selectedAdminSeasonId)
-      .then(setAdminGames)
+      .then((nextGames) => {
+        if (generation === scheduleLoadGeneration.current) setAdminGames(nextGames);
+      })
       .catch((reason: unknown) => {
+        if (generation !== scheduleLoadGeneration.current) return;
         setError(reason instanceof Error ? reason.message : "无法读取管理赛程");
       });
+    return () => {
+      scheduleLoadGeneration.current += 1;
+    };
   }, [account?.role, selectedAdminSeasonId]);
+
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (hasUnsavedAdminWork()) event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, []);
 
   const gameDays = useMemo(() => groupGamesByDate(games), [games]);
   const selectedAdminSeason = adminSeasons.find(
@@ -232,11 +258,13 @@ export function AdminWorkspace() {
       account.role === "SUPERADMIN");
 
   const handleLogout = async () => {
+    if (!(await confirmAdminNavigation())) return;
     await adminClient.logout();
     setAccount(null);
   };
 
-  const openPage = (nextPage: PageId) => {
+  const openPage = async (nextPage: PageId) => {
+    if (nextPage === page || !(await confirmAdminNavigation())) return;
     setPage(nextPage);
     const params = new URLSearchParams();
     if (nextPage !== "overview") params.set("page", nextPage);
@@ -257,7 +285,7 @@ export function AdminWorkspace() {
               className={page === item.id ? "nav-item active" : "nav-item"}
               disabled={!canOpenPage(item.id, item.available)}
               key={item.id}
-              onClick={() => openPage(item.id)}
+              onClick={() => void openPage(item.id)}
               type="button"
             >
               <span>{item.label}</span>
@@ -317,7 +345,6 @@ export function AdminWorkspace() {
             >
               修改密码
             </button>
-            <span className="environment">本地开发</span>
             <span className="account-role">
               {account.role === "SUPERADMIN" ? "超级管理员" : "普通管理员"}
             </span>
@@ -349,8 +376,8 @@ export function AdminWorkspace() {
             season={selectedAdminSeason}
             onSeasonChange={setSelectedAdminSeasonId}
             onDataChanged={refreshWorkspaceData}
-            onOpenConfiguration={() => setPage("season")}
-            onOpenEditor={() => setPage("schedule-edit")}
+            onOpenConfiguration={() => void openPage("season")}
+            onOpenEditor={() => void openPage("schedule-edit")}
           />
         )}
         {!loading && !error && page === "season" && account.role === "SUPERADMIN" && (
@@ -369,7 +396,7 @@ export function AdminWorkspace() {
             seasonId={selectedAdminSeason.id}
             onSeasonChange={setSelectedAdminSeasonId}
             onDataChanged={refreshWorkspaceData}
-            onOpenConfiguration={() => setPage("season")}
+            onOpenConfiguration={() => void openPage("season")}
           />
         )}
         {!loading && !error && selectedAdminSeason && page === "schedule-edit" && (
@@ -389,8 +416,8 @@ export function AdminWorkspace() {
             seasonId={selectedAdminSeason.id}
             onSeasonChange={setSelectedAdminSeasonId}
             onDataChanged={() => refreshWorkspaceData(selectedAdminSeason.id)}
-            onOpenTeams={() => setPage("teams")}
-            onOpenConfiguration={() => setPage("season")}
+            onOpenTeams={() => void openPage("teams")}
+            onOpenConfiguration={() => void openPage("season")}
           />
         )}
         {!loading && !error && page === "media" && (
@@ -399,6 +426,7 @@ export function AdminWorkspace() {
             seasons={adminSeasons}
             seasonId={selectedAdminSeasonId || season?.id || ""}
             initialGameId={initialRoute.gameId}
+            isSuperadmin={account.role === "SUPERADMIN"}
             onSeasonChange={setSelectedAdminSeasonId}
           />
         )}

@@ -1,7 +1,7 @@
 import { Button, Input, Text, View } from "@tarojs/components";
 import Taro, { useDidShow } from "@tarojs/taro";
-import { useEffect, useMemo, useState } from "react";
-import type { ScoresheetQueueItem } from "@pkuba/api-client";
+import { useEffect, useRef, useState } from "react";
+import type { ScoresheetQueueItem, ScoresheetQueueScope } from "@pkuba/api-client";
 
 import { api, uploadGameMedia } from "../../../api";
 import { getMiniAppSession } from "../../../auth";
@@ -21,19 +21,27 @@ const STATUS: Record<string, string> = {
 export default function ScoresheetListPage() {
   const [items, setItems] = useState<ScoresheetQueueItem[]>([]);
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<ScoresheetQueueScope>("ACTION_REQUIRED");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState("");
   const [message, setMessage] = useState("");
   const [adminRole, setAdminRole] = useState("");
   const [, tick] = useState(0);
+  const [refreshGeneration, setRefreshGeneration] = useState(0);
+  const requestGeneration = useRef(0);
+  const pageSize = 20;
 
-  const load = async () => {
+  const load = async (silent = false) => {
+    const generation = ++requestGeneration.current;
     const token = getMiniAppSession();
     if (!token) {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
       setMessage("请先登录管理员账号。");
       return;
     }
+    if (!silent) setLoading(true);
     try {
       const me = await api.getMiniAppMe(token);
       if (!me.admin_role) {
@@ -42,33 +50,37 @@ export default function ScoresheetListPage() {
         return;
       }
       setAdminRole(me.admin_role);
-      setItems(await api.listScoresheets(token));
+      const result = await api.getScoresheetQueuePage(token, {
+        scope,
+        query,
+        page,
+        pageSize,
+      });
+      if (generation !== requestGeneration.current) return;
+      setItems(result.items);
+      setTotal(result.total);
       setMessage("");
     } catch (reason) {
+      if (generation !== requestGeneration.current) return;
       setMessage(reason instanceof Error ? reason.message : "记录表队列读取失败");
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   };
 
-  useDidShow(() => void load());
+  useDidShow(() => setRefreshGeneration((value) => value + 1));
   useEffect(() => {
-    const poll = setInterval(() => void load(), 5000);
+    const delay = setTimeout(() => void load(), query ? 250 : 0);
+    return () => clearTimeout(delay);
+  }, [page, query, refreshGeneration, scope]);
+  useEffect(() => {
+    const poll = setInterval(() => void load(true), 30000);
     const clock = setInterval(() => tick((value) => value + 1), 1000);
     return () => {
       clearInterval(poll);
       clearInterval(clock);
     };
-  }, []);
-
-  const visible = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          !query || `${item.game_label}${item.date}${item.start_time}`.includes(query),
-      ),
-    [items, query],
-  );
+  }, [page, query, scope]);
 
   const upload = async (item: ScoresheetQueueItem) => {
     const token = getMiniAppSession();
@@ -90,9 +102,13 @@ export default function ScoresheetListPage() {
       if (!confirm.confirm) return;
       setUploading(item.game_id);
       await uploadGameMedia(item.game_id, file.tempFilePath, "SCORESHEET", true, token);
-      await load();
-      const refreshed = await api.listScoresheets(token);
-      const next = refreshed.find((row) => row.game_id === item.game_id);
+      const refreshed = await api.getScoresheetQueuePage(token, {
+        scope: "ALL",
+        query: item.game_code,
+        page: 1,
+        pageSize: 5,
+      });
+      const next = refreshed.items.find((row) => row.game_id === item.game_id);
       if (next?.scoresheet_id) {
         await Taro.navigateTo({ url: `/scoresheet/pages/editor/index?id=${next.scoresheet_id}` });
       }
@@ -111,14 +127,36 @@ export default function ScoresheetListPage() {
       </View>
       <Input
         className="sheet-list-search"
-        onInput={(event) => setQuery(event.detail.value)}
+        onInput={(event) => {
+          setPage(1);
+          setQuery(event.detail.value);
+        }}
         placeholder="搜索场次或球队"
         value={query}
       />
+      <View className="sheet-list-filters" aria-label="记录表状态筛选">
+        {([
+          ["ACTION_REQUIRED", "待处理"],
+          ["IN_PROGRESS", "识别中"],
+          ["PUBLISHED", "已发布"],
+          ["ALL", "全部"],
+        ] as Array<[ScoresheetQueueScope, string]>).map(([value, label]) => (
+          <Button
+            className={`sheet-list-filter ${scope === value ? "is-active" : ""}`}
+            key={value}
+            onClick={() => {
+              setPage(1);
+              setScope(value);
+            }}
+          >
+            {label}
+          </Button>
+        ))}
+      </View>
       {loading && <View className="sheet-list-state">正在读取…</View>}
       {message && <View className="sheet-list-message">{message}</View>}
       <View className="sheet-list-items">
-        {visible.map((item) => (
+        {items.map((item) => (
           <View className="sheet-list-item" key={item.game_id}>
             <View className="sheet-list-main">
               <View className="sheet-list-meta">
@@ -163,7 +201,21 @@ export default function ScoresheetListPage() {
           </View>
         ))}
       </View>
-      {!loading && !visible.length && !message && <View className="sheet-list-state">没有符合条件的比赛。</View>}
+      {!loading && !items.length && !message && <View className="sheet-list-state">没有符合条件的比赛。</View>}
+      {total > 0 && (
+        <View className="sheet-list-pagination">
+          <Button disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>
+            上一页
+          </Button>
+          <Text>{page} / {Math.max(1, Math.ceil(total / pageSize))}</Text>
+          <Button
+            disabled={page * pageSize >= total || loading}
+            onClick={() => setPage((value) => value + 1)}
+          >
+            下一页
+          </Button>
+        </View>
+      )}
     </View>
   );
 }

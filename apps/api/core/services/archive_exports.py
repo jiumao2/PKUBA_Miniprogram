@@ -47,6 +47,7 @@ from core.models import (
     Season,
     SlotReservation,
 )
+from core.services.system_write_fence import exclusive_system_write_fence
 
 ARTIFACT_TTL = timedelta(hours=24)
 LEASE_TTL = timedelta(minutes=5)
@@ -678,28 +679,58 @@ def _build_system_raw(job: ArchiveJob, output: Path) -> dict[str, object]:
     with tempfile.TemporaryDirectory(dir=archive_root()) as temp_name:
         dump = Path(temp_name) / "database.dump"
         media_root = Path(settings.MEDIA_ROOT).resolve()
-        with _consistent_system_snapshot() as snapshot:
-            media_files = sorted(path for path in media_root.rglob("*") if path.is_file())
-            if snapshot:
-                _pg_dump(dump, snapshot=snapshot)
-            else:
-                _pg_dump(dump)
-            media_manifest = [
+        # Capture the database and the exact immutable media file set while
+        # writes are fenced. Hashing and compression happen after release.
+        with exclusive_system_write_fence():
+            blockers = _system_backup_blockers()
+            if blockers:
+                raise ArchiveError(
+                    blockers[0]["code"], blockers[0]["message"], status=409
+                )
+            with _consistent_system_snapshot() as snapshot:
+                captured_media = sorted(
+                    (path, path.stat().st_size)
+                    for path in media_root.rglob("*")
+                    if path.is_file()
+                )
+                if snapshot:
+                    _pg_dump(dump, snapshot=snapshot)
+                else:
+                    _pg_dump(dump)
+                migrations = [
+                    f"{app}.{name}"
+                    for app, name in MigrationRecorder.Migration.objects.order_by(
+                        "app",
+                        "name",
+                    ).values_list("app", "name")
+                ]
+                table_counts = _database_table_counts()
+
+        media_files: list[Path] = []
+        media_manifest: list[dict[str, object]] = []
+        for path, captured_size in captured_media:
+            try:
+                current_size = path.stat().st_size
+            except FileNotFoundError as exc:
+                raise ArchiveError(
+                    "MEDIA_CHANGED_DURING_BACKUP",
+                    "备份捕获后媒体文件消失，已安全中止。",
+                    status=409,
+                ) from exc
+            if current_size != captured_size:
+                raise ArchiveError(
+                    "MEDIA_CHANGED_DURING_BACKUP",
+                    "备份捕获后媒体文件发生变化，已安全中止。",
+                    status=409,
+                )
+            media_files.append(path)
+            media_manifest.append(
                 {
                     "path": path.relative_to(media_root).as_posix(),
-                    "byte_size": path.stat().st_size,
+                    "byte_size": captured_size,
                     "sha256": _sha256_path(path),
                 }
-                for path in media_files
-            ]
-            migrations = [
-                f"{app}.{name}"
-                for app, name in MigrationRecorder.Migration.objects.order_by(
-                    "app",
-                    "name",
-                ).values_list("app", "name")
-            ]
-            table_counts = _database_table_counts()
+            )
         manifest = {
             "format": "PKUBA_FULL_BACKUP_V1",
             "source_archive_job_id": str(job.id),
@@ -759,11 +790,16 @@ def _maintain_job_lease(job: ArchiveJob | MediaPurgeJob):
     model = type(job)
 
     def refresh() -> None:
+        from core.services.worker_health import touch_worker_heartbeat
+
         while not stop.wait(LEASE_REFRESH_SECONDS):
             model.objects.filter(
                 id=job.id,
                 worker_lease_token=job.worker_lease_token,
             ).update(worker_lease_expires_at=timezone.now() + LEASE_TTL)
+            touch_worker_heartbeat(
+                "archive", job.worker_lease_owner or "archive-worker"
+            )
 
     thread = threading.Thread(target=refresh, name=f"archive-lease-{job.id}", daemon=True)
     thread.start()

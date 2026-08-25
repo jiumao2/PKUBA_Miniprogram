@@ -16,6 +16,7 @@ from core.api_security import admin_session_auth, superadmin_session_auth
 from core.models import Account, AdminAuditLog, ScheduleImportBatch, Season
 from core.services.admin_accounts import (
     AdminAccountError,
+    demote_superadmin,
     promote_admin,
     set_admin_active,
 )
@@ -454,25 +455,20 @@ class CreateSeasonIn(Schema):
 
 class SeasonDivisionConfigurationIn(Schema):
     id: UUID | None = None
-    code: str
     name: str
     gender: str
-    sort_order: int
 
 
 class SeasonVenueConfigurationIn(Schema):
     id: UUID | None = None
     name: str
-    sort_order: int
     active: bool
 
 
 class SeasonPeriodConfigurationIn(Schema):
     id: UUID | None = None
-    code: str
     name: str
     start_time: time
-    sort_order: int
     default_capacities: dict[str, int]
 
 
@@ -490,7 +486,6 @@ class ScheduleSlotFamilyIn(Schema):
     round_number: int = 1
     prefix: str
     slot_count: int
-    sort_order: int
 
 
 class ScheduleGridColumnIn(Schema):
@@ -629,7 +624,7 @@ def _schedule_error(error: ScheduleImportError):
 def _admin_account_error(error: AdminAccountError):
     if error.code == "PERMISSION_DENIED":
         status = 403
-    elif error.code == "VERSION_CONFLICT":
+    elif error.code in {"VERSION_CONFLICT", "LAST_SUPERADMIN_PROTECTED"}:
         status = 409
     else:
         status = 400
@@ -646,6 +641,7 @@ def _season_management_error(error: SeasonManagementError):
         "ACTIVE_RESERVATION_REQUIRES_CANCELLATION",
         "DATE_RANGE_IN_USE",
         "SEASON_ARCHIVED",
+        "SEASON_ALREADY_EXISTS",
     }:
         status = 409
     elif error.code in {"SEASON_NOT_FOUND", "TEMPLATE_NOT_FOUND"}:
@@ -707,6 +703,29 @@ def promote_admin_account(
 
 
 @router.post(
+    "/accounts/{account_id}/demote",
+    auth=superadmin_session_auth,
+    response={200: AdminAccountOut, 400: AdminErrorOut, 409: AdminErrorOut},
+)
+def demote_superadmin_account(
+    request: HttpRequest,
+    account_id: UUID,
+    payload: ExpectedVersionIn,
+):
+    try:
+        account = demote_superadmin(
+            actor=request.auth,
+            target_id=account_id,
+            expected_version=payload.expected_version,
+        )
+    except Account.DoesNotExist:
+        return Status(400, {"code": "ACCOUNT_NOT_FOUND", "message": "管理员账号不存在。"})
+    except AdminAccountError as error:
+        return _admin_account_error(error)
+    return _serialize_admin_account(account)
+
+
+@router.post(
     "/accounts/{account_id}/active",
     auth=superadmin_session_auth,
     response={200: AdminAccountOut, 400: AdminErrorOut, 409: AdminErrorOut},
@@ -744,7 +763,12 @@ def list_admin_seasons(request: HttpRequest):
 @router.post(
     "/seasons",
     auth=superadmin_session_auth,
-    response={201: SeasonConfigurationOut, 400: AdminErrorOut, 404: AdminErrorOut},
+    response={
+        201: SeasonConfigurationOut,
+        400: AdminErrorOut,
+        404: AdminErrorOut,
+        409: AdminErrorOut,
+    },
 )
 def create_admin_season(request: HttpRequest, payload: CreateSeasonIn):
     try:

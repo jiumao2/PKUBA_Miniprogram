@@ -137,7 +137,7 @@
 }
 
 .timeout-group {
-  min-height: 74rpx;
+  min-height: 104rpx;
   display: grid;
   grid-template-columns: 126rpx minmax(0, 1fr);
   align-items: center;
@@ -153,11 +153,13 @@
 
 .timeout-cell,
 .foul-cell {
-  width: 78rpx;
-  height: 64rpx;
+  min-width: 88rpx;
+  min-height: 88rpx;
+  width: 88rpx;
+  height: 88rpx;
   margin: 0;
   padding: 0;
-  line-height: 62rpx;
+  line-height: 86rpx;
   border: 1rpx solid #d5d1cc;
   border-radius: 9rpx;
   background: #fff;
@@ -186,9 +188,9 @@
 }
 
 .compact-stepper {
-  min-height: 66rpx;
+  min-height: 96rpx;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 58rpx 46rpx 58rpx;
+  grid-template-columns: minmax(0, 1fr) 88rpx 46rpx 88rpx;
   align-items: center;
   gap: 5rpx;
   color: #5f5a55;
@@ -198,11 +200,13 @@
 .compact-stepper button,
 .score-number button,
 .timeout-adjust button {
-  width: 58rpx;
-  height: 58rpx;
+  min-width: 88rpx;
+  min-height: 88rpx;
+  width: 88rpx;
+  height: 88rpx;
   margin: 0;
   padding: 0;
-  line-height: 56rpx;
+  line-height: 86rpx;
   border: 1rpx solid #d6d2cd;
   border-radius: 8rpx;
   background: #fff;
@@ -221,7 +225,7 @@
 }
 
 .foul-row {
-  min-height: 76rpx;
+  min-height: 104rpx;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -233,9 +237,9 @@
 
 .foul-cell {
   position: relative;
-  width: 64rpx;
-  height: 64rpx;
-  line-height: 62rpx;
+  width: 88rpx;
+  height: 88rpx;
+  line-height: 86rpx;
 }
 
 .foul-cell > text:last-child:not(:first-child) {
@@ -359,9 +363,9 @@
 }
 
 .timeout-adjust button {
-  width: 76rpx;
-  height: 66rpx;
-  line-height: 64rpx;
+  width: 88rpx;
+  height: 88rpx;
+  line-height: 86rpx;
 }
 
 .timeout-adjust text {
@@ -372,9 +376,9 @@
 
 .drawer-danger,
 .personnel-add {
-  min-height: 68rpx;
+  min-height: 88rpx;
   margin: 20rpx 0 0;
-  line-height: 66rpx;
+  line-height: 86rpx;
   border-radius: 9rpx;
   font-size: 27rpx;
 }
@@ -441,10 +445,11 @@
 
 .score-issue-nav button,
 .score-block-tabs button {
-  height: 58rpx;
+  min-height: 88rpx;
+  height: 88rpx;
   margin: 0;
   padding: 0 18rpx;
-  line-height: 56rpx;
+  line-height: 86rpx;
   border: 1rpx solid #d4cfca;
   border-radius: 8rpx;
   background: #fff;
@@ -454,7 +459,7 @@
 
 .score-block-tabs {
   flex: none;
-  height: 76rpx;
+  height: 106rpx;
   border-bottom: 1rpx solid #ddd9d4;
   white-space: nowrap;
 }
@@ -584,7 +589,7 @@
 .score-number {
   min-width: 0;
   display: grid;
-  grid-template-columns: 58rpx minmax(44rpx, 1fr) 58rpx;
+  grid-template-columns: 88rpx minmax(44rpx, 1fr) 88rpx;
   align-items: center;
   gap: 4rpx;
 }

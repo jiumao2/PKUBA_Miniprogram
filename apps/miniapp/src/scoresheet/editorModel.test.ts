@@ -5,6 +5,7 @@ import {
   addRecognitionPersonnel,
   compactRoster,
   removeRecognitionPersonnel,
+  sanitizeJerseyInput,
   setOfficialName,
   setPlayerRow,
   setRecognitionPersonnel,
@@ -43,6 +44,10 @@ function draft(): ScoresheetDocument {
 }
 
 describe("miniapp canonical editor model", () => {
+  it("keeps every typed digit so an invalid three-digit jersey cannot become another valid number", () => {
+    expect(sanitizeJerseyInput("1a00")).toBe("100");
+  });
+
   it("round-trips all player paper fields while persisting only material rows", () => {
     const source = draft();
     const player = {

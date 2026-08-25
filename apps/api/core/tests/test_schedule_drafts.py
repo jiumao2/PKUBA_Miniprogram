@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from io import BytesIO
 
 import pytest
 from django.test import override_settings
 from openpyxl import load_workbook
 
-from core.models import Game, ScheduleImportBatch, Venue
+from core.models import AdminAuditLog, Game, ScheduleGridDraft, ScheduleImportBatch, Venue
 from core.services.schedule_drafts import (
     export_schedule_draft_xlsx,
     get_or_create_schedule_draft,
@@ -42,6 +43,38 @@ def test_new_draft_uses_defaults_without_reading_legacy_grid_configuration():
     ]
     assert result["columns"][-1]["final_only"] is True
     assert result["summary"]["draft_game_count"] == 0
+
+
+def test_archived_schedule_draft_reads_without_creating_or_mutating():
+    setup = _setup()
+    draft = get_or_create_schedule_draft(actor=setup["actor"], season=setup["season"])
+    setup["season"].status = setup["season"].Status.ARCHIVED
+    setup["season"].save(update_fields=["status", "updated_at"])
+    before_audits = AdminAuditLog.objects.count()
+
+    loaded = get_or_create_schedule_draft(actor=setup["actor"], season=setup["season"])
+
+    assert loaded.id == draft.id
+    assert AdminAuditLog.objects.count() == before_audits
+    with pytest.raises(ScheduleImportError, match="已归档赛季只读"):
+        replace_schedule_draft(
+            actor=setup["actor"],
+            season=setup["season"],
+            expected_version=draft.version,
+            columns=[],
+            cells=[],
+        )
+
+
+def test_archived_season_without_draft_does_not_create_one():
+    setup = _setup()
+    setup["season"].status = setup["season"].Status.ARCHIVED
+    setup["season"].save(update_fields=["status", "updated_at"])
+
+    with pytest.raises(ScheduleImportError, match="不能新建草稿"):
+        get_or_create_schedule_draft(actor=setup["actor"], season=setup["season"])
+
+    assert not ScheduleGridDraft.objects.filter(season=setup["season"]).exists()
 
 
 def test_xlsx_headers_replace_draft_and_allow_free_venue_text():
@@ -182,3 +215,36 @@ def test_draft_update_uses_optimistic_version_and_xlsx_omits_lock_policy():
     ]
     assert updated.cells.filter(leader_adjustable=False).count() == 1
     assert not any("leader_adjustable" in value or "不可调" in value for value in values)
+
+
+def test_online_draft_keeps_special_dates_outside_planning_range():
+    setup = _setup()
+    draft = get_or_create_schedule_draft(actor=setup["actor"], season=setup["season"])
+    result = serialize_schedule_draft(draft)
+    target_date = setup["season"].ends_on + timedelta(days=2)
+
+    updated = replace_schedule_draft(
+        actor=setup["actor"],
+        season=setup["season"],
+        expected_version=draft.version,
+        columns=[dict(item) for item in result["columns"]],
+        cells=[
+            {
+                "column_id": result["columns"][0]["id"],
+                "date": target_date.isoformat(),
+                "matchup": "A1vsA2",
+                "leader_adjustable": True,
+            }
+        ],
+    )
+    serialized = serialize_schedule_draft(updated)
+    workbook = load_workbook(
+        BytesIO(export_schedule_draft_xlsx(actor=setup["actor"], season=setup["season"]))
+    )
+
+    assert serialized["dates"][-1]["date"] == target_date.isoformat()
+    assert any(
+        cell.value == target_date
+        or (hasattr(cell.value, "date") and cell.value.date() == target_date)
+        for cell in workbook["赛程网格"]["A"]
+    )

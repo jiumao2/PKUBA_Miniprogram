@@ -765,7 +765,6 @@ def _team_snapshot(team: Team) -> dict[str, object]:
         "season_id": str(team.season_id),
         "division_id": str(team.division_id),
         "name": team.name,
-        "short_name": team.short_name,
         "active": team.active,
         "version": team.version,
         "players": [
@@ -862,7 +861,6 @@ def confirm_roster_import(
                     division=divisions[str(item["division_id"])],
                     created_by_roster_import_batch=batch,
                     name=str(item["name"]),
-                    short_name="",
                 )
                 team.full_clean()
                 team.save()
@@ -971,20 +969,30 @@ def serialize_roster_dataset(season: Season) -> dict[str, object]:
 def _validate_player_rows(rows: list[dict]) -> list[dict]:
     normalized = []
     names: set[str] = set()
+    active_jerseys: set[str] = set()
     for row in rows:
         name = _validate_name(row.get("name"), "球员姓名", 80)
         key = name.casefold()
         if key in names:
             raise RosterManagementError("同一球队内球员姓名不能重复。", "DUPLICATE_PLAYER_NAME")
         names.add(key)
+        jersey_number = _validate_jersey(row.get("jersey_number"))
+        active = bool(row.get("active", True))
+        if active and jersey_number:
+            if jersey_number in active_jerseys:
+                raise RosterManagementError(
+                    f"同一球队内不能有多名启用球员使用 {jersey_number} 号。",
+                    "DUPLICATE_JERSEY_NUMBER",
+                )
+            active_jerseys.add(jersey_number)
         normalized.append(
             {
                 "id": row.get("id"),
                 "expected_version": row.get("expected_version"),
                 "name": name,
-                "jersey_number": _validate_jersey(row.get("jersey_number")),
+                "jersey_number": jersey_number,
                 "eligible": bool(row.get("eligible", True)),
-                "active": bool(row.get("active", True)),
+                "active": active,
             }
         )
     return normalized
@@ -1032,7 +1040,7 @@ def create_team_with_roster(
         division = Division.objects.get(id=division_id, season=locked_season)
         _validate_team_name_unique(season=locked_season, division=division, name=normalized_name)
         team = Team.objects.create(
-            season=locked_season, division=division, name=normalized_name, short_name=""
+            season=locked_season, division=division, name=normalized_name
         )
         for row in normalized_players:
             RosterPlayer.objects.create(
@@ -1238,9 +1246,8 @@ def save_team_roster(
                     player.save(update_fields=["active", "version", "updated_at"])
             team.name = normalized_name
             team.active = new_active
-            team.short_name = ""
             team.version += 1
-            team.save(update_fields=["name", "active", "short_name", "version", "updated_at"])
+            team.save(update_fields=["name", "active", "version", "updated_at"])
             after = _team_snapshot(team)
             AdminAuditLog.objects.create(
                 actor=actor,

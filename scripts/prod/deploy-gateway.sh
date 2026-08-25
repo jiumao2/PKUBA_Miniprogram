@@ -19,5 +19,5 @@ web_image=${command_parts[4]}
 [[ $api_image =~ ^ghcr\.io/jiumao2/pkuba-api@sha256:[0-9a-f]{64}$ ]] || exit 64
 [[ $web_image =~ ^ghcr\.io/jiumao2/pkuba-web@sha256:[0-9a-f]{64}$ ]] || exit 64
 
-exec sudo -n /usr/local/sbin/pkuba-deploy-release \
+exec sudo -n /usr/local/sbin/pkuba-deploy-blue-green \
   "$release_tag" "$release_commit" "$api_image" "$web_image"

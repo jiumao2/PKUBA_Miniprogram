@@ -1,11 +1,12 @@
 import { Button, ScrollView, Text, View } from "@tarojs/components";
 import { useDidShow } from "@tarojs/taro";
 import { useEffect, useRef, useState } from "react";
-import type {
-  Division,
-  PlayerLeaderboardItem,
-  PublishedGameSummary,
-  TeamLeaderboardItem,
+import {
+  formatOfficialScore,
+  type Division,
+  type PlayerLeaderboardItem,
+  type PublishedGameSummary,
+  type TeamLeaderboardItem,
 } from "@pkuba/api-client";
 
 import { api } from "../../api";
@@ -46,6 +47,7 @@ export default function DataPage() {
       setDivisions(season.divisions);
       const initial = season.divisions.find((division) => division.code === "men-a") ?? season.divisions[0];
       setDivisionId((current) => current || initial?.id || "");
+      if (!initial) setLoading(false);
     }).catch((reason) => {
       setError(messageOf(reason));
       setLoading(false);
@@ -93,6 +95,10 @@ export default function DataPage() {
   const sorts = tab === "teams" ? TEAM_SORTS : PLAYER_SORTS;
   function selectSort(nextSort: string) {
     const current = tab === "teams" ? teamSort : playerSort;
+    requestVersion.current += 1;
+    if (tab === "teams") setTeams([]); else setPlayers([]);
+    setLoading(true);
+    setError("");
     setPlayerPage(1);
     if (nextSort === current) setOrder((value) => value === "desc" ? "asc" : "desc");
     else {
@@ -111,13 +117,23 @@ export default function DataPage() {
       <View className="data-tabs">
         {(["teams", "players", "games"] as Tab[]).map((value) => <Button
           className={tab === value ? "data-tab active" : "data-tab"} key={value}
-          onClick={() => { setTab(value); setOrder("desc"); setPlayerPage(1); }}
+          onClick={() => {
+            if (value === tab) return;
+            requestVersion.current += 1;
+            setTeams([]); setPlayers([]); setGames([]);
+            setTab(value); setOrder("desc"); setPlayerPage(1); setLoading(true); setError("");
+          }}
         >{value === "teams" ? "球队" : value === "players" ? "球员" : "单场"}</Button>)}
       </View>
       <ScrollView className="division-strip" scrollX showScrollbar={false}>
         <View className="filter-row">{divisions.map((division) => <Button
           className={divisionId === division.id ? "filter-chip active" : "filter-chip"}
-          key={division.id} onClick={() => { setDivisionId(division.id); setPlayerPage(1); }}
+          key={division.id} onClick={() => {
+            if (division.id === divisionId) return;
+            requestVersion.current += 1;
+            setTeams([]); setPlayers([]); setGames([]);
+            setDivisionId(division.id); setPlayerPage(1); setLoading(true); setError("");
+          }}
         >{division.name}</Button>)}</View>
       </ScrollView>
     </View>
@@ -138,19 +154,26 @@ export default function DataPage() {
       })}</View>
     </ScrollView>}
     {loading && !hasContent && <State title="正在读取数据…" />}
+    {!loading && !error && divisions.length === 0 && <State title="当前赛季尚未配置组别" />}
     {loading && hasContent && <View className="data-refreshing"><Text>正在更新</Text></View>}
     {error && !hasContent && <State title={error} tone="error" />}
     {error && hasContent && <View className="data-inline-error"><Text>{error}</Text></View>}
-    {(!loading || hasContent) && tab === "teams" && <TeamTable rows={teams} sort={teamSort} />}
-    {(!loading || hasContent) && tab === "players" && <View>
+    {divisions.length > 0 && (!loading || hasContent) && tab === "teams" && <TeamTable rows={teams} sort={teamSort} />}
+    {divisions.length > 0 && (!loading || hasContent) && tab === "players" && <View>
       <PlayerTable rows={players} sort={playerSort} />
       <PlayerPager
         page={playerPage}
         total={playerTotal}
-        onPageChange={setPlayerPage}
+        onPageChange={(page) => {
+          requestVersion.current += 1;
+          setPlayers([]);
+          setLoading(true);
+          setError("");
+          setPlayerPage(page);
+        }}
       />
     </View>}
-    {(!loading || hasContent) && tab === "games" && (
+    {divisions.length > 0 && (!loading || hasContent) && tab === "games" && (
       <GameList games={games} onOpen={(id) => void navigateToOnce(gameDetailRoute(id))} />
     )}
   </View>;
@@ -215,12 +238,15 @@ function PlayerTable({ rows, sort }: { rows: PlayerLeaderboardItem[]; sort: stri
 
 function GameList({ games, onOpen }: { games: PublishedGameSummary[]; onOpen: (id: string) => void }) {
   if (!games.length) return <State title="暂无单场数据" />;
-  return <View className="game-list">{games.map((game) => <Button
-    className={`game-row ${game.division_gender === "WOMEN" ? "women" : ""}`}
-    key={game.game_id} onClick={() => onOpen(game.game_id)}
-  ><View><Text>{game.date.slice(5)} · {game.start_time}</Text><Text>{game.division_name}</Text></View>
-    <View className="game-matchup"><Text>{game.home_name}</Text><Text className="game-score">{game.home_score}:{game.away_score}</Text><Text>{game.away_name}</Text></View>
-    <Text className="chevron">›</Text></Button>)}</View>;
+  return <View className="game-list">{games.map((game) => {
+    const score = formatOfficialScore(game.home_score, game.away_score);
+    return <Button
+      className={`game-row ${game.division_gender === "WOMEN" ? "women" : ""}`}
+      key={game.game_id} onClick={() => onOpen(game.game_id)}
+    ><View><Text>{game.date.slice(5)} · {game.start_time}</Text><Text>{game.division_name}</Text></View>
+      <View className="game-matchup"><Text>{game.home_name}</Text>{score && <Text className="game-score">{score}</Text>}<Text>{game.away_name}</Text></View>
+      <Text className="chevron">›</Text></Button>;
+  })}</View>;
 }
 
 function State({ title, tone = "" }: { title: string; tone?: string }) {

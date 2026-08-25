@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "id": "GHSA-67mh-4wv8-2f99",
+      "expires_on": "2026-11-30",
+      "reason": "Taro 4.2.1 的 helper 间接携带旧 esbuild；风险只涉及本地开发服务器，生产产物和服务器均不启动该服务。"
+    },
+    {
+      "id": "GHSA-w5hq-g745-h8pq",
+      "expires_on": "2026-11-30",
+      "reason": "Taro 4.2.1 的 webpack-dev-server 链间接携带旧 uuid；PKUBA 不调用受影响的带 buffer UUID API。"
+    },
+    {
+      "id": "GHSA-9jgg-88mc-972h",
+      "expires_on": "2026-11-30",
+      "reason": "仅影响本地 webpack 开发服务器；正式微信构建和生产服务器不运行 webpack-dev-server。"
+    },
+    {
+      "id": "GHSA-4v9v-hfq4-rm2v",
+      "expires_on": "2026-11-30",
+      "reason": "仅影响本地 webpack 开发服务器；正式微信构建和生产服务器不运行 webpack-dev-server。"
+    },
+    {
+      "id": "GHSA-79cf-xcqc-c78w",
+      "expires_on": "2026-11-30",
+      "reason": "仅影响本地 webpack 开发服务器；开发入口只绑定本机且不作为共享服务开放。"
+    },
+    {
+      "id": "GHSA-mx8g-39q3-5c79",
+      "expires_on": "2026-11-30",
+      "reason": "仅影响本地 HMR；正式微信构建和生产服务器不运行 HMR 或 webpack-dev-server。"
+    },
+    {
+      "id": "GHSA-f5vj-f2hx-8m93",
+      "expires_on": "2026-11-30",
+      "reason": "仅影响本地 webpack 开发端点；正式产物中不存在该端点。"
+    },
+    {
+      "id": "GHSA-m28w-2pqf-7qgj",
+      "expires_on": "2026-11-30",
+      "reason": "仅影响本地 webpack 开发服务器；正式产物和生产服务器不运行该服务。"
+    }
+  ]
+}

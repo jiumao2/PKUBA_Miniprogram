@@ -143,6 +143,7 @@ export default function RescheduleRequestsPage() {
             selectedVoters={selectedVoters}
             setSelectedVoters={setSelectedVoters}
             onOpenVote={() => void openVote(item)}
+            onCloseVote={() => { setVoteRequestId(""); setCandidates([]); setSelectedVoters([]); }}
             onSubmitVote={() => void submitVote(item)}
             onAction={(kind) => {
               if (kind === "WITHDRAW") void confirmAction(item, "撤回申请", "撤回后会释放原比赛锁和目标资源预留。", (token) => api.withdrawReschedule(item.id, item.version, token));
@@ -172,7 +173,7 @@ type ActionKind =
 
 function RequestCard({
   item, focused, busy, voting, candidates, selectedVoters, setSelectedVoters,
-  onOpenVote, onSubmitVote, onAction,
+  onOpenVote, onCloseVote, onSubmitVote, onAction,
 }: {
   item: RescheduleRequest;
   focused: boolean;
@@ -182,6 +183,7 @@ function RequestCard({
   selectedVoters: string[];
   setSelectedVoters: (value: string[]) => void;
   onOpenVote: () => void;
+  onCloseVote: () => void;
   onSubmitVote: () => void;
   onAction: (kind: ActionKind) => void;
 }) {
@@ -194,7 +196,7 @@ function RequestCard({
       <View className="request-heading">
         <View>
           <Text className="request-division">{item.game.division_name} · {item.request_type_label}</Text>
-          <Text className="request-teams">{item.original_home_name} vs {item.original_away_name}</Text>
+          <Text className="request-teams">{item.original_home_name}　—　{item.original_away_name}</Text>
         </View>
         <Text className={`request-status status-${item.status.toLowerCase()}`}>{item.status_label}</Text>
       </View>
@@ -238,7 +240,7 @@ function RequestCard({
 
       {voting && (
         <View className="voter-panel">
-          <Text className="voter-title">指定确认球队</Text>
+          <View className="voter-heading"><Text className="voter-title">指定确认球队</Text><Button className="voter-close" onClick={onCloseVote}>关闭</Button></View>
           <CheckboxGroup onChange={(event) => setSelectedVoters(event.detail.value)}>
             {candidates.map((team) => (
               <Label className="voter-option" key={team.id}>

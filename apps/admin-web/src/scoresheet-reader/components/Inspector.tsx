@@ -497,7 +497,7 @@ function PlayerEditor({
             value={player.jersey_number}
             aria-invalid={!jerseyIsValid}
             onChange={(event) => updatePlayer((draftPlayer) => {
-              draftPlayer.jersey_number = event.target.value.replace(/[^0-9]/g, '').slice(0, 2);
+              draftPlayer.jersey_number = event.target.value.replace(/[^0-9]/g, '');
             })}
           />
           <small className={jerseyIsValid ? 'field-help' : 'field-error'}>

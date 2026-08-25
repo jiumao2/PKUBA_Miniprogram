@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -38,6 +39,7 @@ from .models import Game, GameMediaAsset, ScoresheetPublication, Season
 from .services.brackets import build_brackets
 from .services.game_media import issue_media_ticket
 from .services.standings import build_standings
+from .services.worker_health import migration_readiness, worker_readiness
 
 api = NinjaAPI(
     title="PKUBA API",
@@ -59,8 +61,10 @@ class HealthOut(Schema):
     release_tag: str
     git_commit: str
     database: str
+    migrations: str
     media: str
     archive: str
+    workers: dict[str, str]
 
 
 class LivenessOut(Schema):
@@ -174,7 +178,6 @@ class StandingsEntryOut(Schema):
     rank: int
     team_id: UUID
     team_name: str
-    team_short_name: str
     played: int
     wins: int
     losses: int
@@ -361,30 +364,57 @@ def _path_dependency_status(path_value: object) -> str:
     path = Path(path_value)
     if not path.is_dir():
         return "unavailable"
-    required = os.R_OK | os.W_OK | os.X_OK
-    return "ok" if os.access(path, required) else "unavailable"
+    probe = path / f".pkuba-readiness-{uuid.uuid4().hex}"
+    try:
+        with probe.open("xb") as target:
+            target.write(b"pkuba-readiness")
+            target.flush()
+            os.fsync(target.fileno())
+        probe.unlink()
+    except OSError:
+        try:
+            probe.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return "unavailable"
+    return "ok"
 
 
 def _readiness_payload() -> tuple[int, dict[str, object]]:
     dependencies = {
         "database": "unavailable",
+        "migrations": "unavailable",
         "media": _path_dependency_status(settings.MEDIA_ROOT),
         "archive": _path_dependency_status(settings.ARCHIVE_ROOT),
+    }
+    workers: dict[str, str] = {
+        value: "unavailable" for value in settings.PKUBA_REQUIRED_WORKERS
     }
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
             if cursor.fetchone() == (1,):
                 dependencies["database"] = "ok"
+        dependencies["migrations"] = migration_readiness()
+        if dependencies["migrations"] == "ok":
+            workers = worker_readiness(
+                settings.PKUBA_REQUIRED_WORKERS,
+                max_age_seconds=settings.PKUBA_WORKER_HEARTBEAT_MAX_AGE,
+                release_tag=os.getenv("PKUBA_RELEASE_TAG", "development")[:64],
+                git_commit=os.getenv("PKUBA_GIT_COMMIT", "unknown")[:64],
+            )
     except Exception:  # noqa: BLE001 - readiness must convert dependency failures to 503.
         connection.close()
 
-    ready = all(value == "ok" for value in dependencies.values())
+    ready = all(value == "ok" for value in dependencies.values()) and all(
+        value == "ok" for value in workers.values()
+    )
     payload: dict[str, object] = {
         "status": "ok" if ready else "unavailable",
         "checked_at": timezone.now(),
         **_release_metadata(),
         **dependencies,
+        "workers": workers,
     }
     return (200 if ready else 503), payload
 
@@ -440,6 +470,34 @@ def get_current_season(request: HttpRequest):
     }
 
 
+def _home_summary_games(
+    games: QuerySet[Game],
+    *,
+    first_date: date,
+    minimum_games: int = 6,
+) -> list[Game]:
+    selected_dates: list[date] = []
+    accumulated = 0
+    for row in (
+        games.filter(date__gte=first_date)
+        .order_by()
+        .values("date")
+        .annotate(game_count=Count("id"))
+        .order_by("date")
+    ):
+        selected_dates.append(row["date"])
+        accumulated += int(row["game_count"])
+        if accumulated >= minimum_games:
+            break
+    if not selected_dates:
+        return []
+    return list(
+        games.filter(date__in=selected_dates).order_by(
+            "date", "start_time", "venue_name", "code"
+        )
+    )
+
+
 @public.get("/home", response={200: HomeDashboardOut, 404: ErrorOut})
 def home_dashboard(request: HttpRequest):
     del request
@@ -476,12 +534,16 @@ def home_dashboard(request: HttpRequest):
         "calendar_end_date": calendar_end_date,
         "daily_game_counts": daily_game_counts,
     }
-    today_games = list(games.filter(date=today)[:6])
+    today_games = (
+        _home_summary_games(games, first_date=today)
+        if games.filter(date=today).exists()
+        else []
+    )
     if today_games:
         return {
             "mode": "TODAY",
             "display_date": today,
-            "total_games": games.filter(date=today).count(),
+            "total_games": len(today_games),
             "games": [serialize_game(game) for game in today_games],
             **calendar,
         }
@@ -492,11 +554,13 @@ def home_dashboard(request: HttpRequest):
         .first()
     )
     if next_date:
-        next_games = list(games.filter(date=next_date)[:6])
+        next_games = _home_summary_games(
+            games.filter(status=Game.Status.SCHEDULED), first_date=next_date
+        )
         return {
             "mode": "NEXT_DAY",
             "display_date": next_date,
-            "total_games": games.filter(date=next_date).count(),
+            "total_games": len(next_games),
             "games": [serialize_game(game) for game in next_games],
             **calendar,
         }

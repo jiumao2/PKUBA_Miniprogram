@@ -26,6 +26,18 @@ RUN npm --workspace @pkuba/design-tokens run build \
     && npm --workspace @pkuba/api-client run build \
     && npm --workspace @pkuba/admin-web run build
 
+FROM python:3.13-slim AS django-static
+
+WORKDIR /app
+COPY apps/api/pyproject.toml apps/api/requirements.lock ./
+COPY apps/api/config ./config
+COPY apps/api/core ./core
+COPY apps/api/manage.py ./
+RUN pip install --no-cache-dir -r requirements.lock \
+    && pip install --no-cache-dir --no-deps -e . \
+    && python manage.py collectstatic --noinput
+
 FROM caddy:2.10-alpine
 
 COPY --from=build /workspace/apps/admin-web/dist /srv/admin-web
+COPY --from=django-static /app/staticfiles /srv/django-static

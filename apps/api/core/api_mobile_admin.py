@@ -486,11 +486,6 @@ def update_admin_game(
                     return _error("TEAM_INVALID", "主客队必须是当前组别的两支不同球队。")
             elif not game.home_slot_id or not game.away_slot_id:
                 return _error("TEAM_REQUIRED", "没有签位占位的比赛必须选择主客队。")
-            if not payload.override_rules and not (
-                game.season.starts_on <= payload.date <= game.season.ends_on
-            ):
-                return _error("DATE_OUTSIDE_SEASON", "比赛日期不在赛季范围内。")
-
             _lock_schedule_slot(game.season_id, payload.date, period.id)
             target_venue_key = _venue_key(venue_name)
             occupied_game_venues = (

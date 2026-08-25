@@ -95,7 +95,7 @@ class Command(BaseCommand):
                 season=season,
                 division=division,
                 name=f"演示球队 {index}",
-                defaults={"short_name": f"队{index}"},
+                defaults={},
             )
             DrawAssignment.objects.update_or_create(
                 season=season, slot=slot, defaults={"team": team}

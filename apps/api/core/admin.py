@@ -31,12 +31,61 @@ from .models import (
     SlotReservation,
     Team,
     Venue,
+    WorkerHeartbeat,
 )
 from .services.advanced_data import HIDDEN_RESCHEDULE_VENUE, redact_target_venue_payload
 
 
-@admin.register(Account)
-class AccountAdmin(UserAdmin):
+class MaintenanceAdminSite(admin.AdminSite):
+    site_header = "PKUBA 应急只读数据入口"
+    site_title = "PKUBA 应急入口"
+    index_title = "只读检查"
+
+    def has_permission(self, request):
+        user = request.user
+        return bool(
+            user.is_authenticated
+            and user.is_active
+            and user.is_staff
+            and user.role == Account.Role.SUPERADMIN
+        )
+
+
+maintenance_site = MaintenanceAdminSite(name="pkuba_maintenance")
+
+
+class ReadOnlyEmergencyAdminMixin:
+    """Keep the emergency Django admin view-only for every registered model."""
+
+    actions = None
+
+    def get_readonly_fields(self, request, obj=None):
+        model_fields = tuple(
+            field.name
+            for field in self.model._meta.get_fields()
+            if field.concrete and not field.auto_created
+        )
+        return tuple(dict.fromkeys((*self.readonly_fields, *model_fields)))
+
+    def has_view_permission(self, request, obj=None):
+        return maintenance_site.has_permission(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return bool(obj) and request.method in {"GET", "HEAD", "OPTIONS"}
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+class ReadOnlyEmergencyAdmin(ReadOnlyEmergencyAdminMixin, admin.ModelAdmin):
+    pass
+
+
+@admin.register(Account, site=maintenance_site)
+class AccountAdmin(ReadOnlyEmergencyAdminMixin, UserAdmin):
     fieldsets = (
         (None, {"fields": ("username", "password")}),
         (
@@ -60,14 +109,14 @@ class AccountAdmin(UserAdmin):
     ordering = ("username",)
 
 
-@admin.register(Season)
-class SeasonAdmin(admin.ModelAdmin):
+@admin.register(Season, site=maintenance_site)
+class SeasonAdmin(ReadOnlyEmergencyAdminMixin, admin.ModelAdmin):
     list_display = ("name", "competition_type", "status", "starts_on", "ends_on", "version")
     list_filter = ("competition_type", "status")
 
 
-@admin.register(Game)
-class GameAdmin(admin.ModelAdmin):
+@admin.register(Game, site=maintenance_site)
+class GameAdmin(ReadOnlyEmergencyAdminMixin, admin.ModelAdmin):
     list_display = (
         "code",
         "date",
@@ -84,35 +133,35 @@ class GameAdmin(admin.ModelAdmin):
     search_fields = ("code", "home_team__name", "away_team__name")
 
 
-admin.site.register(
-    [
-        Division,
-        CompetitionGroup,
-        ParticipantSlot,
-        Team,
-        DrawAssignment,
-        RosterPlayer,
-        RosterImportBatch,
-        RosterImportIssue,
-        SeasonLeaderBinding,
-        Venue,
-        Period,
-        PeriodCapacity,
-        DatePeriodCapacityOverride,
-        GameScoresheet,
-        ScoresheetRecognitionRun,
-        ScoresheetRevision,
-        ScoresheetChangeLog,
-        ScoresheetPublication,
-        GameTeamStat,
-        GamePlayerStat,
-        ScoresheetEditLease,
-    ]
-)
+for model in (
+    Division,
+    CompetitionGroup,
+    ParticipantSlot,
+    Team,
+    DrawAssignment,
+    RosterPlayer,
+    RosterImportBatch,
+    RosterImportIssue,
+    SeasonLeaderBinding,
+    Venue,
+    Period,
+    PeriodCapacity,
+    DatePeriodCapacityOverride,
+    GameScoresheet,
+    ScoresheetRecognitionRun,
+    ScoresheetRevision,
+    ScoresheetChangeLog,
+    ScoresheetPublication,
+    GameTeamStat,
+    GamePlayerStat,
+    ScoresheetEditLease,
+    WorkerHeartbeat,
+):
+    maintenance_site.register(model, ReadOnlyEmergencyAdmin)
 
 
-@admin.register(SlotReservation)
-class SlotReservationAdmin(admin.ModelAdmin):
+@admin.register(SlotReservation, site=maintenance_site)
+class SlotReservationAdmin(ReadOnlyEmergencyAdminMixin, admin.ModelAdmin):
     list_display = ("date", "period", "status", "visible_venue")
     list_filter = ("season", "status")
     fields = (
@@ -137,18 +186,9 @@ class SlotReservationAdmin(admin.ModelAdmin):
             approved = False
         return obj.venue_name if approved else HIDDEN_RESCHEDULE_VENUE
 
-    def has_add_permission(self, request):
-        return False
 
-    def has_change_permission(self, request, obj=None):
-        return bool(obj) and request.method in {"GET", "HEAD"}
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(GameMediaAsset)
-class GameMediaAssetAdmin(admin.ModelAdmin):
+@admin.register(GameMediaAsset, site=maintenance_site)
+class GameMediaAssetAdmin(ReadOnlyEmergencyAdminMixin, admin.ModelAdmin):
     list_display = (
         "created_at",
         "game",
@@ -161,18 +201,9 @@ class GameMediaAssetAdmin(admin.ModelAdmin):
     list_filter = ("kind", "review_status", "game__season")
     readonly_fields = [field.name for field in GameMediaAsset._meta.fields]
 
-    def has_add_permission(self, request):
-        return False
 
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(AdminAuditLog)
-class AdminAuditLogAdmin(admin.ModelAdmin):
+@admin.register(AdminAuditLog, site=maintenance_site)
+class AdminAuditLogAdmin(ReadOnlyEmergencyAdminMixin, admin.ModelAdmin):
     list_display = ("created_at", "actor", "action", "object_type", "object_id")
     fields = (
         "id",
@@ -224,12 +255,3 @@ class AdminAuditLogAdmin(admin.ModelAdmin):
     @admin.display(description="元数据")
     def visible_metadata(self, obj):
         return self._visible_payload(obj, obj.metadata)
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False

@@ -269,7 +269,6 @@ def import_legacy_2026(source: Path) -> dict[str, object]:
                 "season": season,
                 "division": divisions[division_name],
                 "name": team_name,
-                "short_name": team_name[:32],
                 "active": True,
             },
         )

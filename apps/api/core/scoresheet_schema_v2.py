@@ -512,6 +512,8 @@ def _preserve_server_fields(
     prepared["source"] = current_source
     current_recognition = current.get("recognition")
     incoming_recognition = incoming.get("recognition")
+    if not allow_recognition_replace:
+        _assert_recognition_document_editable(current_recognition, incoming_recognition)
     if current_recognition is None:
         if allow_recognition_replace and isinstance(incoming_recognition, dict):
             prepared["recognition"] = copy.deepcopy(incoming_recognition)
@@ -552,6 +554,82 @@ def _preserve_server_fields(
     prepared["acknowledged_warnings"] = []
     prepared["status"] = "needs_review" if has_recognition_result(prepared) else "draft"
     return prepared
+
+
+def _is_list_subset(incoming: Any, current: Any) -> bool:
+    if not isinstance(incoming, list) or not isinstance(current, list):
+        return False
+    remaining = [json.dumps(item, ensure_ascii=False, sort_keys=True) for item in current]
+    for item in incoming:
+        encoded = json.dumps(item, ensure_ascii=False, sort_keys=True)
+        if encoded not in remaining:
+            return False
+        remaining.remove(encoded)
+    return True
+
+
+def _recognition_field_locked() -> ScoresheetDocumentError:
+    return ScoresheetDocumentError(
+        "SCORESHEET_FIELD_LOCKED",
+        "识别来源、模型备注和问题清单由服务器维护；只能编辑记录台人员或删除已解决的问题。",
+    )
+
+
+def _assert_recognition_document_editable(current: Any, incoming: Any) -> None:
+    if current is None:
+        if incoming is None:
+            return
+        if not isinstance(incoming, dict):
+            raise _recognition_field_locked()
+        allowed_manual = (
+            incoming.get("run_id") == MANUAL_TABLE_PERSONNEL_RUN_ID
+            and str(incoming.get("notes") or "") == ""
+            and list(incoming.get("problem_paths") or []) == []
+            and list(incoming.get("issues") or []) == []
+            and isinstance(incoming.get("table_personnel"), list)
+        )
+        if not allowed_manual:
+            raise _recognition_field_locked()
+        return
+    if not isinstance(current, dict) or not isinstance(incoming, dict):
+        raise _recognition_field_locked()
+    for key in ("run_id", "notes", "applied_at"):
+        if incoming.get(key) != current.get(key):
+            raise _recognition_field_locked()
+    for key in ("problem_paths", "issues"):
+        if not _is_list_subset(incoming.get(key, []), current.get(key, [])):
+            raise _recognition_field_locked()
+
+
+def _assert_recognition_change_editable(
+    document: dict[str, Any],
+    *,
+    path: str,
+    operation: str,
+    value: Any,
+) -> None:
+    if not path.startswith("/recognition"):
+        return
+    if path == "/recognition/table_personnel" or path.startswith(
+        "/recognition/table_personnel/"
+    ):
+        return
+    current = document.get("recognition")
+    for field in ("problem_paths", "issues"):
+        root = f"/recognition/{field}"
+        if path == root:
+            if operation == "SET" and isinstance(current, dict) and _is_list_subset(
+                value, current.get(field, [])
+            ):
+                return
+            raise _recognition_field_locked()
+        # Resolving recognition problems is represented as an atomic replacement
+        # of the complete list with a verified subset.  Never permit mutation of
+        # an issue's fields (for example ``/issues/0/message``), and avoid index
+        # shifting ambiguity when several array entries are removed together.
+        if path.startswith(f"{root}/"):
+            raise _recognition_field_locked()
+    raise _recognition_field_locked()
 
 
 def _derive_final_score(document: dict[str, Any]) -> None:
@@ -595,7 +673,9 @@ def _canonicalize_derived_fields(document: dict[str, Any]) -> dict[str, Any]:
     return derive_score_events(ScoresheetDocument.model_validate(document)).model_dump(mode="json")
 
 
-def _assert_editable_path(document: dict[str, Any], path: str) -> None:
+def _assert_editable_path(
+    document: dict[str, Any], path: str, *, operation: str, value: Any
+) -> None:
     locked_paths = set((document.get("game_prior") or {}).get("locked_paths") or [])
     if path in locked_paths:
         raise ScoresheetDocumentError(
@@ -616,10 +696,19 @@ def _assert_editable_path(document: dict[str, Any], path: str) -> None:
             "SCORESHEET_FIELD_LOCKED",
             "得分分值、节次、符号和结束标记由累计分格与节比分自动生成，不能直接修改。",
         )
+    _assert_recognition_change_editable(
+        document,
+        path=path,
+        operation=operation,
+        value=value,
+    )
 
 
 def apply_changes(
-    document: dict[str, Any], changes: list[dict[str, Any]]
+    document: dict[str, Any],
+    changes: list[dict[str, Any]],
+    *,
+    allow_recognition_replace: bool = False,
 ) -> tuple[dict[str, Any], list[str], list[dict[str, Any]]]:
     if not changes or len(changes) > 200:
         raise ScoresheetDocumentError("DRAFT_CHANGES_INVALID", "每次应提交 1–200 个字段修改。")
@@ -634,7 +723,11 @@ def apply_changes(
         if path in {"", "/"}:
             if operation != "SET" or not isinstance(value, dict):
                 raise ScoresheetDocumentError("DRAFT_ROOT_INVALID", "整表替换必须提交 JSON 对象。")
-            candidate = _preserve_server_fields(document, value)
+            candidate = _preserve_server_fields(
+                document,
+                value,
+                allow_recognition_replace=allow_recognition_replace,
+            )
             try:
                 updated = _canonicalize_derived_fields(candidate)
             except ValidationError as error:
@@ -650,7 +743,8 @@ def apply_changes(
             normalized_changes.extend(root_changes)
             continue
         parts = [_decode_pointer_part(part) for part in path.lstrip("/").split("/")]
-        _assert_editable_path(document, path)
+        if not allow_recognition_replace:
+            _assert_editable_path(document, path, operation=operation, value=value)
         cursor: Any = updated
         for part in parts[:-1]:
             if isinstance(cursor, list):

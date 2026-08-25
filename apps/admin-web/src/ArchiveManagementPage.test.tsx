@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdminSeason, createAdminClient } from "@pkuba/api-client";
@@ -18,6 +18,47 @@ const season: AdminSeason = {
   version: 7,
   divisions: [],
 };
+
+const nextSeason: AdminSeason = {
+  ...season,
+  id: "10000000-0000-0000-0000-000000000002",
+  name: "新生杯",
+  competition_type: "FRESHMAN_CUP",
+  version: 3,
+};
+
+const storageSummary = {
+  disk_total_bytes: 100 * 1024 ** 3,
+  disk_used_bytes: 30 * 1024 ** 3,
+  disk_free_bytes: 70 * 1024 ** 3,
+  reserve_bytes: 25 * 1024 ** 3,
+  database_bytes: 29 * 1024 ** 2,
+  online_media_bytes: 2 * 1024 ** 3,
+  staged_artifact_bytes: 0,
+  seasons: [],
+};
+
+const emptyPage = { items: [], total: 0, page: 1, page_size: 100 };
+
+const purgePreview = (targetSeason: AdminSeason, files: number) => ({
+  season_id: targetSeason.id,
+  season_version: targetSeason.version,
+  files,
+  bytes: files * 1024,
+  by_kind: {},
+  data_archive_id: "30000000-0000-0000-0000-000000000001",
+  photo_archive_id: "30000000-0000-0000-0000-000000000002",
+  preview_hash: `preview-${targetSeason.id}`,
+  ready: true,
+  blockers: [],
+});
+
+const baseClient = () => ({
+  getArchiveStorageSummary: vi.fn().mockResolvedValue(storageSummary),
+  listSeasonExports: vi.fn().mockResolvedValue(emptyPage),
+  listSystemBackups: vi.fn().mockResolvedValue(emptyPage),
+  listMediaPurgeJobs: vi.fn().mockResolvedValue(emptyPage),
+});
 
 afterEach(() => cleanup());
 
@@ -101,5 +142,83 @@ describe("ArchiveManagementPage", () => {
       "20000000-0000-0000-0000-000000000001",
       3,
     ));
+  });
+
+  it("clears the external-copy confirmation whenever the selected season changes", async () => {
+    const client = {
+      ...baseClient(),
+      previewMediaPurge: vi.fn((seasonId: string) => Promise.resolve(
+        purgePreview(seasonId === season.id ? season : nextSeason, 4),
+      )),
+    } as unknown as AdminClient;
+
+    const { rerender } = render(
+      <ArchiveManagementPage
+        client={client}
+        seasons={[season, nextSeason]}
+        seasonId={season.id}
+        onSeasonChange={vi.fn()}
+      />,
+    );
+
+    const checkbox = await screen.findByRole("checkbox", {
+      name: "我已将最终数据包和照片包保存到服务器以外的位置",
+    });
+    await userEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+
+    rerender(
+      <ArchiveManagementPage
+        client={client}
+        seasons={[season, nextSeason]}
+        seasonId={nextSeason.id}
+        onSeasonChange={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("checkbox", {
+      name: "我已将最终数据包和照片包保存到服务器以外的位置",
+    })).not.toBeChecked());
+  });
+
+  it("ignores a late purge preview from the previously selected season", async () => {
+    let resolveFirstPreview: ((value: ReturnType<typeof purgePreview>) => void) | undefined;
+    const firstPreview = new Promise<ReturnType<typeof purgePreview>>((resolve) => {
+      resolveFirstPreview = resolve;
+    });
+    const client = {
+      ...baseClient(),
+      previewMediaPurge: vi.fn((seasonId: string) => (
+        seasonId === season.id
+          ? firstPreview
+          : Promise.resolve(purgePreview(nextSeason, 22))
+      )),
+    } as unknown as AdminClient;
+
+    const { rerender } = render(
+      <ArchiveManagementPage
+        client={client}
+        seasons={[season, nextSeason]}
+        seasonId={season.id}
+        onSeasonChange={vi.fn()}
+      />,
+    );
+    rerender(
+      <ArchiveManagementPage
+        client={client}
+        seasons={[season, nextSeason]}
+        seasonId={nextSeason.id}
+        onSeasonChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("22")).toBeInTheDocument();
+    await act(async () => {
+      resolveFirstPreview?.(purgePreview(season, 11));
+      await firstPreview;
+    });
+
+    await waitFor(() => expect(screen.queryByText("11")).not.toBeInTheDocument());
+    expect(screen.getByText("22")).toBeInTheDocument();
   });
 });

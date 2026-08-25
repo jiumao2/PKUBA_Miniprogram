@@ -189,6 +189,43 @@ describe("SeasonManagementPage", () => {
     expect(payload.divisions[4]).toMatchObject({ id: null, name: "公开组" });
   });
 
+  it("uses list position for all four ordered resources and hides internal codes", async () => {
+    const editable = { ...historical, status: "SETUP", editable: true, locked_reason: "" };
+    const updateSeasonConfiguration = vi.fn().mockResolvedValue(editable);
+    const client = clientWith(editable, { updateSeasonConfiguration });
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { container } = render(
+      <SeasonManagementPage
+        client={client}
+        seasons={seasons}
+        seasonId={historical.id}
+        onSeasonChange={vi.fn()}
+        onDataChanged={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await screen.findByText("赛事组别");
+    expect(container.querySelectorAll('[draggable="true"]')).toHaveLength(10);
+    expect(screen.queryByLabelText("男甲代码")).toBeNull();
+    expect(screen.queryByLabelText("12:50代码")).toBeNull();
+    expect(screen.queryAllByText("顺序")).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "上移女乙" }));
+    await user.click(screen.getByRole("button", { name: "预览并保存" }));
+
+    await waitFor(() => expect(updateSeasonConfiguration).toHaveBeenCalledOnce());
+    const [, payload] = updateSeasonConfiguration.mock.calls[0];
+    expect(payload.divisions.map((row: { name: string }) => row.name)).toEqual([
+      "男甲",
+      "男乙",
+      "女乙",
+      "女甲",
+    ]);
+    expect(payload.divisions.every((row: object) => !("sort_order" in row))).toBe(true);
+    expect(payload.divisions.every((row: object) => !("code" in row))).toBe(true);
+  });
+
   it("edits slot families while grid-column settings stay out of this page", async () => {
     const editable = { ...historical, status: "SETUP", editable: true, locked_reason: "" };
     const updateSeasonConfiguration = vi.fn().mockResolvedValue(editable);
@@ -233,11 +270,11 @@ describe("SeasonManagementPage", () => {
       id: null,
       name: "新体育馆",
       active: true,
-      sort_order: 4,
     });
+    expect(payload.venues.every((row: object) => !("sort_order" in row))).toBe(true);
   });
 
-  it("creates a setup season from the selected historical configuration", async () => {
+  it("creates a setup season from system defaults unless history is explicitly selected", async () => {
     const created = { ...historical, id: "10000000-0000-0000-0000-000000000002", status: "SETUP", editable: true, locked_reason: "" };
     const createAdminSeason = vi.fn().mockResolvedValue(created);
     const onDataChanged = vi.fn().mockResolvedValue(undefined);
@@ -255,13 +292,13 @@ describe("SeasonManagementPage", () => {
 
     await screen.findByText("只读");
     await user.click(screen.getByRole("button", { name: "新建赛季" }));
-    expect(screen.getByLabelText("配置来源")).toHaveProperty("value", historical.id);
+    expect(screen.getByLabelText("配置来源")).toHaveProperty("value", "");
     await user.click(screen.getByRole("button", { name: "创建赛季" }));
 
     await waitFor(() => expect(createAdminSeason).toHaveBeenCalledOnce());
     expect(createAdminSeason.mock.calls[0][0]).toMatchObject({
       competition_type: "PKU_CUP",
-      template_season_id: historical.id,
+      template_season_id: null,
     });
     await waitFor(() => expect(onDataChanged).toHaveBeenCalledWith(created.id));
     expect(onSeasonChange).toHaveBeenCalledWith(created.id);

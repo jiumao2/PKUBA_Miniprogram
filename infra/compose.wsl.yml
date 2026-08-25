@@ -42,7 +42,9 @@ services:
       EMAIL_PORT: "1025"
       LOCAL_MEDIA_ROOT: /app/media
       LOCAL_ARCHIVE_ROOT: /app/archives
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
       PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
+      PKUBA_REQUIRED_WORKERS: scoresheet,archive,expiry
     volumes:
       - pkuba-wsl-media:/app/media
       - pkuba-wsl-archives:/app/archives
@@ -78,6 +80,8 @@ services:
       SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS: ${SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS:-8000000}
       SCORESHEET_RECOGNITION_TIMEOUT_SECONDS: ${SCORESHEET_RECOGNITION_TIMEOUT_SECONDS:-180}
       LOCAL_MEDIA_ROOT: /app/media
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
     volumes:
       - pkuba-wsl-media:/app/media
     depends_on:
@@ -96,10 +100,27 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       LOCAL_MEDIA_ROOT: /app/media
       LOCAL_ARCHIVE_ROOT: /app/archives
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
       PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
     volumes:
       - pkuba-wsl-media:/app/media
       - pkuba-wsl-archives:/app/archives
+    depends_on:
+      db:
+        condition: service_healthy
+
+  expiry:
+    build:
+      context: ./apps/api
+      target: production
+    restart: unless-stopped
+    command: python manage.py expire_reschedules --loop
+    environment:
+      DATABASE_URL: postgresql://pkuba:${PKUBA_DB_PASSWORD}@db:5432/pkuba
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
     depends_on:
       db:
         condition: service_healthy

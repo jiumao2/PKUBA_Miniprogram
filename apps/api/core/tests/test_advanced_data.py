@@ -101,6 +101,37 @@ def test_advanced_data_can_inspect_full_identity_fields_without_environment_secr
     )
 
 
+def test_advanced_data_list_searches_sorts_and_pages_the_full_model():
+    actor = _superadmin("advanced-list-superadmin")
+    Account.objects.create_user(username="alpha-reader", password="test-password")
+    Account.objects.create_user(username="zeta-reader", password="test-password")
+    Account.objects.create_user(username="unrelated-account", password="test-password")
+    client = Client()
+    client.force_login(actor)
+
+    response = client.get(
+        "/api/v1/admin/advanced-data/accounts",
+        {"search": "reader", "sort": "username", "direction": "asc", "offset": 1, "limit": 1},
+    )
+
+    assert response.status_code == 200, response.content
+    body = response.json()
+    assert body["total"] == 2
+    assert body["offset"] == 1
+    assert body["limit"] == 1
+    assert body["search"] == "reader"
+    assert body["sort"] == "username"
+    assert body["direction"] == "asc"
+    assert [item["values"]["username"] for item in body["items"]] == ["zeta-reader"]
+
+    invalid = client.get(
+        "/api/v1/admin/advanced-data/accounts",
+        {"sort": "not-a-field"},
+    )
+    assert invalid.status_code == 400
+    assert invalid.json()["code"] == "SORT_FIELD_INVALID"
+
+
 def test_advanced_data_hides_reserved_venue_until_reschedule_is_approved():
     setup = reschedule_setup()
     setup["venues"][0].active = False

@@ -53,6 +53,9 @@
 .media-progress-value { height: 100%; border-radius: inherit; background: #c91f26; transition: width .18s ease-out; }
 .media-row-actions button[disabled], .media-upload[disabled], .media-add-more[disabled] { opacity: .5; }
 .media-feedback { position: sticky; z-index: 20; bottom: 24rpx; margin-top: 20rpx; padding: 18rpx 20rpx; border-left: 6rpx solid #c91f26; background: #fff1f1; color: #9a2428; font-size: 27rpx; line-height: 1.5; }
+.private-media-error { margin-top: 20rpx; padding: 18rpx 20rpx; border-left: 6rpx solid #c91f26; background: #fff6f6; color: #8d2428; font-size: 27rpx; line-height: 1.5; }
+.private-media-error button { width: auto; min-height: 88rpx; margin: 14rpx 0 0; padding: 0 24rpx; border: 1rpx solid #c91f26; border-radius: 9rpx; background: transparent; color: #9d2328; font-size: 27rpx; font-weight: 800; line-height: 86rpx; }
+.private-media-error button::after { border: 0; }
 .detail-skeleton { padding-top: 28rpx; }
 .detail-skeleton-title, .detail-skeleton-score, .detail-skeleton-block { border-radius: 12rpx; background: #e7e3dd; animation: detail-pulse 1.1s ease-in-out infinite; }
 .detail-skeleton-title { width: 35%; height: 48rpx; }

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import os
+import socket
 import time
 
 from django.core.management.base import BaseCommand
 
 from core.services.rescheduling import expire_due_confirmations
+from core.services.system_write_fence import (
+    SystemWriteFenceActive,
+    shared_system_write_access,
+)
+from core.services.worker_health import touch_worker_heartbeat
 
 
 class Command(BaseCommand):
@@ -15,8 +22,15 @@ class Command(BaseCommand):
         parser.add_argument("--interval", type=int, default=30)
 
     def handle(self, *args, **options):
+        worker = f"{socket.gethostname()}:{os.getpid()}"
         while True:
-            count = expire_due_confirmations()
+            touch_worker_heartbeat("expiry", worker)
+            try:
+                with shared_system_write_access():
+                    count = expire_due_confirmations()
+            except SystemWriteFenceActive:
+                count = 0
+            touch_worker_heartbeat("expiry", worker, details={"expired": count})
             if count:
                 self.stdout.write(f"expired={count}")
             if not options["loop"]:

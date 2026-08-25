@@ -11,6 +11,7 @@ import type {
   createAdminClient,
 } from "@pkuba/api-client";
 
+import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
 import "./team-roster.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -123,6 +124,7 @@ export function TeamRosterPage({
   const [divisionFilter, setDivisionFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [dirty, setDirty] = useState(false);
+  useAdminDirtySource(`team-roster:${seasonId}`, dirty);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,21 +136,25 @@ export function TeamRosterPage({
   const [maintenancePreview, setMaintenancePreview] =
     useState<TeamMaintenancePreview | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const loadGeneration = useRef(0);
 
   const loadDataset = async (targetSeasonId = seasonId) => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError(null);
     try {
       const next = await client.getRosterDataset(targetSeasonId);
+      if (generation !== loadGeneration.current) return;
       setDataset(next);
       setSelectedTeamId((current) => {
         if (current && next.teams.some((team) => team.id === current)) return current;
         return next.teams[0]?.id ?? null;
       });
     } catch (caught) {
+      if (generation !== loadGeneration.current) return;
       setError(caught instanceof Error ? caught.message : "无法读取球队与名单。 ");
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   };
 
@@ -159,6 +165,9 @@ export function TeamRosterPage({
     setAuditVisible(false);
     setMaintenancePreview(null);
     void loadDataset();
+    return () => {
+      loadGeneration.current += 1;
+    };
   }, [seasonId]);
 
   useEffect(() => {
@@ -497,7 +506,12 @@ export function TeamRosterPage({
       <div className="roster-toolbar">
         <label>
           <span>当前赛季</span>
-          <select value={seasonId} onChange={(event) => onSeasonChange(event.target.value)}>
+          <select value={seasonId} onChange={(event) => {
+            const nextSeasonId = event.target.value;
+            void confirmAdminNavigation().then((confirmed) => {
+              if (confirmed) onSeasonChange(nextSeasonId);
+            });
+          }}>
             {seasons.map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}
           </select>
         </label>

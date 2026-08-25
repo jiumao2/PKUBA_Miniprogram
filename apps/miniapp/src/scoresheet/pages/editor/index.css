@@ -96,7 +96,7 @@ button::after { border: 0; }
   flex: none;
   box-sizing: border-box;
   width: 100%;
-  height: 82rpx;
+  height: 104rpx;
   border-bottom: 1rpx solid #e3dfdb;
   background: #fff;
   white-space: nowrap;
@@ -113,7 +113,8 @@ button::after { border: 0; }
 .mini-sheet-step {
   position: relative;
   min-width: 112rpx;
-  height: 66rpx;
+  min-height: 88rpx;
+  height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -162,7 +163,7 @@ button::after { border: 0; }
 .mini-sheet-view-switch {
   flex: none;
   box-sizing: border-box;
-  height: 76rpx;
+  height: 104rpx;
   display: grid;
   grid-template-columns: 1fr 1fr 94rpx 94rpx;
   gap: 9rpx;
@@ -178,10 +179,11 @@ button::after { border: 0; }
 .mini-sheet-error button,
 .mini-publish-panel button {
   min-width: 0;
-  height: 62rpx;
+  min-height: 88rpx;
+  height: 88rpx;
   margin: 0;
   padding: 0 16rpx;
-  line-height: 60rpx;
+  line-height: 86rpx;
   border: 1rpx solid #d5d0ca;
   border-radius: 9rpx;
   background: #fff;
@@ -315,7 +317,7 @@ button[disabled] { opacity: .38; }
 
 .mini-source-tools {
   flex: none;
-  min-height: 68rpx;
+  min-height: 104rpx;
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
@@ -327,8 +329,9 @@ button[disabled] { opacity: .38; }
 }
 
 .mini-source-tools button {
-  height: 56rpx;
-  line-height: 54rpx;
+  min-width: 88rpx;
+  height: 88rpx;
+  line-height: 86rpx;
 }
 
 .mini-source-canvas {
