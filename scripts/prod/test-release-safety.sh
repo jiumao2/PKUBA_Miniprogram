@@ -688,7 +688,8 @@ reset_rollback_fixture() {
   run_root /usr/bin/rm -f "$state_root/slots/green.env" \
     "$state_root/slots/green.env.retain-until" \
     "$state_root/maintenance.enabled" "$state_root/release-recovery-required.env" \
-    "$fixture/deploy/logs/"*-application-rollback.env
+    "$fixture/deploy/logs/"*-application-rollback.env \
+    "$fixture/deploy/logs/"*-release-recovery.env
   cat >"$state_root/upstreams.caddy" <<'EOF'
 (active_api) {
 \treverse_proxy pkuba-green-api:8000
