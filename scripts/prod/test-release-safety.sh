@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Production deployment entrypoints run as root and intentionally create
+# root-only state.  Elevate the isolated fixture as one unit so assertions do
+# not require weakening those permissions on non-root CI runners.
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+  exec sudo -n -- bash "$0" "$@"
+fi
+
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 fixture=$(mktemp -d)
 
