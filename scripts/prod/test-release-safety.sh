@@ -3,7 +3,6 @@ set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 fixture=$(mktemp -d)
-trap 'rm -rf -- "$fixture"' EXIT
 
 run_root() {
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
@@ -12,6 +11,8 @@ run_root() {
     sudo "$@"
   fi
 }
+
+trap 'run_root /usr/bin/rm -rf -- "$fixture"' EXIT
 
 repository=$fixture/repository
 release_root=$fixture/deploy/releases
