@@ -4,6 +4,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.models import Account, AdminAuditLog, AdminProfile
+from core.services.superadmin_command_lock import (
+    SuperadminActorStateError,
+    lock_current_superadmin_actor,
+    lock_superadmin_commands,
+)
 
 
 class AdminAccountError(Exception):
@@ -12,9 +17,19 @@ class AdminAccountError(Exception):
         self.code = code
 
 
-def _require_superadmin(actor: Account) -> None:
-    if not actor.is_pkuba_superadmin:
-        raise AdminAccountError("只有超级管理员可以执行此操作。", "PERMISSION_DENIED")
+def _lock_actor(actor: Account) -> Account:
+    try:
+        return lock_current_superadmin_actor(actor)
+    except SuperadminActorStateError as error:
+        if error.code == "PERMISSION_DENIED":
+            raise AdminAccountError(
+                "只有超级管理员可以执行此操作。",
+                "PERMISSION_DENIED",
+            ) from error
+        raise AdminAccountError(
+            "当前管理员身份已发生变化，请刷新后重试。",
+            "ACTOR_STATE_CHANGED",
+        ) from error
 
 
 def _snapshot(account: Account) -> dict[str, object]:
@@ -34,7 +49,8 @@ def promote_admin(
     target_id: object,
     expected_version: int,
 ) -> Account:
-    _require_superadmin(actor)
+    lock_superadmin_commands()
+    actor = _lock_actor(actor)
     target = Account.objects.select_for_update().get(id=target_id)
     if target.version != expected_version:
         raise AdminAccountError("账号已被其他操作修改，请刷新。", "VERSION_CONFLICT")
@@ -71,26 +87,9 @@ def demote_superadmin(
     target_id: object,
     expected_version: int,
 ) -> Account:
-    _require_superadmin(actor)
-    locked_accounts = list(
-        Account.objects.select_for_update()
-        .filter(id__in={actor.id, target_id})
-        .order_by("id")
-    )
-    current_actor = next((item for item in locked_accounts if item.id == actor.id), None)
-    target = next((item for item in locked_accounts if str(item.id) == str(target_id)), None)
-    if target is None:
-        raise Account.DoesNotExist
-    if (
-        current_actor is None
-        or not current_actor.is_active
-        or current_actor.role != Account.Role.SUPERADMIN
-        or current_actor.version != actor.version
-    ):
-        raise AdminAccountError(
-            "当前管理员身份已发生变化，请刷新后重试。",
-            "ACTOR_STATE_CHANGED",
-        )
+    lock_superadmin_commands()
+    actor = _lock_actor(actor)
+    target = Account.objects.select_for_update().get(id=target_id)
     if target.version != expected_version:
         raise AdminAccountError("账号已被其他操作修改，请刷新。", "VERSION_CONFLICT")
     if target.id == actor.id:
@@ -133,7 +132,8 @@ def set_admin_active(
     expected_version: int,
     active: bool,
 ) -> Account:
-    _require_superadmin(actor)
+    lock_superadmin_commands()
+    actor = _lock_actor(actor)
     target = Account.objects.select_for_update().get(id=target_id)
     if target.version != expected_version:
         raise AdminAccountError("账号已被其他操作修改，请刷新。", "VERSION_CONFLICT")

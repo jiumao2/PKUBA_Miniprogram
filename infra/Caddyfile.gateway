@@ -32,7 +32,8 @@ import /srv/deployment-state/upstreams.caddy
 
 api.{$PKUBA_DOMAIN} {
 	encode zstd gzip
-	handle /api/v1/health/live {
+	@deployment_health path /api/v1/health/live /api/v1/health/ready
+	handle @deployment_health {
 		import active_api
 	}
 	import deployment_maintenance_json
@@ -43,6 +44,9 @@ api.{$PKUBA_DOMAIN} {
 
 admin.{$PKUBA_DOMAIN} {
 	encode zstd gzip
+	handle /_deployment/ready {
+		import active_web
+	}
 	import deployment_maintenance_text
 	handle {
 		import active_web

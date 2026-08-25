@@ -105,11 +105,30 @@ install -o root -g root -m 755 "$script_dir/deploy-release.sh" \
   /usr/local/sbin/pkuba-deploy-release
 install -o root -g root -m 755 "$script_dir/deploy-blue-green.sh" \
   /usr/local/sbin/pkuba-deploy-blue-green
+install -o root -g root -m 700 "$script_dir/rollback-retained-application.sh" \
+  /usr/local/sbin/pkuba-rollback-retained-application
+install -o root -g root -m 700 "$script_dir/recover-release-transaction.sh" \
+  /usr/local/sbin/pkuba-recover-release-transaction
 install -o root -g root -m 700 "$script_dir/restore-paired-data.sh" \
   /usr/local/sbin/pkuba-restore-paired-data
-install -d -o root -g root -m 755 /usr/local/libexec
-install -o root -g root -m 755 "$script_dir/parse-release-state.sh" \
-  /usr/local/libexec/pkuba-parse-release-state
+install -o root -g root -m 700 "$script_dir/start-current-application.sh" \
+  /usr/local/sbin/pkuba-start-current-application
+install -d -o root -g root -m 755 /usr/local/libexec/pkuba
+install -o root -g root -m 700 "$script_dir/acquire-deploy-lock.py" \
+  /usr/local/libexec/pkuba/acquire-deploy-lock.py
+install -o root -g root -m 700 "$script_dir/fence-deploy-writers.sh" \
+  /usr/local/libexec/pkuba/fence-deploy-writers.sh
+install -o root -g root -m 700 "$script_dir/verify-paired-backup.py" \
+  /usr/local/libexec/pkuba/verify-paired-backup.py
+for helper in \
+  parse-release-state.sh \
+  parse-release-contract.sh \
+  derive-release-capability.sh \
+  validate-release-identity.sh \
+  check-app-capability.sh; do
+  install -o root -g root -m 755 "$script_dir/$helper" \
+    "/usr/local/libexec/pkuba/$helper"
+done
 printf '%s\n' \
   "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-deploy-blue-green *" \
   >/etc/sudoers.d/pkuba-deploy
@@ -138,6 +157,15 @@ current_release_dir=$release_root/$current_tag
 if [[ ! -e $current_release_dir ]]; then
   git -C "$repository_dir" worktree add --detach "$current_release_dir" "$current_commit"
 fi
+[[ $(git -C "$current_release_dir" rev-parse HEAD) == "$current_commit" ]] \
+  || die "current release worktree does not match its commit"
+current_app_capability=$(bash "$script_dir/derive-release-capability.sh" \
+  "$current_release_dir") || die "could not derive current application capability"
+for image in "$current_api_image" "$current_web_image"; do
+  docker image inspect "$image" >/dev/null || die "current image is unavailable"
+  [[ $(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image") == "$current_commit" ]] \
+    || die "current image revision does not match current commit"
+done
 
 cat >/etc/pkuba-deploy.conf <<EOF
 PKUBA_DEPLOY_ROOT=/opt/pkuba/deploy
@@ -153,16 +181,49 @@ PKUBA_PRODUCTION_AUTOMATION_ARMED=0
 EOF
 chmod 600 /etc/pkuba-deploy.conf
 
-cat >"$state_dir/current.env" <<EOF
-ACTIVE_SLOT=uninitialized
-CURRENT_TAG=$current_tag
-CURRENT_COMMIT=$current_commit
-CURRENT_API_IMAGE=$current_api_image
-CURRENT_WEB_IMAGE=$current_web_image
-CURRENT_RELEASE_DIR=$current_release_dir
-BASELINE_CONVERSION_REQUIRED=1
+cat >/etc/systemd/system/pkuba-release-recovery.service <<'EOF'
+[Unit]
+Description=Recover an interrupted PKUBA application release transaction
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pkuba-recover-release-transaction
+
+[Install]
+WantedBy=multi-user.target
 EOF
-chmod 600 "$state_dir/current.env"
+chmod 644 /etc/systemd/system/pkuba-release-recovery.service
+cat >/etc/systemd/system/pkuba-application-start.service <<'EOF'
+[Unit]
+Description=Start the authoritative PKUBA application slot after recovery
+After=pkuba-release-recovery.service
+Requires=pkuba-release-recovery.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pkuba-start-current-application
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+chmod 644 /etc/systemd/system/pkuba-application-start.service
+systemctl daemon-reload
+systemctl enable pkuba-release-recovery.service >/dev/null
+systemctl enable pkuba-application-start.service >/dev/null
+
+cat >"$state_dir/baseline-conversion.env" <<EOF
+BASELINE_TAG=$current_tag
+BASELINE_COMMIT=$current_commit
+BASELINE_API_IMAGE=$current_api_image
+BASELINE_WEB_IMAGE=$current_web_image
+BASELINE_RELEASE_DIR=$current_release_dir
+BASELINE_APP_CAPABILITY=$current_app_capability
+EOF
+chmod 600 "$state_dir/baseline-conversion.env"
 
 cat <<EOF
 Server bootstrap completed without changing running containers.

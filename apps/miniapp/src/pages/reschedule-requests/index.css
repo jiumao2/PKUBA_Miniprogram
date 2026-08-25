@@ -3,9 +3,10 @@
 .request-card.is-women { border-left-color: #c91f26; background: #fff6f5; }
 .request-card.is-focused { outline: 3rpx solid rgba(201, 31, 38, 0.28); outline-offset: -3rpx; }
 .request-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }
-.request-division, .request-teams, .request-status, .request-slot text, .request-requester { display: block; }
+.request-division, .request-teams, .request-classification, .request-status, .request-slot text, .request-requester { display: block; }
 .request-division { color: #6f6b65; font-size: 26rpx; font-weight: 750; }
 .request-teams { margin-top: 7rpx; font-size: 31rpx; font-weight: 900; }
+.request-classification { margin-top: 9rpx; color: #6f6b65; font-size: 25rpx; line-height: 1.5; }
 .request-status { flex: 0 0 auto; padding: 7rpx 12rpx; background: #ebe7e0; font-size: 26rpx; font-weight: 800; }
 .status-approved { color: #2f6349; background: #e7f0ea; }
 .status-rejected, .status-expired, .status-admin_cancelled { color: #96262b; background: #f5e5e5; }

@@ -105,6 +105,7 @@ export default function RescheduleRequestsPage() {
       await api.decideRescheduleAsAdmin(item.id, {
         expected_version: item.version,
         action: "vote",
+        classification: "CROSS_ROUND",
         selected_team_ids: selectedVoters,
       }, token);
       setVoteRequestId("");
@@ -147,12 +148,13 @@ export default function RescheduleRequestsPage() {
             onSubmitVote={() => void submitVote(item)}
             onAction={(kind) => {
               if (kind === "WITHDRAW") void confirmAction(item, "撤回申请", "撤回后会释放原比赛锁和目标资源预留。", (token) => api.withdrawReschedule(item.id, item.version, token));
-              if (kind === "OPPONENT_ACCEPT") void confirmAction(item, "同意调赛", "同周申请会立即生效；跨周申请会进入管理员处理。", (token) => api.respondToRescheduleOpponent(item.id, { expected_version: item.version, accept: true }, token));
+              if (kind === "OPPONENT_ACCEPT") void confirmAction(item, "同意调赛", item.process_route === "ORDINARY" ? "普通流程会在服务端复核后立即生效。" : "该申请会进入超级管理员审核，由管理员认定是否属于跨轮次调整。", (token) => api.respondToRescheduleOpponent(item.id, { expected_version: item.version, accept: true }, token));
               if (kind === "OPPONENT_REJECT") void confirmAction(item, "拒绝调赛", "拒绝后申请结束并释放预留。", (token) => api.respondToRescheduleOpponent(item.id, { expected_version: item.version, accept: false }, token));
               if (kind === "VOTER_ACCEPT") void confirmAction(item, "同意申请", "您的球队将记录为同意。", (token) => api.respondAsSelectedTeam(item.id, { expected_version: item.version, accept: true }, token));
               if (kind === "VOTER_REJECT") void confirmAction(item, "拒绝申请", "拒绝后申请结束并释放预留。", (token) => api.respondAsSelectedTeam(item.id, { expected_version: item.version, accept: false }, token));
-              if (kind === "ADMIN_APPROVE") void confirmAction(item, "批准跨周调赛", "比赛将立即移动到已预留的目标时段。", (token) => api.decideRescheduleAsAdmin(item.id, { expected_version: item.version, action: "approve", selected_team_ids: [] }, token));
-              if (kind === "ADMIN_REJECT") void confirmAction(item, "拒绝跨周调赛", "申请结束并释放目标预留。", (token) => api.decideRescheduleAsAdmin(item.id, { expected_version: item.version, action: "reject", selected_team_ids: [] }, token));
+              if (kind === "ADMIN_APPROVE_ORDINARY") void confirmAction(item, "按普通办法批准", "管理员将认定本次申请不属于跨轮次调整，并直接批准，无需领队重新提交。", (token) => api.decideRescheduleAsAdmin(item.id, { expected_version: item.version, action: "approve", classification: "ORDINARY", selected_team_ids: [] }, token));
+              if (kind === "ADMIN_APPROVE_CROSS_ROUND") void confirmAction(item, "认定为跨轮次并批准", "比赛将立即移动到已预留的目标时段。", (token) => api.decideRescheduleAsAdmin(item.id, { expected_version: item.version, action: "approve", classification: "CROSS_ROUND", selected_team_ids: [] }, token));
+              if (kind === "ADMIN_REJECT_CROSS_ROUND") void confirmAction(item, "认定为跨轮次并拒绝", "申请结束并释放目标预留。", (token) => api.decideRescheduleAsAdmin(item.id, { expected_version: item.version, action: "reject", classification: "CROSS_ROUND", selected_team_ids: [] }, token));
               if (kind === "FINAL_APPROVE") void confirmAction(item, "终审通过", "比赛将移动到已预留的目标时段。", (token) => api.decideRescheduleFinal(item.id, { expected_version: item.version, accept: true }, token));
               if (kind === "FINAL_REJECT") void confirmAction(item, "终审拒绝", "申请结束并释放目标预留。", (token) => api.decideRescheduleFinal(item.id, { expected_version: item.version, accept: false }, token));
               if (kind === "ADMIN_CANCEL") void confirmAction(item, "管理员取消", "该操作会结束申请并释放锁和预留。", (token) => api.cancelRescheduleAsAdmin(item.id, item.version, token));
@@ -168,7 +170,8 @@ export default function RescheduleRequestsPage() {
 
 type ActionKind =
   | "WITHDRAW" | "OPPONENT_ACCEPT" | "OPPONENT_REJECT"
-  | "VOTER_ACCEPT" | "VOTER_REJECT" | "ADMIN_APPROVE" | "ADMIN_REJECT"
+  | "VOTER_ACCEPT" | "VOTER_REJECT" | "ADMIN_APPROVE_ORDINARY"
+  | "ADMIN_APPROVE_CROSS_ROUND" | "ADMIN_REJECT_CROSS_ROUND"
   | "FINAL_APPROVE" | "FINAL_REJECT" | "ADMIN_CANCEL";
 
 function RequestCard({
@@ -195,8 +198,12 @@ function RequestCard({
     >
       <View className="request-heading">
         <View>
-          <Text className="request-division">{item.game.division_name} · {item.request_type_label}</Text>
+          <Text className="request-division">{item.game.division_name}</Text>
           <Text className="request-teams">{item.original_home_name}　—　{item.original_away_name}</Text>
+          <Text className="request-classification">
+            日期关系：{item.request_type_label} · 处理通道：{item.process_route_label}
+            {item.review_classification_label ? ` · 审核认定：${item.review_classification_label}` : ""}
+          </Text>
         </View>
         <Text className={`request-status status-${item.status.toLowerCase()}`}>{item.status_label}</Text>
       </View>
@@ -228,8 +235,9 @@ function RequestCard({
         <View className="request-actions">
           {has("RESPOND_OPPONENT") && <><Button disabled={busy} onClick={() => onAction("OPPONENT_ACCEPT")}>同意</Button><Button className="outline" disabled={busy} onClick={() => onAction("OPPONENT_REJECT")}>拒绝</Button></>}
           {has("RESPOND_SELECTED_TEAM") && <><Button disabled={busy} onClick={() => onAction("VOTER_ACCEPT")}>同意</Button><Button className="outline" disabled={busy} onClick={() => onAction("VOTER_REJECT")}>拒绝</Button></>}
-          {has("ADMIN_APPROVE") && <Button disabled={busy} onClick={() => onAction("ADMIN_APPROVE")}>直接批准</Button>}
-          {has("ADMIN_REJECT") && <Button className="outline" disabled={busy} onClick={() => onAction("ADMIN_REJECT")}>拒绝</Button>}
+          {has("ADMIN_APPROVE") && item.request_type === "SAME_WEEK" && <Button disabled={busy} onClick={() => onAction("ADMIN_APPROVE_ORDINARY")}>按普通办法批准</Button>}
+          {has("ADMIN_APPROVE") && <Button disabled={busy} onClick={() => onAction("ADMIN_APPROVE_CROSS_ROUND")}>认定跨轮次并批准</Button>}
+          {has("ADMIN_REJECT") && <Button className="outline" disabled={busy} onClick={() => onAction("ADMIN_REJECT_CROSS_ROUND")}>认定跨轮次并拒绝</Button>}
           {has("ADMIN_START_VOTE") && <Button className="outline" disabled={busy} onClick={onOpenVote}>指定球队投票</Button>}
           {has("ADMIN_FINAL_APPROVE") && <Button disabled={busy} onClick={() => onAction("FINAL_APPROVE")}>终审通过</Button>}
           {has("ADMIN_FINAL_REJECT") && <Button className="outline" disabled={busy} onClick={() => onAction("FINAL_REJECT")}>终审拒绝</Button>}

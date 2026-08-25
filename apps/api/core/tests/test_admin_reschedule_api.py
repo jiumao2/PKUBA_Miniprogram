@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from django.test import Client
@@ -63,6 +64,9 @@ def test_admin_session_lists_only_current_season_with_resource_state():
     assert payload["total"] == 1
     item = payload["items"][0]
     assert item["id"] == str(request.id)
+    assert item["request_type_label"] == "跨自然周"
+    assert item["process_route_label"] == "参赛手册审核"
+    assert item["review_classification"] is None
     assert "target_venue_id" not in item
     assert "target_venue_name" not in item
     assert item["actions"] == []
@@ -81,7 +85,11 @@ def test_ordinary_admin_cannot_mutate_request_from_web():
     response = client.post(
         f"/api/v1/admin/reschedule-requests/{request.id}/actions",
         data=json.dumps(
-            {"expected_version": request.version, "action": "ADMIN_REJECT"}
+            {
+                "expected_version": request.version,
+                "action": "ADMIN_REJECT",
+                "classification": "CROSS_ROUND",
+            }
         ),
         content_type="application/json",
         HTTP_X_CSRFTOKEN=csrf,
@@ -101,14 +109,22 @@ def test_admin_action_requires_csrf_and_rejects_stale_version():
     no_csrf = client.post(
         path,
         data=json.dumps(
-            {"expected_version": request.version, "action": "ADMIN_REJECT"}
+            {
+                "expected_version": request.version,
+                "action": "ADMIN_REJECT",
+                "classification": "CROSS_ROUND",
+            }
         ),
         content_type="application/json",
     )
     stale = client.post(
         path,
         data=json.dumps(
-            {"expected_version": request.version - 1, "action": "ADMIN_REJECT"}
+            {
+                "expected_version": request.version - 1,
+                "action": "ADMIN_REJECT",
+                "classification": "CROSS_ROUND",
+            }
         ),
         content_type="application/json",
         HTTP_X_CSRFTOKEN=csrf,
@@ -137,6 +153,7 @@ def test_admin_can_start_vote_and_finish_after_confirmation_deadline():
             {
                 "expected_version": request.version,
                 "action": "ADMIN_START_VOTE",
+                "classification": "CROSS_ROUND",
                 "selected_team_ids": candidate_ids,
             }
         ),
@@ -213,3 +230,31 @@ def test_admin_cancel_releases_lock_and_reservation_idempotently():
     assert request.game.active_reschedule_request_id is None
     assert request.game.leader_adjustable is True
     assert request.reservation.status == SlotReservation.Status.RELEASED
+
+
+def test_web_voter_candidates_and_actions_return_stable_not_found():
+    setup = reschedule_setup()
+    client = Client(enforce_csrf_checks=True)
+    csrf = login_admin(client, setup["superadmin"])
+    missing_id = uuid4()
+
+    candidates = client.get(
+        f"/api/v1/admin/reschedule-requests/{missing_id}/voter-candidates"
+    )
+    action = client.post(
+        f"/api/v1/admin/reschedule-requests/{missing_id}/actions",
+        data=json.dumps(
+            {
+                "expected_version": 1,
+                "action": "ADMIN_APPROVE",
+                "classification": "CROSS_ROUND",
+            }
+        ),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+
+    assert candidates.status_code == 404
+    assert candidates.json()["code"] == "REQUEST_NOT_FOUND"
+    assert action.status_code == 404
+    assert action.json()["code"] == "REQUEST_NOT_FOUND"

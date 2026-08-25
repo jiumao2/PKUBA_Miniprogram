@@ -27,6 +27,11 @@ from core.models import (
 )
 from core.services.inbox_tasks import sync_reschedule_tasks
 from core.services.schedule_capacity import effective_capacity
+from core.services.superadmin_command_lock import (
+    SuperadminActorStateError,
+    lock_current_superadmin_actor,
+    lock_superadmin_commands,
+)
 
 
 @dataclass(slots=True)
@@ -210,10 +215,85 @@ def _validate_target_team_conflicts(game: Game, target_date: date, period: Perio
         _raise("TEAM_TIME_CONFLICT", "目标时段与参赛球队的另一场比赛或预留冲突。")
 
 
+def _date_relation(original_date: date, target_date: date) -> str:
+    return (
+        RescheduleRequest.RequestType.SAME_WEEK
+        if original_date.isocalendar()[:2] == target_date.isocalendar()[:2]
+        else RescheduleRequest.RequestType.CROSS_WEEK
+    )
+
+
+def _resolve_process_route(process_route: str | None, request_type: str) -> str:
+    if process_route is None:
+        return (
+            RescheduleRequest.ProcessRoute.ORDINARY
+            if request_type == RescheduleRequest.RequestType.SAME_WEEK
+            else RescheduleRequest.ProcessRoute.HANDBOOK_REVIEW
+        )
+    if process_route not in RescheduleRequest.ProcessRoute.values:
+        _raise("PROCESS_ROUTE_INVALID", "调赛处理通道无效，请刷新后重试。")
+    if (
+        process_route == RescheduleRequest.ProcessRoute.ORDINARY
+        and request_type != RescheduleRequest.RequestType.SAME_WEEK
+    ):
+        _raise("PROCESS_ROUTE_INVALID", "普通流程只能选择原比赛同一自然周的目标时段。")
+    return process_route
+
+
+def canonical_reschedule_create_fingerprint(
+    *,
+    game_id: UUID,
+    expected_game_version: int,
+    target_date: date,
+    target_period_id: UUID,
+    process_route: str | None,
+) -> dict[str, object]:
+    existing = (
+        RescheduleRequest.objects.filter(
+            game_id=game_id,
+            game_version_at_submit=expected_game_version,
+            target_date=target_date,
+            target_period_id=target_period_id,
+        )
+        .only("request_type")
+        .first()
+    )
+    if existing is not None:
+        request_type = existing.request_type
+    else:
+        original_date = Game.objects.filter(id=game_id).values_list("date", flat=True).first()
+        if original_date is None:
+            _raise("GAME_NOT_FOUND", "比赛不存在。")
+        request_type = _date_relation(original_date, target_date)
+    resolved_route = _resolve_process_route(process_route, request_type)
+    return {
+        "game_id": str(game_id),
+        "expected_game_version": expected_game_version,
+        "target_date": target_date.isoformat(),
+        "target_period_id": str(target_period_id),
+        "process_route": resolved_route,
+    }
+
+
+def eligible_reschedule_voter_teams(game: Game):
+    teams = Team.objects.filter(
+        season_id=game.season_id,
+        division_id=game.division_id,
+        active=True,
+    ).exclude(id__in=[game.home_team_id, game.away_team_id])
+    if game.group_id:
+        teams = teams.filter(
+            draw_assignments__season_id=game.season_id,
+            draw_assignments__slot__group_id=game.group_id,
+        )
+    return teams.distinct().order_by("name", "id")
+
+
 def available_reschedule_targets(
     *,
     actor: Account,
     game_id: UUID,
+    process_route: str | None = None,
     now: datetime | None = None,
 ) -> list[dict[str, object]]:
     """Return a non-authoritative preview; submission repeats every check under locks."""
@@ -245,6 +325,8 @@ def available_reschedule_targets(
     if now >= game_start:
         _raise("GAME_ALREADY_STARTED", "比赛已经开始，不能申请调赛。")
     _leader_team(actor, game)
+    if process_route is not None and process_route not in RescheduleRequest.ProcessRoute.values:
+        _raise("PROCESS_ROUTE_INVALID", "调赛处理通道无效，请刷新后重试。")
 
     periods = list(Period.objects.filter(season=game.season).order_by("sort_order", "start_time"))
     venues = list(
@@ -330,6 +412,13 @@ def available_reschedule_targets(
                 )
                 if venue is None:
                     continue
+                request_type = _date_relation(game.date, target_date)
+                if (
+                    process_route == RescheduleRequest.ProcessRoute.ORDINARY
+                    and request_type != RescheduleRequest.RequestType.SAME_WEEK
+                ):
+                    continue
+                resolved_route = _resolve_process_route(process_route, request_type)
                 targets.append(
                     {
                         "date": target_date,
@@ -337,11 +426,8 @@ def available_reschedule_targets(
                         "period_code": period.code,
                         "period_name": period.name,
                         "start_time": period.start_time.strftime("%H:%M"),
-                        "request_type": (
-                            RescheduleRequest.RequestType.SAME_WEEK
-                            if game.date.isocalendar()[:2] == target_date.isocalendar()[:2]
-                            else RescheduleRequest.RequestType.CROSS_WEEK
-                        ),
+                        "request_type": request_type,
+                        "process_route": resolved_route,
                         "submit_deadline": submit_deadline,
                         "confirmation_deadline": confirmation_deadline,
                     }
@@ -358,6 +444,7 @@ def submit_reschedule(
     expected_game_version: int,
     target_date: date,
     target_period_id: UUID,
+    process_route: str | None = None,
     now: datetime | None = None,
 ) -> RescheduleRequest:
     now = now or timezone.now()
@@ -411,6 +498,9 @@ def submit_reschedule(
     if now >= submit_deadline:
         _raise("SUBMISSION_CLOSED", "已超过调赛申请截止时间。")
 
+    request_type = _date_relation(game.date, target_date)
+    resolved_route = _resolve_process_route(process_route, request_type)
+
     requester_team = _leader_team(actor, game)
     _lock_schedule_slot(game.season_id, target_date, target_period.id)
     _validate_target_team_conflicts(game, target_date, target_period)
@@ -427,16 +517,12 @@ def submit_reschedule(
         venue=target_venue,
         venue_name=target_venue.name,
     )
-    same_week = game.date.isocalendar()[:2] == target_date.isocalendar()[:2]
     request = RescheduleRequest.objects.create(
         game=game,
         requester_team=requester_team,
         requester=actor,
-        request_type=(
-            RescheduleRequest.RequestType.SAME_WEEK
-            if same_week
-            else RescheduleRequest.RequestType.CROSS_WEEK
-        ),
+        request_type=request_type,
+        process_route=resolved_route,
         target_date=target_date,
         target_period=target_period,
         target_start_time=target_period.start_time,
@@ -474,9 +560,27 @@ def _require_version(request: RescheduleRequest, expected_version: int) -> None:
         _raise("VERSION_CONFLICT", "申请状态已更新，请刷新后重试。")
 
 
-def _require_admin(actor: Account) -> None:
-    if not actor.is_pkuba_superadmin:
-        _raise("SUPERADMIN_REQUIRED", "调赛审核和取消仅限超级管理员。")
+def _lock_superadmin_actor(actor: Account) -> Account:
+    try:
+        return lock_current_superadmin_actor(actor)
+    except SuperadminActorStateError as error:
+        if error.code == "PERMISSION_DENIED":
+            _raise("SUPERADMIN_REQUIRED", "调赛审核和取消仅限超级管理员。")
+        _raise("ADMIN_ACTOR_STATE_CHANGED", "当前管理员账号已发生变化，请刷新后重试。")
+
+
+def _materialize_legacy_review_fields(request: RescheduleRequest) -> None:
+    update_fields: list[str] = []
+    if request.process_route is None:
+        request.process_route = request.resolved_process_route
+        update_fields.append("process_route")
+    if request.review_classification is None:
+        classification = request.resolved_review_classification
+        if classification is not None:
+            request.review_classification = classification
+            update_fields.append("review_classification")
+    if update_fields:
+        request.save(update_fields=[*update_fields, "updated_at"])
 
 
 def _release_request(
@@ -501,7 +605,16 @@ def _release_request(
         request.status = status
         request.decided_at = decided_at
         request.version += 1
-        request.save(update_fields=["status", "decided_at", "version", "updated_at"])
+        request.save(
+            update_fields=[
+                "status",
+                "process_route",
+                "review_classification",
+                "decided_at",
+                "version",
+                "updated_at",
+            ]
+        )
     sync_reschedule_tasks(request)
     return request
 
@@ -571,7 +684,16 @@ def _approve_request(
     request.status = RescheduleRequest.Status.APPROVED
     request.decided_at = decided_at
     request.version += 1
-    request.save(update_fields=["status", "decided_at", "version", "updated_at"])
+    request.save(
+        update_fields=[
+            "status",
+            "process_route",
+            "review_classification",
+            "decided_at",
+            "version",
+            "updated_at",
+        ]
+    )
     sync_reschedule_tasks(request)
     return request
 
@@ -618,6 +740,10 @@ def respond_to_opponent(
     confirmation.responded_by = actor
     confirmation.responded_at = now
     confirmation.save(update_fields=["response", "responded_by", "responded_at", "updated_at"])
+    process_route = request.resolved_process_route
+    if request.process_route is None:
+        request.process_route = process_route
+        request.save(update_fields=["process_route", "updated_at"])
     if not accept:
         return _release_request(
             request,
@@ -626,7 +752,10 @@ def respond_to_opponent(
             RescheduleRequest.Status.REJECTED,
             now,
         )
-    if request.request_type == RescheduleRequest.RequestType.SAME_WEEK:
+    if (
+        request.request_type == RescheduleRequest.RequestType.SAME_WEEK
+        and process_route == RescheduleRequest.ProcessRoute.ORDINARY
+    ):
         return _approve_request(request, game, reservation, now)
 
     request.status = RescheduleRequest.Status.WAITING_ADMIN_DECISION
@@ -667,6 +796,14 @@ def _audit_snapshot(
 ) -> dict[str, object]:
     return {
         "request": {
+            "request_type": request.request_type,
+            "process_route": request.resolved_process_route,
+            "process_route_was_inferred": request.process_route is None,
+            "review_classification": request.resolved_review_classification,
+            "review_classification_was_inferred": (
+                request.review_classification is None
+                and request.resolved_review_classification is not None
+            ),
             "status": request.status,
             "version": request.version,
         },
@@ -721,26 +858,55 @@ def _audit_status_change(
 
 
 @transaction.atomic
-def admin_decide_cross_week(
+def admin_decide_review_route(
     *,
     actor: Account,
     request_id: UUID,
     expected_version: int,
     action: str,
+    classification: str | None,
     selected_team_ids: Iterable[UUID] = (),
     now: datetime | None = None,
 ) -> RescheduleRequest:
     now = now or timezone.now()
-    _require_admin(actor)
+    lock_superadmin_commands()
     request, game, reservation = _locked_request(request_id)
+    actor = _lock_superadmin_actor(actor)
     _require_version(request, expected_version)
     if request.status != RescheduleRequest.Status.WAITING_ADMIN_DECISION:
         _raise("INVALID_STATE", "当前申请不等待管理员决定。")
+    process_route = request.resolved_process_route
+    if process_route != RescheduleRequest.ProcessRoute.HANDBOOK_REVIEW:
+        _raise("PROCESS_ROUTE_INVALID", "只有参赛手册审核通道可进入管理员分类处理。")
+    if classification is None:
+        if request.request_type == RescheduleRequest.RequestType.CROSS_WEEK:
+            classification = RescheduleRequest.ReviewClassification.CROSS_ROUND
+        else:
+            _raise("REVIEW_CLASSIFICATION_REQUIRED", "请先认定本次申请是否属于跨轮次调整。")
+    if classification not in RescheduleRequest.ReviewClassification.values:
+        _raise("REVIEW_CLASSIFICATION_INVALID", "请选择按普通办法或跨轮次调整。")
+    if (
+        classification == RescheduleRequest.ReviewClassification.ORDINARY
+        and request.request_type != RescheduleRequest.RequestType.SAME_WEEK
+    ):
+        _raise("REVIEW_CLASSIFICATION_INVALID", "跨自然周申请不能认定为普通办法。")
+    if (
+        classification == RescheduleRequest.ReviewClassification.ORDINARY
+        and action != "approve"
+    ):
+        _raise("CLASSIFICATION_ACTION_INVALID", "按普通办法处理时应直接批准，无需投票或拒绝。")
+    selected_ids = list(selected_team_ids)
+    if action != "vote" and selected_ids:
+        _raise("SELECTED_TEAMS_NOT_ALLOWED", "只有发起指定球队确认时可以提交球队名单。")
     before = _audit_snapshot(request, game, reservation)
 
     if action == "approve":
+        request.process_route = process_route
+        request.review_classification = classification
         request = _approve_request(request, game, reservation, now)
     elif action == "reject":
+        request.process_route = process_route
+        request.review_classification = classification
         request = _release_request(
             request,
             game,
@@ -751,15 +917,14 @@ def admin_decide_cross_week(
     elif action == "vote":
         if now >= request.confirmation_deadline:
             _raise("CONFIRMATION_CLOSED", "已超过球队确认截止时间，不能再发起投票。")
-        unique_ids = set(selected_team_ids)
+        unique_ids = set(selected_ids)
         if not unique_ids:
             _raise("VOTERS_REQUIRED", "请至少指定一支参与投票的球队。")
-        forbidden = {game.home_team_id, game.away_team_id}
-        if unique_ids & forbidden:
-            _raise("VOTER_INVALID", "比赛双方不能重复作为指定投票球队。")
-        teams = list(Team.objects.filter(id__in=unique_ids, season_id=game.season_id, active=True))
+        if len(unique_ids) != len(selected_ids):
+            _raise("VOTER_INVALID", "指定球队不能重复。")
+        teams = list(eligible_reschedule_voter_teams(game).filter(id__in=unique_ids))
         if len(teams) != len(unique_ids):
-            _raise("VOTER_INVALID", "指定球队必须是本赛季有效球队。")
+            _raise("VOTER_INVALID", "指定球队必须属于本场同组别及同小组的有效候选范围。")
         TeamConfirmation.objects.bulk_create(
             [
                 TeamConfirmation(
@@ -771,8 +936,18 @@ def admin_decide_cross_week(
             ]
         )
         request.status = RescheduleRequest.Status.WAITING_SELECTED_TEAMS
+        request.process_route = process_route
+        request.review_classification = classification
         request.version += 1
-        request.save(update_fields=["status", "version", "updated_at"])
+        request.save(
+            update_fields=[
+                "status",
+                "process_route",
+                "review_classification",
+                "version",
+                "updated_at",
+            ]
+        )
     else:
         _raise("ACTION_INVALID", "管理员决定必须是 approve、reject 或 vote。")
 
@@ -783,7 +958,10 @@ def admin_decide_cross_week(
         reservation=reservation,
         before=before,
         action=f"reschedule.admin_{action}",
-        metadata={"selected_team_ids": [str(item) for item in selected_team_ids]},
+        metadata={
+            "review_classification": classification,
+            "selected_team_ids": [str(item) for item in selected_ids],
+        },
     )
     sync_reschedule_tasks(request)
     return request
@@ -819,6 +997,7 @@ def respond_as_selected_team(
         )
     except TeamConfirmation.DoesNotExist:
         _raise("TEAM_NOT_SELECTED", "当前球队未被指定参与本次投票。")
+    _materialize_legacy_review_fields(request)
     if confirmation.response != TeamConfirmation.Response.PENDING:
         _raise("ALREADY_RESPONDED", "当前球队已经确认过该申请。")
     if now >= request.confirmation_deadline:
@@ -867,12 +1046,14 @@ def admin_final_decision(
     now: datetime | None = None,
 ) -> RescheduleRequest:
     now = now or timezone.now()
-    _require_admin(actor)
+    lock_superadmin_commands()
     request, game, reservation = _locked_request(request_id)
+    actor = _lock_superadmin_actor(actor)
     _require_version(request, expected_version)
     if request.status != RescheduleRequest.Status.WAITING_ADMIN_FINAL:
         _raise("INVALID_STATE", "当前申请不等待管理员终审。")
     before = _audit_snapshot(request, game, reservation)
+    _materialize_legacy_review_fields(request)
     if approve:
         request = _approve_request(request, game, reservation, now)
     else:
@@ -903,12 +1084,14 @@ def admin_cancel_request(
     now: datetime | None = None,
 ) -> RescheduleRequest:
     now = now or timezone.now()
-    _require_admin(actor)
+    lock_superadmin_commands()
     request, game, reservation = _locked_request(request_id)
+    actor = _lock_superadmin_actor(actor)
     _require_version(request, expected_version)
     if request.is_terminal:
         _raise("REQUEST_ALREADY_TERMINAL", "申请已经结束。")
     before = _audit_snapshot(request, game, reservation)
+    _materialize_legacy_review_fields(request)
     request = _release_request(
         request,
         game,
@@ -940,6 +1123,7 @@ def expire_request(request_id: UUID, now: datetime | None = None) -> bool:
     }
     if not expirable or now < request.confirmation_deadline:
         return False
+    _materialize_legacy_review_fields(request)
     _release_request(
         request,
         game,

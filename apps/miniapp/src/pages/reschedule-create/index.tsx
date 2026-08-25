@@ -30,7 +30,11 @@ export default function RescheduleCreatePage() {
     setTargets([]);
     setDateIndex(0);
     setPeriodIndex(0);
-    const availableTargets = await api.getRescheduleTargets(game.id, token);
+    const availableTargets = await api.getRescheduleTargets(
+      game.id,
+      entryCopy.processRoute,
+      token,
+    );
     setTargets(targetsForEntryMode(availableTargets, entryMode));
   };
 
@@ -92,6 +96,7 @@ export default function RescheduleCreatePage() {
         expected_game_version: selectedGame.version,
         target_date: selectedTarget.date,
         target_period_id: selectedTarget.period_id,
+        process_route: entryCopy.processRoute,
       }, token);
       Taro.showToast({ title: "申请已提交", icon: "success" });
       await Taro.redirectTo({ url: "/pages/reschedule-requests/index" });
@@ -154,7 +159,9 @@ export default function RescheduleCreatePage() {
               >
                 <View className="flow-picker">
                   <Text className="flow-picker-title">{selectedTarget?.start_time}</Text>
-                  <Text className="flow-picker-meta">{entryCopy.targetLabel}</Text>
+                  <Text className="flow-picker-meta">
+                    {selectedTarget?.request_type_label} · {selectedTarget?.process_route_label}
+                  </Text>
                 </View>
               </Picker>
               <Text className="flow-helper">系统会在提交时内部预留可用场地，调赛生效并更新正式赛程后公布。</Text>

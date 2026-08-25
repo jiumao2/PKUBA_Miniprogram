@@ -22,7 +22,7 @@ API / Web 镜像（tag + commit tag + 不可变 digest）
         ↓
 受限 SSH ForcedCommand
         ↓
-预检 → 在线备份 → 维护模式 → 最终备份 → 迁移 → 验收
+预检 → 维护模式与写入围栏 → DB/媒体/归档同一配对恢复点 → 迁移 → 验收
         ↓
 成功开放；普通应用故障只切回旧应用，确认数据损坏时才成对恢复 DB/媒体/归档
 ```
@@ -39,7 +39,10 @@ API / Web 镜像（tag + commit tag + 不可变 digest）
 - 预检必须运行只读赛季一致性审计；任何球队、组别、赛程、时段、签位、调赛、记录表、统计、媒体、导入或归档引用跨赛季时，在生成发布备份和进入维护模式前立即失败。
 - writer fence 内同时生成 PostgreSQL dump、私有媒体包和归档包，并写同一 manifest、大小和 SHA-256。该一致点用于确认数据损坏后的成对恢复；普通应用回切绝不恢复其中任一数据资源。
 - 回滚点中的 `previous-release.env` 与数据库、媒体和归档文件使用同一 `SHA256SUMS` 保护；恢复脚本在停服或接触数据库、媒体和归档卷之前，只按固定键读取并校验 slot、tag、commit、镜像 digest 及标签对应的发布目录，拒绝额外行、路径穿越和非法值，禁止把备份内容作为 shell 代码执行。即使文件和哈希清单被同时重写，语义校验仍会在数据操作前失败。
-- 旧应用栈切流后保留 24 小时且 worker 保持停止。只有旧应用与新 schema/data contract 经过兼容测试时才能回切；无法兼容时不得伪装成普通蓝绿发布。
+- 旧应用栈切流后保留 24 小时且 worker 保持停止。发布时把已经验证的回切来源 capability 写入保留栈状态；回切命令必须同时验证 tag、commit、worktree、镜像 revision、release contract、期限和该持久化合同。capability 名不要求永远相等，但必须与本次发布实际批准的回切方向一致。
+- 部署和 application-only 回切在接触运行栈前建立 root-only 的持久事务目录，保存原状态、候选状态、SHA-256、阶段和恢复方向，并逐文件 `fsync` 后才发布日志。`PREPARED`、`RUNTIME_SWITCHED` 或 `STATE_COMMITTING` 中断一律恢复原应用；只有已经持久写入 `NEW_COMMITTED` 的事务才继续完成候选状态。维护模式覆盖整个多文件提交、Caddy reload、API/Web 稳定入口 tag/commit 探测和权威状态复核。
+- 专用启动恢复服务会在 Docker 就绪后、任何新部署或成对恢复前检查未完成事务。状态写入、旧 upstream reload、稳定入口探测或事务清理任一步失败时保持维护和诊断日志，不把半完成状态宣称为成功。应用恢复审计必须固定写明 `database_restored=0`、`media_restored=0`、`archive_restored=0`。
+- nullable schema 不等于业务语义兼容。`bf444ece` 只理解旧 `request_type`，不能处理同周手册通道，也不能在该能力激活后继续接流或作为普通回切点。首次启用应先发布 bridge，在同一 writer fence 内停止旧 API/worker、迁移并审计 0039，再运行 `python manage.py reschedule_route_activation_preflight --wait-seconds=86400 --json` 排空全部非终态申请与旧幂等窗口，最后才开放入口并切流。当前尚未上线，baseline conversion 自动脚本尚未实现；必须先完成等价的隔离演练，不能把独立预检命令称为已接入发布流程。
 - 生产数据与私有媒体的灾难恢复仍需独立异地备份；部署一致点不能替代跨磁盘、跨主机备份。
 - 邮件 worker 默认不启动。所有邮件只发篮协公邮，启用前需单独完成授权码轮换与
   Mailpit 验收。
@@ -185,19 +188,19 @@ known-hosts 使用非 22 端口时，主机部分必须写成 `[host]:port`。�
 服务器每次部署会：
 
 1. 拉取并验证 tag、commit、digest、Compose、磁盘和业务空闲状态。
-2. 生成在线初步 dump。
-3. 写入维护标记并停止 API 与所有写入 worker。
-4. 生成最终 dump 与 SHA-256。
-5. 使用新镜像迁移，验证全部复合外键既有行，再执行 `audit_season_integrity` 与 `check --deploy`；任一步失败都不切流。
-6. 检查内部 API、PostgreSQL、媒体/归档卷、公开赛季、worker 稳定期。
-7. 在维护状态下经真实 HTTPS 核对新 API 和管理站版本。
-8. 关闭维护状态，再核对公开 API 与管理站首页。
-9. 保留最近三个成功版本及回滚点；失败记录永不自动删除。
+2. 持久化发布事务，写入维护标记，并停止蓝、绿两套 API 与全部写入 worker。
+3. 在同一 writer fence 内生成 PostgreSQL、媒体和归档一致备份；逐文件校验并 `fsync`，最后写入 `SUCCESS`。
+4. 使用新镜像迁移，验证全部复合外键既有行，再执行 `audit_season_integrity` 与 `check --deploy`；任一步失败都不切流。
+5. 检查内部 API、PostgreSQL、媒体/归档卷、公开赛季和 worker 稳定期。
+6. 在维护状态下经稳定 Caddy 入口核对新 API 与管理站的 tag、commit 和 readiness。
+7. 原子提交 current、retained、deadline、upstream 和发布审计，再解除维护状态。
+8. 保留最新三个经完整验证的配对恢复点，并同时保留每个恢复点引用的来源、目标 worktree；失败记录永不自动删除。
 
 ## 健康接口
 
 - `/api/v1/health/live`：仅表示 Gunicorn 进程存活。
-- `/api/v1/health/ready`：检查 PostgreSQL、私有媒体目录和归档目录；返回版本 tag、
+- `/api/v1/health/ready`：检查 PostgreSQL、私有媒体目录、归档目录、迁移集合，以及
+  `scoresheet-worker`、`archive-worker`、`expiry` 三类 worker 心跳；返回版本 tag、
   commit 与每项结果，任一关键依赖失败即返回 503。
 - `/api/v1/health`：兼容入口，语义与 readiness 相同。
 - `https://admin.pkuba.cn/_deployment/ready`：只供部署核对管理站镜像版本。
@@ -207,12 +210,56 @@ known-hosts 使用非 22 端口时，主机部分必须写成 `[host]:port`。�
 
 ## 自动回滚与人工恢复
 
-候选或切流后的普通应用故障只把 Caddy upstream 切回仍保留的旧应用栈，并确认
-`database_restored=0`、`media_restored=0`、`archive_restored=0`；不得自动重建数据库。
+候选或切流后的普通应用故障只允许切到保留窗内、且持久化 capability contract 明确允许从当前应用回切的旧应用栈，同时确认 `database_restored=0`、`media_restored=0`、`archive_restored=0`；不得自动重建数据库。受控命令是 `sudo /usr/local/sbin/pkuba-rollback-retained-application blue ROLLBACK_APPLICATION_ONLY`，其中 `blue` 替换为权威保留状态中的目标 slot。
+
+命令在 Compose、维护状态和任何数据资源之前验证固定键状态、发布身份、镜像 revision、截止时间与回切合同；随后先验收目标 API、Web 的 tag/commit 及必需 worker 稳定性，再切 Caddy。全部下一状态先生成和验证，最后才进入唯一提交阶段；任一状态文件操作失败会恢复原 current、retained、deadline、upstream 与运行栈。没有兼容保留栈时必须保持维护并发布 bridge/hotfix。
+
+部署和回切共用 `/usr/local/sbin/pkuba-recover-release-transaction`。它根据已经持久化的阶段确定性选择原应用或候选应用，重新核对两端容器、restart count、Caddy 稳定入口和所有状态文件后才解除维护。`SIGKILL`、掉电或主机重启不会依赖 shell `EXIT` trap：systemd 启动恢复与下一条部署命令都会先执行同一恢复协议。管理员不得手工删除 `state/release-transaction`、`state/release-transaction-completed` 或 `maintenance.enabled` 来绕过恢复。
+
+### 持久事务与开机恢复状态
+
+四个高风险入口（部署、应用回切、应用事务恢复、配对数据恢复）共用
+`state/deploy.lock`。`state` 必须是 `root:root 0700` 的真实目录，锁文件必须是
+`root:root 0600`、单硬链接的普通文件；符号链接、硬链接替换或非规范路径会在任何
+Compose、维护或数据操作前失败。
+
+应用部署/回切事务使用以下阶段：
+
+```text
+PREPARED → RUNTIME_SWITCHED → STATE_COMMITTING → NEW_COMMITTED
+     └────────────── 中断时恢复 OLD ──────────────┘
+                                      NEW_COMMITTED 后完成 NEW
+```
+
+每个阶段、原状态、候选状态和不可变字段哈希都先逐文件持久化。只有
+`NEW_COMMITTED` 可以在重启后继续候选；更早阶段一律恢复原应用。恢复过程中任一状态
+写入、Caddy reload、稳定入口探测或完成日志归档失败，都会重新持久化维护状态、停止
+蓝绿两套写者，并保留 `RECOVERY_REQUIRED_*` 事务，不会输出成功审计。
+
+配对数据恢复使用独立状态机：
+
+```text
+PREPARED → INCIDENT_CAPTURED → DATA_RESTORED → RUNTIME_RESTORED
+        → COMMITTED → paired-restore-completed → 审计归档
+```
+
+- 首次人工恢复先在同一全局锁内完成规范路径、固定 SHA 清单、所有普通非链接文件、
+  `pg_restore --list`、两份 tar 安全解包/逐文件哈希以及来源应用身份检查；全部通过前
+  不创建事务、不进入维护、不停服，也不接触数据库或三个数据卷。
+- 已存在事务或主机重启时顺序相反：先持久化维护状态，再停止并确认蓝、绿两套 API、
+  expiry、记录表、归档和邮件写者均为零，然后才重验同一个已哈希绑定的备份对象并
+  继续恢复。恢复再次崩溃时重复同一流程。
+- 数据、目标应用和 Caddy 稳定入口均验证后，完成 payload 和审计先写入事务并
+  `fsync`；完成目录、审计、维护移除和事务归档按固定顺序提交。清理失败会重新进入
+  维护并保留可重放事务，不能出现“已开放但没有权威状态/审计”的窗口。
+- systemd 开机先运行事务恢复，再运行权威应用启动；slot 的 API 和所有 worker 使用
+  `restart: "no"`。启动命令仍会先停止并确认两套写者为零，再启动 `current.env` 指定
+  的唯一 slot，避免 Docker 重启顺序绕过 writer fence。
+
 只有已经确认数据损坏时，才先停写和保全现场，再由核心开发者执行
 `sudo /usr/local/sbin/pkuba-restore-paired-data BACKUP_DIR RESTORE_PAIRED_DATA`，
 使用同一 manifest 成对恢复数据库、媒体、归档以及与该快照匹配的应用版本。脚本会先
-保存损坏现场，并在启动任何业务服务前使用匹配的应用镜像运行赛季一致性审计；任何一步失败都保持维护状态。若旧应用无法读取新 schema，禁止直接回切，
+保存损坏现场，并在启动任何业务服务前使用匹配的应用镜像运行赛季一致性审计；任何一步失败都保持维护状态。若旧应用无法理解当前 schema 或业务语义，禁止直接回切，
 必须保持维护状态并执行预先演练的兼容处理。
 
 GitHub 日志会给出服务器部署日志末尾和恢复目录，但不会显示 `.env`。人工灾难恢复

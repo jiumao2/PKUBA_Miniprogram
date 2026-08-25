@@ -51,7 +51,10 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
         HTTP_AUTHORIZATION=f"Bearer {leader_token}",
     )
     targets = client.get(
-        f"/api/v1/reschedule-requests/games/{setup['games'][0].id}/targets",
+        (
+            f"/api/v1/reschedule-requests/games/{setup['games'][0].id}/targets"
+            "?process_route=ORDINARY"
+        ),
         HTTP_AUTHORIZATION=f"Bearer {leader_token}",
     )
     target = next(
@@ -62,16 +65,19 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
     )
     assert "preview_venue_id" not in target
     assert "preview_venue_name" not in target
-    create_payload = {
+    assert target["request_type_label"] == "同一自然周"
+    assert target["process_route_label"] == "普通流程"
+    legacy_create_payload = {
         "game_id": str(setup["games"][0].id),
         "expected_game_version": setup["games"][0].version,
         "target_date": target["date"],
         "target_period_id": target["period_id"],
     }
+    create_payload = {**legacy_create_payload, "process_route": "ORDINARY"}
     created = post_json(
         client,
         "/api/v1/reschedule-requests/",
-        create_payload,
+        legacy_create_payload,
         leader_token,
         idempotency_key="reschedule-create-test",
     )
@@ -89,6 +95,13 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
         leader_token,
         idempotency_key="reschedule-create-test",
     )
+    route_conflict = post_json(
+        client,
+        "/api/v1/reschedule-requests/",
+        {**legacy_create_payload, "process_route": "HANDBOOK_REVIEW"},
+        leader_token,
+        idempotency_key="reschedule-create-test",
+    )
 
     assert eligible.status_code == 200
     assert created.status_code == 201
@@ -96,11 +109,14 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
     assert replayed.json() == created.json()
     assert conflicting_reuse.status_code == 409
     assert conflicting_reuse.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert route_conflict.status_code == 409
+    assert route_conflict.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
     assert RescheduleRequest.objects.count() == 1
     request_payload = created.json()
     assert "WITHDRAW" in request_payload["actions"]
     assert "target_venue_id" not in request_payload
     assert "target_venue_name" not in request_payload
+    assert request_payload["process_route_label"] == "普通流程"
 
     opponent_list = client.get(
         "/api/v1/reschedule-requests/",
@@ -121,6 +137,53 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
     assert "target_venue_id" not in accepted.json()
     assert "target_venue_name" not in accepted.json()
     assert accepted.json()["game"]["venue_name"] == setup["venues"][0].name
+
+
+def test_handbook_entry_includes_same_week_and_preserves_review_route_from_api():
+    setup = reschedule_setup()
+    client = Client()
+    leader_token = issue_session(setup["accounts"][0])
+    opponent_token = issue_session(setup["accounts"][1])
+    target_response = client.get(
+        (
+            f"/api/v1/reschedule-requests/games/{setup['games'][0].id}/targets"
+            "?process_route=HANDBOOK_REVIEW"
+        ),
+        HTTP_AUTHORIZATION=f"Bearer {leader_token}",
+    )
+    target = next(
+        item
+        for item in target_response.json()
+        if item["date"] == setup["target_date"].isoformat()
+        and item["period_id"] == str(setup["period"].id)
+    )
+    created = post_json(
+        client,
+        "/api/v1/reschedule-requests/",
+        {
+            "game_id": str(setup["games"][0].id),
+            "expected_game_version": setup["games"][0].version,
+            "target_date": target["date"],
+            "target_period_id": target["period_id"],
+            "process_route": "HANDBOOK_REVIEW",
+        },
+        leader_token,
+    )
+    accepted = post_json(
+        client,
+        f"/api/v1/reschedule-requests/{created.json()['id']}/opponent-response",
+        {"expected_version": created.json()["version"], "accept": True},
+        opponent_token,
+    )
+
+    assert target_response.status_code == 200
+    assert target["request_type"] == "SAME_WEEK"
+    assert target["process_route_label"] == "参赛手册审核"
+    assert created.status_code == 201
+    assert created.json()["request_type_label"] == "同一自然周"
+    assert created.json()["process_route_label"] == "参赛手册审核"
+    assert accepted.status_code == 200
+    assert accepted.json()["status"] == RescheduleRequest.Status.WAITING_ADMIN_DECISION
 
 
 def test_mobile_game_update_is_superadmin_only_and_audited():

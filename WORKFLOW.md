@@ -1,52 +1,107 @@
-# 单人 GitHub 与发布工作流
+# PKUBA 团队协作与发布工作流
 
-## 日常开发
+本文是 2–4 人核心团队从需求、开发、评审、测试到上线和回滚的唯一流程规范。业务规则写入相应专题文档，部署命令和服务器结构写入 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)，本文不复制容易漂移的实现细节。
 
-1. `git pull --ff-only origin main`
-2. 阅读 `AGENTS.md`、`Plan.md` 和相关规格章节。
-3. 在 `main` 上做一个边界清晰的小改动。
-4. Ubuntu WSL 验收运行 `./scripts/check-wsl.ps1`；使用 Docker Desktop 时运行 `./scripts/check.ps1`。
-5. 检查 `git diff --check` 和 `git status --short`。
-6. 使用清楚、可回滚的提交信息提交并直接推送 `main`。
+## 1. 开始修改前
 
-单人阶段不要求分支、Pull Request、审核或分支保护。GitHub Actions 只报告结果，不阻止推送。出现失败时，下一次提交优先修复失败，不在已知失败上叠加无关功能。
+1. 先确认最新用户决定，并找到权威规则：总体决定与里程碑在 `Plan.md`，用户可见规则在 `docs/USER_GUIDE.md`，领域规则在对应专题规范。
+2. 在任务说明中写清范围、不做什么、验收场景、数据影响、迁移风险、旧版本兼容和回滚边界；未确定的产品语义先确认，不能由实现者自行补写规则。
+3. 从最新 `origin/main` 建短生命周期分支：
 
-每次修改微信小程序源码，还必须执行：
+   - `feat/<topic>`：新功能。
+   - `fix/<topic>`：缺陷修复。
+   - `docs/<topic>`：纯文档。
+   - `hotfix/<topic>`：已上线故障的紧急修复。
+
+4. 分支开始前获取远端最新状态；共享脏工作树不得 `reset`、`clean` 或覆盖式恢复。旧小程序与 `ScoresheetReader` 只读，禁止直接修改。
+5. 不把 `.env`、AppSecret、OpenID、真实名单、生产数据库、备份、照片、令牌或私钥复制到分支、日志、截图和 PR。
+
+## 2. 实现与兼容
+
+- Django/PostgreSQL 是权威。权限、状态、版本、容量、比分、审计和并发冲突必须在服务端复核。
+- 变更领域协议时同步检查：模型、迁移、服务、API、OpenAPI、生成客户端、管理站、小程序、测试和用户文档。
+- 数据库和协议采用 expand / contract：先加入新字段与兼容读写，确认旧应用退出并完成回填后，再在独立改动中收紧约束或删除旧协议。nullable schema 只代表数据格式兼容，不代表旧应用理解新业务语义；首次激活新能力前必须用 bridge/capability 门禁验证两个可回切版本。
+- 历史记录必须持续可读、可解释；明确废止的旧协议应在一次受控清理中删除入口、实现、夹具、测试和说明。
+- 真实数据、破坏性迁移、并发和恢复演练使用隔离数据库或成套恢复副本；未经授权不修改生产或共享 QA 数据。
+- 小步提交，一个提交只表达一个可回滚意图；提交信息说明结果，不使用“临时”“试试”等模糊描述。
+
+## 3. 开发者验证
+
+先运行受影响范围的聚焦测试并修复根因，再运行完整门槛：
+
+1. PostgreSQL 后端测试、Ruff、迁移漂移检查。
+2. OpenAPI 导出与生成客户端同步检查。
+3. TypeScript 类型检查、领域与前端全量单测。
+4. 管理站生产构建和小程序完整 `build:weapp`。
+5. 涉及数据库约束、并发、迁移或恢复时做真实 PostgreSQL 动态验证。
+6. 涉及页面或交互时做真实浏览器和微信开发者工具检查；构建成功不能替代动态验收。
+
+小程序源码每次修改至少运行：
 
 ```powershell
 npm --workspace @pkuba/miniapp run typecheck
+npm --workspace @pkuba/miniapp run test
 npm --workspace @pkuba/miniapp run build:weapp
 ```
 
-随后在微信开发者工具中打开仓库的 `apps/miniapp`（不要单独导入 `dist`），点击“编译”，逐一打开本轮受影响页面，检查文字、间距、滚动、图片、按钮状态和底栏高亮。交付说明必须列出实际检查的页面；若开发者工具不可连接或未能编译，明确标为未完成，不得以 Taro 构建代替真实样式检查。
+随后在微信开发者工具中打开 `apps/miniapp`，检查本轮页面的文字、间距、滚动、图片、按钮状态和底栏。无法连接或截图时必须明确记录为待人工验收。
 
-## 必须提交
+## 4. Pull Request
 
-- Django migrations。
-- `package-lock.json` 和 Python锁文件。
-- OpenAPI 生成的 TypeScript 客户端。
-- 业务规则对应的测试和文档更新。
+所有功能、修复、迁移和发布准备都通过 PR 进入 `main`；普通功能不得借 hotfix 或管理员权限绕过 PR。PR 使用 [`.github/pull_request_template.md`](.github/pull_request_template.md)，至少写明：
 
-## 禁止提交
+- 目的、范围和主要影响文件。
+- 用户可见变化和明确未改内容。
+- 数据迁移、旧版本兼容、回滚方式和隐私风险。
+- 聚焦及全量测试证据；涉及 UI 时附截图，或说明视觉验收阻塞。
+- OpenAPI、生成客户端、迁移和文档是否同步。
+- 敏感信息与真实数据检查结果。
 
-- `.env`、`.env.wsl.local`、AppSecret、COS/SMTP/数据库凭据。
-- OpenID、真实名单、生产数据库、备份和记录表照片。
-- 本地媒体、构建目录、测试缓存和日志。
+PR 至少由一名非作者审核者批准，所有评论和会话必须解决；新提交后旧批准失效。数据库、权限、发布、备份恢复和隐私改动还需要具备相应领域上下文的人明确审查。团队 GitHub 用户名确定后再配置 `CODEOWNERS`，这是上线前待办，不能虚构账号。
 
-## 生产发布
+推荐使用 **squash merge**：受保护 `main` 保持线性、每个 PR 对应一个可回滚提交；必要的中间提交仍保留在 PR 历史中。合并前分支必须基于最新 `main`，required checks 以严格、最新提交为准全部通过。独立测试优先在 PR head SHA 上完成并把报告绑定该 SHA，给出“允许合并”后方可合并；若测试阶段暂时只能先合并到 `main`，必须作为有时限的临时例外记录，且该合并不构成发布 GO。
 
-`main` 不自动发布。
+## 5. 上线前 GitHub 门禁
 
-服务器完成 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) 的一次性接入后：
+以下设置属于 **ENABLE BEFORE LAUNCH** 清单；当前仅记录步骤，未授权前不得声称已启用：
 
-1. 确认本地 `main` 工作区干净，且所有提交已经推送。
-2. 更新版本号和 `Plan.md` 状态。
-3. 运行 `./scripts/release.ps1 -Version vX.Y.Z`；脚本会复核本地 `main` 与 `origin/main` 完全一致，并创建带说明标签。
-4. 标签自动触发完整 CI。任何后端、OpenAPI、前端、测试或构建失败都会在连接生产服务器前终止。
-5. CI 全绿后发布 digest 镜像、小程序 artifact，并通过受限 SSH 自动执行备份、停写、迁移、内部/外部验收和失败回滚。
-6. 只有服务器验收成功才创建 GitHub Release；日常流程不需要人工 SSH。
-7. 微信小程序仍需在微信平台人工上传、审核和发布，并完成真机登录、上传和调赛冒烟检查。
+- `main` 只允许 PR 合并，禁止直接推送。
+- 至少 1 个 approval，并启用 dismiss stale approvals。
+- 要求所有 review conversations resolved。
+- required checks 至少包含 `backend`、`frontend`、`openapi`。
+- required checks 使用 strict / up-to-date 模式，PR 必须包含最新 `main` 后重新通过检查；需要 merge queue 时同时要求 `merge_group` 上的同名检查。
+- 禁止 force-push 和删除 `main`。
+- 限制 bypass；紧急 break-glass 只能由授权负责人使用，并必须补 PR、事故记录和事后审计。
+- 启用线性历史，只允许 squash merge；合并后自动删除短期分支。
+- 成员账号确定后配置 `CODEOWNERS`，并对数据库、权限、隐私和发布目录指定领域审核。
+- 为 `v*` 配置 tag ruleset：仅授权发布负责人可创建或删除，且 tag 必须指向受保护 `main` 上已经绑定独立验收结论的 SHA。该规则限制候选镜像和小程序 artifact 的产生；`production` Environment 继续作为实际生产部署的独立硬门禁。两项都尚未启用，不能写成已完成。
 
-重新部署已经存在的版本时，只能在 GitHub Actions 手工运行“Redeploy an existing production release”，输入标签和确认词 `DEPLOY`；该流程重新解析原镜像 digest，不重新构建。首次服务器配置、失败诊断、回滚自身失败和灾难恢复仍允许使用个人 SSH 密钥。
+## 6. 合并、候选版本与上线
 
-第二名稳定开发者加入后再启用短分支、Pull Request、至少一人审核和 `main` 保护。
+1. 独立测试优先在 PR head SHA 上完成并明确给出“允许合并”；合并后核对 `main` SHA、required CI，并按风险执行最小烟测或重新测试。测试报告由测试任务维护，产品 PR 只链接结论，不复制整份报告。
+2. 独立测试确认所有本地可解决的阻断已关闭后，另行明确给出“允许进入候选发布”；这只表示可以开始生产侧验收，不等同最终 GO。此前因临时例外先合并到 `main` 的改动，也必须完成这一步才能进入候选发布。
+3. 只有用户或授权发布负责人再次确认后，授权发布负责人才能创建候选 `vX.Y.Z` 标签。标签必须指向受保护 `main` 的已验证提交；普通开发者不得自行发布。生产 GitHub Environment 和发布动作也只允许授权负责人批准，该权限设置属于上线前启用门禁，本轮不实际配置。
+4. 发布工作流按同一 manifest 生成并校验数据库、媒体和归档清单的一致恢复点，再执行兼容迁移、readiness、隔离或蓝绿候选烟测。
+5. 候选验收通过后由 Caddy 切流；多文件状态提交必须由持久事务日志和启动恢复保护，不能只依赖进程内 trap。旧应用栈保留 24 小时。普通应用故障只允许切回发布时已验证、且保留状态明确授权从当前 capability 回切的应用，不恢复数据；仅有 nullable schema、但不理解新业务语义的旧栈不得作为回切点。
+6. 仅在确认数据库、媒体或归档数据损坏时，才按同一 manifest 成对恢复三类数据；禁止只恢复其中一部分。
+7. 完成真实蓝绿、HTTPS、公开接口、管理站和关键写流程烟测，再由授权人员在微信平台人工上传、审核和发布，并完成真机登录、调赛、记录表和媒体冒烟检查；这些生产与真机证据齐全后，才能形成最终发布验收结论。
+8. 最终验收后生成发布说明，记录 commit、镜像 digest、迁移、测试、切流、真机结果和回滚点。
+
+具体自动部署、蓝绿拓扑、readiness、备份和恢复命令以 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) 为准。当前测试阶段不得连接或切换生产环境。
+
+## 7. Hotfix、回滚与事故
+
+- 生产事故先记录影响、时间线和当前数据状态；未经判断不得同时修改应用和恢复数据。
+- `hotfix/<topic>` 从当前生产对应提交建立，只包含最小修复，仍需 PR、CI 和至少一名非作者审核；确需 break-glass 时先保服务，随后立即补齐 PR 和审计。
+- 应用缺陷优先切回仍在保留窗内且 capability contract 明确兼容的旧栈；没有兼容回切点时保持维护并发布 bridge/hotfix。只有确证数据损坏时才执行 DB + media + archive 成套恢复。
+- 恢复后重新运行 readiness、业务计数、媒体哈希和关键流程烟测，并在发布说明/事故记录中写明原因、执行者、证据和后续预防项。
+- 事故修复必须再合并回 `main`，不能让生产形成永久旁支。
+
+## 8. 信息同步边界
+
+- `WORKFLOW.md` 只管协作、评审、发布和事故过程。
+- `Plan.md` 管架构决定、里程碑和未完成事项。
+- 专题规范与 `docs/USER_GUIDE.md` 管业务规则和用户行为。
+- `docs/DEPLOYMENT.md` 管部署技术细节。
+- `docs/INDEPENDENT_TEST_PLAN_AND_RESULTS.md` 仅由独立测试任务维护。
+- 每个 PR 只链接并更新受影响的权威文档，不在多个文件复制同一可变实现细节。

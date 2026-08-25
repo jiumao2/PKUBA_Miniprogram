@@ -12,7 +12,7 @@ while IFS= read -r line || [[ -n $line ]]; do
   key=${BASH_REMATCH[1]}
   value=${BASH_REMATCH[2]}
   case "$key" in
-    ACTIVE_SLOT|CURRENT_TAG|CURRENT_COMMIT|CURRENT_API_IMAGE|CURRENT_WEB_IMAGE|CURRENT_RELEASE_DIR|SWITCHED_AT|DATA_RESTORED_AT) ;;
+    ACTIVE_SLOT|CURRENT_TAG|CURRENT_COMMIT|CURRENT_API_IMAGE|CURRENT_WEB_IMAGE|CURRENT_RELEASE_DIR|CURRENT_APP_CAPABILITY|ROLLBACK_ALLOWED_FROM_CAPABILITY|SWITCHED_AT|DATA_RESTORED_AT) ;;
     *) echo "release state contains an unexpected key: $key" >&2; exit 1 ;;
   esac
   [[ -z ${values[$key]+present} ]] \
@@ -21,7 +21,7 @@ while IFS= read -r line || [[ -n $line ]]; do
 done <"$state_file"
 
 for required in \
-  ACTIVE_SLOT CURRENT_TAG CURRENT_COMMIT CURRENT_API_IMAGE CURRENT_WEB_IMAGE CURRENT_RELEASE_DIR; do
+  ACTIVE_SLOT CURRENT_TAG CURRENT_COMMIT CURRENT_API_IMAGE CURRENT_WEB_IMAGE CURRENT_RELEASE_DIR CURRENT_APP_CAPABILITY; do
   [[ -n ${values[$required]:-} ]] \
     || { echo "release state is missing $required" >&2; exit 1; }
 done
@@ -44,11 +44,19 @@ done
   && ${values[CURRENT_RELEASE_DIR]} != */./* \
   && ${values[CURRENT_RELEASE_DIR]} != */. ]] \
   || { echo "release state has an unsafe release directory" >&2; exit 1; }
+[[ ${values[CURRENT_APP_CAPABILITY]} =~ ^[a-z0-9][a-z0-9._-]*$ ]] \
+  || { echo "release state has an invalid application capability" >&2; exit 1; }
+rollback_allowed_from=${values[ROLLBACK_ALLOWED_FROM_CAPABILITY]:--}
+[[ $rollback_allowed_from == - \
+  || $rollback_allowed_from =~ ^[a-z0-9][a-z0-9._-]*$ ]] \
+  || { echo "release state has an invalid rollback capability contract" >&2; exit 1; }
 
-printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "${values[ACTIVE_SLOT]}" \
   "${values[CURRENT_TAG]}" \
   "${values[CURRENT_COMMIT]}" \
   "${values[CURRENT_API_IMAGE]}" \
   "${values[CURRENT_WEB_IMAGE]}" \
-  "${values[CURRENT_RELEASE_DIR]}"
+  "${values[CURRENT_RELEASE_DIR]}" \
+  "${values[CURRENT_APP_CAPABILITY]}" \
+  "$rollback_allowed_from"

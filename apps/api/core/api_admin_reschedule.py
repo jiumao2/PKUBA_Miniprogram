@@ -23,13 +23,13 @@ from core.models import (
     RescheduleRequest,
     Season,
     SlotReservation,
-    Team,
 )
 from core.services.rescheduling import (
     RescheduleError,
     admin_cancel_request,
-    admin_decide_cross_week,
+    admin_decide_review_route,
     admin_final_decision,
+    eligible_reschedule_voter_teams,
 )
 from core.services.schedule_capacity import effective_capacity
 
@@ -53,6 +53,10 @@ class AdminRescheduleRequestOut(Schema):
     id: UUID
     request_type: str
     request_type_label: str
+    process_route: str
+    process_route_label: str
+    review_classification: str | None
+    review_classification_label: str | None
     status: str
     status_label: str
     requester_team_id: UUID
@@ -99,6 +103,7 @@ class AdminReschedulePageOut(Schema):
 class AdminRescheduleActionIn(Schema):
     expected_version: int
     action: str
+    classification: str | None = None
     selected_team_ids: list[UUID] | None = None
 
 
@@ -209,6 +214,7 @@ def list_admin_reschedule_requests(
     view: str = "active",
     status: str = "",
     request_type: str = "",
+    process_route: str = "",
     division_id: UUID | None = None,
     q: str = "",
     page: int = 1,
@@ -230,6 +236,25 @@ def list_admin_reschedule_requests(
         items = items.filter(status=status)
     if request_type:
         items = items.filter(request_type=request_type)
+    if process_route:
+        if process_route == RescheduleRequest.ProcessRoute.ORDINARY:
+            items = items.filter(
+                Q(process_route=process_route)
+                | Q(
+                    process_route__isnull=True,
+                    request_type=RescheduleRequest.RequestType.SAME_WEEK,
+                )
+            )
+        elif process_route == RescheduleRequest.ProcessRoute.HANDBOOK_REVIEW:
+            items = items.filter(
+                Q(process_route=process_route)
+                | Q(
+                    process_route__isnull=True,
+                    request_type=RescheduleRequest.RequestType.CROSS_WEEK,
+                )
+            )
+        else:
+            items = items.none()
     if division_id:
         items = items.filter(game__division_id=division_id)
     if q.strip():
@@ -282,20 +307,11 @@ def admin_voter_candidates(request: HttpRequest, request_id: UUID):
     if item is None:
         return Status(404, {"code": "REQUEST_NOT_FOUND", "message": "调赛申请不存在。"})
     game = item.game
-    teams = Team.objects.filter(
-        season=game.season, division=game.division, active=True
-    ).exclude(id__in=[game.home_team_id, game.away_team_id])
+    teams = eligible_reschedule_voter_teams(game)
     assignments = DrawAssignment.objects.filter(
         season=game.season, team__in=teams
     ).select_related("slot__group")
     group_names: dict[UUID, str | None] = {team.id: None for team in teams}
-    if game.group_id:
-        allowed_ids = {
-            assignment.team_id
-            for assignment in assignments
-            if assignment.slot.group_id == game.group_id
-        }
-        teams = teams.filter(id__in=allowed_ids)
     for assignment in assignments:
         if assignment.slot.group_id:
             group_names[assignment.team_id] = assignment.slot.group.name
@@ -327,25 +343,28 @@ def act_on_admin_reschedule(
         return Status(404, {"code": "REQUEST_NOT_FOUND", "message": "调赛申请不存在。"})
     try:
         if payload.action == "ADMIN_APPROVE":
-            admin_decide_cross_week(
+            admin_decide_review_route(
                 actor=request.auth,
                 request_id=request_id,
                 expected_version=payload.expected_version,
                 action="approve",
+                classification=payload.classification,
             )
         elif payload.action == "ADMIN_REJECT":
-            admin_decide_cross_week(
+            admin_decide_review_route(
                 actor=request.auth,
                 request_id=request_id,
                 expected_version=payload.expected_version,
                 action="reject",
+                classification=payload.classification,
             )
         elif payload.action == "ADMIN_START_VOTE":
-            admin_decide_cross_week(
+            admin_decide_review_route(
                 actor=request.auth,
                 request_id=request_id,
                 expected_version=payload.expected_version,
                 action="vote",
+                classification=payload.classification,
                 selected_team_ids=payload.selected_team_ids or [],
             )
         elif payload.action == "ADMIN_FINAL_APPROVE":

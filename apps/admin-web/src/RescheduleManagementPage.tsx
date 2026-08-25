@@ -30,6 +30,7 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
   const [view, setView] = useState<ViewFilter>("active");
   const [status, setStatus] = useState("");
   const [requestType, setRequestType] = useState("");
+  const [processRoute, setProcessRoute] = useState("");
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -52,6 +53,7 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
         view,
         status,
         requestType,
+        processRoute,
         query,
         page,
         pageSize: 30,
@@ -70,7 +72,7 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
-  }, [client, page, query, requestType, status, view]);
+  }, [client, page, processRoute, query, requestType, status, view]);
 
   useEffect(() => {
     void load();
@@ -100,6 +102,7 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
     action: string,
     title: string,
     consequence: string,
+    classification?: string,
     selectedTeamIds: string[] = [],
   ) => {
     if (!window.confirm(`${title}\n\n${consequence}`)) return;
@@ -110,6 +113,7 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
       await client.actOnAdminReschedule(item.id, {
         expected_version: item.version,
         action,
+        classification,
         selected_team_ids: selectedTeamIds,
       });
       setVoteRequestId("");
@@ -159,10 +163,15 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
             <select aria-label="状态" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}>
               {statusOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
-            <select aria-label="类型" value={requestType} onChange={(event) => { setRequestType(event.target.value); setPage(1); }}>
-              <option value="">全部类型</option>
-              <option value="SAME_WEEK">同周</option>
-              <option value="CROSS_WEEK">跨周</option>
+            <select aria-label="日期关系" value={requestType} onChange={(event) => { setRequestType(event.target.value); setPage(1); }}>
+              <option value="">全部日期关系</option>
+              <option value="SAME_WEEK">同一自然周</option>
+              <option value="CROSS_WEEK">跨自然周</option>
+            </select>
+            <select aria-label="处理通道" value={processRoute} onChange={(event) => { setProcessRoute(event.target.value); setPage(1); }}>
+              <option value="">全部处理通道</option>
+              <option value="ORDINARY">普通流程</option>
+              <option value="HANDBOOK_REVIEW">参赛手册审核</option>
             </select>
           </div>
           <div className="reschedule-queue-heading">
@@ -197,13 +206,14 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
               busy={busy}
               candidates={candidates}
               item={selected}
-              onAction={(action, title, consequence) => void runAction(selected, action, title, consequence)}
+              onAction={(action, title, consequence, classification) => void runAction(selected, action, title, consequence, classification)}
               onOpenVote={() => void openVote(selected)}
               onSubmitVote={() => void runAction(
                 selected,
                 "ADMIN_START_VOTE",
                 "发起指定球队投票",
                 `将等待 ${selectedVoters.length} 支球队在确认截止前表态；原比赛锁和目标预留继续保留。`,
+                "CROSS_ROUND",
                 selectedVoters,
               )}
               selectedVoters={selectedVoters}
@@ -235,7 +245,7 @@ function SummaryStrip({ dataset }: { dataset: AdminReschedulePage | null }) {
 function RequestRow({ item, selected, onSelect }: { item: AdminRescheduleRequest; selected: boolean; onSelect: () => void }) {
   return (
     <button className={`reschedule-row ${selected ? "active" : ""} ${item.game.division_gender === "WOMEN" ? "women" : "men"}`} onClick={onSelect} type="button">
-      <span className="reschedule-row-meta"><strong>{item.game.division_name}</strong>{item.request_type_label}<i className={`reschedule-state ${statusClass(item.status)}`}>{item.status_label}</i></span>
+      <span className="reschedule-row-meta"><strong>{item.game.division_name}</strong>{item.request_type_label} · {item.process_route_label}<i className={`reschedule-state ${statusClass(item.status)}`}>{item.status_label}</i></span>
       <b>{item.original_home_name}<em aria-hidden>—</em>{item.original_away_name}</b>
       <span className="reschedule-row-route">{shortDate(item.original_date)} {item.original_start_time} <i>→</i> {shortDate(item.target_date)} {item.target_start_time}</span>
       <small>申请方：{item.requester_team_name}{item.resources.issues.length ? ` · ${item.resources.issues.length} 项资源异常` : ""}</small>
@@ -252,17 +262,24 @@ function RequestDetail({ item, busy, voting, candidates, selectedVoters, setSele
   setSelectedVoters: (ids: string[]) => void;
   onOpenVote: () => void;
   onSubmitVote: () => void;
-  onAction: (action: string, title: string, consequence: string) => void;
+  onAction: (action: string, title: string, consequence: string, classification?: string) => void;
 }) {
   const has = (action: string) => item.actions.includes(action);
   const overdue = !item.is_terminal && ["WAITING_OPPONENT", "WAITING_SELECTED_TEAMS"].includes(item.status) && new Date(item.confirmation_deadline).getTime() <= Date.now();
   return (
     <>
       <header className="reschedule-detail-heading">
-        <div><p className="eyebrow">{item.game.division_name} · {item.request_type_label}</p><h2>{item.original_home_name}　—　{item.original_away_name}</h2><span>申请方：{item.requester_team_name}</span></div>
+        <div><p className="eyebrow">{item.game.division_name}</p><h2>{item.original_home_name}　—　{item.original_away_name}</h2><span>申请方：{item.requester_team_name}</span></div>
         <i className={`reschedule-state ${statusClass(item.status)}`}>{item.status_label}</i>
       </header>
       {overdue && <div className="reschedule-overdue">球队确认时限已到，等待系统过期任务处理；页面不会自行释放锁或预留。</div>}
+      <section className="reschedule-classification-panel">
+        <dl>
+          <div><dt>日期关系</dt><dd>{item.request_type_label}</dd></div>
+          <div><dt>处理通道</dt><dd>{item.process_route_label}</dd></div>
+          <div><dt>审核认定</dt><dd>{reviewClassificationText(item)}</dd></div>
+        </dl>
+      </section>
       <div className="reschedule-route-detail">
         <Slot title="原赛程" date={item.original_date} time={item.original_start_time} venue={item.original_venue_name} />
         <span aria-hidden="true">→</span>
@@ -300,9 +317,10 @@ function RequestDetail({ item, busy, voting, candidates, selectedVoters, setSele
       )}
       {!!item.actions.length && (
         <footer className="reschedule-actions">
-          {has("ADMIN_APPROVE") && <button className="approve-action" disabled={busy} onClick={() => onAction("ADMIN_APPROVE", "直接批准跨周调赛", "比赛将立即移动到已预留的目标时段，预留原子转换为正式占用。")}>直接批准</button>}
+          {has("ADMIN_APPROVE") && item.request_type === "SAME_WEEK" && <button className="approve-action" disabled={busy} onClick={() => onAction("ADMIN_APPROVE", "按普通办法批准", "管理员将认定本次申请不属于跨轮次调整，并直接批准；领队无需重新提交。", "ORDINARY")}>按普通办法批准</button>}
+          {has("ADMIN_APPROVE") && <button className="approve-action" disabled={busy} onClick={() => onAction("ADMIN_APPROVE", "认定为跨轮次并批准", "比赛将立即移动到已预留的目标时段，预留原子转换为正式占用。", "CROSS_ROUND")}>认定跨轮次并批准</button>}
           {has("ADMIN_START_VOTE") && <button className="secondary-action" disabled={busy} onClick={onOpenVote}>指定球队投票</button>}
-          {has("ADMIN_REJECT") && <button className="secondary-action" disabled={busy} onClick={() => onAction("ADMIN_REJECT", "拒绝跨周调赛", "申请将结束，原比赛活动锁和目标资源预留会同时释放。")}>拒绝</button>}
+          {has("ADMIN_REJECT") && <button className="secondary-action" disabled={busy} onClick={() => onAction("ADMIN_REJECT", "认定为跨轮次并拒绝", "申请将结束，原比赛活动锁和目标资源预留会同时释放。", "CROSS_ROUND")}>认定跨轮次并拒绝</button>}
           {has("ADMIN_FINAL_APPROVE") && <button className="approve-action" disabled={busy} onClick={() => onAction("ADMIN_FINAL_APPROVE", "终审通过", "比赛将立即移动到已预留的目标时段。")}>终审通过</button>}
           {has("ADMIN_FINAL_REJECT") && <button className="secondary-action" disabled={busy} onClick={() => onAction("ADMIN_FINAL_REJECT", "终审拒绝", "申请将结束，并释放原比赛活动锁和目标预留。")}>终审拒绝</button>}
           {has("ADMIN_CANCEL") && <button className="cancel-action" disabled={busy} onClick={() => onAction("ADMIN_CANCEL", "管理员取消申请", "该申请将进入管理员取消终态，原比赛活动锁和目标预留会同时释放。")}>管理员取消</button>}
@@ -336,6 +354,13 @@ function targetVenueLabel(item: AdminRescheduleRequest) {
 
 function confirmationLabel(response: string) {
   return ({ PENDING: "待确认", ACCEPTED: "已同意", REJECTED: "已拒绝" } as Record<string, string>)[response] ?? response;
+}
+
+export function reviewClassificationText(item: Pick<AdminRescheduleRequest, "process_route" | "review_classification_label">) {
+  if (item.review_classification_label) return item.review_classification_label;
+  return item.process_route === "HANDBOOK_REVIEW"
+    ? "待超级管理员认定"
+    : "不适用（普通流程无需认定）";
 }
 
 function shortDate(value: string) { return value.slice(5).replace("-", "/"); }

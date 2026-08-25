@@ -17,16 +17,17 @@ from core.models import (
     RescheduleRequest,
     Season,
     SeasonLeaderBinding,
-    Team,
     TeamConfirmation,
 )
 from core.services.idempotency import IdempotencyError, execute_idempotent
 from core.services.rescheduling import (
     RescheduleError,
     admin_cancel_request,
-    admin_decide_cross_week,
+    admin_decide_review_route,
     admin_final_decision,
     available_reschedule_targets,
+    canonical_reschedule_create_fingerprint,
+    eligible_reschedule_voter_teams,
     respond_as_selected_team,
     respond_to_opponent,
     submit_reschedule,
@@ -64,6 +65,9 @@ class RescheduleTargetOut(Schema):
     period_name: str
     start_time: str
     request_type: str
+    request_type_label: str
+    process_route: str
+    process_route_label: str
     submit_deadline: datetime
     confirmation_deadline: datetime
 
@@ -81,6 +85,10 @@ class RescheduleRequestOut(Schema):
     id: UUID
     request_type: str
     request_type_label: str
+    process_route: str
+    process_route_label: str
+    review_classification: str | None
+    review_classification_label: str | None
     status: str
     status_label: str
     requester_team_id: UUID
@@ -117,6 +125,7 @@ class CreateRescheduleIn(Schema):
     expected_game_version: int
     target_date: date
     target_period_id: UUID
+    process_route: str | None = None
 
 
 class VersionedResponseIn(Schema):
@@ -131,6 +140,7 @@ class ExpectedVersionIn(Schema):
 class AdminDecisionIn(Schema):
     expected_version: int
     action: str
+    classification: str | None = None
     selected_team_ids: list[UUID] | None = None
 
 
@@ -164,6 +174,7 @@ def _error(error: RescheduleError):
         "TARGET_VENUE_CONFLICT",
         "REQUEST_ALREADY_TERMINAL",
         "ALREADY_RESPONDED",
+        "ADMIN_ACTOR_STATE_CHANGED",
     }:
         status = 409
     else:
@@ -252,10 +263,22 @@ def _actions(request_item: RescheduleRequest, actor: Account) -> list[str]:
 
 def _request_out(request_item: RescheduleRequest, actor: Account) -> dict[str, object]:
     original = request_item.original_game_snapshot
+    process_route = request_item.resolved_process_route
+    review_classification = request_item.resolved_review_classification
     return {
         "id": request_item.id,
         "request_type": request_item.request_type,
         "request_type_label": RescheduleRequest.RequestType(request_item.request_type).label,
+        "process_route": process_route,
+        "process_route_label": RescheduleRequest.ProcessRoute(process_route).label,
+        "review_classification": review_classification,
+        "review_classification_label": (
+            RescheduleRequest.ReviewClassification(
+                review_classification
+            ).label
+            if review_classification
+            else None
+        ),
         "status": request_item.status,
         "status_label": RescheduleRequest.Status(request_item.status).label,
         "requester_team_id": request_item.requester_team_id,
@@ -371,11 +394,36 @@ def eligible_games(request: HttpRequest):
 
 @router.get(
     "/games/{game_id}/targets",
-    response={200: list[RescheduleTargetOut], 400: RescheduleErrorOut, 403: RescheduleErrorOut},
+    response={
+        200: list[RescheduleTargetOut],
+        400: RescheduleErrorOut,
+        403: RescheduleErrorOut,
+        404: RescheduleErrorOut,
+    },
 )
-def available_targets(request: HttpRequest, game_id: UUID):
+def available_targets(
+    request: HttpRequest,
+    game_id: UUID,
+    process_route: str | None = None,
+):
     try:
-        return available_reschedule_targets(actor=request.auth, game_id=game_id)
+        targets = available_reschedule_targets(
+            actor=request.auth,
+            game_id=game_id,
+            process_route=process_route,
+        )
+        return [
+            {
+                **target,
+                "request_type_label": RescheduleRequest.RequestType(
+                    target["request_type"]
+                ).label,
+                "process_route_label": RescheduleRequest.ProcessRoute(
+                    target["process_route"]
+                ).label,
+            }
+            for target in targets
+        ]
     except RescheduleError as error:
         return _error(error)
 
@@ -386,6 +434,7 @@ def available_targets(request: HttpRequest, game_id: UUID):
         201: RescheduleRequestOut,
         400: RescheduleErrorOut,
         403: RescheduleErrorOut,
+        404: RescheduleErrorOut,
         409: RescheduleErrorOut,
     },
 )
@@ -403,6 +452,7 @@ def create_request(
                 expected_game_version=payload.expected_game_version,
                 target_date=payload.target_date,
                 target_period_id=payload.target_period_id,
+                process_route=payload.process_route,
             )
             created = _request_queryset().get(id=created.id)
             return 201, _request_out(created, request.auth)
@@ -411,7 +461,13 @@ def create_request(
             request=request,
             actor=request.auth,
             operation="reschedule.create",
-            fingerprint=payload.model_dump(mode="json"),
+            fingerprint=canonical_reschedule_create_fingerprint(
+                game_id=payload.game_id,
+                expected_game_version=payload.expected_game_version,
+                target_date=payload.target_date,
+                target_period_id=payload.target_period_id,
+                process_route=payload.process_route,
+            ),
             command=command,
         )
     except IdempotencyError as error:
@@ -431,6 +487,7 @@ def _updated_request(request_id: UUID) -> RescheduleRequest:
         200: RescheduleRequestOut,
         400: RescheduleErrorOut,
         403: RescheduleErrorOut,
+        404: RescheduleErrorOut,
         409: RescheduleErrorOut,
     },
 )
@@ -453,6 +510,7 @@ def opponent_response(request: HttpRequest, request_id: UUID, payload: Versioned
         200: RescheduleRequestOut,
         400: RescheduleErrorOut,
         403: RescheduleErrorOut,
+        404: RescheduleErrorOut,
         409: RescheduleErrorOut,
     },
 )
@@ -479,6 +537,7 @@ def selected_team_response(
         200: RescheduleRequestOut,
         400: RescheduleErrorOut,
         403: RescheduleErrorOut,
+        404: RescheduleErrorOut,
         409: RescheduleErrorOut,
     },
 )
@@ -509,20 +568,11 @@ def voter_candidates(request: HttpRequest, request_id: UUID):
     if request_item is None:
         return Status(404, {"code": "REQUEST_NOT_FOUND", "message": "调赛申请不存在。"})
     game = request_item.game
-    teams = Team.objects.filter(season=game.season, division=game.division, active=True).exclude(
-        id__in=[game.home_team_id, game.away_team_id]
-    )
+    teams = eligible_reschedule_voter_teams(game)
     group_names: dict[UUID, str | None] = {team.id: None for team in teams}
     assignments = DrawAssignment.objects.filter(season=game.season, team__in=teams).select_related(
         "slot__group"
     )
-    if game.group_id:
-        allowed_ids = {
-            assignment.team_id
-            for assignment in assignments
-            if assignment.slot.group_id == game.group_id
-        }
-        teams = teams.filter(id__in=allowed_ids)
     for assignment in assignments:
         if assignment.slot.group_id:
             group_names[assignment.team_id] = assignment.slot.group.name
@@ -543,16 +593,18 @@ def voter_candidates(request: HttpRequest, request_id: UUID):
         200: RescheduleRequestOut,
         400: RescheduleErrorOut,
         403: RescheduleErrorOut,
+        404: RescheduleErrorOut,
         409: RescheduleErrorOut,
     },
 )
 def admin_decision(request: HttpRequest, request_id: UUID, payload: AdminDecisionIn):
     try:
-        admin_decide_cross_week(
+        admin_decide_review_route(
             actor=request.auth,
             request_id=request_id,
             expected_version=payload.expected_version,
             action=payload.action,
+            classification=payload.classification,
             selected_team_ids=payload.selected_team_ids or [],
         )
     except RescheduleError as error:
@@ -566,6 +618,7 @@ def admin_decision(request: HttpRequest, request_id: UUID, payload: AdminDecisio
         200: RescheduleRequestOut,
         400: RescheduleErrorOut,
         403: RescheduleErrorOut,
+        404: RescheduleErrorOut,
         409: RescheduleErrorOut,
     },
 )
@@ -588,6 +641,7 @@ def admin_final(request: HttpRequest, request_id: UUID, payload: VersionedRespon
         200: RescheduleRequestOut,
         400: RescheduleErrorOut,
         403: RescheduleErrorOut,
+        404: RescheduleErrorOut,
         409: RescheduleErrorOut,
     },
 )

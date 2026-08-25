@@ -754,8 +754,16 @@ class SlotReservation(UUIDModel):
 
 class RescheduleRequest(UUIDModel):
     class RequestType(models.TextChoices):
-        SAME_WEEK = "SAME_WEEK", "同周"
-        CROSS_WEEK = "CROSS_WEEK", "跨周"
+        SAME_WEEK = "SAME_WEEK", "同一自然周"
+        CROSS_WEEK = "CROSS_WEEK", "跨自然周"
+
+    class ProcessRoute(models.TextChoices):
+        ORDINARY = "ORDINARY", "普通流程"
+        HANDBOOK_REVIEW = "HANDBOOK_REVIEW", "参赛手册审核"
+
+    class ReviewClassification(models.TextChoices):
+        ORDINARY = "ORDINARY", "按普通办法"
+        CROSS_ROUND = "CROSS_ROUND", "跨轮次调整"
 
     class Status(models.TextChoices):
         WAITING_OPPONENT = "WAITING_OPPONENT", "等待对手"
@@ -776,6 +784,18 @@ class RescheduleRequest(UUIDModel):
         Account, on_delete=models.PROTECT, related_name="reschedule_requests"
     )
     request_type = models.CharField(max_length=16, choices=RequestType.choices)
+    process_route = models.CharField(
+        max_length=24,
+        choices=ProcessRoute.choices,
+        null=True,
+        blank=True,
+    )
+    review_classification = models.CharField(
+        max_length=16,
+        choices=ReviewClassification.choices,
+        null=True,
+        blank=True,
+    )
     status = models.CharField(
         max_length=32, choices=Status.choices, default=Status.WAITING_OPPONENT
     )
@@ -795,6 +815,140 @@ class RescheduleRequest(UUIDModel):
     decided_at = models.DateTimeField(null=True, blank=True)
     version = models.PositiveIntegerField(default=1)
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(request_type__in=["SAME_WEEK", "CROSS_WEEK"]),
+                name="reschedule_request_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(process_route__isnull=True)
+                    | Q(process_route__in=["ORDINARY", "HANDBOOK_REVIEW"])
+                ),
+                name="reschedule_process_route_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(review_classification__isnull=True)
+                    | Q(review_classification__in=["ORDINARY", "CROSS_ROUND"])
+                ),
+                name="reschedule_review_classification_valid",
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    status__in=[
+                        "WAITING_OPPONENT",
+                        "WAITING_ADMIN_DECISION",
+                        "WAITING_SELECTED_TEAMS",
+                        "WAITING_ADMIN_FINAL",
+                        "APPROVED",
+                        "REJECTED",
+                        "WITHDRAWN",
+                        "EXPIRED",
+                        "ADMIN_CANCELLED",
+                    ]
+                ),
+                name="reschedule_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(process_route__isnull=True)
+                    | ~Q(request_type="CROSS_WEEK")
+                    | Q(process_route="HANDBOOK_REVIEW")
+                ),
+                name="reschedule_cross_week_requires_review_route",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(review_classification="ORDINARY")
+                    | Q(request_type="SAME_WEEK")
+                ),
+                name="reschedule_ordinary_classification_same_week",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(review_classification="ORDINARY")
+                    | Q(status="APPROVED")
+                ),
+                name="reschedule_ordinary_classification_approved",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(review_classification__isnull=True)
+                    | (
+                        Q(process_route__isnull=False)
+                        & Q(process_route="HANDBOOK_REVIEW")
+                    )
+                ),
+                name="reschedule_classification_requires_review_route",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(review_classification__isnull=True)
+                    | ~Q(status__in=["WAITING_OPPONENT", "WAITING_ADMIN_DECISION"])
+                ),
+                name="reschedule_classification_after_admin_decision",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(status__in=["WAITING_SELECTED_TEAMS", "WAITING_ADMIN_FINAL"])
+                    | (
+                        Q(process_route="HANDBOOK_REVIEW")
+                        & Q(review_classification__isnull=False)
+                        & Q(review_classification="CROSS_ROUND")
+                    )
+                    | (
+                        Q(process_route__isnull=True)
+                        & Q(request_type="CROSS_WEEK")
+                        & Q(review_classification__isnull=True)
+                    )
+                ),
+                name="reschedule_vote_states_are_cross_round",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(process_route__isnull=True)
+                    | ~Q(process_route="ORDINARY")
+                    | (
+                        Q(request_type="SAME_WEEK")
+                        & ~Q(
+                            status__in=[
+                                "WAITING_ADMIN_DECISION",
+                                "WAITING_SELECTED_TEAMS",
+                                "WAITING_ADMIN_FINAL",
+                            ]
+                        )
+                    )
+                ),
+                name="reschedule_ordinary_route_stays_ordinary",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(process_route__isnull=False)
+                    | ~Q(request_type="SAME_WEEK")
+                    | ~Q(
+                        status__in=[
+                            "WAITING_ADMIN_DECISION",
+                            "WAITING_SELECTED_TEAMS",
+                            "WAITING_ADMIN_FINAL",
+                        ]
+                    )
+                ),
+                name="reschedule_legacy_same_week_no_review_states",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(process_route="HANDBOOK_REVIEW", status="APPROVED")
+                    | (
+                        Q(review_classification__isnull=False)
+                        & Q(review_classification__in=["ORDINARY", "CROSS_ROUND"])
+                    )
+                ),
+                name="reschedule_handbook_approval_classified",
+            ),
+        ]
+
     TERMINAL_STATUSES = {
         Status.APPROVED,
         Status.REJECTED,
@@ -806,6 +960,34 @@ class RescheduleRequest(UUIDModel):
     @property
     def is_terminal(self) -> bool:
         return self.status in self.TERMINAL_STATUSES
+
+    @property
+    def resolved_process_route(self) -> str:
+        if self.process_route:
+            return self.process_route
+        if self.request_type == self.RequestType.CROSS_WEEK:
+            return self.ProcessRoute.HANDBOOK_REVIEW
+        return self.ProcessRoute.ORDINARY
+
+    @property
+    def resolved_review_classification(self) -> str | None:
+        if self.review_classification:
+            return self.review_classification
+        if self.resolved_process_route != self.ProcessRoute.HANDBOOK_REVIEW:
+            return None
+        if self.status in {
+            self.Status.WAITING_SELECTED_TEAMS,
+            self.Status.WAITING_ADMIN_FINAL,
+        }:
+            return self.ReviewClassification.CROSS_ROUND
+        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("confirmations")
+        if prefetched is not None:
+            has_voters = any(item.purpose == "VOTER" for item in prefetched)
+        else:
+            has_voters = self.confirmations.filter(purpose="VOTER").exists()
+        if has_voters:
+            return self.ReviewClassification.CROSS_ROUND
+        return None
 
 
 class TeamConfirmation(UUIDModel):
@@ -831,7 +1013,30 @@ class TeamConfirmation(UUIDModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["request", "team", "purpose"], name="uniq_team_confirmation"
-            )
+            ),
+            models.CheckConstraint(
+                condition=Q(purpose__in=["OPPONENT", "VOTER"]),
+                name="team_confirmation_purpose_valid",
+            ),
+            models.CheckConstraint(
+                condition=Q(response__in=["PENDING", "ACCEPTED", "REJECTED"]),
+                name="team_confirmation_response_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        response="PENDING",
+                        responded_by__isnull=True,
+                        responded_at__isnull=True,
+                    )
+                    | Q(
+                        response__in=["ACCEPTED", "REJECTED"],
+                        responded_by__isnull=False,
+                        responded_at__isnull=False,
+                    )
+                ),
+                name="team_confirmation_response_evidence",
+            ),
         ]
 
 

@@ -18,6 +18,10 @@ from core.models import (
 from core.services.email_outbox import enqueue_public_mail
 
 
+def _process_route_display(item: RescheduleRequest) -> str:
+    return RescheduleRequest.ProcessRoute(item.resolved_process_route).label
+
+
 def _active_superadmins():
     return Account.objects.filter(
         role=Account.Role.SUPERADMIN,
@@ -129,7 +133,9 @@ def _reschedule_summary(item: RescheduleRequest) -> tuple[str, str]:
     title = f"{item.game.home_display} — {item.game.away_display}"
     body = "\n".join(
         [
-            f"{item.game.division.name} · {item.get_request_type_display()}",
+            f"{item.game.division.name}",
+            f"日期关系：{item.get_request_type_display()}",
+            f"处理通道：{_process_route_display(item)}",
             (
                 f"原赛程：{original.get('date', '')} "
                 f"{original.get('start_time', '')} {original.get('venue_name', '')}"
@@ -203,7 +209,16 @@ def _reschedule_email_body(item: RescheduleRequest) -> str:
             _target_venue_notice(item),
             f"申请日期：{requested_at}",
             f"申请方：{item.requester_team.name}",
-            f"申请类型：{item.get_request_type_display()}",
+            f"日期关系：{item.get_request_type_display()}",
+            f"处理通道：{_process_route_display(item)}",
+            *(
+                [
+                    "审核认定："
+                    f"{RescheduleRequest.ReviewClassification(item.resolved_review_classification).label}"
+                ]
+                if item.resolved_review_classification
+                else []
+            ),
             f"组别：{item.game.division.name}",
             f"当前状态：{item.get_status_display()}",
             f"申请编号：{item.id}",
@@ -227,7 +242,7 @@ def _enqueue_reschedule_status_email(item: RescheduleRequest) -> None:
     enqueue_public_mail(
         event_key=f"reschedule:{item.id}:status:{item.status}",
         subject=(
-            f"[PKUBA] {item.get_request_type_display()}调赛申请"
+            f"[PKUBA] {_process_route_display(item)}调赛申请"
             f"（{state_labels[item.status]}）{title}"
         ),
         body=_reschedule_email_body(item),
@@ -311,7 +326,7 @@ def sync_reschedule_tasks(
             _active_superadmins(),
             dedupe_key=key,
             kind="RESCHEDULE_ADMIN_DECISION",
-            title=f"跨周调赛待审核 · {title}",
+            title=f"参赛手册调赛待分类 · {title}",
             body=body,
             object_type="RescheduleRequest",
             object_id=item.id,
@@ -363,7 +378,7 @@ def sync_reschedule_tasks(
             _active_superadmins(),
             dedupe_key=key,
             kind="RESCHEDULE_ADMIN_FINAL",
-            title=f"跨周调赛待终审 · {title}",
+            title=f"跨轮次调赛待终审 · {title}",
             body=body,
             object_type="RescheduleRequest",
             object_id=item.id,

@@ -16,7 +16,7 @@ from core.models import (
 )
 from core.services.rescheduling import (
     admin_cancel_request,
-    admin_decide_cross_week,
+    admin_decide_review_route,
     expire_request,
     reschedule_deadlines,
     respond_as_selected_team,
@@ -173,11 +173,12 @@ class Command(BaseCommand):
             accept=True,
             now=now + timedelta(minutes=5),
         )
-        admin_decide_cross_week(
+        admin_decide_review_route(
             actor=admin,
             request_id=item.id,
             expected_version=item.version,
             action="vote",
+            classification=RescheduleRequest.ReviewClassification.CROSS_ROUND,
             selected_team_ids=[teams[0].id, teams[1].id],
             now=now + timedelta(minutes=10),
         )
@@ -200,11 +201,12 @@ class Command(BaseCommand):
         )
         participants = {demo_games[2].home_team, demo_games[2].away_team}
         voters = [team for team in teams if team not in participants]
-        item = admin_decide_cross_week(
+        item = admin_decide_review_route(
             actor=admin,
             request_id=item.id,
             expected_version=item.version,
             action="vote",
+            classification=RescheduleRequest.ReviewClassification.CROSS_ROUND,
             selected_team_ids=[team.id for team in voters],
             now=now + timedelta(minutes=10),
         )

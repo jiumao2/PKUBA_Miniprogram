@@ -1,8 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AdminReschedulePage } from "@pkuba/api-client";
-import { RescheduleManagementPage, statusClass } from "./RescheduleManagementPage";
+import {
+  RescheduleManagementPage,
+  reviewClassificationText,
+  statusClass,
+} from "./RescheduleManagementPage";
 
 const dataset: AdminReschedulePage = {
   season_id: "season-1",
@@ -11,7 +17,11 @@ const dataset: AdminReschedulePage = {
     {
       id: "request-1",
       request_type: "CROSS_WEEK",
-      request_type_label: "跨周",
+      request_type_label: "跨自然周",
+      process_route: "HANDBOOK_REVIEW",
+      process_route_label: "参赛手册审核",
+      review_classification: null,
+      review_classification_label: null,
       status: "WAITING_ADMIN_DECISION",
       status_label: "等待管理员决定",
       requester_team_id: "team-1",
@@ -81,6 +91,11 @@ const dataset: AdminReschedulePage = {
   page_size: 30,
 };
 
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
 describe("RescheduleManagementPage", () => {
   it("uses distinct textual state treatments", () => {
     expect(statusClass("WAITING_ADMIN_DECISION")).toBe("decision");
@@ -106,5 +121,100 @@ describe("RescheduleManagementPage", () => {
     expect(html).toContain("具体场地不公开");
     expect(html).not.toContain("五四东二");
     expect(html).toContain("目标时段容量");
+    expect(html).toContain("日期关系");
+    expect(html).toContain("处理通道");
+    expect(html).toContain("待超级管理员认定");
+  });
+
+  it("distinguishes ordinary, pending handbook and classified handbook routes", () => {
+    expect(reviewClassificationText({
+      process_route: "ORDINARY",
+      review_classification_label: null,
+    })).toContain("普通流程无需认定");
+    expect(reviewClassificationText({
+      process_route: "HANDBOOK_REVIEW",
+      review_classification_label: null,
+    })).toBe("待超级管理员认定");
+    expect(reviewClassificationText({
+      process_route: "HANDBOOK_REVIEW",
+      review_classification_label: "跨轮次调整",
+    })).toBe("跨轮次调整");
+  });
+
+  it("submits the administrator classification selected by each action", async () => {
+    const user = userEvent.setup();
+    const ordinaryDataset: AdminReschedulePage = {
+      ...dataset,
+      items: [{
+        ...dataset.items[0],
+        request_type: "SAME_WEEK",
+        request_type_label: "同一自然周",
+      }],
+    };
+    const actOnAdminReschedule = vi.fn(async () => ordinaryDataset.items[0]);
+    type Props = Parameters<typeof RescheduleManagementPage>[0];
+    const client = {
+      listAdminRescheduleRequests: vi.fn(async () => ordinaryDataset),
+      getAdminRescheduleVoterCandidates: vi.fn(async () => []),
+      actOnAdminReschedule,
+    } as unknown as Props["client"];
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(
+      <RescheduleManagementPage client={client} initialDataset={ordinaryDataset} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "按普通办法批准" }));
+
+    await waitFor(() => expect(actOnAdminReschedule).toHaveBeenCalledWith(
+      "request-1",
+      {
+        expected_version: 3,
+        action: "ADMIN_APPROVE",
+        classification: "ORDINARY",
+        selected_team_ids: [],
+      },
+    ));
+  });
+
+  it("submits cross-round approval and authoritative voter ids", async () => {
+    const user = userEvent.setup();
+    const candidates = [
+      { id: "team-3", name: "数学科学学院", division_name: "男甲", group_name: "A 组" },
+      { id: "team-4", name: "物理学院", division_name: "男甲", group_name: "A 组" },
+    ];
+    const actOnAdminReschedule = vi.fn(async () => dataset.items[0]);
+    type Props = Parameters<typeof RescheduleManagementPage>[0];
+    const client = {
+      listAdminRescheduleRequests: vi.fn(async () => dataset),
+      getAdminRescheduleVoterCandidates: vi.fn(async () => candidates),
+      actOnAdminReschedule,
+    } as unknown as Props["client"];
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<RescheduleManagementPage client={client} initialDataset={dataset} />);
+
+    await user.click(screen.getByRole("button", { name: "认定跨轮次并批准" }));
+    await waitFor(() => expect(actOnAdminReschedule).toHaveBeenCalledWith(
+      "request-1",
+      {
+        expected_version: 3,
+        action: "ADMIN_APPROVE",
+        classification: "CROSS_ROUND",
+        selected_team_ids: [],
+      },
+    ));
+    actOnAdminReschedule.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "指定球队投票" }));
+    await user.click(await screen.findByLabelText(/数学科学学院/));
+    await user.click(screen.getByRole("button", { name: "确认发起投票" }));
+    await waitFor(() => expect(actOnAdminReschedule).toHaveBeenCalledWith(
+      "request-1",
+      {
+        expected_version: 3,
+        action: "ADMIN_START_VOTE",
+        classification: "CROSS_ROUND",
+        selected_team_ids: ["team-3"],
+      },
+    ));
   });
 });

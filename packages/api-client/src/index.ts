@@ -846,9 +846,9 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       ),
     getEligibleRescheduleGames: (token: string) =>
       send<RescheduleGame[]>("/api/v1/reschedule-requests/eligible-games", bearer(token)),
-    getRescheduleTargets: (gameId: string, token: string) =>
+    getRescheduleTargets: (gameId: string, processRoute: string, token: string) =>
       send<RescheduleTarget[]>(
-        `/api/v1/reschedule-requests/games/${gameId}/targets`,
+        `/api/v1/reschedule-requests/games/${gameId}/targets?process_route=${encodeURIComponent(processRoute)}`,
         bearer(token),
       ),
     createRescheduleRequest: (
@@ -1660,6 +1660,7 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       view?: "active" | "history" | "all";
       status?: string;
       requestType?: string;
+      processRoute?: string;
       divisionId?: string;
       query?: string;
       page?: number;
@@ -1669,6 +1670,7 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       if (filters.view) params.set("view", filters.view);
       if (filters.status) params.set("status", filters.status);
       if (filters.requestType) params.set("request_type", filters.requestType);
+      if (filters.processRoute) params.set("process_route", filters.processRoute);
       if (filters.divisionId) params.set("division_id", filters.divisionId);
       if (filters.query) params.set("q", filters.query);
       if (filters.page) params.set("page", String(filters.page));

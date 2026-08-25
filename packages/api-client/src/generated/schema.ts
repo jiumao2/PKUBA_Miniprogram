@@ -5327,6 +5327,14 @@ export interface components {
             request_type: string;
             /** Request Type Label */
             request_type_label: string;
+            /** Process Route */
+            process_route: string;
+            /** Process Route Label */
+            process_route_label: string;
+            /** Review Classification */
+            review_classification: string | null;
+            /** Review Classification Label */
+            review_classification_label: string | null;
             /** Status */
             status: string;
             /** Status Label */
@@ -5515,6 +5523,8 @@ export interface components {
             expected_version: number;
             /** Action */
             action: string;
+            /** Classification */
+            classification?: string | null;
             /** Selected Team Ids */
             selected_team_ids?: string[] | null;
         };
@@ -6153,6 +6163,14 @@ export interface components {
             request_type: string;
             /** Request Type Label */
             request_type_label: string;
+            /** Process Route */
+            process_route: string;
+            /** Process Route Label */
+            process_route_label: string;
+            /** Review Classification */
+            review_classification: string | null;
+            /** Review Classification Label */
+            review_classification_label: string | null;
             /** Status */
             status: string;
             /** Status Label */
@@ -6248,6 +6266,8 @@ export interface components {
              * Format: uuid
              */
             target_period_id: string;
+            /** Process Route */
+            process_route?: string | null;
         };
         /** RescheduleTargetOut */
         RescheduleTargetOut: {
@@ -6269,6 +6289,12 @@ export interface components {
             start_time: string;
             /** Request Type */
             request_type: string;
+            /** Request Type Label */
+            request_type_label: string;
+            /** Process Route */
+            process_route: string;
+            /** Process Route Label */
+            process_route_label: string;
             /**
              * Submit Deadline
              * Format: date-time
@@ -6293,6 +6319,8 @@ export interface components {
             expected_version: number;
             /** Action */
             action: string;
+            /** Classification */
+            classification?: string | null;
             /** Selected Team Ids */
             selected_team_ids?: string[] | null;
         };
@@ -10274,6 +10302,7 @@ export interface operations {
                 view?: string;
                 status?: string;
                 request_type?: string;
+                process_route?: string;
                 division_id?: string | null;
                 q?: string;
                 page?: number;
@@ -11418,6 +11447,15 @@ export interface operations {
                     "application/json": components["schemas"]["RescheduleErrorOut"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
             /** @description Conflict */
             409: {
                 headers: {
@@ -11451,7 +11489,9 @@ export interface operations {
     };
     core_api_reschedule_available_targets: {
         parameters: {
-            query?: never;
+            query?: {
+                process_route?: string | null;
+            };
             header?: never;
             path: {
                 game_id: string;
@@ -11480,6 +11520,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11524,6 +11573,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11584,6 +11642,15 @@ export interface operations {
                     "application/json": components["schemas"]["RescheduleErrorOut"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
             /** @description Conflict */
             409: {
                 headers: {
@@ -11630,6 +11697,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11730,6 +11806,15 @@ export interface operations {
                     "application/json": components["schemas"]["RescheduleErrorOut"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
             /** @description Conflict */
             409: {
                 headers: {
@@ -11783,6 +11868,15 @@ export interface operations {
                     "application/json": components["schemas"]["RescheduleErrorOut"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
             /** @description Conflict */
             409: {
                 headers: {
@@ -11829,6 +11923,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescheduleErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

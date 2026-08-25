@@ -4856,6 +4856,16 @@
           },
           {
             "in": "query",
+            "name": "process_route",
+            "schema": {
+              "default": "",
+              "title": "Process Route",
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
             "name": "division_id",
             "schema": {
               "anyOf": [
@@ -6705,6 +6715,16 @@
               }
             }
           },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Conflict",
             "content": {
@@ -6781,6 +6801,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "process_route",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Process Route"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -6810,6 +6846,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -6868,6 +6914,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -6954,6 +7010,16 @@
               }
             }
           },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Conflict",
             "content": {
@@ -7024,6 +7090,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -7172,6 +7248,16 @@
               }
             }
           },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Conflict",
             "content": {
@@ -7250,6 +7336,16 @@
               }
             }
           },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
           "409": {
             "description": "Conflict",
             "content": {
@@ -7320,6 +7416,16 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RescheduleErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -17535,6 +17641,36 @@
             "title": "Request Type Label",
             "type": "string"
           },
+          "process_route": {
+            "title": "Process Route",
+            "type": "string"
+          },
+          "process_route_label": {
+            "title": "Process Route Label",
+            "type": "string"
+          },
+          "review_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Classification"
+          },
+          "review_classification_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Classification Label"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -17651,6 +17787,10 @@
           "id",
           "request_type",
           "request_type_label",
+          "process_route",
+          "process_route_label",
+          "review_classification",
+          "review_classification_label",
           "status",
           "status_label",
           "requester_team_id",
@@ -17966,6 +18106,17 @@
           "action": {
             "title": "Action",
             "type": "string"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
           },
           "selected_team_ids": {
             "anyOf": [
@@ -19516,6 +19667,36 @@
             "title": "Request Type Label",
             "type": "string"
           },
+          "process_route": {
+            "title": "Process Route",
+            "type": "string"
+          },
+          "process_route_label": {
+            "title": "Process Route Label",
+            "type": "string"
+          },
+          "review_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Classification"
+          },
+          "review_classification_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Classification Label"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -19629,6 +19810,10 @@
           "id",
           "request_type",
           "request_type_label",
+          "process_route",
+          "process_route_label",
+          "review_classification",
+          "review_classification_label",
           "status",
           "status_label",
           "requester_team_id",
@@ -19706,6 +19891,17 @@
             "format": "uuid",
             "title": "Target Period Id",
             "type": "string"
+          },
+          "process_route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Route"
           }
         },
         "required": [
@@ -19745,6 +19941,18 @@
             "title": "Request Type",
             "type": "string"
           },
+          "request_type_label": {
+            "title": "Request Type Label",
+            "type": "string"
+          },
+          "process_route": {
+            "title": "Process Route",
+            "type": "string"
+          },
+          "process_route_label": {
+            "title": "Process Route Label",
+            "type": "string"
+          },
           "submit_deadline": {
             "format": "date-time",
             "title": "Submit Deadline",
@@ -19763,6 +19971,9 @@
           "period_name",
           "start_time",
           "request_type",
+          "request_type_label",
+          "process_route",
+          "process_route_label",
           "submit_deadline",
           "confirmation_deadline"
         ],
@@ -19796,6 +20007,17 @@
           "action": {
             "title": "Action",
             "type": "string"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
           },
           "selected_team_ids": {
             "anyOf": [

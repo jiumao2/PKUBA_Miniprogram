@@ -2,7 +2,10 @@ services:
   api:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-api
-    restart: unless-stopped
+    # Writers are started by pkuba-application-start after boot recovery. They
+    # must not race an unfinished durable release/restore transaction when the
+    # Docker daemon restarts.
+    restart: "no"
     env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
     environment: &release-environment
       PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:?PKUBA_RELEASE_TAG is required}
@@ -52,7 +55,7 @@ services:
   expiry:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-expiry
-    restart: unless-stopped
+    restart: "no"
     env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
     environment: *release-environment
     command: python manage.py expire_reschedules --loop
@@ -63,7 +66,7 @@ services:
   scoresheet-worker:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-scoresheet-worker
-    restart: unless-stopped
+    restart: "no"
     env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
     environment: *release-environment
     command: python manage.py process_scoresheets --poll-seconds 2
@@ -74,7 +77,7 @@ services:
   archive-worker:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-archive-worker
-    restart: unless-stopped
+    restart: "no"
     env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
     environment: *release-environment
     command: python manage.py process_archives --loop --poll-seconds 2
@@ -86,7 +89,7 @@ services:
   outbox:
     image: ${PKUBA_API_IMAGE:?PKUBA_API_IMAGE is required}
     container_name: ${PKUBA_SLOT_NAME:?PKUBA_SLOT_NAME is required}-outbox
-    restart: unless-stopped
+    restart: "no"
     profiles: ["email"]
     env_file: ${PKUBA_ENV_FILE:?PKUBA_ENV_FILE is required}
     environment: *release-environment
