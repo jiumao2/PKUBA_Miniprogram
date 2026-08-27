@@ -418,9 +418,17 @@ button[disabled] { opacity: .38; }
     padding-left: 12rpx;
   }
 
-  .mini-sheet-standard-inner,
+.mini-sheet-standard-inner,
   .mini-sheet-running-score {
     padding-right: 12rpx;
     padding-left: 12rpx;
   }
 }
+
+.mini-context-review { display: flex; flex-direction: column; gap: 16rpx; margin-bottom: 24rpx; padding: 24rpx; background: #fcf8f6; border-block: 1rpx solid #dbc9c8; font-size: 28rpx; line-height: 1.65; color: #34302f; }
+.mini-context-title { font-size: 32rpx; font-weight: 650; }
+.mini-context-difference { display: flex; flex-direction: column; gap: 8rpx; border-bottom: 1rpx solid #e8dfdd; padding: 16rpx 0; word-break: break-all; }
+.mini-context-label { font-weight: 600; }
+.mini-context-before { color: #706561; }
+.mini-context-picker { background: #fff; border: 1rpx solid #cfc4c0; padding: 16rpx; border-radius: 8rpx; }
+.mini-context-review button { width: 100%; font-size: 28rpx; color: #8c1822; border: 1rpx solid #8c1822; background: #fff; }

@@ -24,6 +24,7 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/scoresheet.html');
   vi.spyOn(api, 'changes').mockResolvedValue({ items: [], next_before_id: null });
   useEditorStore.setState({
+    contextReviewing: false,
     document: makeDocument(),
     serverRevision: 0,
     template: makeTemplate(),
@@ -58,6 +59,50 @@ beforeEach(() => {
 });
 
 describe('editor persistence and history', () => {
+  it('reviews the bound context, preserves manual data and revalidates the returned revision', async () => {
+    const initial = makeDocument('context-review');
+    initial.header.crew_chief = '人工保留';
+    const reviewed = structuredClone(initial);
+    reviewed.revision = 1;
+    reviewed.header.venue = '当前场地';
+    useEditorStore.setState({ document: initial, validation: {
+      status: 'invalid', checked_at: '2026-08-27T00:00:00Z', issues: [],
+      game_context: { required: true, differences: [], player_conflicts: [], review_token: 'bound-review' },
+    } });
+    const pending = deferred<typeof reviewed>();
+    const review = vi.spyOn(api, 'reviewGameContext').mockReturnValue(pending.promise);
+    const validate = vi.spyOn(api, 'validate').mockResolvedValue({
+      status: 'valid', checked_at: '2026-08-27T00:00:01Z', issues: [],
+    });
+    const operation = useEditorStore.getState().reviewGameContext([]);
+    expect(useEditorStore.getState().contextReviewing).toBe(true);
+    useEditorStore.getState().mutate((draft) => { draft.header.crew_chief = '不能中途覆盖'; });
+    pending.resolve(reviewed);
+    await operation;
+    expect(review).toHaveBeenCalledWith(initial.id, 0, 'bound-review', []);
+    expect(validate).toHaveBeenCalledWith(initial.id, 1);
+    expect(useEditorStore.getState().document?.header.crew_chief).toBe('人工保留');
+    expect(useEditorStore.getState().serverRevision).toBe(1);
+    expect(useEditorStore.getState().contextReviewing).toBe(false);
+  });
+
+  it('does not lose the local document or confirm stale context after a failed review', async () => {
+    const document = makeDocument('context-failed');
+    useEditorStore.setState({ document, validation: {
+      status: 'invalid', checked_at: '2026-08-27T00:00:00Z', issues: [],
+      game_context: { required: true, differences: [], player_conflicts: [], review_token: 'stale-review' },
+    } });
+    const review = vi.spyOn(api, 'reviewGameContext').mockRejectedValue(new Error('请重新核对'));
+    useEditorStore.setState({ dirty: true });
+    await useEditorStore.getState().reviewGameContext([]);
+    expect(review).not.toHaveBeenCalled();
+    useEditorStore.setState({ dirty: false });
+    await useEditorStore.getState().reviewGameContext([]);
+    expect(useEditorStore.getState().document).toBe(document);
+    expect(useEditorStore.getState().contextReviewing).toBe(false);
+    expect(useEditorStore.getState().error).toBe('请重新核对');
+  });
+
   it('keeps a manual table-personnel sentinel in draft status', () => {
     const document = { ...makeDocument('manual-personnel'), status: 'draft' as const };
     document.recognition = null;

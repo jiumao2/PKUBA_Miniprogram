@@ -8,6 +8,8 @@ import {
   RescheduleManagementPage,
   reviewClassificationText,
   statusClass,
+  voterCandidateEmptyText,
+  voterCandidateScopeText,
 } from "./RescheduleManagementPage";
 
 const dataset: AdminReschedulePage = {
@@ -139,6 +141,15 @@ describe("RescheduleManagementPage", () => {
       process_route: "HANDBOOK_REVIEW",
       review_classification_label: "跨轮次调整",
     })).toBe("跨轮次调整");
+  });
+
+  it("describes grouped and group-less knockout voter scopes accurately", () => {
+    expect(voterCandidateScopeText("A 组")).toContain("A 组内");
+    expect(voterCandidateEmptyText("A 组")).toBe("没有可指定的同小组球队。");
+    expect(voterCandidateScopeText(null)).toBe(
+      "候选范围：本组别内除比赛双方外的全部启用球队。",
+    );
+    expect(voterCandidateEmptyText(null)).toBe("没有可指定的同组别球队。");
   });
 
   it("submits the administrator classification selected by each action", async () => {

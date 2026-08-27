@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2, Clock3, History, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
+  type ScoresheetContextPlayerMapping,
   isOrderedFoulSlotEnabled,
   isOrderedPostFoulSlotEnabled,
   OFFICIAL_LABELS,
@@ -41,6 +42,7 @@ import type {
 } from '../types';
 import { teamBySide } from '../types';
 import { RecognitionPanel } from './RecognitionPanel';
+import { GameContextReview } from './GameContextReview';
 
 interface InspectorProps {
   document: ScoresheetDocument;
@@ -54,6 +56,8 @@ interface InspectorProps {
   onSelect: (field: string) => void;
   onApplyRecognition?: (regions: string[]) => Promise<void>;
   onDismissRecognitionDiff?: () => void;
+  onReviewGameContext?: (mappings: ScoresheetContextPlayerMapping[]) => Promise<void>;
+  contextReviewing?: boolean;
   readOnly?: boolean;
 }
 
@@ -1135,6 +1139,8 @@ export function Inspector({
   onSelect,
   onApplyRecognition = async () => {},
   onDismissRecognitionDiff = () => {},
+  onReviewGameContext = async () => {},
+  contextReviewing = false,
   readOnly = false,
 }: InspectorProps) {
   const inspectorRef = useRef<HTMLElement>(null);
@@ -1213,6 +1219,11 @@ export function Inspector({
             })}
           />
         </fieldset>
+        {validation?.game_context?.required && <GameContextReview
+          key={validation.game_context.review_token}
+          review={validation.game_context} readOnly={readOnly && !contextReviewing}
+          busy={contextReviewing} onConfirm={onReviewGameContext}
+        />}
         <section className="validation-section">
           <div className="section-title-row">
             <div>
@@ -1262,7 +1273,7 @@ export function Inspector({
                           </li>
                         ))}
                       </ul>
-                    ) : <p>该操作只记录动作，不保存被替换的完整旧记录表。</p>}
+                    ) : <p>该操作的来源和完整记录保留在服务器修订与审计中。</p>}
                   </details>
                 </li>
               ))}

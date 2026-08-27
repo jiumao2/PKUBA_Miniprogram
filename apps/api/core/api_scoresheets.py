@@ -42,6 +42,7 @@ from core.services.scoresheets import (
     release_edit_lease,
     retry_recognition,
     review_region,
+    review_scoresheet_game_context,
     save_draft_changes,
     season_stats_xlsx,
     sync_scoresheet,
@@ -237,6 +238,18 @@ class AcknowledgeWarningsIn(MutationContextIn):
 
 class ApplyRecognitionIn(MutationContextIn):
     regions: list[str]
+
+
+class ContextPlayerMappingIn(Schema):
+    side: Literal["A", "B"]
+    row: int
+    player_id: UUID
+
+
+class ReviewGameContextIn(MutationContextIn):
+    review_token: str
+    confirmed: bool
+    player_mappings: list[ContextPlayerMappingIn] = []
 
 
 class PublicScoresheetStatOut(Schema):
@@ -846,6 +859,47 @@ def set_scoresheet_region_review(
         return _error(error)
 
 
+@router.post(
+    "/{scoresheet_id}/game-context/review",
+    response={200: ScoresheetDetailOut, **ERROR_RESPONSES},
+)
+def review_game_context_endpoint(
+    request: HttpRequest,
+    scoresheet_id: UUID,
+    payload: ReviewGameContextIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
+    try:
+        _require_admin(request)
+
+        def command():
+            review_scoresheet_game_context(
+                scoresheet_id=scoresheet_id,
+                actor=request.auth,
+                **payload.model_dump(mode="json"),
+            )
+            return 200, {"scoresheet_id": scoresheet_id}
+
+        status, body, _ = execute_idempotent(
+            request=request,
+            actor=request.auth,
+            operation="scoresheet.game-context.review",
+            fingerprint={
+                "scoresheet_id": scoresheet_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=command,
+        )
+        return Status(status, _detail(_get_scoresheet(UUID(str(body["scoresheet_id"])))))
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
+    except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
+        if isinstance(error, GameScoresheet.DoesNotExist):
+            error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
+        return _error(error)
+
+
 @router.post("/{scoresheet_id}/validate", response={200: ScoresheetDetailOut, **ERROR_RESPONSES})
 def validate_scoresheet_endpoint(
     request: HttpRequest, scoresheet_id: UUID, payload: MutationContextIn
@@ -1077,6 +1131,7 @@ def list_scoresheet_changes(
             "RECOGNITION_MERGE",
             "SOURCE_REPLACED",
             "PUBLISHED",
+            "GAME_CONTEXT_REVIEWED",
         ]
         query = (
             scoresheet.change_logs.select_related("actor")
@@ -1108,6 +1163,7 @@ def list_scoresheet_changes(
             "RECOGNITION_MERGE": "recognition_merge",
             "SOURCE_REPLACED": "reupload",
             "PUBLISHED": "confirm",
+            "GAME_CONTEXT_REVIEWED": "human_edit",
         }
         summary_map = {
             "FIELD_EDIT": "人工编辑",
@@ -1116,6 +1172,7 @@ def list_scoresheet_changes(
             "RECOGNITION_MERGE": "应用识别差异",
             "SOURCE_REPLACED": "重新上传记录表并重置草稿",
             "PUBLISHED": "提交记录表",
+            "GAME_CONTEXT_REVIEWED": "复核比赛信息与球员归属（保留原图及人工编辑）",
         }
         return {
             "items": [

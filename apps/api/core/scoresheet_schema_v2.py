@@ -97,6 +97,14 @@ def game_prior_snapshot(game: Game) -> dict[str, Any]:
         "team_a": {"team_id": str(game.home_team_id), "display_name": game.home_display},
         "team_b": {"team_id": str(game.away_team_id), "display_name": game.away_display},
         "game_version": game.version,
+        "context_schema": 1,
+        "season_id": str(game.season_id),
+        "division_id": str(game.division_id),
+        "period_id": str(game.period_id),
+        "period_name": game.period.name,
+        "stage": game.stage,
+        "round_number": game.round_number,
+        "group_id": str(game.group_id) if game.group_id else None,
     }
 
 
@@ -112,6 +120,7 @@ def roster_prior_snapshot(game: Game) -> dict[str, list[dict[str, Any]]]:
                 "player_id": str(player.id),
                 "display_name": player.name,
                 "jersey_number": player.jersey_number,
+                "eligible": player.eligible,
             }
         )
     return {

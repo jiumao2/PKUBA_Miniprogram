@@ -924,7 +924,8 @@ def admin_decide_review_route(
             _raise("VOTER_INVALID", "指定球队不能重复。")
         teams = list(eligible_reschedule_voter_teams(game).filter(id__in=unique_ids))
         if len(teams) != len(unique_ids):
-            _raise("VOTER_INVALID", "指定球队必须属于本场同组别及同小组的有效候选范围。")
+            scope = "同小组" if game.group_id else "同组别"
+            _raise("VOTER_INVALID", f"指定球队必须属于本场{scope}的有效候选范围。")
         TeamConfirmation.objects.bulk_create(
             [
                 TeamConfirmation(

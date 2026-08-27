@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { hasRecognitionResult } from '@pkuba/scoresheet-domain';
+import { hasRecognitionResult, type ScoresheetContextPlayerMapping } from '@pkuba/scoresheet-domain';
 import { api } from './api';
 import type {
   DocumentChangeLogEntry,
@@ -115,6 +115,8 @@ interface EditorState {
   reloadAfterConflict: () => Promise<void>;
   overwriteAfterConflict: () => Promise<void>;
   validate: () => Promise<ValidationReport | null>;
+  contextReviewing: boolean;
+  reviewGameContext: (mappings: ScoresheetContextPlayerMapping[]) => Promise<void>;
   confirm: () => Promise<void>;
   align: (rotation: 0 | 90 | 180 | 270, corners: number[][] | null) => Promise<void>;
   reloadSource: () => Promise<void>;
@@ -126,6 +128,7 @@ interface EditorState {
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
+  contextReviewing: false,
   document: null,
   serverRevision: 0,
   template: null,
@@ -399,6 +402,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectField: (selectedField) => set({ selectedField }),
 
   mutate: (mutation) => {
+    if (get().contextReviewing) return;
     const {
       document: current,
       serverRevision,
@@ -444,7 +448,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   undo: () => {
     const { past, document, serverRevision, readOnly, online } = get();
-    if (readOnly || !online) return;
+    if (readOnly || !online || get().contextReviewing) return;
     if (!document || past.length === 0) return;
     const next = rebaseSnapshot(past[past.length - 1], serverRevision);
     set((state) => ({
@@ -460,7 +464,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   redo: () => {
     const { future, document, serverRevision, readOnly, online } = get();
-    if (readOnly || !online) return;
+    if (readOnly || !online || get().contextReviewing) return;
     if (!document || future.length === 0) return;
     const next = rebaseSnapshot(future[0], serverRevision);
     set((state) => ({
@@ -643,6 +647,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '校验失败' });
       return null;
+    }
+  },
+
+  reviewGameContext: async (mappings) => {
+    const initial = get();
+    const token = initial.validation?.game_context?.review_token;
+    if (!initial.document || !token || initial.contextReviewing || initial.readOnly || !initial.online) return;
+    if (initial.dirty || activeSave) {
+      set({ error: '草稿有新输入，请保存并重新校验后再复核。' });
+      return;
+    }
+    set({ contextReviewing: true, error: '' });
+    try {
+      const next = await api.reviewGameContext(initial.document.id, initial.serverRevision, token, mappings);
+      if (get().document?.id !== initial.document.id) return;
+      set({ document: next, serverRevision: next.revision, validation: null,
+        dirty: false, saveState: 'saved', past: [], future: [] });
+      await get().validate();
+      await get().refreshChanges();
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : '比赛信息复核失败，原图和草稿仍保留。' });
+    } finally {
+      set({ contextReviewing: false });
     }
   },
 
@@ -978,6 +1005,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   syncNow: async () => {
+    if (get().contextReviewing) return;
     const document = get().document;
     if (!document) {
       set({ online: navigator.onLine });
@@ -985,7 +1013,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     try {
       const sync = await api.sync(document.id);
-      if (get().document?.id !== document.id) return;
+      if (get().document?.id !== document.id || get().contextReviewing) return;
       let lease = api.leaseState(document.id);
       const remoteHolder = sync.lease;
       const localHolder = lease?.holder;
@@ -1001,6 +1029,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ) {
         lease = await api.acquire(document.id);
       }
+      if (get().contextReviewing || get().document?.id !== document.id) return;
       const autoAcquireLease = get().autoAcquireLease;
       set({
         online: true,
@@ -1018,7 +1047,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
         const latest = await api.document(document.id);
         const recognitionRun = await loadRecognitionRun(latest);
-        if (get().document?.id !== document.id || get().dirty) return;
+        if (get().document?.id !== document.id || get().dirty || get().contextReviewing
+          || latest.revision < get().serverRevision) return;
         set({
           document: latest,
           serverRevision: latest.revision,

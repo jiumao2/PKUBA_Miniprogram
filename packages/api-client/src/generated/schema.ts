@@ -2175,6 +2175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scoresheets/{scoresheet_id}/game-context/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Game Context Endpoint */
+        post: operations["core_api_scoresheets_review_game_context_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scoresheets/{scoresheet_id}/validate": {
         parameters: {
             query?: never;
@@ -7163,6 +7180,44 @@ export interface components {
              * @default true
              */
             reviewed: boolean;
+        };
+        /** ContextPlayerMappingIn */
+        ContextPlayerMappingIn: {
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "A" | "B";
+            /** Row */
+            row: number;
+            /**
+             * Player Id
+             * Format: uuid
+             */
+            player_id: string;
+        };
+        /** ReviewGameContextIn */
+        ReviewGameContextIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Lease Token */
+            lease_token: string;
+            /** Client Id */
+            client_id: string;
+            /**
+             * Surface
+             * @enum {string}
+             */
+            surface: "WEB" | "MINIAPP";
+            /** Review Token */
+            review_token: string;
+            /** Confirmed */
+            confirmed: boolean;
+            /**
+             * Player Mappings
+             * @default []
+             */
+            player_mappings: components["schemas"]["ContextPlayerMappingIn"][];
         };
         /** MutationContextIn */
         MutationContextIn: {
@@ -13031,6 +13086,70 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ReviewRegionIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetDetailOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoresheetErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_scoresheets_review_game_context_endpoint: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                scoresheet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewGameContextIn"];
             };
         };
         responses: {

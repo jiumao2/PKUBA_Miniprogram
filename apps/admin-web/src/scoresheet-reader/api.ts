@@ -1,5 +1,5 @@
 import { createAdminClient, createIdempotencyKey } from '@pkuba/api-client';
-import { hasRecognitionResult } from '@pkuba/scoresheet-domain';
+import { hasRecognitionResult, type ScoresheetGameContextReview, type ScoresheetContextPlayerMapping } from '@pkuba/scoresheet-domain';
 
 import type {
   DocumentChangeLogPage,
@@ -30,6 +30,7 @@ type RawLease = {
 };
 
 const recognitionOperationKeys = new Map<string, string>();
+const contextReviewKeys = new Map<string, string>();
 
 type RawRecognition = {
   id: string;
@@ -73,6 +74,7 @@ type RawDetail = {
   draft_version: number;
   event_sequence: number;
   validation_report: {
+    game_context?: ScoresheetGameContextReview;
     errors?: RawIssue[];
     warnings?: RawIssue[];
   };
@@ -268,6 +270,7 @@ function reportFromDetail(rawValue: unknown): ValidationReport {
         : 'valid',
     issues,
     checked_at: new Date().toISOString(),
+    game_context: raw.validation_report.game_context,
   };
 }
 
@@ -463,6 +466,21 @@ export const api = {
     next.source.rotation = rotation;
     next.source.corners = corners;
     return api.save(next, baseRevision);
+  },
+
+  async reviewGameContext(
+    id: string, baseRevision: number, reviewToken: string,
+    playerMappings: ScoresheetContextPlayerMapping[],
+  ): Promise<ScoresheetDocument> {
+    await ensureEditable(id);
+    const operation = JSON.stringify([id, baseRevision, reviewToken, playerMappings]);
+    const key = contextReviewKeys.get(operation) ?? createIdempotencyKey();
+    contextReviewKeys.set(operation, key);
+    const raw = await admin.reviewScoresheetGameContext(
+      id, targetContext(id, baseRevision), reviewToken, playerMappings, key,
+    );
+    contextReviewKeys.delete(operation);
+    return documentFromDetail(raw as unknown as RawDetail);
   },
 
   async validate(id: string, baseRevision: number): Promise<ValidationReport> {

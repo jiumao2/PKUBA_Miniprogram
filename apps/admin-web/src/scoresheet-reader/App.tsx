@@ -258,7 +258,7 @@ export default function App() {
     '--source-pane-size': `${paneLayout.source * 100}%`,
     '--inspector-pane-size': `${paneLayout.inspector * 100}%`,
   } as CSSProperties;
-  const effectiveReadOnly = state.readOnly || !state.online;
+  const effectiveReadOnly = state.readOnly || !state.online || state.contextReviewing;
   const archivedRoute = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('archived_view') === '1' || Boolean(params.get('archived_correction'));
@@ -394,6 +394,8 @@ export default function App() {
                 onSelect={state.selectField}
                 onApplyRecognition={state.applyRecognition}
                 onDismissRecognitionDiff={state.clearRecognitionDiff}
+                onReviewGameContext={state.reviewGameContext}
+                contextReviewing={state.contextReviewing}
                 readOnly={effectiveReadOnly}
               />
             ) : (

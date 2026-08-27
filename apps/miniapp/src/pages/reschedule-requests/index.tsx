@@ -8,7 +8,11 @@ import { getMiniAppSession } from "../../auth";
 import { formatDate } from "../../format";
 import "../../role-workspace.css";
 import "./index.css";
-import { targetVenueLabel } from "./viewModel";
+import {
+  targetVenueLabel,
+  voterCandidateEmptyText,
+  voterCandidateScopeText,
+} from "./viewModel";
 
 export default function RescheduleRequestsPage() {
   const router = useRouter();
@@ -249,6 +253,7 @@ function RequestCard({
       {voting && (
         <View className="voter-panel">
           <View className="voter-heading"><Text className="voter-title">指定确认球队</Text><Button className="voter-close" onClick={onCloseVote}>关闭</Button></View>
+          <Text className="voter-scope">{voterCandidateScopeText(item.game.group_name)}</Text>
           <CheckboxGroup onChange={(event) => setSelectedVoters(event.detail.value)}>
             {candidates.map((team) => (
               <Label className="voter-option" key={team.id}>
@@ -257,7 +262,7 @@ function RequestCard({
               </Label>
             ))}
           </CheckboxGroup>
-          {!candidates.length && <Text className="voter-empty">没有可指定的同组球队。</Text>}
+          {!candidates.length && <Text className="voter-empty">{voterCandidateEmptyText(item.game.group_name)}</Text>}
           <Button className="flow-primary" disabled={busy || !selectedVoters.length} onClick={onSubmitVote}>发起投票</Button>
         </View>
       )}

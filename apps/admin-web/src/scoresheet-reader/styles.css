@@ -573,3 +573,17 @@ body.is-resizing-panes, body.is-resizing-panes * { cursor: col-resize !important
   .source-icon-button { width: 26px; }
   .source-zoom-readout { width: 36px; }
 }
+
+.game-context-review { padding: 16px; border-block: 1px solid #dbc9c8; background: #fcf8f6; }
+.game-context-review h3 { margin: 0 0 8px; font-size: 16px; }
+.game-context-review p, .game-context-player small { line-height: 1.6; color: #5b5655; }
+.game-context-review dl { margin: 12px 0; }
+.game-context-review dl > div { border-bottom: 1px solid #e8dfdd; padding: 9px 0; }
+.game-context-review dt { font-weight: 650; margin-bottom: 4px; }
+.game-context-review dd { margin: 0; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.game-context-review dd span { color: #6b6260; }
+.game-context-review dd strong { font-weight: 500; }
+.game-context-player { display: grid; gap: 7px; margin: 14px 0; }
+.game-context-player select { width: 100%; min-width: 0; padding: 9px; }
+.game-context-consent { display: flex; align-items: start; gap: 7px; margin: 15px 0; line-height: 1.5; }
+.game-context-consent input { flex: 0 0 auto; }

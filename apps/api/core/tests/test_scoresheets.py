@@ -1863,7 +1863,8 @@ def test_publish_rejects_tampered_validation_and_stale_game_prior(tmp_path):
             surface=ScoresheetEditLease.Surface.WEB,
         )
         game.version += 1
-        game.save(update_fields=["version", "updated_at"])
+        game.venue_name = "新场地"
+        game.save(update_fields=["version", "venue_name", "updated_at"])
         scoresheet.refresh_from_db()
         with pytest.raises(ScoresheetError) as stale_game:
             publish_scoresheet(
@@ -1874,7 +1875,7 @@ def test_publish_rejects_tampered_validation_and_stale_game_prior(tmp_path):
                 client_id="web-1",
                 surface=ScoresheetEditLease.Surface.WEB,
             )
-        assert stale_game.value.code == "GAME_PRIOR_STALE"
+        assert stale_game.value.code == "GAME_CONTEXT_REVIEW_REQUIRED"
 
 
 def test_publication_stats_are_immutable_and_pdf_is_single_page(tmp_path):

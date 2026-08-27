@@ -13,6 +13,7 @@ from core.models import (
     CompetitionGroup,
     DrawAssignment,
     EmailOutbox,
+    Game,
     InboxItem,
     ParticipantSlot,
     RescheduleRequest,
@@ -160,6 +161,77 @@ def test_vote_revalidates_authoritative_same_group_candidates_inside_transaction
 
     assert invalid.value.code == "VOTER_INVALID"
     assert _state_snapshot(request) == before
+
+
+def test_group_less_knockout_voters_cover_all_active_teams_in_the_division():
+    setup = reschedule_setup()
+    assign_group_teams(setup)
+    game = setup["games"][0]
+    game.group = None
+    game.stage = Game.Stage.KNOCKOUT
+    game.save(update_fields=["group", "stage"])
+
+    other_group = CompetitionGroup.objects.create(
+        division=setup["division"], code="b", name="B 组"
+    )
+    other_slot = ParticipantSlot.objects.create(
+        division=setup["division"], group=other_group, code="B1", label="B 组 1 号签"
+    )
+    other_group_candidate = Team.objects.create(
+        season=setup["season"], division=setup["division"], name="B 组候选球队"
+    )
+    DrawAssignment.objects.create(
+        season=setup["season"], slot=other_slot, team=other_group_candidate
+    )
+    inactive_team = Team.objects.create(
+        season=setup["season"],
+        division=setup["division"],
+        name="停用球队",
+        active=False,
+    )
+    other_division = type(setup["division"]).objects.create(
+        season=setup["season"], code="women-a", name="女甲"
+    )
+    other_division_team = Team.objects.create(
+        season=setup["season"], division=other_division, name="其他组别球队"
+    )
+
+    request, now = _waiting_admin(setup, same_week=False)
+    token = issue_session(setup["superadmin"])
+    client = Client()
+    response = client.get(
+        f"/api/v1/reschedule-requests/{request.id}/voter-candidates",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+
+    assert response.status_code == 200
+    candidate_ids = {item["id"] for item in response.json()}
+    assert candidate_ids == {
+        str(setup["teams"][2].id),
+        str(setup["teams"][3].id),
+        str(other_group_candidate.id),
+    }
+    assert str(setup["teams"][0].id) not in candidate_ids
+    assert str(setup["teams"][1].id) not in candidate_ids
+    assert str(inactive_team.id) not in candidate_ids
+    assert str(other_division_team.id) not in candidate_ids
+
+    updated = admin_decide_review_route(
+        actor=setup["superadmin"],
+        request_id=request.id,
+        expected_version=request.version,
+        action="vote",
+        classification=RescheduleRequest.ReviewClassification.CROSS_ROUND,
+        selected_team_ids=[other_group_candidate.id],
+        now=now + timedelta(minutes=20),
+    )
+
+    assert updated.status == RescheduleRequest.Status.WAITING_SELECTED_TEAMS
+    assert TeamConfirmation.objects.filter(
+        request=updated,
+        team=other_group_candidate,
+        purpose=TeamConfirmation.Purpose.VOTER,
+    ).exists()
 
 
 def test_two_superadmins_deciding_same_version_have_one_winner_and_one_conflict():

@@ -298,6 +298,24 @@ export interface ValidationIssue {
   context: Record<string, unknown>;
 }
 
+export interface ScoresheetGameContextReview {
+  required: boolean;
+  differences: Array<{ field: string; label: string; before: string; after: string }>;
+  player_conflicts: Array<{
+    side: "A" | "B";
+    row: number;
+    name: string;
+    choices: Array<{ id: string; name: string; label?: string }>;
+  }>;
+  review_token: string | null;
+}
+
+export interface ScoresheetContextPlayerMapping {
+  side: "A" | "B";
+  row: number;
+  player_id: string;
+}
+
 export interface ScoresheetDetail {
   id: string;
   game: Record<string, unknown>;
@@ -319,6 +337,7 @@ export interface ScoresheetDetail {
     errors?: ValidationIssue[];
     warnings?: ValidationIssue[];
     computed?: Record<string, unknown>;
+    game_context?: ScoresheetGameContextReview;
   };
   validation_draft_version: number | null;
   acknowledged_warnings: string[];

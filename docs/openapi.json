@@ -9209,6 +9209,113 @@
         ]
       }
     },
+    "/api/v1/scoresheets/{scoresheet_id}/game-context/review": {
+      "post": {
+        "operationId": "core_api_scoresheets_review_game_context_endpoint",
+        "summary": "Review Game Context Endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scoresheet_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Scoresheet Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetDetailOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresheetErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "scoresheets"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewGameContextIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "MiniAppBearerAuth": []
+          },
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/scoresheets/{scoresheet_id}/validate": {
       "post": {
         "operationId": "core_api_scoresheets_validate_scoresheet_endpoint",
@@ -22048,6 +22155,84 @@
           "surface"
         ],
         "title": "ReviewRegionIn",
+        "type": "object"
+      },
+      "ContextPlayerMappingIn": {
+        "properties": {
+          "side": {
+            "enum": [
+              "A",
+              "B"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "row": {
+            "title": "Row",
+            "type": "integer"
+          },
+          "player_id": {
+            "format": "uuid",
+            "title": "Player Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "side",
+          "row",
+          "player_id"
+        ],
+        "title": "ContextPlayerMappingIn",
+        "type": "object"
+      },
+      "ReviewGameContextIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "lease_token": {
+            "title": "Lease Token",
+            "type": "string"
+          },
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "surface": {
+            "enum": [
+              "WEB",
+              "MINIAPP"
+            ],
+            "title": "Surface",
+            "type": "string"
+          },
+          "review_token": {
+            "title": "Review Token",
+            "type": "string"
+          },
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "player_mappings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ContextPlayerMappingIn"
+            },
+            "title": "Player Mappings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version",
+          "lease_token",
+          "client_id",
+          "surface",
+          "review_token",
+          "confirmed"
+        ],
+        "title": "ReviewGameContextIn",
         "type": "object"
       },
       "MutationContextIn": {

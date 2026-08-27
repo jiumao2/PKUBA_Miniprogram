@@ -1,4 +1,5 @@
 import type {
+  ScoresheetGameContextReview,
   DocumentStatus,
   FinalScore,
   FoulCode,
@@ -75,6 +76,7 @@ export interface ValidationReport {
   status: 'valid' | 'needs_review' | 'invalid';
   issues: ValidationIssue[];
   checked_at: string;
+  game_context?: ScoresheetGameContextReview;
 }
 
 export type ChangeLogAction =

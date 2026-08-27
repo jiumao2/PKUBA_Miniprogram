@@ -308,10 +308,11 @@ function RequestDetail({ item, busy, voting, candidates, selectedVoters, setSele
       {voting && (
         <section className="reschedule-voters">
           <h3>指定参与投票的球队</h3>
+          <p>{voterCandidateScopeText(item.game.group_name)}</p>
           {candidates.map((team) => (
             <label key={team.id}><input checked={selectedVoters.includes(team.id)} onChange={(event) => setSelectedVoters(event.target.checked ? [...selectedVoters, team.id] : selectedVoters.filter((id) => id !== team.id))} type="checkbox" />{team.name}<span>{team.group_name}</span></label>
           ))}
-          {!candidates.length && <p>没有可指定的同组球队。</p>}
+          {!candidates.length && <p>{voterCandidateEmptyText(item.game.group_name)}</p>}
           <button className="primary-action" disabled={busy || !selectedVoters.length} onClick={onSubmitVote} type="button">确认发起投票</button>
         </section>
       )}
@@ -361,6 +362,16 @@ export function reviewClassificationText(item: Pick<AdminRescheduleRequest, "pro
   return item.process_route === "HANDBOOK_REVIEW"
     ? "待超级管理员认定"
     : "不适用（普通流程无需认定）";
+}
+
+export function voterCandidateScopeText(groupName: string | null) {
+  return groupName
+    ? `候选范围：${groupName}内除比赛双方外的启用球队。`
+    : "候选范围：本组别内除比赛双方外的全部启用球队。";
+}
+
+export function voterCandidateEmptyText(groupName: string | null) {
+  return groupName ? "没有可指定的同小组球队。" : "没有可指定的同组别球队。";
 }
 
 function shortDate(value: string) { return value.slice(5).replace("-", "/"); }

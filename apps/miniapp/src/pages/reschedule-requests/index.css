@@ -27,6 +27,7 @@
 .voter-title { display: block; margin-bottom: 12rpx; font-size: 28rpx; font-weight: 850; }
 .voter-heading { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-bottom: 12rpx; }
 .voter-heading .voter-title { margin-bottom: 0; }
+.voter-scope { display: block; margin-bottom: 14rpx; color: #6f6b65; font-size: 27rpx; line-height: 1.55; }
 .voter-close { min-width: 104rpx; min-height: 68rpx; margin: 0; padding: 0 20rpx; color: #5f5a54; border: 1rpx solid #c9c2b8; border-radius: 8rpx; background: transparent; font-size: 26rpx; line-height: 68rpx; }
 .voter-close::after { border: 0; }
 .voter-option { display: flex; align-items: center; min-height: 68rpx; gap: 12rpx; font-size: 27rpx; }

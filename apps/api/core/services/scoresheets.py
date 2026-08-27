@@ -10,6 +10,7 @@ from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
+from django.core import signing
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -18,16 +19,21 @@ from openpyxl import Workbook
 from core.models import (
     Account,
     AdminAuditLog,
+    Division,
     Game,
     GameMediaAsset,
     GamePlayerStat,
     GameScoresheet,
     GameTeamStat,
+    Period,
+    RosterPlayer,
     ScoresheetChangeLog,
     ScoresheetEditLease,
     ScoresheetPublication,
     ScoresheetRecognitionRun,
     ScoresheetRevision,
+    Season,
+    Team,
 )
 from core.scoresheet_schema_v2 import (
     REGIONS,
@@ -39,12 +45,21 @@ from core.scoresheet_schema_v2 import (
     new_document,
     region_digest,
     roster_prior_snapshot,
-    validate_document,
 )
 from core.scoresheet_v2.recognition import PROMPT_VERSION
 from core.services.inbox_tasks import (
     close_scoresheet_tasks,
     sync_scoresheet_recognition_tasks,
+)
+from core.services.scoresheet_game_context import (
+    CONTEXT_MAX_AGE,
+    CONTEXT_SALT,
+    current_context,
+    player_conflicts,
+    resolve_player,
+    review_binding,
+    reviewed_document,
+    validation_with_context,
 )
 
 LEASE_SECONDS = 60
@@ -104,6 +119,8 @@ def _revision_locked(
             "draft": copy.deepcopy(scoresheet.draft),
             "reviewed_regions": copy.deepcopy(scoresheet.reviewed_regions),
             "validation_report": copy.deepcopy(scoresheet.validation_report),
+            "game_prior_snapshot": copy.deepcopy(scoresheet.game_prior_snapshot),
+            "roster_snapshot": copy.deepcopy(scoresheet.roster_snapshot),
         },
         actor=actor,
         client_id=client_id[:96],
@@ -1048,6 +1065,206 @@ def review_region(
         return scoresheet
 
 
+def _lock_publication_context(scoresheet_id, actor):
+    """Lock authoritative parents before the sheet (also used by source upload).
+
+    Parent team locks cover roster inserts as well as existing player updates.
+    No source, draft, review or validation is written by this helper.
+    """
+    locator = GameScoresheet.objects.values("game_id", "game__season_id").get(id=scoresheet_id)
+    season = Season.objects.select_for_update().get(id=locator["game__season_id"])
+    game = Game.objects.select_for_update().get(id=locator["game_id"])
+    if game.season_id != season.id:
+        raise ScoresheetError("GAME_CONTEXT_STALE", "比赛归属已变化，请重新校验。", status=409)
+    game.season = season
+    game.division = Division.objects.select_for_update().get(id=game.division_id)
+    game.period = Period.objects.select_for_update().get(id=game.period_id)
+    teams = {
+        team.id: team
+        for team in Team.objects.select_for_update()
+        .filter(id__in=[game.home_team_id, game.away_team_id])
+        .order_by("id")
+    }
+    game.home_team = teams.get(game.home_team_id)
+    game.away_team = teams.get(game.away_team_id)
+    list(RosterPlayer.objects.select_for_update().filter(team_id__in=teams).order_by("id"))
+    sheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
+    sheet.game = game
+    actor = Account.objects.select_for_update(no_key=True).get(id=actor.id)
+    if not actor.is_pkuba_admin:
+        raise ScoresheetError("ADMIN_REQUIRED", "该操作仅限当前有效管理员。", status=403)
+    return sheet, actor
+
+
+def review_scoresheet_game_context(
+    *,
+    scoresheet_id,
+    actor: Account,
+    expected_version: int,
+    lease_token: str,
+    client_id: str,
+    surface: str,
+    review_token: str,
+    confirmed: bool,
+    player_mappings: list[dict] | None = None,
+) -> GameScoresheet:
+    with transaction.atomic():
+        sheet, actor = _lock_publication_context(scoresheet_id, actor)
+        _assert_correction_permission(sheet, actor)
+        lease = _assert_lease_locked(
+            sheet, actor=actor, lease_token=lease_token, client_id=client_id, surface=surface
+        )
+        _assert_scoresheet_operable(
+            sheet, actor=actor, surface=surface, allow_archived_correction=lease.archived_correction
+        )
+        _assert_version(sheet, expected_version)
+        context = current_context(sheet.game)
+        try:
+            binding = signing.loads(review_token, salt=CONTEXT_SALT, max_age=CONTEXT_MAX_AGE)
+        except signing.BadSignature as error:
+            raise ScoresheetError(
+                "GAME_CONTEXT_STALE", "复核已失效，请重新校验并查看差异。", status=409
+            ) from error
+        if binding != review_binding(sheet, context):
+            raise ScoresheetError(
+                "GAME_CONTEXT_STALE", "原图、草稿或比赛信息再次变化，请重新核对。", status=409
+            )
+        if not confirmed:
+            raise ScoresheetError("CONFIRMATION_REQUIRED", "请明确确认已核对原图与当前比赛信息。")
+        conflicts = player_conflicts(sheet, context)
+        allowed = {(row["side"], row["row"]): row for row in conflicts}
+        seen = set()
+        replacements = {}
+        for mapping in player_mappings or []:
+            key = (mapping["side"], mapping["row"])
+            choice = next(
+                (
+                    row
+                    for row in allowed.get(key, {}).get("choices", [])
+                    if row["id"] == str(mapping["player_id"])
+                ),
+                None,
+            )
+            if choice is None or key in seen:
+                raise ScoresheetError(
+                    "PLAYER_MAPPING_INVALID", "球员复核选择已失效或不属于当前球队。"
+                )
+            seen.add(key)
+            replacements[key] = choice
+        before = {
+            "game_prior_snapshot": copy.deepcopy(sheet.game_prior_snapshot),
+            "roster_snapshot": copy.deepcopy(sheet.roster_snapshot),
+            "draft_version": sheet.draft_version,
+        }
+        prior = game_prior_snapshot(sheet.game)
+        prior["confirmed_player_bindings"] = copy.deepcopy(
+            sheet.game_prior_snapshot.get("confirmed_player_bindings", [])
+        )
+        prior["unresolved_player_bindings"] = [
+            {key: row[key] for key in ("side", "row", "name")}
+            for row in conflicts
+            if (row["side"], row["row"]) not in seen
+        ]
+        draft = reviewed_document(sheet, prior, context["roster"])
+        for team in draft["teams"]:
+            for player in team.get("players", []):
+                key = (team["side"], player["row"])
+                if key in replacements:
+                    choice = replacements[key]
+                    player["name"] = choice["name"]
+                    prior["confirmed_player_bindings"] = [
+                        row
+                        for row in prior["confirmed_player_bindings"]
+                        if (row["side"], row["row"]) != key
+                    ] + [
+                        {
+                            "side": key[0],
+                            "row": key[1],
+                            "name": player["name"],
+                            "jersey_number": str(player.get("jersey_number") or ""),
+                            "player_id": choice["id"],
+                        }
+                    ]
+        # Bind the document to the final trusted mapping, not the pre-selection prior.
+        from core.scoresheet_schema_v2 import _source_prior
+
+        draft["game_prior"] = _source_prior(prior, context["roster"])
+        # Immutable pre-review evidence includes the original header/prior,
+        # manual values and recognition provenance. The source itself is untouched.
+        _event_locked(
+            sheet, "GAME_CONTEXT_REVIEW_STARTED", actor=actor, client_id=client_id, surface=surface
+        )
+        _revision_locked(
+            sheet,
+            ScoresheetRevision.Reason.EXPLICIT_SAVE,
+            actor=actor,
+            client_id=client_id,
+            surface=surface,
+        )
+        sheet.draft_version += 1
+        draft["revision"] = sheet.draft_version
+        draft["updated_at"] = timezone.now().isoformat()
+        draft["acknowledged_warnings"] = []
+        sheet.draft = draft
+        sheet.game_prior_snapshot = prior
+        sheet.roster_snapshot = context["roster"]
+        sheet.reviewed_regions = {}
+        sheet.validation_report = {}
+        sheet.validation_draft_version = None
+        sheet.acknowledged_warnings = []
+        sheet.status = GameScoresheet.Status.DRAFT
+        sheet.save(
+            update_fields=[
+                "draft",
+                "draft_version",
+                "game_prior_snapshot",
+                "roster_snapshot",
+                "reviewed_regions",
+                "validation_report",
+                "validation_draft_version",
+                "acknowledged_warnings",
+                "status",
+                "updated_at",
+            ]
+        )
+        after = {
+            "game_prior_snapshot": copy.deepcopy(prior),
+            "roster_snapshot": copy.deepcopy(sheet.roster_snapshot),
+            "draft_version": sheet.draft_version,
+        }
+        _event_locked(
+            sheet,
+            "GAME_CONTEXT_REVIEWED",
+            actor=actor,
+            client_id=client_id,
+            surface=surface,
+            payload={"before": before, "after": after, "player_mappings": player_mappings or []},
+        )
+        _revision_locked(
+            sheet,
+            ScoresheetRevision.Reason.EXPLICIT_SAVE,
+            actor=actor,
+            client_id=client_id,
+            surface=surface,
+        )
+        AdminAuditLog.objects.create(
+            actor=actor,
+            action="SCORESHEET_GAME_CONTEXT_REVIEWED",
+            object_type="GameScoresheet",
+            object_id=sheet.id,
+            before=before,
+            after=after,
+            metadata={
+                "source_asset_id": str(sheet.source_asset_id),
+                "source_version": sheet.source_version,
+                "surface": surface,
+                "client_id": client_id,
+                "player_mappings": player_mappings or [],
+            },
+        )
+        return sheet
+
+
 def validate_scoresheet(
     *,
     scoresheet_id,
@@ -1058,7 +1275,7 @@ def validate_scoresheet(
     surface: str,
 ) -> GameScoresheet:
     with transaction.atomic():
-        scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
+        scoresheet, actor = _lock_publication_context(scoresheet_id, actor)
         _assert_correction_permission(scoresheet, actor)
         lease = _assert_lease_locked(
             scoresheet,
@@ -1074,7 +1291,7 @@ def validate_scoresheet(
             allow_archived_correction=lease.archived_correction,
         )
         _assert_version(scoresheet, expected_version)
-        report = validate_document(scoresheet.draft, scoresheet.roster_snapshot)
+        report = validation_with_context(scoresheet, current_context(scoresheet.game))
         report["draft_version"] = scoresheet.draft_version
         report["source_version"] = scoresheet.source_version
         report["source_asset_id"] = (
@@ -1223,15 +1440,7 @@ def _build_stats(
                 and not (player.get("post_foul_markers") or [])
             ):
                 continue
-            roster = next(
-                (
-                    row
-                    for row in roster_rows
-                    if str(row.get("jersey_number") or "") == str(player.get("jersey_number") or "")
-                    and str(row.get("display_name") or "") == str(player.get("name") or "")
-                ),
-                None,
-            )
+            roster = resolve_player(scoresheet.game_prior_snapshot, roster_rows, side, player)
             player_id = str(roster.get("player_id") or "") if roster else ""
             point_row = computed_players.get(
                 player_id or f"{side}:{player.get('jersey_number') or ''}", {}
@@ -1271,11 +1480,7 @@ def publish_scoresheet(
         raise ScoresheetError("ADMIN_REQUIRED", "发布仅限管理员。", status=403)
     with transaction.atomic():
         try:
-            scoresheet = (
-                GameScoresheet.objects.select_for_update(of=("self",))
-                .select_related("game", "source_asset", "current_publication")
-                .get(id=scoresheet_id)
-            )
+            scoresheet, actor = _lock_publication_context(scoresheet_id, actor)
         except GameScoresheet.DoesNotExist as error:
             raise ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404) from error
         _assert_correction_permission(scoresheet, actor)
@@ -1312,7 +1517,15 @@ def publish_scoresheet(
                 "原图、先验或草稿已变化，必须重新执行服务端校验。",
                 status=409,
             )
-        fresh_report = validate_document(scoresheet.draft, scoresheet.roster_snapshot)
+        context = current_context(scoresheet.game)
+        fresh_report = validation_with_context(scoresheet, context)
+        if fresh_report["game_context"]["required"]:
+            raise ScoresheetError("GAME_CONTEXT_REVIEW_REQUIRED",
+                                  "比赛信息或名单需要复核。原图和人工编辑已保留，请重新校验查看差异。",
+                                  status=409)
+        if report.get("current_context_digest") != fresh_report["current_context_digest"]:
+            raise ScoresheetError("VALIDATION_STALE", "比赛信息已变化，请重新执行服务端校验。",
+                                  status=409)
         for key in ("errors", "warnings", "computed"):
             if report.get(key) != fresh_report.get(key):
                 raise ScoresheetError(
@@ -1339,13 +1552,7 @@ def publish_scoresheet(
         ):
             raise ScoresheetError("FINAL_SCORE_INVALID", "正式比分必须完整且不为平局。", status=409)
 
-        game = Game.objects.select_for_update().get(id=scoresheet.game_id)
-        if game.version != scoresheet.game_prior_snapshot.get("game_version"):
-            raise ScoresheetError(
-                "GAME_PRIOR_STALE",
-                "比赛信息在上传原图后发生变化，请重传原图并重新核对。",
-                status=409,
-            )
+        game = scoresheet.game
         previous_game_score = [game.home_score, game.away_score]
         next_number = (
             ScoresheetPublication.objects.filter(scoresheet=scoresheet).aggregate(
@@ -1395,8 +1602,8 @@ def publish_scoresheet(
         # Publishing is the operation that advances the formal Game version.
         # Carry that new version into the frozen prior so a superadmin can
         # correct and republish the same source without the publication itself
-        # making the prior appear stale. Independent game edits still change
-        # the version and therefore require a new source review.
+        # making the prior appear stale. Semantic comparison and current roster
+        # validation above protect independent edits, not this counter alone.
         scoresheet.game_prior_snapshot = {
             **scoresheet.game_prior_snapshot,
             "game_version": game.version,

@@ -1,5 +1,6 @@
 import type { components } from "./generated/schema";
 import type {
+  ScoresheetContextPlayerMapping,
   ScoresheetDetail,
   ScoresheetQueueItem,
   ScoresheetRegion,
@@ -7,6 +8,8 @@ import type {
 } from "@pkuba/scoresheet-domain";
 
 export type {
+  ScoresheetContextPlayerMapping,
+  ScoresheetGameContextReview,
   ScoresheetDetail,
   ScoresheetQueueItem,
   ScoresheetRegion,
@@ -748,6 +751,16 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
         `/api/v1/scoresheets/${scoresheetId}/regions/${region}/review`,
         json("POST", { ...context, reviewed }, token),
       ),
+    reviewScoresheetGameContext: (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      reviewToken: string,
+      playerMappings: ScoresheetContextPlayerMapping[],
+      token: string,
+      idempotencyKey: string,
+    ) => send<ScoresheetDetail>(`/api/v1/scoresheets/${scoresheetId}/game-context/review`,
+      json("POST", { ...context, review_token: reviewToken, confirmed: true,
+        player_mappings: playerMappings }, token, idempotencyKey)),
     validateScoresheet: (
       scoresheetId: string,
       context: ScoresheetMutationContext,
@@ -1891,6 +1904,21 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           body: JSON.stringify({ ...context, reviewed }),
         }),
       ),
+    reviewScoresheetGameContext: async (
+      scoresheetId: string,
+      context: ScoresheetMutationContext,
+      reviewToken: string,
+      playerMappings: ScoresheetContextPlayerMapping[],
+      idempotencyKey: string,
+    ) => parseAdminResponse<ScoresheetDetail>(
+      await fetchAdmin(`/api/v1/scoresheets/${scoresheetId}/game-context/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey,
+          ...csrfHeaders() },
+        body: JSON.stringify({ ...context, review_token: reviewToken,
+          confirmed: true, player_mappings: playerMappings }),
+      }),
+    ),
     validateScoresheet: async (
       scoresheetId: string,
       context: ScoresheetMutationContext,

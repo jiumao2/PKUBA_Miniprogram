@@ -21,11 +21,13 @@ import {
   semanticScoresheetPath,
   type ScoresheetDocument,
   type ScoresheetRegion,
+  type ScoresheetContextPlayerMapping,
 } from "@pkuba/scoresheet-domain";
 
 import { absoluteMediaUrl, api, replaceGameMedia } from "../../../api";
 import { getMiniAppSession } from "../../../auth";
 import { MobileStandardView } from "../../MobileStandardView";
+import { GameContextReview } from "../../GameContextReview";
 import "./index.css";
 
 type StepKey = ScoresheetRegion | "CLOSING" | "PUBLISH";
@@ -148,6 +150,7 @@ export default function ScoresheetEditorPage() {
   const savingDocumentRef = useRef<ScoresheetDocument | null>(null);
   const actionFlightRef = useRef("");
   const recognitionOperationRef = useRef({ version: -1, key: "" });
+  const contextReviewOperationRef = useRef({ operation: "", key: "" });
   const acquireFlightRef = useRef<Promise<void> | null>(null);
   const syncFlightRef = useRef<Promise<boolean> | null>(null);
   const heartbeatFlightRef = useRef<Promise<void> | null>(null);
@@ -156,6 +159,11 @@ export default function ScoresheetEditorPage() {
   const projectServer = useCallback((raw: ScoresheetDetail) => raw, []);
 
   const applyServer = useCallback((raw: ScoresheetDetail, preservePending = false) => {
+    const current = serverRef.current;
+    if (current?.id === raw.id && (raw.draft_version < current.draft_version
+      || (raw.draft_version === current.draft_version && raw.event_sequence < current.event_sequence))) {
+      return current;
+    }
     const next = projectServer(raw);
     serverRef.current = next;
     setSheet({
@@ -372,7 +380,7 @@ export default function ScoresheetEditorPage() {
   }, [flush, online]);
 
   const queueDocument = useCallback((next: ScoresheetDocument, previous: ScoresheetDocument, immediate = false, changeType = "FIELD_EDIT") => {
-    if (readOnly || !online) return;
+    if (readOnly || !online || actionFlightRef.current) return;
     setHistory((rows) => [...rows.slice(-49), previous]);
     setFuture([]);
     if (!pendingRef.current) pendingBaseVersionRef.current = serverRef.current?.draft_version ?? null;
@@ -386,6 +394,7 @@ export default function ScoresheetEditorPage() {
   }, [flush, online, readOnly, scoresheetId]);
 
   const sync = useCallback(() => {
+    if (actionFlightRef.current) return Promise.resolve(true);
     if (syncFlightRef.current) return syncFlightRef.current;
     const operation = (async () => {
       const current = serverRef.current;
@@ -397,8 +406,10 @@ export default function ScoresheetEditorPage() {
         current.event_sequence,
         token,
       );
+      if (actionFlightRef.current) return true;
       if ((update.events.length || update.requires_full_reload) && !savingRef.current) {
         const next = projectServer(await api.getScoresheet(scoresheetId, token));
+        if (actionFlightRef.current || next.draft_version < (serverRef.current?.draft_version ?? 0)) return true;
         if (!pendingRef.current) {
           applyServer(next);
         } else if (pendingBaseVersionRef.current === next.draft_version) {
@@ -550,6 +561,38 @@ export default function ScoresheetEditorPage() {
     }
   };
 
+  const reviewGameContext = async (mappings: ScoresheetContextPlayerMapping[]) => {
+    if (actionFlightRef.current) return;
+    const reviewToken = serverRef.current?.validation_report.game_context?.review_token;
+    if (!reviewToken || !context()) return;
+    actionFlightRef.current = "GAME_CONTEXT";
+    setBusyAction("GAME_CONTEXT");
+    try {
+      const answer = await Taro.showModal({ title: "确认比赛信息复核",
+        content: "请确认已对照原图核对当前比赛信息及所选球员归属。原图、得分、犯规和人工编辑会保留；未解决的名单冲突仍会阻止发布。",
+        confirmText: "确认复核" });
+      if (!answer.confirm || !(await drainPending())) return;
+      const mutation = context()!;
+      const operation = JSON.stringify([scoresheetId, mutation.expected_version, reviewToken, mappings]);
+      if (contextReviewOperationRef.current.operation !== operation) {
+        contextReviewOperationRef.current = { operation, key: createIdempotencyKey() };
+      }
+      applyServer(await api.reviewScoresheetGameContext(scoresheetId, mutation, reviewToken, mappings,
+        token, contextReviewOperationRef.current.key));
+      contextReviewOperationRef.current = { operation: "", key: "" };
+      setHistory([]);
+      setFuture([]);
+      applyServer(await api.validateScoresheet(scoresheetId, context()!, token));
+      setError("");
+      setSaveState("已保存");
+    } catch (reason) {
+      setError(message(reason));
+    } finally {
+      actionFlightRef.current = "";
+      setBusyAction("");
+    }
+  };
+
   const publish = async () => {
     if (actionFlightRef.current) return;
     actionFlightRef.current = "PUBLISH";
@@ -560,9 +603,14 @@ export default function ScoresheetEditorPage() {
       const errors = validated.validation_report.errors ?? [];
       const warnings = validated.validation_report.warnings ?? [];
       if (errors.length > 0) {
+        setStepIndex(STEPS.length - 1);
+        setView("STANDARD");
+        setStandardScrollAnchor("step-publish-top");
         await Taro.showModal({
           title: "校验未通过",
-          content: `仍有 ${errors.length} 个错误，请修正后重新发布。`,
+          content: validated.validation_report.game_context?.required
+            ? "比赛信息或名单需要复核，原图和人工编辑均已保留。请查看发布区域中的具体差异。"
+            : `仍有 ${errors.length} 个错误，请修正后重新发布。`,
           showCancel: false,
         });
         return;
@@ -596,7 +644,7 @@ export default function ScoresheetEditorPage() {
   };
 
   const undo = (direction: "UNDO" | "REDO") => {
-    if (!sheet || readOnly) return;
+    if (!sheet || readOnly || actionFlightRef.current) return;
     const source = direction === "UNDO" ? history : future;
     const target = source[source.length - 1];
     if (!target) return;
@@ -745,7 +793,7 @@ export default function ScoresheetEditorPage() {
               onChange={(next, immediate) => queueDocument(next, sheet.draft, immediate)}
               onLocateIssue={setStandardScrollAnchor}
               onSelectScore={setSelectedScoreId}
-              readOnly={readOnly || !online}
+              readOnly={readOnly || !online || Boolean(busyAction)}
               selectedScoreId={selectedScoreId}
               step={currentKey}
             />
@@ -759,10 +807,15 @@ export default function ScoresheetEditorPage() {
                 onChange={(next, immediate) => queueDocument(next, sheet.draft, immediate)}
                 onLocateIssue={setStandardScrollAnchor}
                 onSelectScore={setSelectedScoreId}
-                readOnly={readOnly || !online}
+                readOnly={readOnly || !online || Boolean(busyAction)}
                 selectedScoreId={selectedScoreId}
                 step={currentKey}
               />
+              {currentKey === "PUBLISH" && sheet.validation_report.game_context?.required && (
+                <GameContextReview key={sheet.validation_report.game_context.review_token}
+                  review={sheet.validation_report.game_context}
+                  readOnly={readOnly || !online} busy={Boolean(busyAction)} onConfirm={reviewGameContext} />
+              )}
               {currentKey === "PUBLISH" && (
                 <PublishPanel
                   busy={busyAction === "PUBLISH"}
