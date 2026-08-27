@@ -1092,6 +1092,8 @@ def _change_preview(team: Team, payload: dict) -> dict[str, object]:
             player = existing.get(str(row["id"]))
             if player is None:
                 raise RosterManagementError("名单包含不属于该球队的球员。", "INVALID_PLAYER_ID")
+            if str(player.id) in incoming_ids:
+                raise RosterManagementError("同一球员不能在名单中重复出现。", "INVALID_PLAYER_ID")
             incoming_ids.add(str(player.id))
             changed = any(
                 [
@@ -1201,6 +1203,12 @@ def save_team_roster(
             normalized_players = _validate_player_rows(payload.get("players", []))
             existing = {str(item.id): item for item in team.roster.all()}
             incoming_ids: set[str] = set()
+            changed_players: list[tuple[RosterPlayer, dict]] = []
+            new_players: list[dict] = []
+            release_ids: list[object] = []
+            # Validate the entire target against the original locked rows before
+            # touching the partial unique index. A changed row is saved exactly
+            # once, regardless of the input order or temporary occupancy below.
             for row in normalized_players:
                 if row["id"]:
                     player = existing.get(str(row["id"]))
@@ -1222,34 +1230,45 @@ def save_team_roster(
                         ]
                     )
                     if changed:
-                        player.name = row["name"]
-                        player.jersey_number = row["jersey_number"]
-                        player.eligible = row["eligible"]
-                        player.active = row["active"]
-                        player.version += 1
-                        player.save(
-                            update_fields=[
-                                "name",
-                                "jersey_number",
-                                "eligible",
-                                "active",
-                                "version",
-                                "updated_at",
-                            ]
-                        )
+                        changed_players.append((player, row))
+                    if player.active and player.jersey_number and (
+                        player.jersey_number != row["jersey_number"] or not row["active"]
+                    ):
+                        release_ids.append(player.id)
                 else:
-                    RosterPlayer.objects.create(
-                        team=team,
-                        name=row["name"],
-                        jersey_number=row["jersey_number"],
-                        eligible=row["eligible"],
-                        active=row["active"],
-                    )
-            for player_id, player in existing.items():
-                if player_id not in incoming_ids and player.active:
-                    player.active = False
-                    player.version += 1
-                    player.save(update_fields=["active", "version", "updated_at"])
+                    new_players.append(row)
+            omitted_players = [
+                player for player_id, player in existing.items()
+                if player_id not in incoming_ids and player.active
+            ]
+            release_ids.extend(player.id for player in omitted_players if player.jersey_number)
+            # This uncommitted release is invisible to other connections and does
+            # not change business versions, timestamps or the audit snapshot.
+            # Keep the cached originals intact; explicitly write every final row.
+            RosterPlayer.objects.filter(team=team, id__in=release_ids).update(active=False)
+            for player, row in changed_players:
+                player.name = row["name"]
+                player.jersey_number = row["jersey_number"]
+                player.eligible = row["eligible"]
+                player.active = row["active"]
+                player.version += 1
+                player.save(
+                    update_fields=[
+                        "name", "jersey_number", "eligible", "active", "version", "updated_at",
+                    ]
+                )
+            for row in new_players:
+                RosterPlayer.objects.create(
+                    team=team,
+                    name=row["name"],
+                    jersey_number=row["jersey_number"],
+                    eligible=row["eligible"],
+                    active=row["active"],
+                )
+            for player in omitted_players:
+                player.active = False
+                player.version += 1
+                player.save(update_fields=["active", "version", "updated_at"])
             team.name = normalized_name
             team.active = new_active
             team.version += 1

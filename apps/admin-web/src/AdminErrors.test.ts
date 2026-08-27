@@ -36,8 +36,8 @@ describe("administrator API errors", () => {
     [422, { detail: "日期无效" }, "日期无效", undefined],
     [400, { message: "优先保留业务错误", detail: [{ msg: "字段错误" }] }, "优先保留业务错误", undefined],
     [422, { detail: [{ msg: "提交内容无效" }, { msg: {} }, null] }, "提交内容无效", undefined],
-    [422, { detail: [{ loc: ["query", "page"], msg: "必须大于 0" }] }, "page：必须大于 0", undefined],
-    [422, { detail: [{ loc: ["body", "__proto__", "constructor"], msg: "提交内容无效" }] }, "__proto__ · constructor：提交内容无效", undefined],
+    [422, { detail: [{ loc: ["query", "page"], msg: "必须大于 0" }] }, "页码：必须大于 0", undefined],
+    [422, { detail: [{ loc: ["body", "__proto__", "constructor"], msg: "提交内容无效" }] }, "提交内容无效", undefined],
     [500, { message: { secret: "hidden" }, detail: { trace: "hidden" }, code: {} }, "请求失败（500）", undefined],
     [422, { detail: [] }, "请求失败（422）", undefined],
     [422, null, "请求失败（422）", undefined],
@@ -53,6 +53,50 @@ describe("administrator API errors", () => {
     const error = await errorFromResponse("<html>private stack trace</html>", 500, false);
     expect(error).toMatchObject({ message: "请求失败（500）", status: 500 });
     expect(String(error)).not.toContain("private");
+  });
+
+  it.each([
+    ["date_from_datetime_parsing", "date", "Input should be a valid date or datetime, input is too short", "日期：请填写有效日期"],
+    ["date_parsing", "date", "Input should be a valid date", "日期：请填写有效日期"],
+    ["missing", "date", "Field required", "日期：此项必填"],
+    ["int_parsing", "capacity", "Input should be a valid integer", "容量：请填写整数"],
+    ["int_type", "capacity", "Input should be a valid integer", "容量：请填写整数"],
+    ["int_from_float", "capacity", "Input should be a valid integer, got a number with a fractional part", "容量：请填写整数"],
+    ["greater_than_equal", "capacity", "Input should be greater than or equal to 0", "容量：数值低于允许的最小值"],
+    ["less_than_equal", "capacity", "Input should be less than or equal to 100", "容量：数值超过允许的最大值"],
+    ["float_parsing", "capacity", "Input should be a valid number", "容量：请填写有效数字"],
+    ["string_too_short", "name", "String should have at least 1 character", "名称：填写内容过短"],
+    ["string_too_long", "name", "String should have at most 120 characters", "名称：填写内容过长"],
+    ["time_parsing", "start_time", "Input should be in a valid time format", "开赛时间：请填写有效时间"],
+    ["uuid_parsing", "period_id", "Input should be a valid UUID", "时段：所选项目无效，请重新选择"],
+    ["bool_parsing", "active", "Input should be a valid boolean", "启用状态：请选择有效的启用或关闭状态"],
+    ["list_type", "players", "Input should be a valid list", "球员：请填写有效列表"],
+  ])("localizes built-in %s with a readable nested field position", async (type, field, msg, expected) => {
+    const error = await errorFromResponse({ detail: [{
+      type, loc: ["body", "payload", "date_capacity_overrides", 0, field], msg,
+      input: "private-input", ctx: { error: "private-context", ge: "private-limit" },
+    }] });
+    expect(error).toMatchObject({
+      status: 422,
+      message: `特殊日期容量 · 第 1 项 · ${expected}`,
+    });
+    expect(String(error)).not.toMatch(/date_capacity_overrides|Input should|Field required|private-/);
+  });
+
+  it.each([
+    { type: "unknown_validator", msg: "private-path: bad value" },
+    { type: "__proto__", msg: "private-value" },
+    { type: { internal: "private-type" }, msg: { internal: "private-message" } },
+    { msg: "Traceback: private-error <html>invalid</html>" },
+  ])("uses a safe Chinese fallback for unknown or malformed validators", async (field) => {
+    const error = await errorFromResponse({ detail: [{
+      ...field,
+      loc: ["body", "payload", "internal_state", "__proto__", "constructor", { key: "private-field" }],
+      input: "private-input", ctx: { error: "private-context" },
+    }] });
+    expect(error).toMatchObject({ status: 422 });
+    expect((error as ApiError).message).toMatch(/填写内容无效|请求失败/);
+    expect(String(error)).not.toMatch(/internal_state|__proto__|constructor|private-|Traceback|html|\[object Object\]/);
   });
 
   it("still signals session expiry once and keeps successful data unchanged", async () => {

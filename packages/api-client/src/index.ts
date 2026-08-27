@@ -955,7 +955,10 @@ function errorRecord(value: unknown): Record<string, unknown> | null {
 function validationLocation(value: unknown): string {
   if (!Array.isArray(value)) return "";
   const labels: Record<string, string> = {
-    date: "比赛日期",
+    date: "日期",
+    date_capacity_overrides: "特殊日期容量",
+    capacity: "容量",
+    period_id: "时段",
     starts_on: "开始日期",
     ends_on: "结束日期",
     start_time: "开赛时间",
@@ -963,16 +966,68 @@ function validationLocation(value: unknown): string {
     target_date: "目标日期",
     target_period_id: "目标时段",
     name: "名称",
+    active: "启用状态",
+    page: "页码",
+    page_size: "每页数量",
     players: "球员",
     jersey_number: "号码",
   };
   return value
-    .filter((part) => typeof part === "string" || typeof part === "number")
-    .filter((part) => !["body", "query", "path", "payload"].includes(String(part)))
-    .map((part) => typeof part === "number"
-      ? `第 ${part + 1} 项`
-      : (Object.prototype.hasOwnProperty.call(labels, part) ? labels[part] : part))
+    .flatMap((part) => {
+      if (typeof part === "number" && Number.isSafeInteger(part) && part >= 0) {
+        return [`第 ${part + 1} 项`];
+      }
+      return typeof part === "string" && Object.prototype.hasOwnProperty.call(labels, part)
+        ? [labels[part]] : [];
+    })
     .join(" · ");
+}
+
+function validationMessage(field: Record<string, unknown>): string {
+  // Localize known schema errors, not arbitrary engine messages or input/ctx.
+  const messages: Record<string, string> = {
+    missing: "此项必填",
+    date_parsing: "请填写有效日期",
+    date_type: "请填写有效日期",
+    date_from_datetime_parsing: "请填写有效日期",
+    date_from_datetime_inexact: "请填写不含时间的日期",
+    datetime_parsing: "请填写有效日期和时间",
+    datetime_type: "请填写有效日期和时间",
+    datetime_from_date_parsing: "请填写有效日期和时间",
+    time_parsing: "请填写有效时间",
+    time_type: "请填写有效时间",
+    int_parsing: "请填写整数",
+    int_type: "请填写整数",
+    int_from_float: "请填写整数",
+    float_parsing: "请填写有效数字",
+    float_type: "请填写有效数字",
+    finite_number: "请填写有限数字",
+    greater_than: "数值必须大于允许的下限",
+    greater_than_equal: "数值低于允许的最小值",
+    less_than: "数值必须小于允许的上限",
+    less_than_equal: "数值超过允许的最大值",
+    string_type: "请填写文本",
+    string_too_short: "填写内容过短",
+    string_too_long: "填写内容过长",
+    string_pattern_mismatch: "填写格式不正确",
+    bool_parsing: "请选择有效的启用或关闭状态",
+    bool_type: "请选择有效的启用或关闭状态",
+    list_type: "请填写有效列表",
+    uuid_parsing: "所选项目无效，请重新选择",
+    uuid_type: "所选项目无效，请重新选择",
+    enum: "请选择有效选项",
+    literal_error: "请选择有效选项",
+  };
+  if (typeof field.type === "string" && Object.prototype.hasOwnProperty.call(messages, field.type)) {
+    return messages[field.type];
+  }
+  // Keep the existing custom Chinese field-message contract. Unknown typed
+  // validators and internal paths must never be echoed as user instructions.
+  if (field.type === undefined && typeof field.msg === "string"
+    && /[\u3400-\u9fff]/.test(field.msg) && !/[<>\r\n]/.test(field.msg)) {
+    return field.msg;
+  }
+  return "填写内容无效，请检查后重试";
 }
 
 function adminErrorMessage(value: unknown, fallback: string): string {
@@ -985,9 +1040,10 @@ function adminErrorMessage(value: unknown, fallback: string): string {
     const field = errorRecord(item);
     if (!field || typeof field.msg !== "string" || !field.msg.trim()) return [];
     const location = validationLocation(field.loc);
+    const message = validationMessage(field);
     // Only documented validation text is shown. Never stringify the response,
     // its input values, context, tracebacks, or arbitrary nested objects.
-    return [location ? `${location}：${field.msg}` : field.msg];
+    return [location ? `${location}：${message}` : message];
   });
   return messages.length ? messages.join("；") : fallback;
 }
