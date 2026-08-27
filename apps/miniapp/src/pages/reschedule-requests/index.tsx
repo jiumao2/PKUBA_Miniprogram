@@ -1,6 +1,6 @@
 import { Button, Checkbox, CheckboxGroup, Label, Text, View } from "@tarojs/components";
 import Taro, { useDidShow, useRouter } from "@tarojs/taro";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RescheduleRequest, RescheduleVoterTeam } from "@pkuba/api-client";
 
 import { api } from "../../api";
@@ -8,6 +8,12 @@ import { getMiniAppSession } from "../../auth";
 import { formatDate } from "../../format";
 import "../../role-workspace.css";
 import "./index.css";
+import {
+  RESCHEDULE_LOGIN_REQUIRED,
+  RescheduleAccessNotice,
+  rescheduleAccessProblem,
+  type RescheduleAccessProblem,
+} from "../rescheduleAccess";
 import {
   targetVenueLabel,
   voterCandidateEmptyText,
@@ -21,37 +27,77 @@ export default function RescheduleRequestsPage() {
   const [view, setView] = useState<"active" | "history">("active");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
-  const [error, setError] = useState("");
   const [voteRequestId, setVoteRequestId] = useState("");
   const [candidates, setCandidates] = useState<RescheduleVoterTeam[]>([]);
   const [selectedVoters, setSelectedVoters] = useState<string[]>([]);
+  const [accessProblem, setAccessProblem] = useState<RescheduleAccessProblem | null>(null);
+  const loadSequence = useRef(0);
+  const loadedIdentity = useRef<string | null>(null);
 
-  const load = async () => {
-    const token = getMiniAppSession();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      setItems(await api.listRescheduleRequests(token));
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "申请读取失败");
-    } finally {
+  const identityGuard = (token: string) => {
+    const sequence = loadSequence.current;
+    return () => sequence === loadSequence.current && token === getMiniAppSession();
+  };
+
+  const clearPrivateContent = () => {
+    setItems([]);
+    setVoteRequestId("");
+    setCandidates([]);
+    setSelectedVoters([]);
+    setBusyId("");
+  };
+  const requireLogin = () => {
+    loadSequence.current += 1;
+    loadedIdentity.current = null;
+    clearPrivateContent();
+    setAccessProblem(RESCHEDULE_LOGIN_REQUIRED);
+    setLoading(false);
+  };
+  const showFailure = (reason: unknown, fallback: string) => {
+    const problem = rescheduleAccessProblem(reason, fallback);
+    setAccessProblem(problem);
+    if (problem.kind !== "error") {
+      loadSequence.current += 1;
+      clearPrivateContent();
       setLoading(false);
     }
   };
 
+  const load = async () => {
+    const token = getMiniAppSession();
+    if (!token) {
+      requireLogin();
+      return;
+    }
+    const sequence = ++loadSequence.current;
+    const current = () => sequence === loadSequence.current && token === getMiniAppSession();
+    if (loadedIdentity.current !== token) {
+      clearPrivateContent();
+      loadedIdentity.current = token;
+    }
+    setLoading(true);
+    setAccessProblem(null);
+    try {
+      const rows = await api.listRescheduleRequests(token);
+      if (current()) setItems(rows);
+    } catch (reason: unknown) {
+      if (current()) showFailure(reason, "申请读取失败");
+    } finally {
+      if (current()) setLoading(false);
+    }
+  };
+
   useDidShow(() => { void load(); });
+  useEffect(() => () => { loadSequence.current += 1; }, []);
   useEffect(() => {
     if (!focusedRequestId || !items.length) return;
     const focused = items.find((item) => item.id === focusedRequestId);
     if (!focused) return;
     setView(focused.is_terminal ? "history" : "active");
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       void Taro.pageScrollTo({ selector: `#request-${focusedRequestId}`, duration: 260 });
     }, 80);
+    return () => clearTimeout(timer);
   }, [focusedRequestId, items]);
   const shown = items
     .filter((item) => view === "active" ? !item.is_terminal : item.is_terminal)
@@ -64,7 +110,8 @@ export default function RescheduleRequestsPage() {
     action: (token: string) => Promise<unknown>,
   ) => {
     const token = getMiniAppSession();
-    if (!token) return;
+    if (!token) { requireLogin(); return; }
+    const current = identityGuard(token);
     const result = await Taro.showModal({
       title,
       content,
@@ -72,39 +119,44 @@ export default function RescheduleRequestsPage() {
       confirmColor: "#c91f26",
     });
     if (!result.confirm) return;
+    if (!current()) return;
     setBusyId(item.id);
-    setError("");
     try {
       await action(token);
+      if (!current()) return;
+      setBusyId("");
       await load();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "操作失败");
+      if (current()) showFailure(reason, "操作失败");
     } finally {
-      setBusyId("");
+      if (current()) setBusyId("");
     }
   };
 
   const openVote = async (item: RescheduleRequest) => {
     const token = getMiniAppSession();
-    if (!token) return;
+    if (!token) { requireLogin(); return; }
+    const current = identityGuard(token);
     setBusyId(item.id);
-    setError("");
     try {
-      setCandidates(await api.getRescheduleVoterCandidates(item.id, token));
+      const rows = await api.getRescheduleVoterCandidates(item.id, token);
+      if (!current()) return;
+      setCandidates(rows);
       setSelectedVoters([]);
       setVoteRequestId(item.id);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "投票球队读取失败");
+      if (current()) showFailure(reason, "投票球队读取失败");
     } finally {
-      setBusyId("");
+      if (current()) setBusyId("");
     }
   };
 
   const submitVote = async (item: RescheduleRequest) => {
     const token = getMiniAppSession();
-    if (!token || !selectedVoters.length) return;
+    if (!token) { requireLogin(); return; }
+    if (!selectedVoters.length) return;
+    const current = identityGuard(token);
     setBusyId(item.id);
-    setError("");
     try {
       await api.decideRescheduleAsAdmin(item.id, {
         expected_version: item.version,
@@ -112,12 +164,14 @@ export default function RescheduleRequestsPage() {
         classification: "CROSS_ROUND",
         selected_team_ids: selectedVoters,
       }, token);
+      if (!current()) return;
       setVoteRequestId("");
+      setBusyId("");
       await load();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "发起投票失败");
+      if (current()) showFailure(reason, "发起投票失败");
     } finally {
-      setBusyId("");
+      if (current()) setBusyId("");
     }
   };
 
@@ -134,7 +188,13 @@ export default function RescheduleRequestsPage() {
       </View>
 
       {loading && <View className="state"><Text className="state-detail">正在读取申请状态…</Text></View>}
-      {!loading && !shown.length && (
+      {accessProblem && <RescheduleAccessNotice
+        problem={accessProblem}
+        onRetry={() => void load()}
+        returnEntry="reschedule_requests"
+        requestId={focusedRequestId}
+      />}
+      {!loading && !accessProblem && !shown.length && (
         <View className="state"><Text className="state-detail">这里暂时没有申请。</Text></View>
       )}
       <View className="request-list">
@@ -167,7 +227,6 @@ export default function RescheduleRequestsPage() {
           />
         ))}
       </View>
-      {error && <View className="flow-feedback">{error}</View>}
     </View>
   );
 }

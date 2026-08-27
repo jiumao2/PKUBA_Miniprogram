@@ -581,7 +581,7 @@ def _build_season_photos(job: ArchiveJob, output: Path) -> dict[str, object]:
                     "file_key": asset.file_key,
                     "byte_size": asset.byte_size,
                     "sha256": asset.file_sha256,
-                    "deleted_at": asset.deleted_at,
+                    "deleted_at": asset.deleted_at.isoformat() if asset.deleted_at else None,
                 }
             )
         csv_buffer = io.StringIO(newline="")
@@ -852,6 +852,9 @@ def process_archive_job(job: ArchiveJob) -> ArchiveJob:
                     summary = _build_season_photos(job, temporary)
             else:
                 summary = _build_system_raw(job, temporary)
+        # Validate the exact JSONField payload before promoting the temporary
+        # package. A serialization error must not leave an unregistered ZIP.
+        json.dumps(summary, ensure_ascii=False, allow_nan=False)
         temporary.replace(output)
         now = timezone.now()
         ArchiveJob.objects.filter(id=job.id).update(

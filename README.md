@@ -12,7 +12,7 @@
 - `packages/design-tokens`：共享品牌变量。
 - `Plan.md`：目标架构、业务决定和里程碑。
 - `WORKFLOW.md`：2–4 人团队从需求、分支、PR、验证到发布与回滚的权威工作流。
-- `docs/USER_GUIDE.md`：公众、领队、管理员的完整使用说明，以及页面显示、期限、次数、权限、重试和归档等隐式规则。
+- `docs/USER_GUIDE.md`：公众、领队、管理员的完整使用说明，以及身份失效、字段错误、页面显示、期限、权限、重试和归档等规则。
 - `docs/RESCHEDULING.md`：调赛日期关系、处理通道、审核分类、迁移兼容与激活门禁。
 - `docs/DEPLOYMENT.md`：GitHub 一键生产发布、服务器首次接入、自动回滚和灾难恢复边界。
 - `docs/BACKUP_AND_ARCHIVE.md`：本地私有存储、三类导出、照片清理和隔离恢复。

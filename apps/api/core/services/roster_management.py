@@ -991,7 +991,9 @@ def _validate_player_rows(rows: list[dict]) -> list[dict]:
             active_jerseys.add(jersey_number)
         normalized.append(
             {
-                "id": row.get("id"),
+                # API schemas decode UUIDs; preview and save must hash the same
+                # JSON-safe stable identity as direct service callers.
+                "id": str(row["id"]) if row.get("id") is not None else None,
                 "expected_version": row.get("expected_version"),
                 "name": name,
                 "jersey_number": jersey_number,

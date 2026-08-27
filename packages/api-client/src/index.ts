@@ -946,21 +946,64 @@ function csrfToken(): string {
   return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : "";
 }
 
+function errorRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function validationLocation(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  const labels: Record<string, string> = {
+    date: "比赛日期",
+    starts_on: "开始日期",
+    ends_on: "结束日期",
+    start_time: "开赛时间",
+    end_time: "结束时间",
+    target_date: "目标日期",
+    target_period_id: "目标时段",
+    name: "名称",
+    players: "球员",
+    jersey_number: "号码",
+  };
+  return value
+    .filter((part) => typeof part === "string" || typeof part === "number")
+    .filter((part) => !["body", "query", "path", "payload"].includes(String(part)))
+    .map((part) => typeof part === "number"
+      ? `第 ${part + 1} 项`
+      : (Object.prototype.hasOwnProperty.call(labels, part) ? labels[part] : part))
+    .join(" · ");
+}
+
+function adminErrorMessage(value: unknown, fallback: string): string {
+  const error = errorRecord(value);
+  if (!error) return fallback;
+  if (typeof error.message === "string" && error.message.trim()) return error.message;
+  if (typeof error.detail === "string" && error.detail.trim()) return error.detail;
+  if (!Array.isArray(error.detail)) return fallback;
+  const messages = error.detail.flatMap((item) => {
+    const field = errorRecord(item);
+    if (!field || typeof field.msg !== "string" || !field.msg.trim()) return [];
+    const location = validationLocation(field.loc);
+    // Only documented validation text is shown. Never stringify the response,
+    // its input values, context, tracebacks, or arbitrary nested objects.
+    return [location ? `${location}：${field.msg}` : field.msg];
+  });
+  return messages.length ? messages.join("；") : fallback;
+}
+
 async function parseAdminResponse<T>(response: Response): Promise<T> {
   if (response.ok) {
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }
-  const fallback = { message: `请求失败（${response.status}）` };
-  const error = (await response.json().catch(() => fallback)) as {
-    message?: string;
-    detail?: string;
-    code?: string;
-  };
+  const fallback = `请求失败（${response.status}）`;
+  const error: unknown = await response.json().catch(() => null);
+  const code = errorRecord(error)?.code;
   throw new ApiError(
-    error.message ?? error.detail ?? fallback.message,
+    adminErrorMessage(error, fallback),
     response.status,
-    error.code,
+    typeof code === "string" ? code : undefined,
   );
 }
 

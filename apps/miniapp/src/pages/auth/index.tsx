@@ -1,51 +1,65 @@
 import { Button, Input, Text, View } from "@tarojs/components";
 import Taro from "@tarojs/taro";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MiniAppMe } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { exchangeCurrentWeChat, saveMiniAppSession } from "../../auth";
+import { authReturnUrl } from "../../authReturn";
 import "../../auth-pages.css";
 
 type Intent = "leader" | "admin" | "account";
 
 export default function AuthPage() {
-  const rawIntent = Taro.getCurrentInstance().router?.params.intent;
+  const params = Taro.getCurrentInstance().router?.params ?? {};
+  const rawIntent = params.intent;
+  const returnUrl = authReturnUrl(params);
   const intent: Intent = rawIntent === "leader" || rawIntent === "admin" ? rawIntent : "account";
   const [profileTicket, setProfileTicket] = useState("");
   const [username, setUsername] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestSequence = useRef(0);
+  const pending = useRef(false);
+  useEffect(() => () => { requestSequence.current += 1; }, []);
 
   const login = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    const sequence = ++requestSequence.current;
     setBusy(true);
     setError(null);
     try {
       const exchanged = await exchangeCurrentWeChat();
+      if (sequence !== requestSequence.current) return;
       if (exchanged.requires_profile) {
         setProfileTicket(exchanged.profile_ticket ?? "");
       } else if (exchanged.me) {
-        continueForRole(exchanged.me, intent);
+        await continueForRole(exchanged.me, intent, returnUrl);
       }
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "微信登录失败");
+      if (sequence === requestSequence.current) setError(reason instanceof Error ? reason.message : "微信登录失败");
     } finally {
-      setBusy(false);
+      if (sequence === requestSequence.current) { pending.current = false; setBusy(false); }
     }
   };
 
   const completeProfile = async () => {
+    if (pending.current) return;
     if (!username.trim()) return setError("请设置唯一昵称。");
+    pending.current = true;
+    const sequence = ++requestSequence.current;
     setBusy(true);
     setError(null);
     try {
       const result = await api.completeProfile(profileTicket, username.trim());
+      if (sequence !== requestSequence.current) return;
       saveMiniAppSession(result.session_token);
-      continueForRole(result.me, intent);
+      await continueForRole(result.me, intent, returnUrl);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "昵称注册失败");
+      if (sequence === requestSequence.current) setError(reason instanceof Error ? reason.message : "昵称注册失败");
     } finally {
-      setBusy(false);
+      if (sequence === requestSequence.current) { pending.current = false; setBusy(false); }
     }
   };
 
@@ -80,14 +94,15 @@ export default function AuthPage() {
   );
 }
 
-function continueForRole(me: MiniAppMe, intent: Intent) {
+async function continueForRole(me: MiniAppMe, intent: Intent, returnUrl: string | null) {
   if (intent === "leader" && !me.leader_binding) {
-    void Taro.redirectTo({ url: "/pages/leader-register/index" });
+    await Taro.redirectTo({ url: "/pages/leader-register/index" });
     return;
   }
   if (intent === "admin" && !me.admin_role) {
-    void Taro.redirectTo({ url: "/pages/admin-register/index" });
+    await Taro.redirectTo({ url: "/pages/admin-register/index" });
     return;
   }
-  void Taro.switchTab({ url: "/pages/mine/index" });
+  if (returnUrl) await Taro.redirectTo({ url: returnUrl });
+  else await Taro.switchTab({ url: "/pages/mine/index" });
 }
