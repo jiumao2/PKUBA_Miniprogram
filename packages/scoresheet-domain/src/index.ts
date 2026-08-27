@@ -351,6 +351,7 @@ export interface ScoresheetDetail {
     prompt_version: string;
     image_sha256: string;
     auto_apply_allowed: boolean;
+    can_retry?: boolean;
     last_error_code: string;
     last_error: string;
   };

@@ -9698,7 +9698,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MutationContextIn"
+                "$ref": "#/components/schemas/RecognitionRetryIn"
               }
             }
           },
@@ -22305,6 +22305,43 @@
           "warning_ids"
         ],
         "title": "AcknowledgeWarningsIn",
+        "type": "object"
+      },
+      "RecognitionRetryIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "lease_token": {
+            "title": "Lease Token",
+            "type": "string"
+          },
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "surface": {
+            "enum": [
+              "WEB",
+              "MINIAPP"
+            ],
+            "title": "Surface",
+            "type": "string"
+          },
+          "confirmed_overwrite": {
+            "default": false,
+            "title": "Confirmed Overwrite",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version",
+          "lease_token",
+          "client_id",
+          "surface"
+        ],
+        "title": "RecognitionRetryIn",
         "type": "object"
       },
       "ApplyRecognitionIn": {

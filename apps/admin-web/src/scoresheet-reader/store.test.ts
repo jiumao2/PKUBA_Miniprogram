@@ -588,7 +588,9 @@ describe('editor persistence and history', () => {
       recognition_notes: '', usage: { input_tokens: 0, output_tokens: 0, image_tokens: 0, reasoning_tokens: 0, total_tokens: 0 },
       error: '', result: {}, created_at: '2026-08-19T00:00:00Z', updated_at: '2026-08-19T00:00:00Z',
     };
-    useEditorStore.setState({ document: original, serverRevision: 0 });
+    useEditorStore.setState({ document: original, serverRevision: 0,
+      recognitionRun: { ...run, status: 'failed', can_retry: true }, recognitionState: 'failed' });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     vi.spyOn(api, 'createRecognition').mockResolvedValue(run);
     vi.spyOn(api, 'document').mockResolvedValue(recognized);
 
@@ -622,7 +624,9 @@ describe('editor persistence and history', () => {
     };
     const terminal = { ...run, status: 'succeeded' as const, result: {} };
     const pending = deferred<typeof terminal>();
-    useEditorStore.setState({ document: original, serverRevision: 0 });
+    useEditorStore.setState({ document: original, serverRevision: 0,
+      recognitionRun: { ...run, status: 'failed', can_retry: true }, recognitionState: 'failed' });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     vi.spyOn(api, 'createRecognition').mockResolvedValue(run);
     vi.spyOn(api, 'streamRecognition').mockReturnValue(pending.promise);
     const diff = vi.spyOn(api, 'recognitionDiff');

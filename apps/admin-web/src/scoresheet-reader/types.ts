@@ -170,6 +170,7 @@ export interface RecognitionRun {
   next_attempt_at?: string | null;
   cached: boolean;
   auto_applied: boolean;
+  can_retry?: boolean;
   applied_revision: number | null;
   recognition_notes: string;
   usage: RecognitionUsage;

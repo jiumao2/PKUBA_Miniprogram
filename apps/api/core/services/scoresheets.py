@@ -412,6 +412,26 @@ def _latest_recognition(scoresheet: GameScoresheet) -> ScoresheetRecognitionRun 
     )
 
 
+def recognition_retry_allowed(run: ScoresheetRecognitionRun) -> bool:
+    """Read-only UI hint; the command rechecks all conditions under locks."""
+    sheet = run.scoresheet
+    latest = _latest_recognition(sheet)
+    return bool(
+        run.status == ScoresheetRecognitionRun.Status.FAILED
+        and latest and latest.id == run.id
+        and run.source_version == sheet.source_version
+        and run.source_asset_id == sheet.source_asset_id
+        and sheet.source_asset_id
+        and not sheet.source_asset.deleted_at
+        and sheet.source_asset.storage_status == GameMediaAsset.StorageStatus.ONLINE
+        and sheet.game.season.status == Season.Status.PUBLISHED
+        and sheet.game.home_team_id and sheet.game.away_team_id
+        and not sheet.current_publication_id
+        and not sheet.publications.exists()
+        and run.last_error_code not in SOURCE_PREREQUISITE_ERRORS
+    )
+
+
 def _assert_recognition_inactive(
     scoresheet: GameScoresheet,
     *,
@@ -1669,12 +1689,19 @@ def retry_recognition(
     lease_token: str,
     client_id: str,
     surface: str,
+    confirmed_overwrite: bool = False,
 ) -> ScoresheetRecognitionRun:
     if not actor.is_pkuba_admin:
         raise ScoresheetError("ADMIN_REQUIRED", "重新识别仅限管理员。", status=403)
     with transaction.atomic():
-        scoresheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
+        scoresheet, actor = _lock_publication_context(scoresheet_id, actor)
         _assert_correction_permission(scoresheet, actor)
+        if scoresheet.current_publication_id or scoresheet.publications.exists():
+            raise ScoresheetError(
+                "RECOGNITION_RETRY_PUBLISHED",
+                "记录表已经发布，不能再次识别；已有原图和人工内容仍保留。",
+                status=409,
+            )
         lease = _assert_lease_locked(
             scoresheet,
             actor=actor,
@@ -1689,6 +1716,11 @@ def retry_recognition(
             allow_archived_correction=lease.archived_correction,
         )
         _assert_version(scoresheet, expected_version)
+        if not confirmed_overwrite:
+            raise ScoresheetError(
+                "RECOGNITION_OVERWRITE_CONFIRMATION_REQUIRED",
+                "请先确认：识别成功将覆盖当前整张草稿（含人工修改），失败则保留。",
+            )
         if scoresheet.source_asset_id is None:
             raise ScoresheetError("SOURCE_MISSING", "没有可供重试的当前记录表原图。", status=409)
         latest = _latest_recognition(scoresheet)
@@ -1702,6 +1734,14 @@ def retry_recognition(
                 "只有当前识别周期失败后才能重新识别。",
                 status=409,
             )
+        if (
+            latest.source_asset_id != scoresheet.source_asset_id
+            or scoresheet.source_asset.deleted_at
+            or scoresheet.source_asset.storage_status != GameMediaAsset.StorageStatus.ONLINE
+        ):
+            raise ScoresheetError(
+                "RECOGNITION_SUPERSEDED", "识别任务不再对应当前可用原图，请刷新。", status=409
+            )
         if latest.last_error_code in SOURCE_PREREQUISITE_ERRORS:
             raise ScoresheetError(
                 latest.last_error_code,
@@ -1714,15 +1754,6 @@ def retry_recognition(
                 "服务端尚未配置 QWEN_API_KEY；当前可继续完整手工录入。",
                 status=409,
             )
-        source_event = (
-            scoresheet.change_logs.filter(event_type="SOURCE_REPLACED")
-            .order_by("-event_sequence")
-            .first()
-        )
-        has_human_changes = scoresheet.change_logs.filter(
-            event_type__in=HUMAN_CHANGE_TYPES,
-            event_sequence__gt=source_event.event_sequence if source_event else 0,
-        ).exists()
         cycle = (
             scoresheet.recognition_runs.filter(source_version=scoresheet.source_version).aggregate(
                 maximum=Max("cycle")
@@ -1738,7 +1769,7 @@ def retry_recognition(
             trigger=ScoresheetRecognitionRun.Trigger.MANUAL_RETRY,
             model_name=settings.QWEN_MODEL,
             prompt_version=PROMPT_VERSION,
-            auto_apply_allowed=not has_human_changes,
+            auto_apply_allowed=True,
             status=ScoresheetRecognitionRun.Status.QUEUED,
         )
         scoresheet.status = GameScoresheet.Status.RECOGNITION_QUEUED
@@ -1749,7 +1780,20 @@ def retry_recognition(
             actor=actor,
             client_id=client_id,
             surface=surface,
-            payload={"run_id": str(run.id), "cycle": cycle, "max_attempts": 4},
+            payload={
+                "run_id": str(run.id), "cycle": cycle, "max_attempts": 4,
+                "confirmed_overwrite": True,
+                "source_asset_id": str(scoresheet.source_asset_id),
+                "source_version": scoresheet.source_version,
+                "base_draft_version": scoresheet.draft_version,
+                "before_digest": document_digest(scoresheet.draft),
+            },
+        )
+        # The explicit retry is also an explicit save of the before-image. A
+        # successful replacement must never erase the administrator's evidence.
+        _revision_locked(
+            scoresheet, ScoresheetRevision.Reason.EXPLICIT_SAVE,
+            actor=actor, client_id=client_id, surface=surface,
         )
         ScoresheetEditLease.objects.filter(scoresheet=scoresheet).delete()
         close_scoresheet_tasks(scoresheet.id, reason="RECOGNITION_RETRY_QUEUED")

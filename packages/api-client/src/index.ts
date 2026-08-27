@@ -792,7 +792,7 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       ),
     retryScoresheetRecognition: (
       scoresheetId: string,
-      context: ScoresheetMutationContext,
+      context: ScoresheetMutationContext & { confirmed_overwrite: boolean },
       token: string,
       idempotencyKey = createIdempotencyKey(),
     ) =>

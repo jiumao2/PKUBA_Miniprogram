@@ -24,6 +24,7 @@ interface TopBarProps {
   canRedo: boolean;
   recognitionMode: string;
   recognitionState: 'idle' | 'starting' | 'running' | 'diff' | 'applied' | 'failed';
+  recognitionRetryAllowed?: boolean;
   onChooseGame: () => void;
   onRecognize: () => Promise<void>;
   onUndo: () => void;
@@ -59,6 +60,7 @@ export function TopBar({
   canRedo,
   recognitionMode,
   recognitionState,
+  recognitionRetryAllowed = false,
   onChooseGame,
   onRecognize,
   onUndo,
@@ -79,6 +81,7 @@ export function TopBar({
   const persisted = Boolean(document);
   const recognitionActive = recognitionState === 'starting' || recognitionState === 'running';
   const canRetryRecognition = Boolean(document?.game_prior)
+    && recognitionRetryAllowed
     && Boolean(document?.source.original_url)
     && document?.status !== 'confirmed'
     && recognitionMode !== 'unavailable'

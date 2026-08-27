@@ -320,6 +320,7 @@ export default function App() {
         canRedo={state.future.length > 0}
         recognitionMode={state.recognitionMode}
         recognitionState={state.recognitionState}
+        recognitionRetryAllowed={state.recognitionRun?.can_retry === true}
         onChooseGame={() => setGameBrowserOpen(true)}
         onRecognize={state.recognize}
         onUndo={state.undo}

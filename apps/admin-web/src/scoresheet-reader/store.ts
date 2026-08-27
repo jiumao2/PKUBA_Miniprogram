@@ -21,6 +21,9 @@ const RECOGNITION_POLL_LIMIT = 360;
 let activeSave: Promise<void> | null = null;
 let recognitionWatchGeneration = 0;
 let gameQueueGeneration = 0;
+// Returning to the same ID is a new editing session, even at the same revision.
+let documentSessionGeneration = 0;
+let contextReviewSequence = 0;
 
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
@@ -161,7 +164,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   seasonId: '',
 
   initialize: async () => {
-    set({ loading: true, error: '', autoAcquireLease: true });
+    const generation = ++documentSessionGeneration;
+    set({ loading: true, error: '', autoAcquireLease: true, contextReviewing: false });
     try {
       const params = new URLSearchParams(window.location.search);
       const seasonId = params.get('season_id') ?? '';
@@ -198,6 +202,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
       const recognitionRun = document ? await loadRecognitionRun(document) : null;
       const lease = document ? api.leaseState(document.id) : null;
+      if (generation !== documentSessionGeneration) return;
       set({
         template,
         games,
@@ -231,6 +236,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         void get().watchRecognition(recognitionRun, deepCloneDocument(document!));
       }
     } catch (error) {
+      if (generation !== documentSessionGeneration) return;
       set({ loading: false, error: error instanceof Error ? error.message : '加载失败' });
     }
   },
@@ -271,13 +277,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!(await get().ensureSaved())) {
       throw new Error('当前草稿尚未保存，已取消切换。');
     }
+    const generation = ++documentSessionGeneration;
     recognitionWatchGeneration += 1;
     const previousId = get().document?.id;
-    if (previousId && previousId !== documentId) await api.release(previousId);
     set({ loading: true, error: '', autoAcquireLease: true });
     try {
+      if (previousId && previousId !== documentId) await api.release(previousId);
+      if (generation !== documentSessionGeneration) return;
       const document = await api.document(documentId);
       const recognitionRun = await loadRecognitionRun(document);
+      if (generation !== documentSessionGeneration) return;
       const lease = api.leaseState(document.id);
       localStorage.setItem(LAST_DOCUMENT_KEY, document.id);
       set({
@@ -295,11 +304,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         pendingSaveSource: 'human',
         saveState: 'saved',
         loading: false,
+        contextReviewing: false,
         readOnly: !lease?.token || Boolean(lease.readOnly),
         readOnlyReason: lease?.reason ?? '',
         leaseHolder: lease?.holder ?? null,
       });
       await get().refreshChanges();
+      if (generation !== documentSessionGeneration) return;
       if (recognitionRun && (
         activeRecognitionStatuses.has(recognitionRun.status)
         || (recognitionRun.status === 'succeeded' && !recognitionRun.auto_applied)
@@ -307,8 +318,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         void get().watchRecognition(recognitionRun, deepCloneDocument(document));
       }
     } catch (error) {
+      if (generation !== documentSessionGeneration) return;
       set({
         loading: false,
+        contextReviewing: false,
         error: error instanceof Error ? error.message : '打开记录表失败',
       });
       throw error;
@@ -319,10 +332,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!(await get().ensureSaved())) {
       throw new Error('当前草稿尚未保存，已取消上传。');
     }
+    const generation = ++documentSessionGeneration;
     recognitionWatchGeneration += 1;
     set({ loading: true, error: '', autoAcquireLease: true });
     try {
       const { document, recognition_run: recognitionRun } = await api.createGameDocument(gameId, file);
+      if (generation !== documentSessionGeneration) return;
       const lease = api.leaseState(document.id);
       localStorage.setItem(LAST_DOCUMENT_KEY, document.id);
       set({
@@ -340,14 +355,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         pendingSaveSource: 'human',
         saveState: 'saved',
         loading: false,
+        contextReviewing: false,
         readOnly: !lease?.token || Boolean(lease.readOnly),
         readOnlyReason: lease?.reason ?? '',
         leaseHolder: lease?.holder ?? null,
       });
       await Promise.all([get().refreshChanges(), get().loadGames()]);
+      if (generation !== documentSessionGeneration) return;
       void get().watchRecognition(recognitionRun, deepCloneDocument(document));
     } catch (error) {
-      set({ loading: false, error: error instanceof Error ? error.message : '上传失败' });
+      if (generation !== documentSessionGeneration) return;
+      set({ loading: false, contextReviewing: false,
+        error: error instanceof Error ? error.message : '上传失败' });
       throw error;
     }
   },
@@ -356,20 +375,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!(await get().ensureSaved())) {
       throw new Error('当前草稿尚未保存，已取消重新上传。');
     }
+    const generation = ++documentSessionGeneration;
     recognitionWatchGeneration += 1;
-    const target = get().document?.id === documentId
-      ? get().document
-      : await api.document(documentId);
-    if (!target?.game_prior) {
-      throw new Error('请先打开已绑定比赛的记录表。');
-    }
     set({ loading: true, error: '', autoAcquireLease: true });
     try {
+      const target = get().document?.id === documentId
+        ? get().document
+        : await api.document(documentId);
+      if (generation !== documentSessionGeneration) return;
+      if (!target?.game_prior) {
+        throw new Error('请先打开已绑定比赛的记录表。');
+      }
       const { document, recognition_run: recognitionRun } = await api.replaceDocumentSource(
         target.id,
         target.revision,
         file,
       );
+      if (generation !== documentSessionGeneration) return;
       const lease = api.leaseState(document.id);
       localStorage.setItem(LAST_DOCUMENT_KEY, document.id);
       set({
@@ -387,14 +409,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         pendingSaveSource: 'human',
         saveState: 'saved',
         loading: false,
+        contextReviewing: false,
         readOnly: !lease?.token || Boolean(lease.readOnly),
         readOnlyReason: lease?.reason ?? '',
         leaseHolder: lease?.holder ?? null,
       });
       await Promise.all([get().refreshChanges(), get().loadGames()]);
+      if (generation !== documentSessionGeneration) return;
       void get().watchRecognition(recognitionRun, deepCloneDocument(document));
     } catch (error) {
-      set({ loading: false, error: error instanceof Error ? error.message : '重新上传失败' });
+      if (generation !== documentSessionGeneration) return;
+      set({ loading: false, contextReviewing: false,
+        error: error instanceof Error ? error.message : '重新上传失败' });
       throw error;
     }
   },
@@ -436,6 +462,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   replaceDocument: (document, remember = false) => {
+    documentSessionGeneration += 1;
     if (remember) localStorage.setItem(LAST_DOCUMENT_KEY, document.id);
     set({
       document,
@@ -443,6 +470,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       dirty: false,
       pendingSaveSource: 'human',
       saveState: 'saved',
+      contextReviewing: false,
     });
   },
 
@@ -620,8 +648,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     let document = get().document;
     if (!document) return null;
+    const generation = documentSessionGeneration;
+    const documentId = document.id;
     if (get().dirty) {
       await get().save();
+      if (generation !== documentSessionGeneration || get().document?.id !== documentId) return null;
       if (get().dirty || ['conflict', 'error'].includes(get().saveState)) {
         set({ error: '草稿尚未成功保存，已停止校验和提交。' });
         return null;
@@ -634,6 +665,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     try {
       const report = await api.validate(document.id, validationRevision);
       const current = get();
+      if (generation !== documentSessionGeneration || current.document?.id !== documentId) return null;
       if (
         current.document !== validationDocument ||
         current.serverRevision !== validationRevision ||
@@ -645,6 +677,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ validation: report });
       return report;
     } catch (error) {
+      if (generation !== documentSessionGeneration || get().document !== validationDocument
+        || get().serverRevision !== validationRevision) return null;
       set({ error: error instanceof Error ? error.message : '校验失败' });
       return null;
     }
@@ -658,18 +692,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ error: '草稿有新输入，请保存并重新校验后再复核。' });
       return;
     }
+    const generation = documentSessionGeneration;
+    const sequence = ++contextReviewSequence;
+    let expectedDocument = initial.document;
+    let expectedRevision = initial.serverRevision;
+    const ownsReview = () => generation === documentSessionGeneration
+      && sequence === contextReviewSequence;
+    const matchesTarget = () => ownsReview() && get().document === expectedDocument
+      && get().serverRevision === expectedRevision && !get().dirty;
     set({ contextReviewing: true, error: '' });
     try {
       const next = await api.reviewGameContext(initial.document.id, initial.serverRevision, token, mappings);
-      if (get().document?.id !== initial.document.id) return;
+      if (!matchesTarget()) return;
       set({ document: next, serverRevision: next.revision, validation: null,
         dirty: false, saveState: 'saved', past: [], future: [] });
+      expectedDocument = next;
+      expectedRevision = next.revision;
       await get().validate();
+      if (!matchesTarget()) return;
       await get().refreshChanges();
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : '比赛信息复核失败，原图和草稿仍保留。' });
+      if (matchesTarget()) {
+        set({ error: error instanceof Error ? error.message : '比赛信息复核失败，原图和草稿仍保留。' });
+      }
     } finally {
-      set({ contextReviewing: false });
+      if (ownsReview()) set({ contextReviewing: false });
     }
   },
 
@@ -765,19 +812,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   refreshChanges: async () => {
     const document = get().document;
+    const generation = documentSessionGeneration;
     if (!document) {
       set({ changes: [] });
       return;
     }
     try {
       const page = await api.changes(document.id);
-      if (get().document?.id === document.id) set({ changes: page.items });
+      if (generation === documentSessionGeneration && get().document === document) {
+        set({ changes: page.items });
+      }
     } catch {
-      if (get().document?.id === document.id) set({ changes: [] });
+      if (generation === documentSessionGeneration && get().document === document) {
+        set({ changes: [] });
+      }
     }
   },
 
   recognize: async () => {
+    if (['starting', 'running'].includes(get().recognitionState)) return;
     if (!get().online || get().readOnly) {
       set({ error: get().online ? (get().readOnlyReason || '当前工作台为只读。') : '网络已断开，不能重新识别。' });
       return;
@@ -795,20 +848,39 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({ error: '请先上传记录表照片。' });
       return;
     }
-    if (get().dirty) await get().save();
-    if (get().dirty || ['conflict', 'error'].includes(get().saveState)) return;
-
-    document = get().document;
-    if (!document) return;
-    const beforeRecognition = deepCloneDocument(document);
+    if (document.status === 'confirmed' || get().recognitionRun?.can_retry !== true
+      || get().recognitionRun?.status !== 'failed') {
+      set({ error: '只有未发布且识别失败的记录表可以重新识别。' });
+      return;
+    }
+    const generation = documentSessionGeneration;
+    const documentId = document.id;
+    const failedRunId = get().recognitionRun!.id;
+    if (!window.confirm('重新识别成功后，将用新结果覆盖整张草稿，包括已做的人工修改；再次失败则保留当前草稿。已发布后不能再识别。确定继续吗？')) return;
+    // Claim the action before saving: a second click must not open another
+    // confirmation or queue a second run while the first save is in flight.
     set({
       recognitionState: 'starting',
       recognitionDiff: null,
       error: '',
     });
     try {
-      const run = await api.createRecognition(document.id, get().serverRevision);
-      if (get().document?.id !== document.id) return;
+      if (get().dirty) await get().save();
+      if (generation !== documentSessionGeneration || get().document?.id !== documentId) return;
+      if (get().recognitionRun?.id !== failedRunId) return;
+      if (get().dirty || ['conflict', 'error'].includes(get().saveState)) {
+        set({ recognitionState: 'failed' });
+        return;
+      }
+      document = get().document;
+      if (!document || document.status === 'confirmed'
+        || get().recognitionRun?.status !== 'failed' || get().recognitionRun?.can_retry !== true) {
+        set({ recognitionState: 'failed', error: '记录表状态已变化，请重新核对后再操作。' });
+        return;
+      }
+      const beforeRecognition = deepCloneDocument(document);
+      const run = await api.createRecognition(document.id, get().serverRevision, true);
+      if (generation !== documentSessionGeneration || get().document?.id !== document.id) return;
       set({
         readOnly: true,
         readOnlyReason: '自动识别正在进行，完成前记录表保持只读。',
@@ -816,7 +888,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
       await get().watchRecognition(run, beforeRecognition);
     } catch (error) {
-      if (get().document?.id !== document.id) return;
+      if (generation !== documentSessionGeneration || get().document?.id !== documentId) return;
+      if (get().recognitionRun?.id !== failedRunId) return;
       set({
         recognitionState: 'failed',
         error: error instanceof Error ? error.message : '图像识别失败。',

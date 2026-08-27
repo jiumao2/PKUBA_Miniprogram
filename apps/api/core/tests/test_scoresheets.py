@@ -1073,6 +1073,7 @@ def test_recognition_retry_endpoint_replays_same_idempotency_key(tmp_path):
         "lease_token": lease_token,
         "client_id": "web-idempotency",
         "surface": ScoresheetEditLease.Surface.WEB,
+        "confirmed_overwrite": True,
     }
     client = Client()
     client.force_login(setup["admin"])
@@ -1341,9 +1342,16 @@ def test_late_success_is_retained_but_never_overwrites_human_edits(tmp_path, mon
                 lease_token=token,
                 client_id="web-1",
                 surface=ScoresheetEditLease.Surface.WEB,
+                confirmed_overwrite=True,
             )
             claim = claim_next_run("race-worker")
         assert claim is not None
+        # Only edits made *after* the explicit overwrite confirmation are stale
+        # for this run. Pre-retry manual edits are intentionally replaced.
+        scoresheet.refresh_from_db()
+        scoresheet.draft_version += 1
+        scoresheet.draft["revision"] = scoresheet.draft_version
+        scoresheet.save(update_fields=["draft_version", "draft"])
         monkeypatch.setattr(
             recognition,
             "call_qwen",

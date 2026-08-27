@@ -7249,6 +7249,25 @@ export interface components {
             /** Warning Ids */
             warning_ids: string[];
         };
+        /** RecognitionRetryIn */
+        RecognitionRetryIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Lease Token */
+            lease_token: string;
+            /** Client Id */
+            client_id: string;
+            /**
+             * Surface
+             * @enum {string}
+             */
+            surface: "WEB" | "MINIAPP";
+            /**
+             * Confirmed Overwrite
+             * @default false
+             */
+            confirmed_overwrite: boolean;
+        };
         /** ApplyRecognitionIn */
         ApplyRecognitionIn: {
             /** Expected Version */
@@ -13401,7 +13420,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MutationContextIn"];
+                "application/json": components["schemas"]["RecognitionRetryIn"];
             };
         };
         responses: {

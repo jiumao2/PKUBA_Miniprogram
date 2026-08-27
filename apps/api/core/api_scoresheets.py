@@ -39,6 +39,7 @@ from core.services.scoresheets import (
     publication_csv,
     publish_scoresheet,
     recognition_diff,
+    recognition_retry_allowed,
     release_edit_lease,
     retry_recognition,
     review_region,
@@ -216,6 +217,10 @@ class MutationContextIn(Schema):
     surface: Literal["WEB", "MINIAPP"]
 
 
+class RecognitionRetryIn(MutationContextIn):
+    confirmed_overwrite: bool = False
+
+
 class DraftChangeIn(Schema):
     path: str
     operation: Literal["SET", "DELETE"] = "SET"
@@ -298,6 +303,7 @@ def _recognition_run(run: ScoresheetRecognitionRun) -> dict[str, Any]:
         "prompt_version": run.prompt_version,
         "image_sha256": run.image_sha256,
         "auto_apply_allowed": run.auto_apply_allowed,
+        "can_retry": recognition_retry_allowed(run),
         "status": run.status,
         "attempt_count": run.attempt_count,
         "max_attempts": run.max_attempts,
@@ -993,7 +999,7 @@ def publish_scoresheet_endpoint(
 def retry_scoresheet_recognition(
     request: HttpRequest,
     scoresheet_id: UUID,
-    payload: MutationContextIn,
+    payload: RecognitionRetryIn,
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
     del idempotency_key
@@ -1007,6 +1013,7 @@ def retry_scoresheet_recognition(
                 lease_token=payload.lease_token,
                 client_id=payload.client_id,
                 surface=payload.surface,
+                confirmed_overwrite=payload.confirmed_overwrite,
             )
             return 200, _recognition_run(run)
 
@@ -1019,6 +1026,7 @@ def retry_scoresheet_recognition(
                 "expected_version": payload.expected_version,
                 "client_id": payload.client_id,
                 "surface": payload.surface,
+                "confirmed_overwrite": payload.confirmed_overwrite,
             },
             command=command,
         )

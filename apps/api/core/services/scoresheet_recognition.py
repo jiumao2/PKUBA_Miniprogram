@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import tempfile
@@ -22,11 +23,14 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import ValidationError
 
 from core.models import (
+    Game,
+    GameMediaAsset,
     GameScoresheet,
     ScoresheetRecognitionRun,
     ScoresheetRevision,
+    Season,
 )
-from core.scoresheet_schema_v2 import merge_recognition_result
+from core.scoresheet_schema_v2 import merge_recognition_result, new_document
 from core.scoresheet_v2.models import ScoresheetDocument
 from core.scoresheet_v2.recognition import (
     PROMPT_VERSION,
@@ -36,6 +40,7 @@ from core.scoresheet_v2.recognition import (
     validate_provider_payload,
 )
 from core.services.inbox_tasks import sync_scoresheet_recognition_tasks
+from core.services.scoresheet_game_context import reviewed_document
 from core.services.scoresheets import _event_locked, _revision_locked
 from core.services.worker_health import touch_worker_heartbeat
 
@@ -81,12 +86,111 @@ def _retry_after(value: str | None) -> int | None:
             return None
 
 
+def _locked_run_context(run_id, *, skip_locked: bool = False):
+    """Use the same parent -> sheet -> run order as upload and publication.
+
+    Locking a run before its sheet can deadlock against a source replacement.
+    The parent locks also serialize archiving/publication with result application.
+    """
+    locator = ScoresheetRecognitionRun.objects.values(
+        "scoresheet_id", "scoresheet__game_id", "scoresheet__game__season_id"
+    ).get(id=run_id)
+    season = Season.objects.select_for_update(skip_locked=skip_locked).filter(
+        id=locator["scoresheet__game__season_id"]
+    ).first()
+    if season is None:
+        return None
+    game = Game.objects.select_for_update(skip_locked=skip_locked).filter(
+        id=locator["scoresheet__game_id"], season_id=season.id
+    ).first()
+    if game is None:
+        return None
+    sheet = GameScoresheet.objects.select_for_update(skip_locked=skip_locked).filter(
+        id=locator["scoresheet_id"], game_id=game.id
+    ).first()
+    if sheet is None:
+        return None
+    run = ScoresheetRecognitionRun.objects.select_for_update(skip_locked=skip_locked).filter(
+        id=run_id, scoresheet_id=sheet.id
+    ).first()
+    if run is None:
+        return None
+    game.season = season
+    sheet.game = game
+    run.scoresheet = sheet
+    return run, sheet
+
+
+def _targets_current_document(run: ScoresheetRecognitionRun, sheet: GameScoresheet) -> bool:
+    latest_id = sheet.recognition_runs.filter(source_version=sheet.source_version).order_by(
+        "-cycle", "-created_at"
+    ).values_list("id", flat=True).first()
+    if (
+        sheet.source_version != run.source_version
+        or sheet.source_asset_id != run.source_asset_id
+        or latest_id != run.id
+        or sheet.game.season.status != Season.Status.PUBLISHED
+        or not sheet.game.home_team_id or not sheet.game.away_team_id
+        or sheet.source_asset.deleted_at
+        or sheet.source_asset.storage_status != GameMediaAsset.StorageStatus.ONLINE
+    ):
+        return False
+    # A superadmin may still upload a replacement source under the separate
+    # correction workflow. This does not authorize retrying a published sheet.
+    publications = sheet.publications.all()
+    if run.trigger != ScoresheetRecognitionRun.Trigger.MANUAL_RETRY:
+        publications = publications.filter(source_asset_id=run.source_asset_id)
+    return not publications.exists()
+
+
+def _supersede(run: ScoresheetRecognitionRun) -> None:
+    run.status = ScoresheetRecognitionRun.Status.SUPERSEDED
+    run.finished_at = timezone.now()
+    run.worker_lease_token = None
+    run.worker_lease_owner = ""
+    run.worker_lease_expires_at = None
+    run.save(update_fields=[
+        "status", "finished_at", "worker_lease_token", "worker_lease_owner",
+        "worker_lease_expires_at", "updated_at",
+    ])
+
+
+def _recognition_document(sheet: GameScoresheet, run: ScoresheetRecognitionRun) -> dict:
+    if run.trigger != ScoresheetRecognitionRun.Trigger.MANUAL_RETRY:
+        return copy.deepcopy(sheet.draft)
+    # Full retry starts from a neutral document, never the edited draft. In
+    # particular, manual table personnel/officials must not leak through mapping.
+    clean = new_document(
+        sheet.game_prior_snapshot, sheet.roster_snapshot,
+        document_id=str(sheet.id), source=copy.deepcopy(sheet.draft.get("source")),
+    )
+    for key in ("id", "revision", "template_id", "rules_profile", "created_at", "updated_at"):
+        clean[key] = copy.deepcopy(sheet.draft[key])
+    return clean
+
+
+def _invalidate_retry_player_bindings(sheet: GameScoresheet) -> None:
+    prior = copy.deepcopy(sheet.game_prior_snapshot)
+    previous = prior.pop("confirmed_player_bindings", []) + prior.pop(
+        "unresolved_player_bindings", []
+    )
+    names = {(row["side"], row["name"]) for row in previous}
+    # New recognition can reorder rows. An old explicit identity must not be
+    # silently applied to the new row at the same paper position or number.
+    prior["unresolved_player_bindings"] = [
+        {"side": team["side"], "row": row["row"], "name": row["name"]}
+        for team in sheet.draft["teams"] for row in team["players"]
+        if (team["side"], row["name"]) in names
+    ]
+    sheet.game_prior_snapshot = prior
+    sheet.draft = reviewed_document(sheet, prior, sheet.roster_snapshot)
+
+
 def claim_next_run(worker_name: str) -> ClaimedRun | None:
     now = timezone.now()
     with transaction.atomic():
-        run = (
-            ScoresheetRecognitionRun.objects.select_for_update(skip_locked=True)
-            .filter(attempt_count__lt=4)
+        eligible = (
+            ScoresheetRecognitionRun.objects.filter(attempt_count__lt=4)
             .filter(
                 Q(status=ScoresheetRecognitionRun.Status.QUEUED)
                 | Q(
@@ -98,20 +202,17 @@ def claim_next_run(worker_name: str) -> ClaimedRun | None:
                     worker_lease_expires_at__lte=now,
                 )
             )
-            .select_related("scoresheet")
             .order_by("next_attempt_at", "created_at")
-            .first()
         )
-        if run is None:
+        run_id = eligible.values_list("id", flat=True).first()
+        if run_id is None:
             return None
-        scoresheet = GameScoresheet.objects.select_for_update().get(id=run.scoresheet_id)
-        if (
-            scoresheet.source_version != run.source_version
-            or scoresheet.source_asset_id != run.source_asset_id
-        ):
-            run.status = ScoresheetRecognitionRun.Status.SUPERSEDED
-            run.finished_at = now
-            run.save(update_fields=["status", "finished_at", "updated_at"])
+        locked = _locked_run_context(run_id, skip_locked=True)
+        if locked is None or not eligible.filter(id=run_id).exists():
+            return None
+        run, scoresheet = locked
+        if not _targets_current_document(run, scoresheet):
+            _supersede(run)
             return None
         token = uuid.uuid4()
         run.status = ScoresheetRecognitionRun.Status.RUNNING
@@ -303,7 +404,7 @@ def _provider_failure(error: Exception) -> RecognitionAttemptError:
 
 def call_qwen(run: ScoresheetRecognitionRun) -> tuple[dict[str, object], dict[str, object]]:
     try:
-        document = ScoresheetDocument.model_validate(run.scoresheet.draft)
+        document = ScoresheetDocument.model_validate(_recognition_document(run.scoresheet, run))
         prior = document.game_prior
         if prior is None or not prior.team_a.player_names or not prior.team_b.player_names:
             raise RecognitionAttemptError(
@@ -441,22 +542,17 @@ def _complete_success(
     claim: ClaimedRun, result: dict[str, object], usage: dict[str, object]
 ) -> str:
     with transaction.atomic():
-        run = (
-            ScoresheetRecognitionRun.objects.select_for_update()
-            .select_related("scoresheet")
-            .get(id=claim.run_id)
-        )
-        scoresheet = GameScoresheet.objects.select_for_update().get(id=run.scoresheet_id)
+        locked = _locked_run_context(claim.run_id)
+        if locked is None:
+            return "superseded"
+        run, scoresheet = locked
         if (
             run.status != ScoresheetRecognitionRun.Status.RUNNING
             or run.worker_lease_token != claim.worker_token
-            or scoresheet.source_version != run.source_version
-            or scoresheet.source_asset_id != run.source_asset_id
         ):
-            if run.status == ScoresheetRecognitionRun.Status.RUNNING:
-                run.status = ScoresheetRecognitionRun.Status.SUPERSEDED
-                run.finished_at = timezone.now()
-                run.save(update_fields=["status", "finished_at", "updated_at"])
+            return "superseded"
+        if not _targets_current_document(run, scoresheet):
+            _supersede(run)
             return "superseded"
         recognition_state = result.get("recognition")
         recognition_notes = (
@@ -517,11 +613,13 @@ def _complete_success(
             sync_scoresheet_recognition_tasks(scoresheet, run)
             return "stored_not_applied"
         scoresheet.draft = merge_recognition_result(
-            scoresheet.draft,
+            _recognition_document(scoresheet, run),
             result,
             scoresheet.roster_snapshot,
             run_id=str(run.id),
         )
+        if run.trigger == ScoresheetRecognitionRun.Trigger.MANUAL_RETRY:
+            _invalidate_retry_player_bindings(scoresheet)
         scoresheet.draft_version += 1
         scoresheet.draft["revision"] = scoresheet.draft_version
         scoresheet.draft["updated_at"] = timezone.now().isoformat()
@@ -534,6 +632,7 @@ def _complete_success(
             update_fields=[
                 "draft",
                 "draft_version",
+                "game_prior_snapshot",
                 "reviewed_regions",
                 "validation_report",
                 "validation_draft_version",
@@ -586,24 +685,17 @@ def _complete_success(
 
 def _complete_failure(claim: ClaimedRun, failure: RecognitionAttemptError) -> str:
     with transaction.atomic():
-        run = (
-            ScoresheetRecognitionRun.objects.select_for_update()
-            .select_related("scoresheet")
-            .get(id=claim.run_id)
-        )
-        scoresheet = GameScoresheet.objects.select_for_update().get(id=run.scoresheet_id)
+        locked = _locked_run_context(claim.run_id)
+        if locked is None:
+            return "superseded"
+        run, scoresheet = locked
         if (
             run.status != ScoresheetRecognitionRun.Status.RUNNING
             or run.worker_lease_token != claim.worker_token
         ):
             return "superseded"
-        if (
-            scoresheet.source_version != run.source_version
-            or scoresheet.source_asset_id != run.source_asset_id
-        ):
-            run.status = ScoresheetRecognitionRun.Status.SUPERSEDED
-            run.finished_at = timezone.now()
-            run.save(update_fields=["status", "finished_at", "updated_at"])
+        if not _targets_current_document(run, scoresheet):
+            _supersede(run)
             return "superseded"
         run.last_error_code = failure.code
         run.last_error = str(failure)[:4000]

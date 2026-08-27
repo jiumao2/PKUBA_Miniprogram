@@ -86,17 +86,18 @@ def _roster_label(rows: list[dict[str, Any]]) -> str:
 def resolve_player(prior: dict, roster: list[dict], side: str, player: dict) -> dict | None:
     """Use an explicitly reviewed identity, or a unique name/jersey match.
 
-    A reviewed mapping expires when its row's identifying text changes. Same-name
-    season players remain valid; a guess must never silently pick the first one.
+    An explicit row/name binding follows the stable player ID. The number saved
+    with that binding is review evidence, not an identity key: match-local number
+    edits must never fall back to a different same-name player. A removed or
+    renamed bound player still fails resolution against the current roster.
     """
     name = str(player.get("name") or "").strip()
     number = str(player.get("jersey_number") or "")
     for mapping in prior.get("confirmed_player_bindings", []):
-        if (mapping["side"], mapping["row"], mapping["name"], mapping["jersey_number"]) == (
+        if (mapping["side"], mapping["row"], mapping["name"]) == (
             side,
             player["row"],
             name,
-            number,
         ):
             return next(
                 (

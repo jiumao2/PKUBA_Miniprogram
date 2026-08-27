@@ -711,15 +711,33 @@ export default function ScoresheetEditorPage() {
       </View>
 
       <View className={`mini-sheet-workspace ${currentKey === "RUNNING_SCORE" && view === "STANDARD" ? "running-score" : ""}`}>
-        {sheet.recognition && sheet.recognition.status !== "SUCCEEDED" && (
+        {sheet.recognition && sheet.recognition.status !== "SUCCEEDED"
+          && sheet.status !== "PUBLISHED" && !sheet.publication && (
           <RecognitionBanner
             busy={busyAction === "RECOGNITION"}
             onRetry={async () => {
               if (actionFlightRef.current) return;
+              const before = serverRef.current;
+              if (readOnly || !online || before?.publication || before?.status === "PUBLISHED"
+                || before?.recognition?.status !== "FAILED" || before.recognition.can_retry !== true) return;
               actionFlightRef.current = "RECOGNITION";
               setBusyAction("RECOGNITION");
               try {
+                const confirmation = await Taro.showModal({
+                  title: "重新识别并覆盖草稿？",
+                  content: "识别成功后将覆盖整张草稿，包括人工修改；再次失败则保留当前草稿。已发布后不能再识别。",
+                  confirmText: "确认重试",
+                });
+                if (!confirmation.confirm) return;
                 if (!(await drainPending())) return;
+                const current = serverRef.current;
+                if (current?.id !== before.id || current.source_version !== before.source_version
+                  || current.recognition?.id !== before.recognition.id
+                  || current.publication || current.status === "PUBLISHED"
+                  || current.recognition?.can_retry !== true) {
+                  setError("记录表状态已变化，请重新核对后操作。");
+                  return;
+                }
                 const mutation = context();
                 if (!mutation) return;
                 if (recognitionOperationRef.current.version !== mutation.expected_version) {
@@ -730,7 +748,7 @@ export default function ScoresheetEditorPage() {
                 }
                 await api.retryScoresheetRecognition(
                   scoresheetId,
-                  mutation,
+                  { ...mutation, confirmed_overwrite: true },
                   token,
                   recognitionOperationRef.current.key,
                 );
@@ -884,9 +902,9 @@ function RecognitionBanner({ recognition, readOnly, busy, onRetry }: {
     <View className={`mini-recognition-banner ${recognition.status.toLowerCase()}`}>
       <View>
         <Text>{recognition.status === "FAILED" ? "识别未完成" : "正在识别记录表"}</Text>
-        <Text>{recognition.status === "RETRY_WAIT" && retrySeconds !== null ? `${retrySeconds} 秒后自动继续` : recognition.status === "FAILED" ? "可以手工录入，或重新识别" : "完成后会自动显示核对内容"}</Text>
+        <Text>{recognition.status === "RETRY_WAIT" && retrySeconds !== null ? `${retrySeconds} 秒后自动继续` : recognition.status === "FAILED" ? recognition.can_retry === true ? "可以手工录入，或重新识别" : "请核对原图与草稿" : "完成后会自动显示核对内容"}</Text>
       </View>
-      {recognition.status === "FAILED" && (
+      {recognition.status === "FAILED" && recognition.can_retry === true && (
         <Button disabled={readOnly || busy} onClick={() => void onRetry()}>{busy ? "启动中…" : "重新识别"}</Button>
       )}
     </View>

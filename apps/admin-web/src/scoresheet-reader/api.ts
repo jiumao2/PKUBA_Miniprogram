@@ -43,6 +43,7 @@ type RawRecognition = {
   prompt_version: string;
   image_sha256: string;
   auto_apply_allowed: boolean;
+  can_retry?: boolean;
   status: string;
   attempt_count: number;
   max_attempts: number;
@@ -302,6 +303,7 @@ function recognitionFromRaw(raw: RawRecognition | null): RecognitionRun | null {
     next_attempt_at: raw.next_attempt_at,
     cached: false,
     auto_applied: raw.applied_draft_version !== null,
+    can_retry: raw.can_retry === true,
     applied_revision: raw.applied_draft_version,
     recognition_notes: raw.recognition_notes,
     usage: {
@@ -526,7 +528,7 @@ export const api = {
     return response.json() as Promise<DocumentChangeLogPage>;
   },
 
-  async createRecognition(id: string, baseRevision: number): Promise<RecognitionRun> {
+  async createRecognition(id: string, baseRevision: number, confirmedOverwrite = false): Promise<RecognitionRun> {
     await ensureEditable(id);
     const operation = `${id}:${baseRevision}`;
     const idempotencyKey = recognitionOperationKeys.get(operation) ?? createIdempotencyKey();
@@ -539,7 +541,7 @@ export const api = {
         'Idempotency-Key': idempotencyKey,
         'X-CSRFToken': csrfToken(),
       },
-      body: JSON.stringify(targetContext(id, baseRevision)),
+      body: JSON.stringify({ ...targetContext(id, baseRevision), confirmed_overwrite: confirmedOverwrite }),
     });
     if (!response.ok) throw await responseError(response);
     recognitionOperationKeys.delete(operation);
