@@ -1067,6 +1067,20 @@ assert_current_release() {
   [[ $before_hash == "$(sha256sum "$fixture"/data-sentinels/*)" ]]
 }
 
+assert_rollback_fixture_has_no_data_commands() {
+  local grep_status
+  if grep -Eq 'volume inspect|pg_dump|database\.dump|private-media|archive-staging' "$docker_log"; then
+    echo 'rollback fixture unexpectedly logged a data command' >&2
+    exit 1
+  else
+    grep_status=$?
+  fi
+  if [[ $grep_status != 1 ]]; then
+    echo "rollback fixture data-command check failed (exit $grep_status)" >&2
+    exit 1
+  fi
+}
+
 # Independent scenarios must not inherit an earlier scenario's archived
 # transaction, even when the clock and from/to tags are identical. Only this
 # fixture's PATH is changed; the system clock and production IDs stay intact.
@@ -1086,10 +1100,13 @@ same_second_transaction=
 for same_second_case in first second; do
   reset_rollback_fixture
   : >"$docker_log"
-  ! run_rollback PKUBA_FAKE_FIXED_UTC=1 PKUBA_TEST_CRASH_POINT=prepared \
+  if run_rollback PKUBA_FAKE_FIXED_UTC=1 PKUBA_TEST_CRASH_POINT=prepared \
     bash "$script_dir/rollback-retained-application.sh" \
       blue ROLLBACK_APPLICATION_ONLY \
-      >"$fixture/same-second-$same_second_case-crash.log" 2>&1
+      >"$fixture/same-second-$same_second_case-crash.log" 2>&1; then
+    echo 'rollback crash fixture unexpectedly succeeded' >&2
+    exit 1
+  fi
   current_transaction=$(sed -n 's/^TRANSACTION_ID=//p' \
     "$state_root/release-transaction/journal.env")
   [[ -n $current_transaction ]]
@@ -1108,7 +1125,7 @@ for same_second_case in first second; do
   assert_current_release green v1.2.4
   [[ -d $same_second_archive && ! -e $state_root/release-transaction-completed ]]
   (cd "$same_second_archive" && sha256sum --check completion.sha256 >/dev/null)
-  ! grep -Eq 'volume inspect|pg_dump|database\.dump|private-media|archive-staging' "$docker_log"
+  assert_rollback_fixture_has_no_data_commands
 done
 
 # Within the same scenario, an actual archive collision must still fail
@@ -1118,15 +1135,18 @@ cp -a "$same_second_archive" "$state_root/release-transaction"
 collision_writers=$fixture/archive-collision-writers
 printf 'running\n' >"$collision_writers"
 : >"$docker_log"
-! run_rollback PKUBA_FAKE_FIXED_UTC=1 PKUBA_FAKE_WRITERS_FILE="$collision_writers" \
+if run_rollback PKUBA_FAKE_FIXED_UTC=1 PKUBA_FAKE_WRITERS_FILE="$collision_writers" \
   bash "$script_dir/recover-release-transaction.sh" \
-    >"$fixture/retained-archive-collision.log" 2>&1
+    >"$fixture/retained-archive-collision.log" 2>&1; then
+  echo 'archive collision recovery unexpectedly succeeded' >&2
+  exit 1
+fi
 grep -Fq 'release transaction archive already exists' "$fixture/retained-archive-collision.log"
 assert_recovery_is_fail_closed
 [[ ! -e $collision_writers ]]
 grep -Eq '^stop ' "$docker_log"
 [[ $archive_before == "$(find "$same_second_archive" -type f -exec sha256sum {} + | sort)" ]]
-! grep -Eq 'volume inspect|pg_dump|database\.dump|private-media|archive-staging' "$docker_log"
+assert_rollback_fixture_has_no_data_commands
 /usr/bin/rm -f "$fixture/fake-bin/date"
 echo 'Rollback fixture same-second isolation and existing-archive guard passed.'
 
