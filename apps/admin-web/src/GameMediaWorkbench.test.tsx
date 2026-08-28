@@ -1,7 +1,8 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdminSeason, GameMediaAsset, ScoresheetQueueItem, createAdminClient } from "@pkuba/api-client";
+import { ApiError } from "@pkuba/api-client";
 
 import { GameMediaWorkbench, scoresheetHref } from "./GameMediaWorkbench";
 
@@ -78,6 +79,39 @@ function clientWith(overrides: Partial<AdminClient> = {}) {
 }
 
 describe("GameMediaWorkbench", () => {
+  it.each(["refused", "unknown"] as const)("refreshes a partially uploaded batch and distinguishes %s results", async outcome => {
+    const user = userEvent.setup();
+    const stored: GameMediaAsset[] = [];
+    const client = clientWith({
+      listAdminGameMedia: vi.fn().mockImplementation(async () => [...stored]),
+      uploadAdminGameMedia: vi.fn()
+        .mockImplementationOnce(async () => { stored.push({ ...photo, kind: "GAME_PHOTO" }); return stored[0]; })
+        .mockRejectedValueOnce(outcome === "refused"
+          ? new ApiError("图片内容不合法", 400, "INVALID_IMAGE")
+          : new SyntaxError("Unexpected end of JSON input")),
+    });
+    render(<GameMediaWorkbench client={client} seasons={seasons} seasonId="season-live"
+      initialGameId="game-one" onSeasonChange={vi.fn()} />);
+    const picker = await screen.findByLabelText("添加其他照片");
+    const reads = vi.mocked(client.listAdminGameMedia).mock.calls.length;
+    expect(picker).not.toBeDisabled();
+    // The visible label opens the native picker; its hidden input has no pointer events.
+    fireEvent.change(picker, { target: { files: [new File(["first"], "first.png", { type: "image/png" }),
+      new File(["second"], "second.png", { type: "image/png" })] } });
+    await waitFor(() => expect(client.uploadAdminGameMedia).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(vi.mocked(client.listAdminGameMedia).mock.calls.length).toBeGreaterThan(reads));
+    expect(await screen.findByText(/已上传 1 张/)).toHaveTextContent(outcome === "refused" ? "失败 1 张" : "结果未确认 1 张");
+    expect(client.uploadAdminGameMedia).toHaveBeenCalledTimes(2);
+    const originalAttempt = vi.mocked(client.uploadAdminGameMedia).mock.calls[1];
+    await user.click(screen.getByRole("button", { name: "仅重试未完成的照片" }));
+    await waitFor(() => expect(client.uploadAdminGameMedia).toHaveBeenCalledTimes(3));
+    const retry = vi.mocked(client.uploadAdminGameMedia).mock.calls[2];
+    expect(retry[3]).toBe(originalAttempt[3]);
+    expect(retry[4]).toBe(originalAttempt[4]);
+    expect(await screen.findByText("已添加 1 张其他照片。")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "仅重试未完成的照片" })).not.toBeInTheDocument();
+  });
+
   it("binds archived correction confirmation to one concrete scoresheet", () => {
     expect(scoresheetHref("season-live", "game-one", {
       archivedView: true,

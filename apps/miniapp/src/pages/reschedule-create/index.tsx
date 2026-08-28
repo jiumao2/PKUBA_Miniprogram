@@ -1,7 +1,7 @@
 import { Button, Picker, Text, View } from "@tarojs/components";
 import Taro, { useDidShow, useRouter } from "@tarojs/taro";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { RescheduleGame, RescheduleTarget } from "@pkuba/api-client";
+import { createIdempotencyKey, type RescheduleGame, type RescheduleTarget } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
@@ -19,6 +19,9 @@ import {
   targetsForEntryMode,
 } from "./mode";
 
+type PendingSubmission = { payload: Parameters<typeof api.createRescheduleRequest>[0]; key: string };
+const pendingSubmissions = new Map<string, PendingSubmission>();
+
 export default function RescheduleCreatePage() {
   const router = useRouter();
   const entryMode = parseRescheduleEntryMode(router.params.mode);
@@ -31,6 +34,7 @@ export default function RescheduleCreatePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [accessProblem, setAccessProblem] = useState<RescheduleAccessProblem | null>(null);
+  const [pendingSubmission, setPendingSubmission] = useState<PendingSubmission | null>(null);
   const loadSequence = useRef(0);
   const loadedIdentity = useRef<string | null>(null);
 
@@ -46,6 +50,7 @@ export default function RescheduleCreatePage() {
     setDateIndex(0);
     setPeriodIndex(0);
     setBusy(false);
+    setPendingSubmission(null);
   };
   const requireLogin = () => {
     loadSequence.current += 1;
@@ -91,6 +96,7 @@ export default function RescheduleCreatePage() {
     setLoading(true);
     setBusy(false);
     setAccessProblem(null);
+    setPendingSubmission(pendingSubmissions.get(JSON.stringify([token, entryCopy.processRoute])) ?? null);
     try {
       const items = await api.getEligibleRescheduleGames(token);
       if (!current()) return;
@@ -154,16 +160,30 @@ export default function RescheduleCreatePage() {
     });
     if (!confirmation.confirm) return;
     if (!current()) return;
+    const payload: PendingSubmission["payload"] = {
+      game_id: selectedGame.id,
+      expected_game_version: selectedGame.version,
+      target_date: selectedTarget.date,
+      target_period_id: selectedTarget.period_id,
+      process_route: entryCopy.processRoute,
+    };
+    const scope = JSON.stringify([token, entryCopy.processRoute]);
+    const previous = pendingSubmissions.get(scope);
+    const pending = previous && JSON.stringify(previous.payload) === JSON.stringify(payload)
+      ? previous : { payload, key: createIdempotencyKey() };
+    pendingSubmissions.set(scope, pending);
+    setPendingSubmission(pending);
+    await sendSubmission(pending, token, current);
+  };
+
+  const sendSubmission = async (pending: PendingSubmission, token: string, current: () => boolean) => {
     setBusy(true);
     try {
-      await api.createRescheduleRequest({
-        game_id: selectedGame.id,
-        expected_game_version: selectedGame.version,
-        target_date: selectedTarget.date,
-        target_period_id: selectedTarget.period_id,
-        process_route: entryCopy.processRoute,
-      }, token);
+      await api.createRescheduleRequest(pending.payload, token, pending.key);
+      const scope = JSON.stringify([token, entryCopy.processRoute]);
+      if (pendingSubmissions.get(scope) === pending) pendingSubmissions.delete(scope);
       if (!current()) return;
+      setPendingSubmission(null);
       Taro.showToast({ title: "申请已提交", icon: "success" });
       await Taro.redirectTo({ url: "/pages/reschedule-requests/index" });
     } catch (reason: unknown) {
@@ -171,6 +191,14 @@ export default function RescheduleCreatePage() {
     } finally {
       if (current()) setBusy(false);
     }
+  };
+
+  const retryPending = async () => {
+    const token = getMiniAppSession();
+    if (!token) { requireLogin(); return; }
+    const pending = pendingSubmissions.get(JSON.stringify([token, entryCopy.processRoute]));
+    if (!pending || busy || loading) return;
+    await sendSubmission(pending, token, identityGuard(token));
   };
 
   return (
@@ -185,6 +213,12 @@ export default function RescheduleCreatePage() {
         onRetry={() => void load()}
         returnEntry={entryMode === "cross_week" ? "reschedule_handbook" : "reschedule_ordinary"}
       />}
+      {!loading && pendingSubmission && !selectedTarget && (
+        <View className="flow-feedback">
+          <Text>上次申请结果尚未确认，可用原申请核对结果。</Text>
+          <Button disabled={busy} onClick={() => void retryPending()}>核对上次申请</Button>
+        </View>
+      )}
       {!loading && !accessProblem && !selectedGame && (
         <View className="state"><Text className="state-detail">当前没有满足政策和截止时间的可调比赛。</Text></View>
       )}

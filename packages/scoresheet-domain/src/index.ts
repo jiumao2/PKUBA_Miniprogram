@@ -367,6 +367,8 @@ export interface ScoresheetDetail {
     id: string;
     publication_number: number;
     published_at: string;
+    draft_version?: number;
+    source_asset_id?: string;
   };
 }
 

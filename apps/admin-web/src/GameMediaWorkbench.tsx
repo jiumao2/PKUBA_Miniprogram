@@ -17,7 +17,7 @@ import type {
   ScoresheetQueueItem,
   createAdminClient,
 } from "@pkuba/api-client";
-import { createIdempotencyKey } from "@pkuba/api-client";
+import { ApiError, createIdempotencyKey } from "@pkuba/api-client";
 
 import "./competition-media.css";
 
@@ -68,6 +68,9 @@ export function GameMediaWorkbench({
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [retryBatch, setRetryBatch] = useState<{
+    gameId: string; kind: "GROUP_PHOTO" | "GAME_PHOTO"; files: File[];
+  } | null>(null);
   const gamesRequest = useRef(0);
   const assetsRequest = useRef(0);
   const initialTargetLoaded = useRef(false);
@@ -154,6 +157,7 @@ export function GameMediaWorkbench({
     setDivisionNames([]);
     initialTargetLoaded.current = false;
     setMessage("");
+    setRetryBatch(null);
     void loadAssets();
   }, [loadAssets, seasonId]);
 
@@ -200,8 +204,9 @@ export function GameMediaWorkbench({
 
   useEffect(() => {
     setReplacementFile(null);
-    setMessage("");
   }, [selectedAsset?.id]);
+
+  useEffect(() => setMessage(""), [selectedGameId]);
 
   useEffect(() => {
     if (!seasonId || !selectedGameId) return;
@@ -246,24 +251,37 @@ export function GameMediaWorkbench({
     if (!selectedGame || files.length === 0) return;
     setBusy(true);
     setMessage("");
+    const remaining: File[] = [];
+    const failures: string[] = [];
+    let successCount = 0;
+    let failedCount = 0;
+    let unknownCount = 0;
     try {
       for (const file of files) {
         const operation = `upload:${selectedGame.game_id}:${kind}:${file.name}:${file.size}:${file.lastModified}`;
         const idempotencyKey = mediaOperationKeys.current.get(operation) ?? createIdempotencyKey();
         mediaOperationKeys.current.set(operation, idempotencyKey);
-        await client.uploadAdminGameMedia(
-          selectedGame.game_id,
-          kind,
-          false,
-          file,
-          idempotencyKey,
-        );
-        mediaOperationKeys.current.delete(operation);
+        try {
+          await client.uploadAdminGameMedia(selectedGame.game_id, kind, false, file, idempotencyKey);
+          mediaOperationKeys.current.delete(operation);
+          successCount += 1;
+        } catch (reason: unknown) {
+          remaining.push(file);
+          if (reason instanceof ApiError && reason.status >= 400 && reason.status < 500) {
+            failedCount += 1;
+            failures.push(`${file.name}：${reason.message}`);
+          } else {
+            unknownCount += 1;
+            failures.push(`${file.name}：结果未确认`);
+          }
+        }
       }
-      setMessage(kind === "GROUP_PHOTO" ? "比赛合照已上传并公开。" : `已添加 ${files.length} 张其他照片。`);
+      setRetryBatch(remaining.length ? { gameId: selectedGame.game_id, kind, files: remaining } : null);
+      // A lost response can still have committed a photo. Always refresh the authoritative list.
       await loadAssets();
-    } catch (reason: unknown) {
-      setMessage(reason instanceof Error ? reason.message : "上传失败");
+      setMessage(remaining.length
+        ? `已上传 ${successCount} 张，失败 ${failedCount} 张，结果未确认 ${unknownCount} 张。${failures.join("；")}`
+        : kind === "GROUP_PHOTO" ? "比赛合照已上传并公开。" : `已添加 ${files.length} 张其他照片。`);
     } finally {
       setBusy(false);
     }
@@ -494,7 +512,13 @@ export function GameMediaWorkbench({
                     </div>
                   </div>
                 )}
-                {message && <p className="media-operation-message" role="status">{message}</p>}
+      {message && <p className="media-operation-message" role="status">{message}</p>}
+      {!archived && retryBatch?.gameId === selectedGameId && (
+        <button type="button" className="media-secondary-action" disabled={busy}
+          onClick={() => void uploadPhotos(retryBatch.kind, retryBatch.files)}>
+          仅重试未完成的照片
+        </button>
+      )}
               </section>
             </>
           )}

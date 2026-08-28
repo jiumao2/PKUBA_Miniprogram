@@ -739,17 +739,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   confirm: async () => {
-    if (!get().online || get().readOnly) {
+    const initial = get();
+    const retrying = Boolean(!initial.dirty && initial.document
+      && api.hasPendingPublication(initial.document.id, initial.serverRevision));
+    if (!get().online || (get().readOnly && !retrying)) {
       set({ error: get().online ? (get().readOnlyReason || '当前工作台为只读。') : '网络已断开，不能提交。' });
       return;
     }
-    const report = await get().validate();
+    // The original confirmed command is replayed with its original context;
+    // a new validate would fail after the first attempt has consumed its lease.
+    const report = retrying ? { issues: [] } : await get().validate();
     const document = get().document;
     if (!report || !document || report.issues.some((issue) => issue.severity === 'error')) return;
     const warningCodes = report.issues
       .filter((issue) => issue.severity === 'warning')
       .map((issue) => issue.code);
-    const confirmationMessage = warningCodes.length > 0
+    const confirmationMessage = retrying
+      ? '上次发布结果尚未确认。现在核对原提交结果，不会另建一次发布。'
+      : warningCodes.length > 0
       ? `仍有 ${warningCodes.length} 类警告。确认已人工核对，并将当前记录表作为真实比赛数据提交吗？`
       : '确认将当前已保存并通过校验的记录表作为真实比赛数据提交吗？';
     if (!globalThis.confirm(confirmationMessage)) {
@@ -788,6 +795,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         readOnly: true,
         readOnlyReason: '记录表已发布；继续纠错时需要重新取得编辑权。',
         leaseHolder: null,
+        error: '',
       });
       await Promise.all([get().refreshChanges(), get().loadGames()]);
     } catch (error) {

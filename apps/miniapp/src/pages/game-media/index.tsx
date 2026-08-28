@@ -3,7 +3,6 @@ import Taro, { useDidShow, useRouter } from "@tarojs/taro";
 import { useMemo, useRef, useState } from "react";
 import {
   ApiError,
-  createIdempotencyKey,
   type GameMediaAsset,
   type GameMediaCollection,
   type MiniAppMe,
@@ -40,9 +39,11 @@ export default function GameDetailPage() {
   const [uploadingTarget, setUploadingTarget] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
+  const [retryBatch, setRetryBatch] = useState<{
+    gameId: string; token: string; kind: GameMediaKind; confirmed: boolean; files: string[];
+  } | null>(null);
   const [privateError, setPrivateError] = useState("");
   const requestVersionRef = useRef(0);
-  const operationKeysRef = useRef(new Map<string, string>());
 
   const privateErrorMessage = (reason: unknown) => {
     if (reason instanceof ApiError) {
@@ -125,9 +126,49 @@ export default function GameDetailPage() {
       && [detail.game.home_team_id, detail.game.away_team_id].includes(me.leader_binding.team_id),
   );
 
-  const chooseAndUpload = async (kind: GameMediaKind) => {
+  const uploadFiles = async (kind: GameMediaKind, files: string[], confirmed: boolean) => {
     const token = getMiniAppSession();
-    if (!token || !detail) return;
+    if (!token || !detail || !files.length) return;
+    setUploadingTarget(`new:${kind}`);
+    setMessage("");
+    const remaining: string[] = [];
+    const failures: string[] = [];
+    let successCount = 0;
+    let failedCount = 0;
+    let unknownCount = 0;
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        try {
+          await uploadGameMedia(detail.game.id, files[index], kind, confirmed, token,
+            (value) => setProgress(Math.round(((index + value / 100) / files.length) * 100)));
+          successCount += 1;
+        } catch (reason: unknown) {
+          remaining.push(files[index]);
+          if (reason instanceof ApiError && reason.status >= 400 && reason.status < 500) {
+            failedCount += 1;
+            failures.push(`第 ${index + 1} 张：${reason.message}`);
+          } else {
+            unknownCount += 1;
+            failures.push(`第 ${index + 1} 张：结果未确认`);
+          }
+        }
+      }
+      setRetryBatch(remaining.length ? { gameId, token, kind, confirmed, files: remaining } : null);
+      // Even if every response was lost, committed photos may already be in the list.
+      await load();
+      if (remaining.length === 0) {
+        Taro.showToast({ title: "上传完成", icon: "success" });
+      } else {
+        setMessage(`已上传 ${successCount} 张，失败 ${failedCount} 张，结果未确认 ${unknownCount} 张。${failures.join("；")}`);
+      }
+    } finally {
+      setUploadingTarget(null);
+      setProgress(0);
+    }
+  };
+
+  const chooseAndUpload = async (kind: GameMediaKind) => {
+    if (!getMiniAppSession() || !detail) return;
     let confirmed = false;
     if (kind === "SCORESHEET") {
       const confirmation = await Taro.showModal({
@@ -147,35 +188,7 @@ export default function GameDetailPage() {
         sourceType: ["album", "camera"],
         sizeType: ["original"],
       });
-      setUploadingTarget(`new:${kind}`);
-      const failures: string[] = [];
-      let successCount = 0;
-      for (let index = 0; index < selected.tempFiles.length; index += 1) {
-        const file = selected.tempFiles[index];
-        try {
-          await uploadGameMedia(
-            detail.game.id,
-            file.tempFilePath,
-            kind,
-            confirmed,
-            token,
-            (value) => setProgress(Math.round(
-              ((index + value / 100) / selected.tempFiles.length) * 100,
-            )),
-          );
-          successCount += 1;
-        } catch (reason: unknown) {
-          failures.push(
-            `第 ${index + 1} 张：${reason instanceof Error ? reason.message : "上传失败"}`,
-          );
-        }
-      }
-      if (successCount > 0) await load();
-      if (failures.length === 0) {
-        Taro.showToast({ title: "上传完成", icon: "success" });
-      } else {
-        setMessage(`已上传 ${successCount} 张，失败 ${failures.length} 张。${failures.join("；")}`);
-      }
+      await uploadFiles(kind, selected.tempFiles.map((file) => file.tempFilePath), confirmed);
     } catch (reason: unknown) {
       const text = reason instanceof Error ? reason.message : "图片上传失败";
       if (!text.includes("cancel")) setMessage(text);
@@ -208,9 +221,6 @@ export default function GameDetailPage() {
       });
       const file = selected.tempFiles[0];
       if (!file) return;
-      const operation = `replace:${asset.id}:${asset.version}:${file.tempFilePath}`;
-      const idempotencyKey = operationKeysRef.current.get(operation) ?? createIdempotencyKey();
-      operationKeysRef.current.set(operation, idempotencyKey);
       setUploadingTarget(asset.id);
       await replaceGameMedia(
         asset.id,
@@ -219,9 +229,7 @@ export default function GameDetailPage() {
         confirmed,
         token,
         setProgress,
-        idempotencyKey,
       );
-      operationKeysRef.current.delete(operation);
       Taro.showToast({ title: "已重新上传", icon: "success" });
       await load();
     } catch (reason: unknown) {
@@ -315,6 +323,11 @@ export default function GameDetailPage() {
       <Button onClick={() => void loadPrivate(requestVersionRef.current)}>重新读取私有资料</Button>
     </View>}
     {message && <View className="media-feedback"><Text>{message}</Text></View>}
+    {collection?.can_upload && retryBatch?.gameId === gameId
+      && retryBatch.token === getMiniAppSession() && <Button
+        disabled={uploadingTarget !== null}
+        onClick={() => void uploadFiles(retryBatch.kind, retryBatch.files, retryBatch.confirmed)}
+      >仅重试未完成的照片</Button>}
   </View>;
 }
 

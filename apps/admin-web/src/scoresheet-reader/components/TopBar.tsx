@@ -32,6 +32,7 @@ interface TopBarProps {
   onSave: () => Promise<void>;
   onValidate: () => Promise<unknown>;
   onConfirm: () => Promise<void>;
+  publicationRecoveryAllowed?: boolean;
   sourceOpen: boolean;
   inspectorOpen: boolean;
   onToggleSource: () => void;
@@ -68,6 +69,7 @@ export function TopBar({
   onSave,
   onValidate,
   onConfirm,
+  publicationRecoveryAllowed = false,
   sourceOpen,
   inspectorOpen,
   onToggleSource,
@@ -190,8 +192,8 @@ export function TopBar({
               <Download size={15} /> 导出 PDF
             </button>
           )}
-          <button className="confirm-button" onClick={() => void onConfirm()} disabled={!document || readOnly || document.status === 'confirmed'}>
-            <ShieldCheck size={15} /> {document?.status === 'confirmed' ? '已提交' : '提交记录表'}
+          <button className="confirm-button" onClick={() => void onConfirm()} disabled={!document || !online || (!publicationRecoveryAllowed && (readOnly || document.status === 'confirmed'))}>
+            <ShieldCheck size={15} /> {publicationRecoveryAllowed ? '核对原提交' : document?.status === 'confirmed' ? '已提交' : '提交记录表'}
           </button>
         </div>
       </div>

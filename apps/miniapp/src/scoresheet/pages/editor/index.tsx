@@ -43,6 +43,9 @@ const STEPS: Array<{ key: StepKey; label: string }> = [
 
 const CLIENT_KEY = "pkuba-scoresheet-miniapp-client";
 const RECOVERY_TTL_MS = 24 * 60 * 60 * 1000;
+const recognitionOperationKeys = new Map<string, string>();
+type PendingPublication = { key: string; context: ScoresheetMutationContext; sourceId: string | null };
+const publicationOperations = new Map<string, PendingPublication>();
 
 interface RecoverySnapshot {
   local: ScoresheetDocument;
@@ -149,7 +152,6 @@ export default function ScoresheetEditorPage() {
   const savingRef = useRef(false);
   const savingDocumentRef = useRef<ScoresheetDocument | null>(null);
   const actionFlightRef = useRef("");
-  const recognitionOperationRef = useRef({ version: -1, key: "" });
   const contextReviewOperationRef = useRef({ operation: "", key: "" });
   const acquireFlightRef = useRef<Promise<void> | null>(null);
   const syncFlightRef = useRef<Promise<boolean> | null>(null);
@@ -664,8 +666,33 @@ export default function ScoresheetEditorPage() {
     if (actionFlightRef.current) return;
     actionFlightRef.current = "PUBLISH";
     setBusyAction("PUBLISH");
+    let operation = "";
+    let pending: PendingPublication | undefined;
+    const complete = (raw: ScoresheetDetail) => {
+      applyServer(raw);
+      publicationOperations.delete(operation);
+      leaseRef.current = "";
+      clearStoredLease(scoresheetId);
+      setReadOnly(true);
+      setSaveState("已发布");
+      setError("");
+      Taro.showToast({ title: "发布成功", icon: "success" });
+    };
+    const send = async (intent: PendingPublication) => complete(await writeServer(
+      () => api.publishScoresheet(scoresheetId, intent.context, token, intent.key),
+    ));
     try {
-      if (!context() || !(await drainPending())) return;
+      if (!(await drainPending())) return;
+      const current = serverRef.current;
+      if (!current) return;
+      operation = JSON.stringify([token, scoresheetId, current.source?.id,
+        current.draft_version, clientIdRef.current]);
+      pending = publicationOperations.get(operation);
+      if (pending) {
+        await send(pending);
+        return;
+      }
+      if (!context()) return;
       const validated = applyServer(await writeServer(() => api.validateScoresheet(scoresheetId, context()!, token)));
       const errors = validated.validation_report.errors ?? [];
       const warnings = validated.validation_report.warnings ?? [];
@@ -696,13 +723,21 @@ export default function ScoresheetEditorPage() {
           await writeServer(() => api.acknowledgeScoresheetWarnings(scoresheetId, context()!, warningIds, token)),
         );
       }
-      applyServer(await writeServer(() => api.publishScoresheet(scoresheetId, context()!, token)));
-      leaseRef.current = "";
-      clearStoredLease(scoresheetId);
-      setReadOnly(true);
-      setSaveState("已发布");
-      Taro.showToast({ title: "发布成功", icon: "success" });
+      pending = { key: createIdempotencyKey(), context: context()!, sourceId: current.source?.id ?? null };
+      publicationOperations.set(operation, pending);
+      await send(pending);
     } catch (reason) {
+      if (pending) {
+        try {
+          const latest = applyServer(await readServer(), Boolean(pendingRef.current));
+          if (latest.status === "PUBLISHED" && latest.draft_version === pending.context.expected_version
+            && latest.publication?.draft_version === pending.context.expected_version
+            && latest.publication.source_asset_id === pending.sourceId) {
+            complete(latest);
+            return;
+          }
+        } catch { /* Preserve the original unknown-result error and pending key. */ }
+      }
       setError(message(reason));
     } finally {
       actionFlightRef.current = "";
@@ -807,19 +842,17 @@ export default function ScoresheetEditorPage() {
                 }
                 const mutation = context();
                 if (!mutation) return;
-                if (recognitionOperationRef.current.version !== mutation.expected_version) {
-                  recognitionOperationRef.current = {
-                    version: mutation.expected_version,
-                    key: createIdempotencyKey(),
-                  };
-                }
+                const operation = JSON.stringify([token, scoresheetId, current.source_version,
+                  current.recognition.id, mutation.expected_version, mutation.client_id]);
+                const key = recognitionOperationKeys.get(operation) ?? createIdempotencyKey();
+                recognitionOperationKeys.set(operation, key);
                 await api.retryScoresheetRecognition(
                   scoresheetId,
                   { ...mutation, confirmed_overwrite: true },
                   token,
-                  recognitionOperationRef.current.key,
+                  key,
                 );
-                recognitionOperationRef.current = { version: -1, key: "" };
+                recognitionOperationKeys.delete(operation);
                 leaseRef.current = "";
                 clearStoredLease(scoresheetId);
                 setReadOnly(true);

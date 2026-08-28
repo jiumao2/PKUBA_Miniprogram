@@ -1,4 +1,4 @@
-import { createAdminClient, createIdempotencyKey } from '@pkuba/api-client';
+import { createAdminClient, createIdempotencyKey, type ScoresheetMutationContext } from '@pkuba/api-client';
 import { hasRecognitionResult, type ScoresheetGameContextReview, type ScoresheetContextPlayerMapping } from '@pkuba/scoresheet-domain';
 
 import type {
@@ -31,6 +31,12 @@ type RawLease = {
 
 const recognitionOperationKeys = new Map<string, string>();
 const contextReviewKeys = new Map<string, string>();
+type PendingPublication = { key: string; context: ScoresheetMutationContext; sourceId: string | null };
+const publicationOperations = new Map<string, PendingPublication>();
+
+function publicationOperation(id: string, revision: number) {
+  return JSON.stringify([csrfToken(), clientId(), id, revision]);
+}
 
 type RawRecognition = {
   id: string;
@@ -84,6 +90,7 @@ type RawDetail = {
   acknowledged_warnings: string[];
   recognition: RawRecognition | null;
   lease: RawLease['holder'];
+  publication?: { draft_version: number; source_asset_id: string } | null;
 };
 
 type RawIssue = {
@@ -540,22 +547,47 @@ export const api = {
     baseRevision: number,
     _warningCodes: string[],
   ): Promise<ScoresheetDocument> {
-    await ensureEditable(document.id);
-    let raw = detailCache.get(document.id) ?? await loadRawDetail(document.id);
-    const warningIds = (raw.validation_report.warnings ?? []).map((row) => row.id);
-    if (warningIds.length) {
-      raw = (await admin.acknowledgeScoresheetWarnings(
-        document.id,
-        targetContext(document.id, baseRevision),
-        warningIds,
-      )) as unknown as RawDetail;
+    const operation = publicationOperation(document.id, baseRevision);
+    let pending = publicationOperations.get(operation);
+    if (!pending) {
+      await ensureEditable(document.id);
+      let detail = detailCache.get(document.id) ?? await loadRawDetail(document.id);
+      const warningIds = (detail.validation_report.warnings ?? []).map((row) => row.id);
+      if (warningIds.length) {
+        detail = (await admin.acknowledgeScoresheetWarnings(
+          document.id,
+          targetContext(document.id, baseRevision),
+          warningIds,
+        )) as unknown as RawDetail;
+      }
+      pending = { key: createIdempotencyKey(), context: targetContext(document.id, baseRevision),
+        sourceId: detail.source?.id ?? null };
+      publicationOperations.set(operation, pending);
     }
-    raw = (await admin.publishScoresheet(
-      document.id,
-      targetContext(document.id, baseRevision),
-    )) as unknown as RawDetail;
+    let raw: RawDetail;
+    try {
+      raw = (await admin.publishScoresheet(
+        document.id,
+        pending.context,
+        pending.key,
+      )) as unknown as RawDetail;
+    } catch (error) {
+      // A lost response can follow a committed publication (which removes the
+      // lease). Read its authoritative identity before asking for another write.
+      let latest: RawDetail | null = null;
+      try { latest = await loadRawDetail(document.id); } catch { /* Keep the original unknown-result error. */ }
+      if (!latest || latest.status !== 'PUBLISHED' || latest.draft_version !== baseRevision
+        || latest.publication?.draft_version !== baseRevision
+        || latest.publication.source_asset_id !== pending.sourceId) throw error;
+      raw = latest;
+    }
+    publicationOperations.delete(operation);
     clearLease(document.id);
     return documentFromDetail(raw);
+  },
+
+  hasPendingPublication(id: string, revision: number) {
+    return publicationOperations.has(publicationOperation(id, revision));
   },
 
   async changes(id: string, limit = 50, beforeId?: number): Promise<DocumentChangeLogPage> {
@@ -585,9 +617,10 @@ export const api = {
       body: JSON.stringify({ ...targetContext(id, baseRevision), confirmed_overwrite: confirmedOverwrite }),
     });
     if (!response.ok) throw await responseError(response);
+    const recognition = recognitionFromRaw(await response.json() as RawRecognition)!;
     recognitionOperationKeys.delete(operation);
     clearLease(id);
-    return recognitionFromRaw(await response.json() as RawRecognition)!;
+    return recognition;
   },
 
   async recognition(runId: string): Promise<RecognitionRun> {

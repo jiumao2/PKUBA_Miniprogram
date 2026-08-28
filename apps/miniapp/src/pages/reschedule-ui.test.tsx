@@ -203,6 +203,7 @@ describe("leader reschedule pages", () => {
         process_route: "HANDBOOK_REVIEW",
       },
       "miniapp-session",
+      expect.any(String),
     );
   });
 });

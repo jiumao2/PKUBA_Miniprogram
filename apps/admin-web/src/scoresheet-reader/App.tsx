@@ -1,6 +1,7 @@
 import { AlertTriangle, LoaderCircle, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { api } from './api';
 import { DocumentCanvas } from './components/DocumentCanvas';
 import { GameBrowser } from './components/GameBrowser';
 import { Inspector } from './components/Inspector';
@@ -328,6 +329,8 @@ export default function App() {
         onSave={state.save}
         onValidate={state.validate}
         onConfirm={state.confirm}
+        publicationRecoveryAllowed={Boolean(state.document && !state.dirty && state.online && !state.contextReviewing
+          && api.hasPendingPublication(state.document.id, state.serverRevision))}
         sourceOpen={sourceOpen}
         inspectorOpen={inspectorOpen}
         onToggleSource={() => setSourceOpen((value) => !value)}
