@@ -346,6 +346,9 @@
   flex: 1;
   height: 0;
   min-height: 0;
+}
+
+.canonical-drawer-content {
   box-sizing: border-box;
   padding: 0 20rpx 28rpx;
 }

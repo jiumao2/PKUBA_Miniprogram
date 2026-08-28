@@ -295,7 +295,7 @@ export default function App() {
       <main className="loading-screen">
         <ScoresheetLogo className="scoresheet-logo loading-logo" title="ScoresheetReader 记录表" />
         <LoaderCircle className="spin" size={22} />
-        <p>正在打开本地记录表工作台…</p>
+        <p>正在打开记录表工作台…</p>
       </main>
     );
   }
@@ -305,7 +305,7 @@ export default function App() {
       <main className="loading-screen error-screen">
         <AlertTriangle size={28} />
         <h1>无法启动编辑器</h1>
-        <p>{state.error || '模板定义未加载。请确认本地 FastAPI 已启动。'}</p>
+        <p>{state.error || '模板定义未加载，请刷新页面重试。'}</p>
       </main>
     );
   }

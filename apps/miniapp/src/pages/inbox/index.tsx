@@ -1,6 +1,6 @@
 import { Button, Text, View } from "@tarojs/components";
 import Taro, { useDidShow } from "@tarojs/taro";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InboxTask } from "@pkuba/api-client";
 
 import { api } from "../../api";
@@ -16,17 +16,30 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const requestSequence = useRef(0);
+  const loadedIdentity = useRef<string | null>(null);
 
   const load = async (targetStatus: TaskStatus, append = false) => {
+    const sequence = ++requestSequence.current;
     const token = getMiniAppSession();
     if (!token) {
+      loadedIdentity.current = null;
       setItems([]);
       setNextCursor(null);
       setLoading(false);
+      setLoadingMore(false);
       setError("请先在“我的”完成微信登录。");
       return;
     }
-    append ? setLoadingMore(true) : setLoading(true);
+    const current = () => sequence === requestSequence.current && token === getMiniAppSession();
+    if (loadedIdentity.current !== token) {
+      setItems([]);
+      setNextCursor(null);
+      loadedIdentity.current = token;
+      append = false;
+    }
+    if (append) setLoadingMore(true);
+    else { setLoading(true); setLoadingMore(false); }
     setError("");
     try {
       const page = await api.listInbox(
@@ -34,19 +47,20 @@ export default function InboxPage() {
         targetStatus,
         append ? nextCursor ?? "" : "",
       );
+      if (!current()) return;
       setItems((current) => append ? [...current, ...page.items] : page.items);
       setNextCursor(page.next_cursor);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "任务读取失败");
+      if (current()) setError(reason instanceof Error ? reason.message : "任务读取失败");
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (current()) { setLoading(false); setLoadingMore(false); }
     }
   };
 
   useDidShow(() => {
     void load(status);
   });
+  useEffect(() => () => { requestSequence.current += 1; }, []);
 
   const switchStatus = (next: TaskStatus) => {
     if (next === status) return;
@@ -121,7 +135,7 @@ export default function InboxPage() {
       )}
 
       {nextCursor && (
-        <Button className="load-more" disabled={loadingMore} onClick={() => void load(status, true)}>
+        <Button className="load-more" disabled={loading || loadingMore} onClick={() => void load(status, true)}>
           {loadingMore ? "正在加载…" : "加载更多"}
         </Button>
       )}

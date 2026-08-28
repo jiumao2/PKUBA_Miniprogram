@@ -89,6 +89,7 @@ export default function RescheduleCreatePage() {
       loadedIdentity.current = token;
     }
     setLoading(true);
+    setBusy(false);
     setAccessProblem(null);
     try {
       const items = await api.getEligibleRescheduleGames(token);
@@ -99,9 +100,7 @@ export default function RescheduleCreatePage() {
       setDateIndex(0);
       setPeriodIndex(0);
       if (items[0]) {
-        const available = await api.getRescheduleTargets(items[0].id, entryCopy.processRoute, token);
-        if (!current()) return;
-        setTargets(targetsForEntryMode(available, entryMode));
+        await loadTargets(items[0], token, current);
       }
     } catch (reason: unknown) {
       if (current()) showFailure(reason, "读取失败，请重试。");
@@ -128,8 +127,11 @@ export default function RescheduleCreatePage() {
     setGameIndex(index);
     if (!token) { requireLogin(); return; }
     if (!game) return;
+    loadSequence.current += 1;
     const current = identityGuard(token);
     setLoading(true);
+    setBusy(false);
+    setAccessProblem(null);
     try {
       await loadTargets(game, token, current);
     } catch (reason: unknown) {
@@ -142,7 +144,7 @@ export default function RescheduleCreatePage() {
   const submit = async () => {
     const token = getMiniAppSession();
     if (!token) { requireLogin(); return; }
-    if (!selectedGame || !selectedTarget) return;
+    if (loading || busy || !selectedGame || !selectedTarget) return;
     const current = identityGuard(token);
     const confirmation = await Taro.showModal({
       title: `提交${entryCopy.title}申请`,
@@ -234,7 +236,7 @@ export default function RescheduleCreatePage() {
                 </View>
               </Picker>
               <Text className="flow-helper">系统会在提交时内部预留可用场地，调赛生效并更新正式赛程后公布。</Text>
-              <Button className="flow-primary" disabled={busy} onClick={() => void submit()}>
+              <Button className="flow-primary" disabled={loading || busy} onClick={() => void submit()}>
                 {busy ? "正在提交…" : "提交申请"}
               </Button>
             </>

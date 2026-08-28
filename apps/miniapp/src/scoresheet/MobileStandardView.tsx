@@ -673,7 +673,9 @@ function Drawer({ title, onClose, children }: { title: string; onClose: () => vo
       <View className="canonical-drawer-mask" onClick={onClose}>
         <View className="canonical-drawer" onClick={(event) => event.stopPropagation()}>
           <View className="canonical-drawer-heading"><Text>{title}</Text><Button onClick={onClose}>关闭</Button></View>
-          <ScrollView className="canonical-drawer-body" scrollY enhanced showScrollbar={false}>{children}</ScrollView>
+          <ScrollView className="canonical-drawer-body" scrollY enhanced showScrollbar={false}>
+            <View className="canonical-drawer-content">{children}</View>
+          </ScrollView>
         </View>
       </View>
     </RootPortal>

@@ -29,6 +29,7 @@ export default function DataPage() {
   const [tab, setTab] = useState<Tab>("teams");
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [divisionId, setDivisionId] = useState("");
+  const selectedDivisionId = useRef("");
   const [teamSort, setTeamSort] = useState("points_per_game");
   const [playerSort, setPlayerSort] = useState("points_per_game");
   const [order, setOrder] = useState<Order>("desc");
@@ -53,9 +54,17 @@ export default function DataPage() {
       if (version !== seasonRequestVersion.current) return;
       setDivisions(season.divisions);
       const initial = season.divisions.find((division) => division.code === "men-a") ?? season.divisions[0];
-      setDivisionId((current) => season.divisions.some((division) => division.id === current)
-        ? current
-        : initial?.id || "");
+      const nextDivisionId = season.divisions.some((division) => division.id === selectedDivisionId.current)
+        ? selectedDivisionId.current
+        : initial?.id || "";
+      if (nextDivisionId !== selectedDivisionId.current) {
+        requestVersion.current += 1;
+        setTeams([]); setPlayers([]); setGames([]);
+        setPlayerPage(1); setPlayerTotal(0); setError("");
+        setLoading(Boolean(nextDivisionId));
+        selectedDivisionId.current = nextDivisionId;
+        setDivisionId(nextDivisionId);
+      }
       if (!initial) setLoading(false);
     }).catch((reason) => {
       if (version !== seasonRequestVersion.current) return;
@@ -145,6 +154,7 @@ export default function DataPage() {
             if (division.id === divisionId) return;
             requestVersion.current += 1;
             setTeams([]); setPlayers([]); setGames([]);
+            selectedDivisionId.current = division.id;
             setDivisionId(division.id); setPlayerPage(1); setLoading(true); setError("");
           }}
         >{division.name}</Button>)}</View>
