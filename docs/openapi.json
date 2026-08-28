@@ -3045,6 +3045,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -3216,7 +3232,24 @@
       "post": {
         "operationId": "core_api_admin_archives_request_system_backup",
         "summary": "Request System Backup",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
         "responses": {
           "202": {
             "description": "Accepted",
@@ -3474,6 +3507,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -3552,6 +3601,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -3561,6 +3626,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ArchiveJobOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
                 }
               }
             }
@@ -3736,6 +3811,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -3814,6 +3905,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -3823,6 +3930,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MediaPurgeJobOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
                 }
               }
             }

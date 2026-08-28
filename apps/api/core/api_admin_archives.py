@@ -11,7 +11,7 @@ from django.core import signing
 from django.db import models, transaction
 from django.http import FileResponse, HttpRequest, StreamingHttpResponse
 from django.utils import timezone
-from ninja import Router, Schema, Status
+from ninja import Header, Router, Schema, Status
 
 from core.api_security import superadmin_session_auth
 from core.models import Account, ArchiveJob, MediaPurgeJob, Season
@@ -265,7 +265,13 @@ def preview_season_export(request: HttpRequest, season_id: UUID, payload: Season
     "/seasons/{season_id}/exports",
     response={202: ArchiveJobOut, 400: ErrorOut, 404: ErrorOut, 409: ErrorOut},
 )
-def request_season_export(request: HttpRequest, season_id: UUID, payload: SeasonExportIn):
+def request_season_export(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: SeasonExportIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key  # execute_idempotent reads and validates the original header.
     try:
         season = _season(season_id)
 
@@ -323,7 +329,12 @@ def preview_system_backup(request: HttpRequest):
     "/system-backups",
     response={202: ArchiveJobOut, 400: ErrorOut, 403: ErrorOut, 409: ErrorOut},
 )
-def request_system_backup(request: HttpRequest, payload: SystemBackupIn):
+def request_system_backup(
+    request: HttpRequest,
+    payload: SystemBackupIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
     if not _secure_or_local(request):
         return Status(409, {"code": "HTTPS_REQUIRED", "message": "全系统备份只能通过 HTTPS 下载。"})
     if not request.auth.check_password(payload.current_password):
@@ -490,7 +501,13 @@ def download_archive(request: HttpRequest, job_id: UUID, ticket: str):
     "/archive-jobs/{job_id}/confirm-saved",
     response={200: ArchiveJobOut, 400: ErrorOut, 404: ErrorOut, 409: ErrorOut},
 )
-def confirm_archive_saved(request: HttpRequest, job_id: UUID, payload: ConfirmSavedIn):
+def confirm_archive_saved(
+    request: HttpRequest,
+    job_id: UUID,
+    payload: ConfirmSavedIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
     if not payload.confirmed_external_copy:
         return Status(
             400,
@@ -545,9 +562,15 @@ def confirm_archive_saved(request: HttpRequest, job_id: UUID, payload: ConfirmSa
 
 @router.post(
     "/archive-jobs/{job_id}/discard",
-    response={200: ArchiveJobOut, 404: ErrorOut, 409: ErrorOut},
+    response={200: ArchiveJobOut, 400: ErrorOut, 404: ErrorOut, 409: ErrorOut},
 )
-def discard_archive_endpoint(request: HttpRequest, job_id: UUID, payload: ConfirmSavedIn):
+def discard_archive_endpoint(
+    request: HttpRequest,
+    job_id: UUID,
+    payload: ConfirmSavedIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
     try:
 
         def command():
@@ -617,7 +640,13 @@ def list_media_purge_jobs(
     "/seasons/{season_id}/media-purge/apply",
     response={202: MediaPurgeJobOut, 400: ErrorOut, 404: ErrorOut, 409: ErrorOut},
 )
-def apply_media_purge(request: HttpRequest, season_id: UUID, payload: PurgeApplyIn):
+def apply_media_purge(
+    request: HttpRequest,
+    season_id: UUID,
+    payload: PurgeApplyIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
     if not payload.confirm_permanent_delete:
         return Status(
             400,
@@ -655,9 +684,15 @@ def apply_media_purge(request: HttpRequest, season_id: UUID, payload: PurgeApply
 
 @router.post(
     "/media-purge-jobs/{job_id}/retry",
-    response={202: MediaPurgeJobOut, 404: ErrorOut, 409: ErrorOut},
+    response={202: MediaPurgeJobOut, 400: ErrorOut, 404: ErrorOut, 409: ErrorOut},
 )
-def retry_media_purge(request: HttpRequest, job_id: UUID, payload: RetryJobIn):
+def retry_media_purge(
+    request: HttpRequest,
+    job_id: UUID,
+    payload: RetryJobIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
     try:
 
         def command():

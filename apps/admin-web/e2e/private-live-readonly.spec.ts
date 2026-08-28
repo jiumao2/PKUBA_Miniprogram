@@ -3,6 +3,7 @@ import {
   hasAdminCredentials,
   loginAndOpenEditor,
   openDemoSheet,
+  requiredFixture,
   releaseCurrentLease,
   waitForSaved,
 } from './helpers';
@@ -18,7 +19,7 @@ test('the second tab opens the same private sheet read-only and receives edits w
 }) => {
   const second = await context.newPage();
   try {
-    await openDemoSheet(page);
+    await openDemoSheet(page, requiredFixture('PRIVATE'));
     await loginAndOpenEditor(second);
     await expect(second.locator('svg.scene-overlay')).toBeVisible();
     await expect(second.locator('.offline-badge')).toContainText('正在通过网页编辑', { timeout: 5_000 });

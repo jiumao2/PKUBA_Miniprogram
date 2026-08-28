@@ -11,6 +11,14 @@
 - `POST /api/v1/admin/seasons/{season_id}/lifecycle/apply`
 - `POST /api/v1/game-media/games/{game_id}`
 - `POST /api/v1/admin/game-media/games/{game_id}`
+- `POST /api/v1/admin/seasons/{season_id}/exports`
+- `POST /api/v1/admin/system-backups`
+- `POST /api/v1/admin/archive-jobs/{job_id}/confirm-saved`
+- `POST /api/v1/admin/archive-jobs/{job_id}/discard`
+- `POST /api/v1/admin/seasons/{season_id}/media-purge/apply`
+- `POST /api/v1/admin/media-purge-jobs/{job_id}/retry`
+
+上述归档命令沿用既有服务端幂等机制；OpenAPI 将该可选请求头显式列出，生成客户端可按同一合同重放，不另建归档幂等流程。
 
 键必须为 1–200 个非空字符。同一账号、业务命令和键在 24 小时内：
 

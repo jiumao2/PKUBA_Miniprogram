@@ -9294,7 +9294,9 @@ export interface operations {
     core_api_admin_archives_request_season_export: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 season_id: string;
             };
@@ -9399,7 +9401,9 @@ export interface operations {
     core_api_admin_archives_request_system_backup: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -9541,7 +9545,9 @@ export interface operations {
     core_api_admin_archives_confirm_archive_saved: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 job_id: string;
             };
@@ -9594,7 +9600,9 @@ export interface operations {
     core_api_admin_archives_discard_archive_endpoint: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 job_id: string;
             };
@@ -9613,6 +9621,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArchiveJobOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Not Found */
@@ -9703,7 +9720,9 @@ export interface operations {
     core_api_admin_archives_apply_media_purge: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 season_id: string;
             };
@@ -9756,7 +9775,9 @@ export interface operations {
     core_api_admin_archives_retry_media_purge: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 job_id: string;
             };
@@ -9775,6 +9796,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MediaPurgeJobOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description Not Found */

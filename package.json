@@ -16,8 +16,10 @@
     "dev:miniapp": "npm --workspace @pkuba/miniapp run dev:weapp",
     "generate:api": "npm --workspace @pkuba/api-client run generate",
     "build": "npm run build:packages && npm --workspace @pkuba/admin-web run build && npm --workspace @pkuba/miniapp run build:weapp",
-    "build:packages": "npm --workspace @pkuba/design-tokens run build && npm --workspace @pkuba/scoresheet-domain run build && npm --workspace @pkuba/api-client run build",
-    "test": "npm --workspace @pkuba/scoresheet-domain run test && npm --workspace @pkuba/admin-web run test && npm --workspace @pkuba/miniapp run test",
+    "build:packages": "npm run assets:check && npm --workspace @pkuba/design-tokens run build && npm --workspace @pkuba/scoresheet-domain run build && npm --workspace @pkuba/api-client run build",
+    "test": "node --test scripts/static-assets.test.mjs && npm --workspace @pkuba/scoresheet-domain run test && npm --workspace @pkuba/admin-web run test && npm --workspace @pkuba/miniapp run test",
+    "assets:check": "node scripts/static-assets.mjs --check",
+    "assets:sync": "node scripts/static-assets.mjs --sync",
     "check:powershell": "node scripts/check-powershell-encoding.mjs",
     "typecheck": "npm run check:powershell && npm run build:packages && npm run typecheck --workspaces --if-present",
     "audit:production": "node scripts/check-npm-audit.mjs"

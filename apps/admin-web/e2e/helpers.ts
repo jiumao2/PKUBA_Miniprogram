@@ -29,15 +29,26 @@ export async function loginAndOpenEditor(page: Page) {
   await expect(page.getByText('ScoresheetReader', { exact: true })).toBeVisible({ timeout: 10_000 });
 }
 
-export async function openDemoSheet(page: Page) {
+export function requiredFixture(purpose: 'PUBLICATION' | 'PRIVATE') {
+  const id = process.env[`PKUBA_E2E_${purpose}_SCORESHEET_ID`];
+  if (!id) throw new Error(`Set PKUBA_E2E_${purpose}_SCORESHEET_ID from the isolated browser fixtures; do not reuse the editor target.`);
+  return id;
+}
+
+export async function openDemoSheet(page: Page, scoresheetId = process.env.PKUBA_E2E_EDIT_SCORESHEET_ID) {
   await loginAndOpenEditor(page);
-  await page.getByRole('banner').getByRole('button', { name: '选择比赛' }).click();
-  const dialog = page.getByRole('dialog', { name: '选择比赛' });
-  const game = dialog.getByRole('button', { name: demoGamePattern });
-  await expect(game).toBeVisible();
-  await expect(game.locator('.game-ready')).not.toContainText('待上传');
-  await game.click();
-  await expect(dialog).toHaveCount(0);
+  if (scoresheetId) {
+    await page.evaluate((id) => localStorage.setItem('scoresheet-reader:last-document-id', id), scoresheetId);
+    await page.reload();
+  } else {
+    await page.getByRole('banner').getByRole('button', { name: '选择比赛' }).click();
+    const dialog = page.getByRole('dialog', { name: '选择比赛' });
+    const game = dialog.getByRole('button', { name: demoGamePattern });
+    await expect(game).toBeVisible();
+    await expect(game.locator('.game-ready')).not.toContainText('待上传');
+    await game.click();
+    await expect(dialog).toHaveCount(0);
+  }
   await expect(page.locator('svg.scene-overlay')).toBeVisible();
   const validateButton = page.getByRole('button', { name: /^校验/ });
   if (await validateButton.isDisabled()) {

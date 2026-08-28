@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.models import (
+    AdminAuditLog,
     CompetitionGroup,
     Division,
     DrawAssignment,
@@ -17,6 +18,8 @@ from core.models import (
     Venue,
 )
 from core.services.season_management import DEFAULT_CAPACITIES, DEFAULT_PERIODS
+
+AUDIT_ACTION = "SEED_DEMO_SYNTHETIC_PUBLIC_SEASON"
 
 
 class Command(BaseCommand):
@@ -37,9 +40,7 @@ class Command(BaseCommand):
         today = timezone.localdate()
         Season.objects.filter(status=Season.Status.PUBLISHED).exclude(
             name="PKUBA 本地演示赛季"
-        ).update(
-            status=Season.Status.ARCHIVED
-        )
+        ).update(status=Season.Status.ARCHIVED)
         season, _ = Season.objects.update_or_create(
             name="PKUBA 本地演示赛季",
             defaults={
@@ -130,4 +131,10 @@ class Command(BaseCommand):
                     "leader_adjustable": True,
                 },
             )
+        AdminAuditLog.objects.get_or_create(
+            action=AUDIT_ACTION,
+            object_type="Season",
+            object_id=season.id,
+            defaults={"metadata": {"source": "seed_demo"}},
+        )
         self.stdout.write(self.style.SUCCESS("Synthetic PKUBA season is ready."))

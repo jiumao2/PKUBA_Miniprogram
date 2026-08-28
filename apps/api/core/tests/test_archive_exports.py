@@ -115,8 +115,17 @@ def test_season_export_api_creates_json_safe_job(tmp_path, monkeypatch):
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="season-export-json-safe",
         )
+        replay = client.post(
+            f"/api/v1/admin/seasons/{setup['season'].id}/exports",
+            data=payload,
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="season-export-json-safe",
+        )
 
     assert response.status_code == 202
+    assert replay.status_code == 202
+    assert replay.json()["id"] == response.json()["id"]
+    assert ArchiveJob.objects.count() == 1
     job = ArchiveJob.objects.get(id=response.json()["id"])
     assert job.summary["preview"]["season_id"] == str(setup["season"].id)
 

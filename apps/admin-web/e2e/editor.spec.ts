@@ -4,6 +4,7 @@ import {
   hasAdminCredentials,
   loginAndOpenEditor,
   openDemoSheet,
+  requiredFixture,
   releaseCurrentLease,
   waitForSaved,
 } from './helpers';
@@ -201,8 +202,8 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
     await expect(page.getByLabel('胜队')).toHaveAttribute('readonly', '');
   });
 
-  test('validates the current uploaded draft, publishes only when valid and exports PDF', async ({ page }) => {
-    await openDemoSheet(page);
+  test('validates the isolated publication target, publishes and exports PDF', async ({ page }) => {
+    await openDemoSheet(page, requiredFixture('PUBLICATION'));
     const validationResponse = page.waitForResponse((response) =>
       response.url().endsWith('/validate')
       && response.request().method() === 'POST'
@@ -211,29 +212,16 @@ test.describe.serial('PKUBA formal scoresheet workflow', () => {
     await page.getByRole('button', { name: /^校验/ }).click();
     await validationResponse;
     const validationErrors = page.locator('.issue-row.error');
-    const validationErrorCount = await validationErrors.count();
-
-    if (validationErrorCount === 0) {
-      const confirmResponse = page.waitForResponse((response) =>
-        response.url().endsWith('/publish')
-        && response.request().method() === 'POST'
-        && response.ok(),
-      );
-      page.once('dialog', (dialog) => dialog.accept());
-      await page.getByRole('button', { name: /提交记录表/ }).click();
-      await confirmResponse;
-      await expect(page.locator('.document-state')).toContainText('已提交');
-    } else {
-      const revalidationResponse = page.waitForResponse((response) =>
-        response.url().endsWith('/validate')
-        && response.request().method() === 'POST'
-        && response.ok(),
-      );
-      await page.getByRole('button', { name: /提交记录表/ }).click();
-      await revalidationResponse;
-      await expect(validationErrors).toHaveCount(validationErrorCount);
-      await expect(page.locator('.document-state')).not.toContainText('已提交');
-    }
+    await expect(validationErrors).toHaveCount(0);
+    const confirmResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/publish')
+      && response.request().method() === 'POST'
+      && response.ok(),
+    );
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: /提交记录表/ }).click();
+    await confirmResponse;
+    await expect(page.locator('.document-state')).toContainText('已提交');
 
     const exportLink = page.getByRole('link', { name: /导出 PDF/ });
     const href = await exportLink.getAttribute('href');

@@ -125,6 +125,19 @@ def _build_configuration() -> tuple[Season, Account]:
             )
         ]
     )
+    DatePeriodCapacityOverride.objects.bulk_create(
+        [
+            DatePeriodCapacityOverride(
+                season=season,
+                date=target_date,
+                period=period,
+                capacity=1,
+                note="2026 示例决赛专用时段",
+            )
+            for target_date in FINAL_DATES
+            for period in season.periods.filter(code__in=["p4", "p7"])
+        ]
+    )
     divisions = {row.code: row for row in Division.objects.filter(season=season)}
     Team.objects.bulk_create(
         [
@@ -271,9 +284,7 @@ class Command(BaseCommand):
                 filled_output.parent.mkdir(parents=True, exist_ok=True)
                 content = _filled_sample(season)
                 filled_output.write_bytes(content)
-                self.stdout.write(
-                    self.style.SUCCESS(f"V3 filled sample exported: {filled_output}")
-                )
+                self.stdout.write(self.style.SUCCESS(f"V3 filled sample exported: {filled_output}"))
 
             if validate is not None:
                 if not validate.is_file():
