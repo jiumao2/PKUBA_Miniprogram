@@ -675,8 +675,11 @@ assert_deploy_commit_failure_restores_everything mv-success '/SUCCESS'
 # Only application Compose operations are allowed; three data sentinels and
 # their hashes must remain byte-for-byte unchanged.
 reset_rollback_fixture() {
+  # A new independent mktemp scenario must not inherit archived transactions.
+  # Recovery retries within a scenario never call this reset.
   run_root /usr/bin/rm -rf "$state_root/release-transaction" \
-    "$state_root/release-transaction-completed"
+    "$state_root/release-transaction-completed" \
+    "$fixture/deploy/logs/release-transactions"
   run_root /usr/bin/rm -f "$fixture/reload-count"
   mkdir -p "$state_root/slots" "$fixture/deploy/logs"
   write_state "$state_root/current.env" green v1.2.4 "$commit_two" "$api_two" "$web_two" \
@@ -1063,6 +1066,69 @@ assert_current_release() {
   [[ ! -e $state_root/release-transaction ]]
   [[ $before_hash == "$(sha256sum "$fixture"/data-sentinels/*)" ]]
 }
+
+# Independent scenarios must not inherit an earlier scenario's archived
+# transaction, even when the clock and from/to tags are identical. Only this
+# fixture's PATH is changed; the system clock and production IDs stay intact.
+[[ ! -e $fixture/fake-bin/date ]]
+cat >"$fixture/fake-bin/date" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ ${PKUBA_FAKE_FIXED_UTC:-0} == 1 && $# == 2 \
+  && $1 == -u && $2 == '+%Y-%m-%dT%H:%M:%SZ' ]]; then
+  printf '%s\n' '2026-08-28T00:00:00Z'
+else
+  exec /usr/bin/date "$@"
+fi
+EOF
+chmod +x "$fixture/fake-bin/date"
+same_second_transaction=
+for same_second_case in first second; do
+  reset_rollback_fixture
+  : >"$docker_log"
+  ! run_rollback PKUBA_FAKE_FIXED_UTC=1 PKUBA_TEST_CRASH_POINT=prepared \
+    bash "$script_dir/rollback-retained-application.sh" \
+      blue ROLLBACK_APPLICATION_ONLY \
+      >"$fixture/same-second-$same_second_case-crash.log" 2>&1
+  current_transaction=$(sed -n 's/^TRANSACTION_ID=//p' \
+    "$state_root/release-transaction/journal.env")
+  [[ -n $current_transaction ]]
+  if [[ -n $same_second_transaction ]]; then
+    [[ $current_transaction == "$same_second_transaction" ]]
+  fi
+  same_second_transaction=$current_transaction
+  same_second_archive=$fixture/deploy/logs/release-transactions/$current_transaction
+  [[ ! -e $same_second_archive ]] || {
+    echo 'independent rollback fixture retained an earlier transaction archive' >&2
+    exit 1
+  }
+  run_rollback PKUBA_FAKE_FIXED_UTC=1 \
+    bash "$script_dir/recover-release-transaction.sh" \
+      >"$fixture/same-second-$same_second_case-recovery.log" 2>&1
+  assert_current_release green v1.2.4
+  [[ -d $same_second_archive && ! -e $state_root/release-transaction-completed ]]
+  (cd "$same_second_archive" && sha256sum --check completion.sha256 >/dev/null)
+  ! grep -Eq 'volume inspect|pg_dump|database\.dump|private-media|archive-staging' "$docker_log"
+done
+
+# Within the same scenario, an actual archive collision must still fail
+# closed. Do not call the fixture reset between these two recovery attempts.
+archive_before=$(find "$same_second_archive" -type f -exec sha256sum {} + | sort)
+cp -a "$same_second_archive" "$state_root/release-transaction"
+collision_writers=$fixture/archive-collision-writers
+printf 'running\n' >"$collision_writers"
+: >"$docker_log"
+! run_rollback PKUBA_FAKE_FIXED_UTC=1 PKUBA_FAKE_WRITERS_FILE="$collision_writers" \
+  bash "$script_dir/recover-release-transaction.sh" \
+    >"$fixture/retained-archive-collision.log" 2>&1
+grep -Fq 'release transaction archive already exists' "$fixture/retained-archive-collision.log"
+assert_recovery_is_fail_closed
+[[ ! -e $collision_writers ]]
+grep -Eq '^stop ' "$docker_log"
+[[ $archive_before == "$(find "$same_second_archive" -type f -exec sha256sum {} + | sort)" ]]
+! grep -Eq 'volume inspect|pg_dump|database\.dump|private-media|archive-staging' "$docker_log"
+/usr/bin/rm -f "$fixture/fake-bin/date"
+echo 'Rollback fixture same-second isolation and existing-archive guard passed.'
 
 # SIGKILL cannot run EXIT traps. Every pre-commit crash recovers the old stack;
 # only the durable NEW_COMMITTED point finishes the candidate.
