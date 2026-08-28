@@ -7,6 +7,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from django.core.files.storage import default_storage
+from django.db.models import Q
 from django.http import FileResponse, HttpRequest
 from ninja import File, Form, Header, Router, Schema, Status
 from ninja.files import UploadedFile
@@ -128,7 +129,7 @@ def _serialize_asset(
     asset: GameMediaAsset,
     *,
     actor=None,
-    is_published_source: bool | None = None,
+    has_scoresheet_publication: bool | None = None,
 ) -> dict[str, object]:
     content_url = ""
     if asset.storage_status == GameMediaAsset.StorageStatus.ONLINE:
@@ -138,7 +139,7 @@ def _serialize_asset(
         media_asset_permissions(
             actor,
             asset,
-            is_published_source=is_published_source,
+            has_scoresheet_publication=has_scoresheet_publication,
         )
         if actor is not None
         else (False, False)
@@ -148,8 +149,7 @@ def _serialize_asset(
         "game_id": asset.game_id,
         "game_code": asset.game.code,
         "game_label": (
-            f"{asset.game.division.name} · "
-            f"{asset.game.home_display} — {asset.game.away_display}"
+            f"{asset.game.division.name} · {asset.game.home_display} — {asset.game.away_display}"
         ),
         "kind": asset.kind,
         "storage_status": asset.storage_status,
@@ -171,16 +171,16 @@ def _serialize_asset(
 
 def _serialize_assets(assets, *, actor) -> list[dict[str, object]]:
     rows = list(assets)
-    published_source_ids = set(
-        GameScoresheet.objects.filter(
-            current_publication__source_asset_id__in=[asset.id for asset in rows]
-        ).values_list("current_publication__source_asset_id", flat=True)
+    published_game_ids = set(
+        GameScoresheet.objects.filter(game_id__in=[asset.game_id for asset in rows])
+        .filter(Q(current_publication__isnull=False) | Q(publications__isnull=False))
+        .values_list("game_id", flat=True)
     )
     return [
         _serialize_asset(
             asset,
             actor=actor,
-            is_published_source=asset.id in published_source_ids,
+            has_scoresheet_publication=asset.game_id in published_game_ids,
         )
         for asset in rows
     ]
@@ -309,9 +309,7 @@ def create_game_media(
 def game_media_content(request: HttpRequest, asset_id: UUID, ticket: str):
     del request
     storage_status = (
-        GameMediaAsset.objects.filter(id=asset_id)
-        .values_list("storage_status", flat=True)
-        .first()
+        GameMediaAsset.objects.filter(id=asset_id).values_list("storage_status", flat=True).first()
     )
     if storage_status in {
         GameMediaAsset.StorageStatus.PURGED,

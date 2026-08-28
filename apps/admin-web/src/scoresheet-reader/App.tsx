@@ -349,7 +349,7 @@ export default function App() {
               document={state.document}
               onRequestUpload={() => setGameBrowserOpen(true)}
               onReloadSource={state.reloadSource}
-              allowUpload={!archivedRoute}
+              allowUpload={!archivedRoute && (!state.document || state.canUploadSource)}
             />
             <PaneResizer
               label="调整原图与标准记录表宽度"
@@ -420,7 +420,9 @@ export default function App() {
       </main>
       {gameBrowserOpen ? (
         <GameBrowser
-          games={state.games}
+          games={state.games.map(game => game.document_id === state.document?.id
+            ? { ...game, can_upload_source: state.canUploadSource }
+            : game)}
           total={state.gamesTotal}
           page={state.gamesPage}
           pageSize={state.gamesPageSize}

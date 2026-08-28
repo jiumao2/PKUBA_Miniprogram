@@ -7,13 +7,14 @@ from urllib.parse import quote
 from uuid import UUID
 
 from django.conf import settings
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Case, Exists, IntegerField, OuterRef, Q, Value, When
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from ninja import Header, Router, Schema, Status
 
 from core.api_security import admin_session_auth, miniapp_bearer_auth
 from core.models import (
+    Account,
     Game,
     GameScoresheet,
     ScoresheetEditLease,
@@ -25,7 +26,7 @@ from core.scoresheet_schema_v2 import ensure_v2_document, has_recognition_result
 from core.scoresheet_v2.models import ScoresheetDocument
 from core.scoresheet_v2.recognition import PROMPT_VERSION
 from core.scoresheet_v2.template import load_template_definition
-from core.services.game_media import issue_media_ticket
+from core.services.game_media import can_upload_scoresheet_source, issue_media_ticket
 from core.services.idempotency import IdempotencyError, execute_idempotent
 from core.services.scoresheet_recognition import RETRY_DELAYS
 from core.services.scoresheet_renderer import render_scoresheet_pdf
@@ -125,6 +126,7 @@ class ScoresheetQueueItemOut(Schema):
     recognition_max_attempts: int
     next_attempt_at: datetime | None
     publication_number: int | None
+    can_upload_source: bool
 
 
 class ScoresheetQueuePageOut(Schema):
@@ -151,6 +153,7 @@ class ScoresheetDetailOut(Schema):
     recognition: dict[str, Any] | None
     lease: dict[str, Any] | None
     publication: dict[str, Any] | None
+    can_upload_source: bool
 
 
 class SyncEventOut(Schema):
@@ -177,6 +180,7 @@ class ScoresheetSyncOut(Schema):
     recognition: dict[str, Any] | None
     lease: dict[str, Any] | None
     publication: dict[str, Any] | None
+    can_upload_source: bool
 
 
 class LeaseAcquireIn(Schema):
@@ -363,7 +367,7 @@ def _publication(scoresheet: GameScoresheet) -> dict[str, Any] | None:
     }
 
 
-def _detail(scoresheet: GameScoresheet) -> dict[str, Any]:
+def _detail(scoresheet: GameScoresheet, *, actor: Account) -> dict[str, Any]:
     game = scoresheet.game
     source = None
     if scoresheet.source_asset_id:
@@ -434,6 +438,7 @@ def _detail(scoresheet: GameScoresheet) -> dict[str, Any]:
         "recognition": _recognition(scoresheet),
         "lease": _lease(scoresheet),
         "publication": _publication(scoresheet),
+        "can_upload_source": can_upload_scoresheet_source(actor, scoresheet.game),
     }
 
 
@@ -442,6 +447,7 @@ def _get_scoresheet(scoresheet_id: UUID) -> GameScoresheet:
         return (
             GameScoresheet.objects.select_related(
                 "game",
+                "game__season",
                 "game__division",
                 "game__home_team",
                 "game__away_team",
@@ -516,6 +522,11 @@ def list_scoresheets(
         games = (
             Game.objects.select_related(
                 "season", "division", "home_team", "away_team", "scoresheet"
+            )
+            .annotate(
+                has_scoresheet_publication=Exists(
+                    ScoresheetPublication.objects.filter(scoresheet__game_id=OuterRef("pk"))
+                )
             )
             .exclude(status=Game.Status.VOID)
             .order_by("-date", "start_time", "venue_name")
@@ -637,6 +648,9 @@ def list_scoresheets(
                     "publication_number": (
                         publication["publication_number"] if publication else None
                     ),
+                    "can_upload_source": can_upload_scoresheet_source(
+                        request.auth, game, has_publication=game.has_scoresheet_publication
+                    ),
                 }
             )
         return {
@@ -654,7 +668,7 @@ def list_scoresheets(
 def get_scoresheet(request: HttpRequest, scoresheet_id: UUID):
     try:
         _require_admin(request)
-        return _detail(_get_scoresheet(scoresheet_id))
+        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
     except ScoresheetError as error:
         return _error(error)
 
@@ -701,6 +715,7 @@ def get_scoresheet_sync(
             "recognition": _recognition(scoresheet),
             "lease": _lease(scoresheet),
             "publication": _publication(scoresheet),
+            "can_upload_source": can_upload_scoresheet_source(request.auth, scoresheet.game),
         }
     except ScoresheetError as error:
         return _error(error)
@@ -830,7 +845,7 @@ def update_scoresheet_draft(request: HttpRequest, scoresheet_id: UUID, payload: 
             change_type=payload.change_type,
             explicit_save=payload.explicit_save,
         )
-        return _detail(_get_scoresheet(scoresheet_id))
+        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
     except (GameScoresheet.DoesNotExist, ScoresheetError, ValueError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -858,7 +873,7 @@ def set_scoresheet_region_review(
             region=region,
             reviewed=payload.reviewed,
         )
-        return _detail(_get_scoresheet(scoresheet_id))
+        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -897,7 +912,9 @@ def review_game_context_endpoint(
             },
             command=command,
         )
-        return Status(status, _detail(_get_scoresheet(UUID(str(body["scoresheet_id"])))))
+        return Status(
+            status, _detail(_get_scoresheet(UUID(str(body["scoresheet_id"]))), actor=request.auth)
+        )
     except IdempotencyError as error:
         return Status(error.status, {"code": error.code, "message": str(error)})
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
@@ -920,7 +937,7 @@ def validate_scoresheet_endpoint(
             client_id=payload.client_id,
             surface=payload.surface,
         )
-        return _detail(_get_scoresheet(scoresheet_id))
+        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -945,7 +962,7 @@ def acknowledge_scoresheet_warnings(
             surface=payload.surface,
             warning_ids=payload.warning_ids,
         )
-        return _detail(_get_scoresheet(scoresheet_id))
+        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -962,6 +979,7 @@ def publish_scoresheet_endpoint(
     del idempotency_key
     try:
         _require_admin(request)
+
         def command():
             publish_scoresheet(
                 scoresheet_id=scoresheet_id,
@@ -983,7 +1001,9 @@ def publish_scoresheet_endpoint(
             },
             command=command,
         )
-        return Status(status, _detail(_get_scoresheet(UUID(str(body["scoresheet_id"])))))
+        return Status(
+            status, _detail(_get_scoresheet(UUID(str(body["scoresheet_id"]))), actor=request.auth)
+        )
     except IdempotencyError as error:
         return Status(error.status, {"code": error.code, "message": str(error)})
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
@@ -1005,6 +1025,7 @@ def retry_scoresheet_recognition(
     del idempotency_key
     try:
         _require_admin(request)
+
         def command():
             run = retry_recognition(
                 scoresheet_id=scoresheet_id,
@@ -1112,7 +1133,7 @@ def apply_scoresheet_recognition(
             surface=payload.surface,
             regions=payload.regions,
         )
-        return _detail(_get_scoresheet(scoresheet_id))
+        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -1152,9 +1173,10 @@ def list_scoresheet_changes(
         candidates = list(query[: page_size + 16])
         rows: list[tuple[Any, list[dict[str, Any]]]] = []
         for row in candidates:
-            if row.event_type == "SOURCE_REPLACED" and int(
-                row.payload.get("source_version") or 0
-            ) <= 1:
+            if (
+                row.event_type == "SOURCE_REPLACED"
+                and int(row.payload.get("source_version") or 0) <= 1
+            ):
                 continue
             human_changes: list[dict[str, Any]] = []
             if row.event_type in {"FIELD_EDIT", "UNDO", "REDO", "RECOGNITION_MERGE"}:
@@ -1190,8 +1212,7 @@ def list_scoresheet_changes(
                     "action": action_map[row.event_type],
                     "summary": (
                         f"{summary_map[row.event_type]} · {len(human_changes)} 项"
-                        if row.event_type
-                        in {"FIELD_EDIT", "UNDO", "REDO", "RECOGNITION_MERGE"}
+                        if row.event_type in {"FIELD_EDIT", "UNDO", "REDO", "RECOGNITION_MERGE"}
                         else summary_map[row.event_type]
                     ),
                     "changes": human_changes,

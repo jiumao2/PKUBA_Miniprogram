@@ -6475,6 +6475,8 @@ export interface components {
             next_attempt_at: string | null;
             /** Publication Number */
             publication_number: number | null;
+            /** Can Upload Source */
+            can_upload_source: boolean;
         };
         /** ScoresheetQueuePageOut */
         ScoresheetQueuePageOut: {
@@ -6827,6 +6829,8 @@ export interface components {
             publication: {
                 [key: string]: unknown;
             } | null;
+            /** Can Upload Source */
+            can_upload_source: boolean;
         };
         /** ScoresheetDocument */
         ScoresheetDocument: {
@@ -7022,6 +7026,8 @@ export interface components {
             publication: {
                 [key: string]: unknown;
             } | null;
+            /** Can Upload Source */
+            can_upload_source: boolean;
         };
         /** SyncEventOut */
         SyncEventOut: {

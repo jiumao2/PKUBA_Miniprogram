@@ -20518,6 +20518,10 @@
               }
             ],
             "title": "Publication Number"
+          },
+          "can_upload_source": {
+            "title": "Can Upload Source",
+            "type": "boolean"
           }
         },
         "required": [
@@ -20539,7 +20543,8 @@
           "recognition_attempt",
           "recognition_max_attempts",
           "next_attempt_at",
-          "publication_number"
+          "publication_number",
+          "can_upload_source"
         ],
         "title": "ScoresheetQueueItemOut",
         "type": "object"
@@ -21365,6 +21370,10 @@
               }
             ],
             "title": "Publication"
+          },
+          "can_upload_source": {
+            "title": "Can Upload Source",
+            "type": "boolean"
           }
         },
         "required": [
@@ -21382,7 +21391,8 @@
           "acknowledged_warnings",
           "recognition",
           "lease",
-          "publication"
+          "publication",
+          "can_upload_source"
         ],
         "title": "ScoresheetDetailOut",
         "type": "object"
@@ -21817,6 +21827,10 @@
               }
             ],
             "title": "Publication"
+          },
+          "can_upload_source": {
+            "title": "Can Upload Source",
+            "type": "boolean"
           }
         },
         "required": [
@@ -21830,7 +21844,8 @@
           "status",
           "recognition",
           "lease",
-          "publication"
+          "publication",
+          "can_upload_source"
         ],
         "title": "ScoresheetSyncOut",
         "type": "object"

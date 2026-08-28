@@ -78,9 +78,7 @@ def _assert_media_mutable(game: Game) -> None:
         )
 
 
-def _register_scoresheet_source(
-    *, actor: Account, game: Game, asset: GameMediaAsset
-) -> None:
+def _register_scoresheet_source(*, actor: Account, game: Game, asset: GameMediaAsset) -> None:
     """Bridge scoresheet domain failures into the stable media error contract."""
 
     from core.scoresheet_schema_v2 import ScoresheetDocumentError
@@ -120,25 +118,40 @@ def media_permissions(account: Account, game: Game) -> MediaPermissions:
     return MediaPermissions(can_view=participates, can_upload=False)
 
 
+def scoresheet_has_publication(game_id) -> bool:
+    """Publication history survives source replacement and a return to DRAFT."""
+    return (
+        GameScoresheet.objects.filter(game_id=game_id)
+        .filter(Q(current_publication__isnull=False) | Q(publications__isnull=False))
+        .exists()
+    )
+
+
+def can_upload_scoresheet_source(
+    account: Account, game: Game, *, has_publication: bool | None = None
+) -> bool:
+    if not media_permissions(account, game).can_upload:
+        return False
+    if account.is_pkuba_superadmin:
+        return True
+    published = scoresheet_has_publication(game.id) if has_publication is None else has_publication
+    return not published
+
+
 def media_asset_permissions(
     account: Account,
     asset: GameMediaAsset,
     *,
-    is_published_source: bool | None = None,
+    has_scoresheet_publication: bool | None = None,
 ) -> tuple[bool, bool]:
     permissions = media_permissions(account, asset.game)
     if not permissions.can_upload:
         return False, False
     if asset.kind != GameMediaAsset.Kind.SCORESHEET:
         return True, True
-    published = (
-        GameScoresheet.objects.filter(
-            current_publication__source_asset_id=asset.id
-        ).exists()
-        if is_published_source is None
-        else is_published_source
-    )
-    return bool(account.is_pkuba_superadmin or not published), False
+    return can_upload_scoresheet_source(
+        account, asset.game, has_publication=has_scoresheet_publication
+    ), False
 
 
 @contextmanager
@@ -172,9 +185,7 @@ def validate_image(uploaded_file, *, kind: str) -> Iterator[ValidatedImage]:
                 width, height = image.size
                 image.getexif()
         if image_format not in SUPPORTED_FORMATS:
-            raise GameMediaError(
-                "IMAGE_FORMAT_UNSUPPORTED", "仅支持 JPEG、PNG 或 WebP 图片。"
-            )
+            raise GameMediaError("IMAGE_FORMAT_UNSUPPORTED", "仅支持 JPEG、PNG 或 WebP 图片。")
         if width <= 0 or height <= 0:
             raise GameMediaError("IMAGE_DIMENSIONS_INVALID", "无法读取图片像素尺寸。")
         mime_type, extension = SUPPORTED_FORMATS[image_format]
@@ -269,28 +280,12 @@ def _find_idempotent_staging(
                 "IDEMPOTENCY_KEY_REUSED",
                 "同一 Idempotency-Key 不能用于不同的请求内容。",
             )
-        if staging.status == GameMediaUploadStaging.Status.FAILED:
-            staging.status = GameMediaUploadStaging.Status.STAGING
-            staging.failed_at = None
-            staging.error_code = ""
-            staging.error_message = ""
-            staging.version += 1
-            staging.save(
-                update_fields=[
-                    "status",
-                    "failed_at",
-                    "error_code",
-                    "error_message",
-                    "version",
-                    "updated_at",
-                ]
-            )
+        # Lookup is read-only: a failed attempt can outlive the caller's upload
+        # permission or the source version. Revive it only after those checks.
         return staging
 
 
-def _assert_staging_matches_image(
-    staging: GameMediaUploadStaging, image: ValidatedImage
-) -> None:
+def _assert_staging_matches_image(staging: GameMediaUploadStaging, image: ValidatedImage) -> None:
     if (
         staging.file_sha256 != image.sha256
         or staging.byte_size != image.byte_size
@@ -317,11 +312,7 @@ def _mark_staging_failed(
     if discard_file:
         _discard_storage_object(staging.file_key)
     with transaction.atomic():
-        staging = (
-            GameMediaUploadStaging.objects.select_for_update()
-            .filter(id=staging_id)
-            .first()
-        )
+        staging = GameMediaUploadStaging.objects.select_for_update().filter(id=staging_id).first()
         if staging is None or staging.status == GameMediaUploadStaging.Status.PROMOTED:
             return
         staging.status = GameMediaUploadStaging.Status.FAILED
@@ -368,6 +359,29 @@ def _store_or_resume_staging(
     staging: GameMediaUploadStaging, image: ValidatedImage
 ) -> GameMediaUploadStaging:
     _assert_staging_matches_image(staging, image)
+    with transaction.atomic():
+        staging = GameMediaUploadStaging.objects.select_for_update().get(id=staging.id)
+        if staging.status == GameMediaUploadStaging.Status.PROMOTED:
+            return staging
+        if staging.status == GameMediaUploadStaging.Status.FAILED:
+            # The caller has checked current authority/version and the image now
+            # matches. Leave FAILED before writing so recovery will not discard
+            # the file as belonging to an abandoned attempt.
+            staging.status = GameMediaUploadStaging.Status.STAGING
+            staging.failed_at = None
+            staging.error_code = ""
+            staging.error_message = ""
+            staging.version += 1
+            staging.save(
+                update_fields=[
+                    "status",
+                    "failed_at",
+                    "error_code",
+                    "error_message",
+                    "version",
+                    "updated_at",
+                ]
+            )
     if default_storage.exists(staging.file_key):
         if not _stored_file_matches(staging):
             raise GameMediaError(
@@ -417,29 +431,25 @@ def _create_upload_staging(
     request_digest: str,
 ) -> GameMediaUploadStaging:
     intended_asset_id = uuid.uuid4()
-    file_key = (
-        f"game-media/{game.season_id}/{game.id}/{intended_asset_id}{image.extension}"
-    )
+    file_key = f"game-media/{game.season_id}/{game.id}/{intended_asset_id}{image.extension}"
     try:
         with transaction.atomic():
-            locked_game = (
-                Game.objects.select_for_update()
-                .select_related("season")
-                .get(id=game.id)
-            )
+            locked_game = Game.objects.select_for_update().select_related("season").get(id=game.id)
             _assert_media_mutable(locked_game)
             if not media_permissions(actor, locked_game).can_upload:
-                raise GameMediaError(
-                    "MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。"
-                )
-            if kind in {
-                GameMediaAsset.Kind.SCORESHEET,
-                GameMediaAsset.Kind.GROUP_PHOTO,
-            } and GameMediaAsset.objects.filter(
-                game=locked_game,
-                kind=kind,
-                deleted_at__isnull=True,
-            ).exists():
+                raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。")
+            if (
+                kind
+                in {
+                    GameMediaAsset.Kind.SCORESHEET,
+                    GameMediaAsset.Kind.GROUP_PHOTO,
+                }
+                and GameMediaAsset.objects.filter(
+                    game=locked_game,
+                    kind=kind,
+                    deleted_at__isnull=True,
+                ).exists()
+            ):
                 raise _active_asset_conflict(kind)
             if GameMediaAsset.objects.filter(
                 game=locked_game,
@@ -447,9 +457,7 @@ def _create_upload_staging(
                 file_sha256=image.sha256,
                 deleted_at__isnull=True,
             ).exists():
-                raise GameMediaError(
-                    "DUPLICATE_MEDIA", "该比赛已上传过同一张图片。"
-                )
+                raise GameMediaError("DUPLICATE_MEDIA", "该比赛已上传过同一张图片。")
             return GameMediaUploadStaging.objects.create(
                 game=locked_game,
                 kind=kind,
@@ -501,16 +509,12 @@ def _create_replacement_staging(
             )
             _assert_media_mutable(replaced.game)
             if not media_permissions(actor, replaced.game).can_upload:
-                raise GameMediaError(
-                    "MEDIA_UPLOAD_FORBIDDEN", "比赛资料替换仅限管理员。"
-                )
+                raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料替换仅限管理员。")
             if replaced.version != expected_version:
                 raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
             if (
                 replaced.kind == GameMediaAsset.Kind.SCORESHEET
-                and GameScoresheet.objects.filter(
-                    current_publication__source_asset_id=replaced.id
-                ).exists()
+                and scoresheet_has_publication(replaced.game_id)
                 and not actor.is_pkuba_superadmin
             ):
                 raise GameMediaError(
@@ -562,25 +566,17 @@ def promote_game_media_staging(staging_id) -> GameMediaAsset:
             )
             if staging.status == GameMediaUploadStaging.Status.PROMOTED:
                 if staging.promoted_asset is None:
-                    raise GameMediaError(
-                        "MEDIA_STAGING_INVALID", "图片暂存状态不完整。"
-                    )
+                    raise GameMediaError("MEDIA_STAGING_INVALID", "图片暂存状态不完整。")
                 return staging.promoted_asset
             if staging.status != GameMediaUploadStaging.Status.STORED:
-                raise GameMediaError(
-                    "MEDIA_STAGING_NOT_STORED", "图片尚未完整写入暂存区。"
-                )
+                raise GameMediaError("MEDIA_STAGING_NOT_STORED", "图片尚未完整写入暂存区。")
 
             locked_game = (
-                Game.objects.select_for_update()
-                .select_related("season")
-                .get(id=staging.game_id)
+                Game.objects.select_for_update().select_related("season").get(id=staging.game_id)
             )
             _assert_media_mutable(locked_game)
             if not media_permissions(staging.uploaded_by, locked_game).can_upload:
-                raise GameMediaError(
-                    "MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。"
-                )
+                raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。")
 
             replaced = None
             if staging.replacement_asset_id:
@@ -590,22 +586,16 @@ def promote_game_media_staging(staging_id) -> GameMediaAsset:
                         deleted_at__isnull=True,
                     )
                 except GameMediaAsset.DoesNotExist as error:
-                    raise GameMediaError(
-                        "MEDIA_NOT_FOUND", "待替换图片不存在或已删除。"
-                    ) from error
+                    raise GameMediaError("MEDIA_NOT_FOUND", "待替换图片不存在或已删除。") from error
                 if (
                     replaced.game_id != locked_game.id
                     or replaced.kind != staging.kind
                     or replaced.version != staging.expected_version
                 ):
-                    raise GameMediaError(
-                        "VERSION_CONFLICT", "图片状态已变化，请刷新。"
-                    )
+                    raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
                 if (
                     replaced.kind == GameMediaAsset.Kind.SCORESHEET
-                    and GameScoresheet.objects.filter(
-                        current_publication__source_asset_id=replaced.id
-                    ).exists()
+                    and scoresheet_has_publication(replaced.game_id)
                     and not staging.uploaded_by.is_pkuba_superadmin
                 ):
                     raise GameMediaError(
@@ -625,14 +615,18 @@ def promote_game_media_staging(staging_id) -> GameMediaAsset:
                     ]
                 )
             else:
-                if staging.kind in {
-                    GameMediaAsset.Kind.SCORESHEET,
-                    GameMediaAsset.Kind.GROUP_PHOTO,
-                } and GameMediaAsset.objects.filter(
-                    game=locked_game,
-                    kind=staging.kind,
-                    deleted_at__isnull=True,
-                ).exists():
+                if (
+                    staging.kind
+                    in {
+                        GameMediaAsset.Kind.SCORESHEET,
+                        GameMediaAsset.Kind.GROUP_PHOTO,
+                    }
+                    and GameMediaAsset.objects.filter(
+                        game=locked_game,
+                        kind=staging.kind,
+                        deleted_at__isnull=True,
+                    ).exists()
+                ):
                     raise _active_asset_conflict(staging.kind)
                 sort_order = (
                     GameMediaAsset.objects.filter(
@@ -755,9 +749,7 @@ def upload_game_media(
         raise GameMediaError("MEDIA_KIND_INVALID", "图片类型不合法。")
     permissions = media_permissions(actor, game)
     if not permissions.can_upload:
-        raise GameMediaError(
-            "MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。"
-        )
+        raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。")
     if kind == GameMediaAsset.Kind.SCORESHEET and not scoresheet_complete_confirmed:
         raise GameMediaError(
             "SCORESHEET_CONFIRMATION_REQUIRED",
@@ -834,19 +826,18 @@ def replace_game_media(
         raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料替换仅限管理员。")
     if (
         current.kind == GameMediaAsset.Kind.SCORESHEET
-        and GameScoresheet.objects.filter(
-            current_publication__source_asset_id=current.id
-        ).exists()
+        and scoresheet_has_publication(current.game_id)
         and not actor.is_pkuba_superadmin
     ):
         raise GameMediaError(
             "SUPERADMIN_REQUIRED",
             "已发布记录表的重传和纠错仅限超级管理员。",
         )
-    if (
-        current.kind == GameMediaAsset.Kind.SCORESHEET
-        and not scoresheet_complete_confirmed
-    ):
+    # A retry may reuse staging and skip _create_replacement_staging. It must
+    # still reject a stale source before reviving staging or touching storage.
+    if current.version != expected_version:
+        raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
+    if current.kind == GameMediaAsset.Kind.SCORESHEET and not scoresheet_complete_confirmed:
         raise GameMediaError(
             "SCORESHEET_CONFIRMATION_REQUIRED",
             "重新上传记录表前必须确认已正确结表且关键信息清晰完整。",
@@ -954,9 +945,7 @@ def reconcile_staged_game_media(
     return summary
 
 
-def delete_game_media(
-    *, actor: Account, asset_id, expected_version: int
-) -> GameMediaAsset:
+def delete_game_media(*, actor: Account, asset_id, expected_version: int) -> GameMediaAsset:
     with transaction.atomic():
         try:
             asset = (

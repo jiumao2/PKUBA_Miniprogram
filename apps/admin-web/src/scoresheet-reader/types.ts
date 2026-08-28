@@ -119,6 +119,7 @@ export interface GameSummary {
   ready: boolean;
   unavailable_reason: string;
   document_id: string | null;
+  can_upload_source: boolean;
   scoresheet_state: 'not_uploaded' | 'recognizing' | 'recognized' | 'recognition_failed' | 'confirmed';
 }
 

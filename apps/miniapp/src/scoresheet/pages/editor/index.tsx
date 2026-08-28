@@ -155,15 +155,64 @@ export default function ScoresheetEditorPage() {
   const syncFlightRef = useRef<Promise<boolean> | null>(null);
   const heartbeatFlightRef = useRef<Promise<void> | null>(null);
   const flushRef = useRef<(changeType?: string, explicitSave?: boolean) => Promise<void>>(async () => undefined);
+  const serverObservationRef = useRef({
+    sequence: 0,
+    orders: new WeakMap<ScoresheetDetail, number>(),
+    writes: new WeakSet<ScoresheetDetail>(),
+    // A sync summary may know a newer version before its complete draft arrives.
+    latest: null as { order: number; detail: ScoresheetDetail; knownVersion: number; knownEvent: number } | null,
+  });
 
-  const projectServer = useCallback((raw: ScoresheetDetail) => raw, []);
+  const projectServer = useCallback((raw: ScoresheetDetail) => {
+    const observation = serverObservationRef.current;
+    const latest = observation.latest;
+    if (raw === latest?.detail) return raw; // Applying a projection must not re-age its capability.
+    const order = observation.orders.get(raw) ?? ++observation.sequence;
+    observation.orders.set(raw, order);
+    const isWrite = observation.writes.has(raw);
+    let next = raw;
+    if (latest?.detail.id === raw.id) {
+      const bodyAdvanced = raw.draft_version > latest.detail.draft_version
+        || raw.event_sequence > latest.detail.event_sequence;
+      const belowKnown = raw.draft_version < latest.knownVersion || raw.event_sequence < latest.knownEvent;
+      // Compare complete bodies to complete bodies, not to summary-only progress.
+      // A delayed successful write can fill a missing body, but never replace a newer one.
+      if (raw.draft_version < latest.detail.draft_version || raw.event_sequence < latest.detail.event_sequence
+        || (belowKnown && !(isWrite && bodyAdvanced))
+        || (order < latest.order && !(isWrite && bodyAdvanced))) return latest.detail;
+      // Draft progress does not prove an actor's permission is newer. Preserve the
+      // later capability observation even when accepting an earlier request's commit.
+      if (order < latest.order || belowKnown) {
+        next = { ...raw, can_upload_source: latest.detail.can_upload_source };
+        observation.orders.set(next, order);
+        if (isWrite) observation.writes.add(next);
+      }
+    }
+    observation.latest = { order: Math.max(order, latest?.detail.id === raw.id ? latest.order : order),
+      detail: next,
+      knownVersion: Math.max(raw.draft_version, latest?.detail.id === raw.id ? latest.knownVersion : raw.draft_version),
+      knownEvent: Math.max(raw.event_sequence, latest?.detail.id === raw.id ? latest.knownEvent : raw.event_sequence) };
+    return next;
+  }, []);
+
+  const readServer = useCallback(async () => {
+    const observation = serverObservationRef.current;
+    const order = ++observation.sequence;
+    const raw = await api.getScoresheet(scoresheetId, token);
+    observation.orders.set(raw, order);
+    return projectServer(raw);
+  }, [projectServer, scoresheetId, token]);
+
+  const writeServer = useCallback(async (request: () => Promise<ScoresheetDetail>) => {
+    const observation = serverObservationRef.current;
+    const order = ++observation.sequence;
+    const raw = await request();
+    observation.orders.set(raw, order);
+    observation.writes.add(raw);
+    return projectServer(raw);
+  }, [projectServer]);
 
   const applyServer = useCallback((raw: ScoresheetDetail, preservePending = false) => {
-    const current = serverRef.current;
-    if (current?.id === raw.id && (raw.draft_version < current.draft_version
-      || (raw.draft_version === current.draft_version && raw.event_sequence < current.event_sequence))) {
-      return current;
-    }
     const next = projectServer(raw);
     serverRef.current = next;
     setSheet({
@@ -175,9 +224,9 @@ export default function ScoresheetEditorPage() {
 
   const load = useCallback(async () => {
     if (!scoresheetId || !token) throw new Error("记录表参数或登录状态无效");
-    const next = await api.getScoresheet(scoresheetId, token);
+    const next = await readServer();
     return applyServer(next, Boolean(pendingRef.current));
-  }, [applyServer, scoresheetId, token]);
+  }, [applyServer, readServer, scoresheetId, token]);
 
   const acquire = useCallback(() => {
     if (leaseRef.current) return Promise.resolve();
@@ -208,7 +257,7 @@ export default function ScoresheetEditorPage() {
         setSaveState("已保存");
         return;
       }
-      const server = projectServer(await api.getScoresheet(scoresheetId, token));
+      const server = await readServer();
       recoveryRef.current = null;
       if (server.draft_version === recovery.baseVersion) {
         serverRef.current = server;
@@ -233,7 +282,7 @@ export default function ScoresheetEditorPage() {
         setTimeout(() => void flushRef.current("CONFLICT_RESOLVED_LOCAL", true), 0);
       } else {
         clearRecovery(scoresheetId);
-        applyServer(await api.getScoresheet(scoresheetId, token));
+        applyServer(await readServer());
         setSaveState("已采用服务器版本");
       }
     })();
@@ -241,7 +290,7 @@ export default function ScoresheetEditorPage() {
     return operation.finally(() => {
       if (acquireFlightRef.current === operation) acquireFlightRef.current = null;
     });
-  }, [applyServer, projectServer, scoresheetId, token]);
+  }, [applyServer, readServer, scoresheetId, token]);
 
   useDidShow(() => {
     void (async () => {
@@ -283,13 +332,13 @@ export default function ScoresheetEditorPage() {
     savingDocumentRef.current = local;
     setSaveState("保存中…");
     try {
-      const result = await api.saveScoresheetDraft(
+      const result = await writeServer(() => api.saveScoresheetDraft(
         scoresheetId,
         mutation,
         [{ path: "/", operation: "SET", value: local }],
         token,
         { changeType, explicitSave },
-      );
+      ));
       applyServer(result, Boolean(pendingRef.current));
       pendingBaseVersionRef.current = pendingRef.current ? result.draft_version : null;
       if (pendingRef.current) storeRecovery(scoresheetId, pendingRef.current, result.draft_version);
@@ -300,7 +349,7 @@ export default function ScoresheetEditorPage() {
       const unsaved = pendingRef.current ?? local;
       pendingRef.current = null;
       if (reason instanceof ApiError && reason.code === "VERSION_CONFLICT") {
-        const server = projectServer(await api.getScoresheet(scoresheetId, token));
+        const server = await readServer();
         const choice = await Taro.showModal({
           title: "发现跨端差异",
           content: "服务器草稿已经变化。取消将采用服务器值；确认会在当前版本上提交本地值。",
@@ -321,7 +370,7 @@ export default function ScoresheetEditorPage() {
         reason instanceof ApiError &&
         ["LEASE_LOST", "LEASE_REQUIRED"].includes(reason.code ?? "")
       ) {
-        const server = projectServer(await api.getScoresheet(scoresheetId, token));
+        const server = await readServer();
         leaseRef.current = "";
         clearStoredLease(scoresheetId);
         setReadOnly(true);
@@ -362,7 +411,7 @@ export default function ScoresheetEditorPage() {
       savingDocumentRef.current = null;
       if (pendingRef.current && online) setTimeout(() => void flush(), 60);
     }
-  }, [applyServer, context, online, projectServer, scoresheetId, token]);
+  }, [applyServer, context, online, readServer, scoresheetId, token, writeServer]);
   flushRef.current = flush;
 
   const drainPending = useCallback(async (changeType = "EXPLICIT_SAVE") => {
@@ -399,6 +448,9 @@ export default function ScoresheetEditorPage() {
     const operation = (async () => {
       const current = serverRef.current;
       if (!current || !scoresheetId || !token) return true;
+      const observation = serverObservationRef.current;
+      const order = ++observation.sequence;
+      let awaitingSync = true;
       try {
       const update = await api.syncScoresheet(
         scoresheetId,
@@ -406,9 +458,22 @@ export default function ScoresheetEditorPage() {
         current.event_sequence,
         token,
       );
+      awaitingSync = false;
       if (actionFlightRef.current) return true;
+      const latest = serverRef.current;
+      const known = observation.latest;
+      if (latest?.id !== current.id || (known && (order < known.order
+        || update.current_version < known.knownVersion || update.current_event < known.knownEvent))) return true;
+      const canUploadSource = update.can_upload_source === true;
+      const nextCapability = { ...latest, can_upload_source: canUploadSource };
+      observation.orders.set(nextCapability, order);
+      // Keep complete-body counters unchanged until a full response is available.
+      observation.latest = { order, detail: nextCapability, knownVersion: update.current_version, knownEvent: update.current_event };
+      serverRef.current = nextCapability;
+      setSheet((shown) => shown?.id === latest.id
+        ? { ...shown, can_upload_source: canUploadSource } : shown);
       if ((update.events.length || update.requires_full_reload) && !savingRef.current) {
-        const next = projectServer(await api.getScoresheet(scoresheetId, token));
+        const next = await readServer();
         if (actionFlightRef.current || next.draft_version < (serverRef.current?.draft_version ?? 0)) return true;
         if (!pendingRef.current) {
           applyServer(next);
@@ -459,6 +524,8 @@ export default function ScoresheetEditorPage() {
       }
         return true;
       } catch (reason) {
+        if (awaitingSync && (serverRef.current?.id !== current.id || actionFlightRef.current
+          || (observation.latest && order < observation.latest.order))) return true;
         if (online) setError(message(reason));
         return false;
       }
@@ -467,7 +534,7 @@ export default function ScoresheetEditorPage() {
     return operation.finally(() => {
       if (syncFlightRef.current === operation) syncFlightRef.current = null;
     });
-  }, [acquire, applyServer, online, projectServer, scoresheetId, token]);
+  }, [acquire, applyServer, online, readServer, scoresheetId, token]);
 
   const heartbeat = useCallback(() => {
     if (heartbeatFlightRef.current || !leaseRef.current) {
@@ -552,7 +619,7 @@ export default function ScoresheetEditorPage() {
     setBusyAction("VALIDATE");
     try {
       if (!context() || !(await drainPending())) return;
-      applyServer(await api.validateScoresheet(scoresheetId, context()!, token));
+      applyServer(await writeServer(() => api.validateScoresheet(scoresheetId, context()!, token)));
     } catch (reason) {
       setError(message(reason));
     } finally {
@@ -577,12 +644,12 @@ export default function ScoresheetEditorPage() {
       if (contextReviewOperationRef.current.operation !== operation) {
         contextReviewOperationRef.current = { operation, key: createIdempotencyKey() };
       }
-      applyServer(await api.reviewScoresheetGameContext(scoresheetId, mutation, reviewToken, mappings,
-        token, contextReviewOperationRef.current.key));
+      applyServer(await writeServer(() => api.reviewScoresheetGameContext(scoresheetId, mutation, reviewToken, mappings,
+        token, contextReviewOperationRef.current.key)));
       contextReviewOperationRef.current = { operation: "", key: "" };
       setHistory([]);
       setFuture([]);
-      applyServer(await api.validateScoresheet(scoresheetId, context()!, token));
+      applyServer(await writeServer(() => api.validateScoresheet(scoresheetId, context()!, token)));
       setError("");
       setSaveState("已保存");
     } catch (reason) {
@@ -599,7 +666,7 @@ export default function ScoresheetEditorPage() {
     setBusyAction("PUBLISH");
     try {
       if (!context() || !(await drainPending())) return;
-      const validated = applyServer(await api.validateScoresheet(scoresheetId, context()!, token));
+      const validated = applyServer(await writeServer(() => api.validateScoresheet(scoresheetId, context()!, token)));
       const errors = validated.validation_report.errors ?? [];
       const warnings = validated.validation_report.warnings ?? [];
       if (errors.length > 0) {
@@ -626,10 +693,10 @@ export default function ScoresheetEditorPage() {
       const warningIds = warnings.map((warning) => warning.id);
       if (warningIds.length > 0) {
         applyServer(
-          await api.acknowledgeScoresheetWarnings(scoresheetId, context()!, warningIds, token),
+          await writeServer(() => api.acknowledgeScoresheetWarnings(scoresheetId, context()!, warningIds, token)),
         );
       }
-      applyServer(await api.publishScoresheet(scoresheetId, context()!, token));
+      applyServer(await writeServer(() => api.publishScoresheet(scoresheetId, context()!, token)));
       leaseRef.current = "";
       clearStoredLease(scoresheetId);
       setReadOnly(true);
@@ -775,7 +842,7 @@ export default function ScoresheetEditorPage() {
             busy={busyAction === "REPLACE"}
             onReload={async () => { await load(); }}
             onReplace={async () => {
-              if (!sheet.source || readOnly || actionFlightRef.current) return;
+              if (!sheet.source || !sheet.can_upload_source || readOnly || actionFlightRef.current) return;
               actionFlightRef.current = "REPLACE";
               setBusyAction("REPLACE");
               try {
@@ -785,6 +852,10 @@ export default function ScoresheetEditorPage() {
                 if (!file) return;
                 const confirm = await Taro.showModal({ title: "重传原图", content: "重传会保留旧来源审计、重置识别额度并生成新草稿。", confirmText: "确认重传" });
                 if (!confirm.confirm) return;
+                const current = serverRef.current;
+                if (!current?.can_upload_source || current.id !== sheet.id
+                  || current.source?.id !== sheet.source.id
+                  || current.source_version !== sheet.source_version) return;
                 await replaceGameMedia(sheet.source.id, sheet.source.version, file.tempFilePath, true, token);
                 await load();
               } catch (reason) {
@@ -795,7 +866,7 @@ export default function ScoresheetEditorPage() {
               }
             }}
             position={sourcePosition}
-            readOnly={readOnly || !online}
+            readOnly={readOnly || !online || sheet.can_upload_source !== true}
             rotation={sourceRotation}
             scale={sourceScale}
             setPosition={setSourcePosition}

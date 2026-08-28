@@ -209,7 +209,7 @@ export function SourcePane({
           <div className="source-empty" aria-label="没有可查看的记录表原图">
             <span className="source-empty-mark"><ScanLine size={31} /></span>
             <strong>没有可查看的记录表原图</strong>
-            <p>归档纠错只允许修改已有的结构化记录，不允许上传或替换照片。</p>
+            <p>当前账号或赛季状态不允许上传或替换原图。</p>
           </div>
         )}
       </div>

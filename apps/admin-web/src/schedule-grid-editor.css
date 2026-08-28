@@ -400,6 +400,11 @@
 }
 
 @media (max-width: 760px) {
+  .grid-command-group {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
   .grid-commandbar {
     align-items: flex-start;
   }
@@ -411,9 +416,12 @@
   .grid-selection-status {
     width: 100%;
     margin-left: 0;
+    white-space: normal;
   }
 
   .grid-zoom-control {
+    max-width: 100%;
+    flex-wrap: wrap;
     padding-left: 0;
     border-left: 0;
   }

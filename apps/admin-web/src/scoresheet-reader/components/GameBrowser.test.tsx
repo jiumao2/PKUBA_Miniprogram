@@ -9,18 +9,21 @@ const games: GameSummary[] = [
     id: 'ready', competition: '公开测试赛', division: '男甲', date: '2026-08-19',
     scheduled_time: '14:00', venue: '第一体育馆', team_a_name: '数学', team_b_name: '外院',
     ready: true, unavailable_reason: '', document_id: null, scoresheet_state: 'not_uploaded',
+    can_upload_source: true,
   },
   {
     id: 'recognized', competition: '公开测试赛', division: '男甲', date: '2026-08-19',
     scheduled_time: '16:00', venue: '第一体育馆', team_a_name: '物院', team_b_name: '化院',
     ready: true, unavailable_reason: '', document_id: 'recognized-document',
     scoresheet_state: 'recognized',
+    can_upload_source: true,
   },
   {
     id: 'pending', competition: '公开测试赛', division: '决赛', date: '2026-08-20',
     scheduled_time: '18:00', venue: '第一体育馆', team_a_name: '半决赛胜者', team_b_name: '待定',
     ready: false, unavailable_reason: '球队尚未确定', document_id: null,
     scoresheet_state: 'not_uploaded',
+    can_upload_source: false,
   },
 ];
 

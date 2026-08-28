@@ -263,6 +263,7 @@ export interface ScoresheetDraftChange {
 
 export interface ScoresheetSync {
   scoresheet_id: string;
+  can_upload_source: boolean;
   current_version: number;
   current_event: number;
   requires_full_reload: boolean;

@@ -304,6 +304,7 @@ describe('editor persistence and history', () => {
       scheduled_time: '20:00', venue: '第一体育馆', team_a_name: '物院', team_b_name: '化院',
       ready: true, unavailable_reason: '', document_id: 'linked-document', scoresheet_state: 'recognized',
       prior: document.game_prior,
+      can_upload_source: true,
     });
     vi.spyOn(api, 'health').mockResolvedValue({ status: 'ok', recognition: 'mock', master_data: 'ready' });
     const documentSpy = vi.spyOn(api, 'document').mockResolvedValue(document);
@@ -315,7 +316,7 @@ describe('editor persistence and history', () => {
     expect(gamesSpy).toHaveBeenCalledWith({
       seasonId: 'season-2026', scope: 'ACTION_REQUIRED', page: 1, pageSize: 20,
     });
-    expect(documentSpy).toHaveBeenCalledWith('linked-document');
+    expect(documentSpy).toHaveBeenCalledWith('linked-document', expect.any(Function));
     expect(useEditorStore.getState().document?.id).toBe('linked-document');
     expect(useEditorStore.getState().seasonId).toBe('season-2026');
   });
@@ -472,6 +473,7 @@ describe('editor persistence and history', () => {
     vi.spyOn(api, 'leaseState').mockReturnValue(null);
     vi.spyOn(api, 'sync').mockResolvedValue({
       current_version: 1,
+      can_upload_source: false,
       current_event: 1,
       requires_full_reload: false,
       events: [],

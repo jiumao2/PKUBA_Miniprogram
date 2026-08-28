@@ -113,7 +113,7 @@ describe('game-context review belongs to one open record session', () => {
     const opening = deferred<ScoresheetDocument>();
     vi.mocked(api.document).mockReturnValueOnce(opening.promise);
     const navigating = useEditorStore.getState().openDocument(other.id);
-    await vi.waitFor(() => expect(api.document).toHaveBeenCalledWith(other.id));
+    await vi.waitFor(() => expect(api.document).toHaveBeenCalledWith(other.id, expect.any(Function)));
     pending.resolve({ ...original, revision: 1 });
     await reviewing;
     const validateCalls = vi.mocked(api.validate).mock.calls.length;

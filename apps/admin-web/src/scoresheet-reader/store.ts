@@ -68,6 +68,14 @@ function rebaseSnapshot(document: ScoresheetDocument, revision: number): Scoresh
   return snapshot;
 }
 
+function sourceCapabilityState(games: GameSummary[], documentId: string, allowed: boolean) {
+  return {
+    canUploadSource: allowed,
+    games: games.map(game => game.document_id === documentId
+      ? { ...game, can_upload_source: allowed } : game),
+  };
+}
+
 interface EditorState {
   document: ScoresheetDocument | null;
   serverRevision: number;
@@ -94,6 +102,7 @@ interface EditorState {
   loading: boolean;
   error: string;
   readOnly: boolean;
+  canUploadSource: boolean;
   readOnlyReason: string;
   autoAcquireLease: boolean;
   online: boolean;
@@ -157,6 +166,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   loading: true,
   error: '',
   readOnly: false,
+  canUploadSource: false,
   readOnlyReason: '',
   autoAcquireLease: true,
   online: navigator.onLine,
@@ -165,7 +175,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   initialize: async () => {
     const generation = ++documentSessionGeneration;
-    set({ loading: true, error: '', autoAcquireLease: true, contextReviewing: false });
+    set({ loading: true, error: '', autoAcquireLease: true, contextReviewing: false, canUploadSource: false });
     try {
       const params = new URLSearchParams(window.location.search);
       const seasonId = params.get('season_id') ?? '';
@@ -184,6 +194,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         requestedGameId ? api.game(requestedGameId).catch(() => null) : Promise.resolve(null),
         api.health().catch(() => ({ status: 'ok', recognition: 'automatic', master_data: 'empty' })),
       ]);
+      if (generation !== documentSessionGeneration) return;
       const games = requestedGame && !requestedGame.document_id
         && !gamePage.items.some((game) => game.id === requestedGame.id)
         ? [requestedGame, ...gamePage.items]
@@ -193,7 +204,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       let document: ScoresheetDocument | null = null;
       if (lastId) {
         try {
-          const candidate = await api.document(lastId);
+          const candidate = await api.document(lastId, () => generation === documentSessionGeneration && get().autoAcquireLease);
           if (isRestorableDocument(candidate)) document = candidate;
           else localStorage.removeItem(LAST_DOCUMENT_KEY);
         } catch {
@@ -203,9 +214,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const recognitionRun = document ? await loadRecognitionRun(document) : null;
       const lease = document ? api.leaseState(document.id) : null;
       if (generation !== documentSessionGeneration) return;
+      const sourcePermissions = document
+        ? sourceCapabilityState(games, document.id, api.sourceUploadAllowed(document.id))
+        : { games, canUploadSource: false };
       set({
         template,
-        games,
+        ...sourcePermissions,
         gamesTotal: gamePage.total,
         gamesPage: gamePage.page,
         gamesPageSize: gamePage.page_size,
@@ -280,11 +294,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const generation = ++documentSessionGeneration;
     recognitionWatchGeneration += 1;
     const previousId = get().document?.id;
-    set({ loading: true, error: '', autoAcquireLease: true });
+    set({ loading: true, error: '', autoAcquireLease: true, canUploadSource: false });
     try {
       if (previousId && previousId !== documentId) await api.release(previousId);
       if (generation !== documentSessionGeneration) return;
-      const document = await api.document(documentId);
+      const document = await api.document(documentId, () => generation === documentSessionGeneration && get().autoAcquireLease);
+      if (generation !== documentSessionGeneration) return;
       const recognitionRun = await loadRecognitionRun(document);
       if (generation !== documentSessionGeneration) return;
       const lease = api.leaseState(document.id);
@@ -306,6 +321,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         loading: false,
         contextReviewing: false,
         readOnly: !lease?.token || Boolean(lease.readOnly),
+        ...sourceCapabilityState(get().games, document.id, api.sourceUploadAllowed(document.id)),
         readOnlyReason: lease?.reason ?? '',
         leaseHolder: lease?.holder ?? null,
       });
@@ -334,7 +350,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     const generation = ++documentSessionGeneration;
     recognitionWatchGeneration += 1;
-    set({ loading: true, error: '', autoAcquireLease: true });
+    set({ loading: true, error: '', autoAcquireLease: true, canUploadSource: false });
     try {
       const { document, recognition_run: recognitionRun } = await api.createGameDocument(gameId, file);
       if (generation !== documentSessionGeneration) return;
@@ -357,6 +373,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         loading: false,
         contextReviewing: false,
         readOnly: !lease?.token || Boolean(lease.readOnly),
+        ...sourceCapabilityState(get().games, document.id, api.sourceUploadAllowed(document.id)),
         readOnlyReason: lease?.reason ?? '',
         leaseHolder: lease?.holder ?? null,
       });
@@ -377,11 +394,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     const generation = ++documentSessionGeneration;
     recognitionWatchGeneration += 1;
-    set({ loading: true, error: '', autoAcquireLease: true });
+    set({ loading: true, error: '', autoAcquireLease: true, canUploadSource: false });
     try {
       const target = get().document?.id === documentId
         ? get().document
-        : await api.document(documentId);
+        : await api.document(documentId, () => generation === documentSessionGeneration && get().autoAcquireLease);
       if (generation !== documentSessionGeneration) return;
       if (!target?.game_prior) {
         throw new Error('请先打开已绑定比赛的记录表。');
@@ -411,6 +428,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         loading: false,
         contextReviewing: false,
         readOnly: !lease?.token || Boolean(lease.readOnly),
+        ...sourceCapabilityState(get().games, document.id, api.sourceUploadAllowed(document.id)),
         readOnlyReason: lease?.reason ?? '',
         leaseHolder: lease?.holder ?? null,
       });
@@ -751,6 +769,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         set({
           document: rebased,
           serverRevision: confirmed.revision,
+          ...sourceCapabilityState(get().games, confirmed.id, api.sourceUploadAllowed(confirmed.id)),
           validation: null,
           saveState: 'dirty',
           dirty: true,
@@ -761,6 +780,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
       set({
         document: confirmed,
+        ...sourceCapabilityState(get().games, confirmed.id, api.sourceUploadAllowed(confirmed.id)),
         serverRevision: confirmed.revision,
         saveState: 'saved',
         dirty: false,
@@ -799,13 +819,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   reloadSource: async () => {
+    const generation = documentSessionGeneration;
     const current = get().document;
     if (!current) return;
     try {
       const source = await api.reloadSource(current.id);
-      if (get().document !== current) return;
-      set({ document: { ...current, source }, error: '' });
+      if (generation !== documentSessionGeneration || get().document !== current) return;
+      set({ document: { ...current, source },
+        ...sourceCapabilityState(get().games, current.id, api.sourceUploadAllowed(current.id)), error: '' });
     } catch (error) {
+      if (generation !== documentSessionGeneration || get().document !== current) return;
       set({ error: error instanceof Error ? error.message : '重新载入原图失败' });
     }
   },
@@ -1079,6 +1102,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   syncNow: async () => {
     if (get().contextReviewing) return;
+    const generation = documentSessionGeneration;
     const document = get().document;
     if (!document) {
       set({ online: navigator.onLine });
@@ -1086,7 +1110,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     try {
       const sync = await api.sync(document.id);
-      if (get().document?.id !== document.id || get().contextReviewing) return;
+      const isCurrent = () => generation === documentSessionGeneration
+        && get().document?.id === document.id && !get().contextReviewing
+        && sync.current_version >= get().serverRevision && api.syncIsCurrent(document.id, sync);
+      if (!isCurrent()) return;
       let lease = api.leaseState(document.id);
       const remoteHolder = sync.lease;
       const localHolder = lease?.holder;
@@ -1094,7 +1121,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         lease?.token
         && (!remoteHolder || remoteHolder.client_id !== localHolder?.client_id),
       );
-      if (leaseChanged) lease = await api.heartbeat(document.id);
+      if (leaseChanged) {
+        lease = await api.heartbeat(document.id);
+        if (!isCurrent()) return;
+      }
       if (
         get().autoAcquireLease
         && (!remoteHolder || get().readOnly || !lease?.token)
@@ -1102,10 +1132,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ) {
         lease = await api.acquire(document.id);
       }
-      if (get().contextReviewing || get().document?.id !== document.id) return;
+      if (!isCurrent()) return;
       const autoAcquireLease = get().autoAcquireLease;
       set({
         online: true,
+        ...sourceCapabilityState(get().games, document.id, sync.can_upload_source === true),
         readOnly: !autoAcquireLease || !lease?.token || Boolean(lease.readOnly),
         readOnlyReason: autoAcquireLease ? (lease?.reason ?? '') : get().readOnlyReason,
         leaseHolder: autoAcquireLease ? (lease?.holder ?? remoteHolder ?? null) : null,
@@ -1118,12 +1149,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           });
           return;
         }
-        const latest = await api.document(document.id);
+        const canReload = () => generation === documentSessionGeneration && get().document === document
+          && !get().dirty && !get().contextReviewing;
+        const latest = await api.document(document.id, canReload);
+        if (!canReload()) return;
         const recognitionRun = await loadRecognitionRun(latest);
-        if (get().document?.id !== document.id || get().dirty || get().contextReviewing
+        if (generation !== documentSessionGeneration || get().document?.id !== document.id || get().dirty || get().contextReviewing
           || latest.revision < get().serverRevision) return;
         set({
           document: latest,
+          ...sourceCapabilityState(get().games, latest.id, api.sourceUploadAllowed(latest.id)),
           serverRevision: latest.revision,
           validation: null,
           recognitionRun,
@@ -1133,22 +1168,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         await get().refreshChanges();
       }
     } catch {
+      if (generation !== documentSessionGeneration || get().document !== document || get().contextReviewing) return;
       set({
         online: false,
+        canUploadSource: false,
         error: '与服务器的连接已中断；未保存输入仍保留，恢复后会先同步版本。',
       });
     }
   },
 
   heartbeatLease: async () => {
+    const generation = documentSessionGeneration;
     const document = get().document;
     if (!document || !get().online) return;
+    const isCurrent = () => generation === documentSessionGeneration && get().document === document
+      && !get().contextReviewing;
     try {
       let lease = await api.heartbeat(document.id);
+      if (!isCurrent()) return;
       if (get().autoAcquireLease && !lease?.token && !get().dirty) {
         lease = await api.acquire(document.id);
       }
-      if (get().document?.id !== document.id) return;
+      if (!isCurrent()) return;
       const autoAcquireLease = get().autoAcquireLease;
       set({
         readOnly: !autoAcquireLease || !lease?.token || Boolean(lease.readOnly),
@@ -1156,6 +1197,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         leaseHolder: autoAcquireLease ? (lease?.holder ?? null) : null,
       });
     } catch {
+      if (!isCurrent()) return;
       set({ readOnly: true, readOnlyReason: '编辑租约已失效。' });
     }
   },

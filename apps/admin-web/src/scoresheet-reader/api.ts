@@ -60,6 +60,7 @@ type RawRecognition = {
 
 type RawDetail = {
   id: string;
+  can_upload_source: boolean;
   game: Record<string, unknown>;
   source: null | {
     id: string;
@@ -97,6 +98,7 @@ type RawIssue = {
 
 type RawQueue = {
   game_id: string;
+  can_upload_source: boolean;
   game_code: string;
   game_label: string;
   competition: string;
@@ -111,6 +113,7 @@ type RawQueue = {
 };
 
 type RawSync = {
+  can_upload_source: boolean;
   current_version: number;
   current_event: number;
   requires_full_reload: boolean;
@@ -131,10 +134,13 @@ const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
 const admin = createAdminClient(baseUrl, () => window.location.assign('/'));
 const leaseSessions = new Map<string, LeaseSession>();
 const detailCache = new Map<string, RawDetail>();
+let detailObservationSequence = 0;
+const detailObservationOrders = new WeakMap<RawDetail, number>();
 const runDocuments = new Map<string, string>();
 const acquireFlights = new Map<string, Promise<LeaseSession>>();
 const heartbeatFlights = new Map<string, Promise<LeaseSession | null>>();
 const syncFlights = new Map<string, Promise<RawSync>>();
+const syncDetailAnchors = new WeakMap<RawSync, RawDetail | undefined>();
 const releaseFlights = new Map<string, Promise<void>>();
 
 function clientId(): string {
@@ -223,9 +229,25 @@ async function ensureEditable(documentId: string): Promise<LeaseSession> {
   return acquire(documentId);
 }
 
-function documentFromDetail(rawValue: unknown): ScoresheetDocument {
+function rememberDetail(rawValue: unknown, readOrder?: number): RawDetail {
   const raw = rawValue as RawDetail;
+  // A GET is ordered when issued, not when its delayed response arrives. Keep
+  // that order on the object so a continuation after acquiring a lease cannot
+  // make an already-consumed old detail look like a new observation.
+  const order = detailObservationOrders.get(raw) ?? readOrder ?? ++detailObservationSequence;
+  detailObservationOrders.set(raw, order);
+  const current = detailCache.get(raw.id);
+  if (current && (
+    order < (detailObservationOrders.get(current) ?? 0)
+    || raw.draft_version < current.draft_version
+    || raw.event_sequence < current.event_sequence
+  )) return current;
   detailCache.set(raw.id, raw);
+  return raw;
+}
+
+function documentFromDetail(rawValue: unknown): ScoresheetDocument {
+  const raw = rememberDetail(rawValue);
   if (raw.recognition) runDocuments.set(raw.recognition.id, raw.id);
   const document = structuredClone(raw.draft);
   document.id = raw.id;
@@ -257,8 +279,7 @@ function issueFromRaw(issue: RawIssue): ValidationIssue {
 }
 
 function reportFromDetail(rawValue: unknown): ValidationReport {
-  const raw = rawValue as RawDetail;
-  detailCache.set(raw.id, raw);
+  const raw = rememberDetail(rawValue);
   const issues = [
     ...(raw.validation_report.errors ?? []),
     ...(raw.validation_report.warnings ?? []),
@@ -342,14 +363,15 @@ function gameFromQueue(row: RawQueue): GameSummary {
     ready: Boolean(row.home_name && row.away_name),
     unavailable_reason: row.home_name && row.away_name ? '' : '比赛双方尚未落位',
     document_id: row.scoresheet_id,
+    can_upload_source: row.can_upload_source === true,
     scoresheet_state: state,
   };
 }
 
 async function loadRawDetail(documentId: string): Promise<RawDetail> {
+  const readOrder = ++detailObservationSequence;
   const raw = (await admin.getScoresheet(documentId)) as unknown as RawDetail;
-  detailCache.set(documentId, raw);
-  return raw;
+  return rememberDetail(raw, readOrder);
 }
 
 async function loadGameSummary(gameId: string): Promise<GameSummary> {
@@ -360,6 +382,21 @@ async function loadGameSummary(gameId: string): Promise<GameSummary> {
 }
 
 export const api = {
+  sourceUploadAllowed(documentId: string): boolean {
+    return detailCache.get(documentId)?.can_upload_source === true;
+  },
+
+  syncIsCurrent(documentId: string, sync: RawSync): boolean {
+    // Publishing advances events without changing the draft revision. A shared
+    // flight must not restore permissions older than a newer detail or sync.
+    const detail = detailCache.get(documentId);
+    // Roles can change without a draft/event increment. Even equal watermarks
+    // cannot make a flight predating the latest authoritative GET current.
+    if (syncDetailAnchors.has(sync) && syncDetailAnchors.get(sync) !== detail) return false;
+    return sync.current_version >= (detail?.draft_version ?? 0)
+      && sync.current_event >= Math.max(detail?.event_sequence ?? 0, leaseSessions.get(documentId)?.event ?? 0);
+  },
+
   async health(): Promise<{ status: string; recognition: string; master_data: string }> {
     const capability = await admin.getScoresheetRecognitionCapabilities();
     return {
@@ -410,6 +447,7 @@ export const api = {
     file: File,
   ): Promise<DocumentRecognitionResponse> {
     const current = await loadRawDetail(documentId);
+    if (!current.can_upload_source) throw new Error('当前账号不能重新上传这场比赛的记录表原图。');
     if (!current.source) throw new Error('当前记录表没有可替换的原图。');
     await admin.replaceAdminGameMedia(current.source.id, current.source.version, true, file);
     clearLease(documentId);
@@ -421,19 +459,22 @@ export const api = {
     return { document, recognition_run: recognition };
   },
 
-  async document(id: string): Promise<ScoresheetDocument> {
+  async document(id: string, isCurrent = () => true): Promise<ScoresheetDocument> {
     const raw = await loadRawDetail(id);
-    if (!leaseSessions.has(id) || leaseSessions.get(id)?.readOnly) {
+    if (isCurrent() && (!leaseSessions.has(id) || leaseSessions.get(id)?.readOnly)) {
       try {
         await acquire(id);
       } catch (error) {
-        leaseSessions.set(id, {
-          token: null,
-          readOnly: true,
-          reason: error instanceof Error ? error.message : '暂时无法取得编辑权。',
-          holder: raw.lease,
-          event: raw.event_sequence,
-        });
+        if (isCurrent()) {
+          const latest = detailCache.get(id) ?? raw;
+          leaseSessions.set(id, {
+            token: null,
+            readOnly: true,
+            reason: error instanceof Error ? error.message : '暂时无法取得编辑权。',
+            holder: latest.lease,
+            event: latest.event_sequence,
+          });
+        }
       }
     }
     return documentFromDetail(raw);
@@ -667,7 +708,8 @@ export const api = {
         detail?.draft_version ?? 0,
         lease?.event ?? detail?.event_sequence ?? 0,
       )) as unknown as RawSync;
-      if (lease) lease.event = response.current_event;
+      syncDetailAnchors.set(response, detail);
+      if (lease) lease.event = Math.max(lease.event, response.current_event);
       return response;
     })();
     syncFlights.set(documentId, request);

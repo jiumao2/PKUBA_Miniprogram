@@ -318,6 +318,7 @@ export interface ScoresheetContextPlayerMapping {
 
 export interface ScoresheetDetail {
   id: string;
+  can_upload_source: boolean;
   game: Record<string, unknown>;
   source: null | {
     id: string;
@@ -371,6 +372,7 @@ export interface ScoresheetDetail {
 
 export interface ScoresheetQueueItem {
   game_id: string;
+  can_upload_source: boolean;
   game_code: string;
   game_label: string;
   competition: string;

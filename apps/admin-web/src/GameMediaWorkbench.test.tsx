@@ -13,7 +13,7 @@ const seasons = [
 
 const games: ScoresheetQueueItem[] = [
   {
-    game_id: "game-one", game_code: "LEGACY-851a630369b794bd067aa399222b4f76", game_label: "男甲 · 数学 — 外院",
+    game_id: "game-one", can_upload_source: true, game_code: "LEGACY-851a630369b794bd067aa399222b4f76", game_label: "男甲 · 数学 — 外院",
     competition: "2026 北大杯", division_name: "男甲", venue: "第一体育馆",
     home_name: "数学", away_name: "外院", date: "2026-08-20", start_time: "18:00",
     scoresheet_id: "sheet-one", source_asset_id: "source-one", status: "DRAFT",
@@ -21,7 +21,7 @@ const games: ScoresheetQueueItem[] = [
     recognition_max_attempts: 4, next_attempt_at: null, publication_number: null,
   },
   {
-    game_id: "game-two", game_code: "W-002", game_label: "女甲 · 物院 — 化院",
+    game_id: "game-two", can_upload_source: true, game_code: "W-002", game_label: "女甲 · 物院 — 化院",
     competition: "2026 北大杯", division_name: "女甲", venue: "五四东一",
     home_name: "物院", away_name: "化院", date: "2026-08-21", start_time: "19:30",
     scoresheet_id: null, source_asset_id: null, status: "NO_SOURCE",

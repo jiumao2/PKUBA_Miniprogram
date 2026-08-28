@@ -44,7 +44,8 @@ export function GameBrowser({
   allowUploads = true,
 }: GameBrowserProps) {
   const [queryDraft, setQueryDraft] = useState(query);
-  const [selectedGame, setSelectedGame] = useState<GameSummary | null>(null);
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+  const selectedGame = games.find((game) => game.id === selectedGameId) ?? null;
   const [uploading, setUploading] = useState(false);
   const [openingGameId, setOpeningGameId] = useState<string | null>(null);
   const [reuploadDocumentId, setReuploadDocumentId] = useState<string | null>(null);
@@ -63,9 +64,9 @@ export function GameBrowser({
 
   useEffect(() => {
     if (!initialGameId) return;
-    setSelectedGame((current) => current && games.some((game) => game.id === current.id)
+    setSelectedGameId((current) => current && games.some((game) => game.id === current)
       ? current
-      : (games.find((game) => game.id === initialGameId) ?? games[0] ?? null));
+      : (games.find((game) => game.id === initialGameId)?.id ?? games[0]?.id ?? null));
   }, [games, initialGameId]);
 
   useEffect(() => {
@@ -120,11 +121,11 @@ export function GameBrowser({
             <div className="game-row-shell" key={game.id}>
               <button
               className={`game-row${selectedGame?.id === game.id ? ' is-selected' : ''}${openingGameId === game.id ? ' is-opening' : ''}`}
-              disabled={(!game.ready && !game.document_id) || uploading || openingGameId !== null}
+              disabled={(!game.document_id && (!game.ready || !game.can_upload_source)) || uploading || openingGameId !== null}
               title={game.document_id ? '打开这场比赛的记录表' : (!game.ready ? game.unavailable_reason : '选择后上传记录表照片')}
               onClick={async () => {
                 if (!game.document_id) {
-                  setSelectedGame(game);
+                  setSelectedGameId(game.id);
                   return;
                 }
                 setOpeningGameId(game.id);
@@ -145,7 +146,7 @@ export function GameBrowser({
                 {openingGameId === game.id ? '打开中' : (game.document_id ? stateLabels[game.scoresheet_state] : (game.ready ? '待上传' : '球队待定'))}
               </span>
               </button>
-              {allowUploads && game.document_id && game.ready ? (
+              {allowUploads && game.document_id && game.ready && game.can_upload_source ? (
                 <button
                   type="button"
                   className="game-reupload-button"
@@ -182,7 +183,7 @@ export function GameBrowser({
             </button>
           </nav>
         ) : null}
-        {allowUploads ? <footer>
+        {allowUploads && games.some((game) => game.can_upload_source) ? <footer>
           <div>
             {selectedGame ? <><strong>{selectedGame.team_a_name} — {selectedGame.team_b_name}</strong><span>名单不含球衣号码，号码仍由图片读取</span></> : <span>选择未上传比赛以导入照片；已有结果可直接点击打开</span>}
           </div>
@@ -193,7 +194,15 @@ export function GameBrowser({
             accept="image/jpeg,image/png,image/webp"
             onChange={async (event) => {
               const file = event.target.files?.[0];
-              if (!file || (!selectedGame && !reuploadDocumentId)) return;
+              const target = reuploadDocumentId
+                ? games.find((game) => game.document_id === reuploadDocumentId)
+                : selectedGame;
+              if (!file || !target?.can_upload_source || !target.ready
+                || (!reuploadDocumentId && target.document_id)) {
+                event.target.value = '';
+                setReuploadDocumentId(null);
+                return;
+              }
               setUploading(true);
               try {
                 if (reuploadDocumentId) {
@@ -211,7 +220,10 @@ export function GameBrowser({
               }
             }}
           />
-          <button className="confirm-button" disabled={!selectedGame || uploading} onClick={() => fileInput.current?.click()}>
+          <button className="confirm-button" disabled={!selectedGame?.can_upload_source || !selectedGame.ready || Boolean(selectedGame.document_id) || uploading} onClick={() => {
+            setReuploadDocumentId(null);
+            fileInput.current?.click();
+          }}>
             <Upload size={15} /> {uploading ? '正在上传并排队…' : '上传并识别'}
           </button>
         </footer> : null}
