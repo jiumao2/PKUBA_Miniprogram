@@ -66,6 +66,58 @@ Copy-Item .env.example .env
 
 Docker Desktop + Windows 前端监听脚本仍可用于快速开发：`./scripts/bootstrap.ps1`、`./scripts/start-local.ps1` 和 `./scripts/dev.ps1`。它们不是最终本地验收基线。
 
+## macOS 本地预览
+
+macOS 可用 Docker Desktop 运行同一套完整 Compose 拓扑，但只作为开发预览，不替代上方 Windows + Ubuntu WSL 正式验收基线。要求 Node.js 24、npm 11、[Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/) 和微信开发者工具；Intel Mac 若 Homebrew 因缺少 bottle 转为源码编译，可改用 [Node.js 24 官方 `darwin-x64` 包](https://nodejs.org/dist/latest-v24.x/)。安装后先确认 `node --version`、`npm --version` 和 `docker compose version`；若 Docker Desktop 未建立 CLI 链接，将 `/Applications/Docker.app/Contents/Resources/bin` 加入 `PATH`。
+
+首次启动前创建本地配置：
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+在 `.env` 中补充仅供本机使用的 `PKUBA_DB_PASSWORD`，替换 `DJANGO_SECRET_KEY`，并按需填写 `WECHAT_APP_ID` 与 `WECHAT_APP_SECRET`；`QWEN_API_KEY`、邮件账号和邮件密码默认保持为空，开发邮件统一进入 Mailpit。另创建被 Git 忽略的 `apps/miniapp/project.private.config.json`，只写入：
+
+```json
+{
+  "setting": {
+    "urlCheck": false
+  }
+}
+```
+
+在仓库根目录执行：
+
+```bash
+compose() {
+  docker compose --project-name pkuba-mac --env-file .env \
+    -f infra/compose.wsl.yml "$@"
+}
+
+npm ci
+compose build
+compose up -d db mailpit
+compose run --rm --no-deps api python manage.py migrate --noinput
+compose up -d
+compose exec -T api python manage.py seed_demo --if-empty
+compose exec api python manage.py create_local_admin local-admin
+```
+
+演示初始化只应在新建空库运行，管理员密码只在终端交互输入。小程序首次构建先生成共享包：
+
+```bash
+npm run build:packages
+PKUBA_API_BASE_URL=http://localhost:8088 \
+PKUBA_ADMIN_WEB_URL=http://localhost:8088 \
+PKUBA_ALLOW_INSECURE_MINIAPP_URL=1 \
+npm --workspace @pkuba/miniapp run build:weapp
+```
+
+入口与 WSL 相同：管理网站 `http://localhost:8088/`、API 文档 `http://localhost:8088/api/v1/docs`、Mailpit `http://localhost:8089/`，readiness 为 `http://localhost:8088/api/v1/health/ready`。微信 CLI 可尝试打开 `apps/miniapp`；若提示服务端口关闭，直接启动开发者工具并手动导入该目录，不擅自修改安全设置。查看日志使用 `compose logs -f`，停止环境使用 `compose down`。
+
+镜像拉取或 Dockerfile 内下载超时时，应在 Docker Desktop 中配置代理；仅设置终端代理不一定会传入 Docker 虚拟机或构建阶段。开发者工具可能自动补写已跟踪的 `project.config.json`，本地 URL 校验只放在上述私有配置中，不要把工具自动生成的无关差异混入提交。
+
 ## 生产发布（当前禁用）
 
 项目仍处于测试阶段，独立复测结论为 NO-GO。当前标签工作流只允许执行 CI、构建不可变镜像和小程序 artifact；GitHub、服务器武装开关和版本兼容合同均保持关闭。不要运行 `scripts/release.ps1`，也不要连接服务器执行部署。
