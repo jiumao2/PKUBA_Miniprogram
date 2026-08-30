@@ -1,8 +1,6 @@
 import os
 from getpass import getpass
 
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from core.models import Account, AdminProfile
@@ -31,11 +29,9 @@ class Command(BaseCommand):
         username = options["username"].strip()
         if not username:
             raise CommandError("用户名不能为空。")
+        if len(password) < 4:
+            raise CommandError("密码至少需要 4 个字符。")
         account, _ = Account.objects.get_or_create(username=username)
-        try:
-            validate_password(password, user=account)
-        except ValidationError as error:
-            raise CommandError("；".join(error.messages)) from error
         account.role = Account.Role.SUPERADMIN
         account.is_staff = True
         account.is_superuser = True

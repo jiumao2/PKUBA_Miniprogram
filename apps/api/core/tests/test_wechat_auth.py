@@ -166,7 +166,7 @@ def test_same_account_can_claim_team_and_register_as_admin():
         {
             "season_id": str(season.id),
             "invite_code": "PKUBA1997",
-            "password": "2468",
+            "password": "1234",
         },
         token,
     )
@@ -175,12 +175,12 @@ def test_same_account_can_claim_team_and_register_as_admin():
     assert payload["admin_role"] == Account.Role.ADMIN
     assert payload["leader_binding"]["team_id"] == str(team.id)
     assert SeasonLeaderBinding.objects.filter(account__username="双重身份", team=team).exists()
-    assert authenticate(username="双重身份", password="2468") is not None
+    assert authenticate(username="双重身份", password="1234") is not None
     assert authenticate(username="双重身份", password="PKUBA1997") is None
     registration_audit = AdminAuditLog.objects.get(action="ADMIN_REGISTERED_FROM_MINIAPP")
     assert registration_audit.after["password_set_at_registration"] is True
     serialized_audit = json.dumps(registration_audit.after, ensure_ascii=False)
-    assert "2468" not in serialized_audit
+    assert "1234" not in serialized_audit
     assert "PKUBA1997" not in serialized_audit
 
 
