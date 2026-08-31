@@ -27,6 +27,8 @@ jobs:
     outputs:
       api_digest: ${{ steps.api.outputs.digest }}
       web_digest: ${{ steps.web.outputs.digest }}
+      postgres_digest: ${{ steps.base-images.outputs.postgres_digest }}
+      caddy_digest: ${{ steps.base-images.outputs.caddy_digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,6 +51,32 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mirror approved PostgreSQL and Caddy indexes
+        id: base-images
+        env:
+          POSTGRES_SOURCE_DIGEST: sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+          CADDY_SOURCE_DIGEST: sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+        run: |
+          set -Eeuo pipefail
+          postgres_ref="ghcr.io/jiumao2/pkuba-postgres:${{ github.ref_name }}"
+          caddy_ref="ghcr.io/jiumao2/pkuba-caddy:${{ github.ref_name }}"
+          docker buildx imagetools create \
+            --tag "$postgres_ref" \
+            --tag "ghcr.io/jiumao2/pkuba-postgres:sha-${{ github.sha }}" \
+            "docker.io/library/postgres@$POSTGRES_SOURCE_DIGEST"
+          docker buildx imagetools create \
+            --tag "$caddy_ref" \
+            --tag "ghcr.io/jiumao2/pkuba-caddy:sha-${{ github.sha }}" \
+            "docker.io/library/caddy@$CADDY_SOURCE_DIGEST"
+          postgres_digest=$(docker buildx imagetools inspect "$postgres_ref" \
+            --format '{{json .Manifest}}' | jq -r .digest)
+          caddy_digest=$(docker buildx imagetools inspect "$caddy_ref" \
+            --format '{{json .Manifest}}' | jq -r .digest)
+          [[ "$postgres_digest" == "$POSTGRES_SOURCE_DIGEST" ]]
+          [[ "$caddy_digest" == "$CADDY_SOURCE_DIGEST" ]]
+          echo "postgres_digest=$postgres_digest" >> "$GITHUB_OUTPUT"
+          echo "caddy_digest=$caddy_digest" >> "$GITHUB_OUTPUT"
 
       - name: Build and publish API image
         id: api
@@ -81,6 +109,8 @@ jobs:
           provenance: mode=max
           cache-from: type=gha,scope=pkuba-web
           cache-to: type=gha,mode=max,scope=pkuba-web
+          build-args: |
+            CADDY_BASE_IMAGE=ghcr.io/jiumao2/pkuba-caddy@${{ steps.base-images.outputs.caddy_digest }}
           tags: |
             ghcr.io/jiumao2/pkuba-web:${{ github.ref_name }}
             ghcr.io/jiumao2/pkuba-web:sha-${{ github.sha }}
@@ -133,6 +163,8 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       API_DIGEST: ${{ needs.publish.outputs.api_digest }}
       WEB_DIGEST: ${{ needs.publish.outputs.web_digest }}
+      POSTGRES_DIGEST: ${{ needs.publish.outputs.postgres_digest }}
+      CADDY_DIGEST: ${{ needs.publish.outputs.caddy_digest }}
     steps:
       - uses: actions/checkout@v4
       - name: Create or update the GitHub release
@@ -143,6 +175,8 @@ jobs:
           - Commit: \`$GITHUB_SHA\`
           - API image: \`ghcr.io/jiumao2/pkuba-api@$API_DIGEST\`
           - Web image: \`ghcr.io/jiumao2/pkuba-web@$WEB_DIGEST\`
+          - PostgreSQL source/mirror: \`sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73\` / \`ghcr.io/jiumao2/pkuba-postgres@$POSTGRES_DIGEST\`
+          - Caddy source/mirror: \`sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d\` / \`ghcr.io/jiumao2/pkuba-caddy@$CADDY_DIGEST\`
           - Mini program: attached as the workflow artifact \`pkuba-miniapp-$GITHUB_REF_NAME\`
           EOF
           )

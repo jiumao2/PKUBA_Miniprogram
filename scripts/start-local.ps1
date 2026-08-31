@@ -1,6 +1,5 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$AdminUsername = '',
     [switch]$NoBrowser,
     [switch]$NoWechat,
     [switch]$UseWechatCli
@@ -20,12 +19,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $root 'node_modules'))) {
 
 Invoke-PkubaCompose up -d db mailpit api
 Invoke-PkubaCompose exec -T api python manage.py migrate --noinput
-Invoke-PkubaCompose exec -T api python manage.py seed_demo --if-empty
 Wait-PkubaUrl -Url $apiHealthUrl -TimeoutSeconds 60
-
-if ($AdminUsername) {
-    Invoke-PkubaCompose run --rm api python manage.py create_local_admin $AdminUsername
-}
 
 $previousApiBase = $env:PKUBA_API_BASE_URL
 $previousAdminWeb = $env:PKUBA_ADMIN_WEB_URL
@@ -96,7 +90,3 @@ Write-Host "管理网站：$adminUrl"
 Write-Host "API 文档：http://127.0.0.1:8000/api/v1/docs"
 Write-Host "邮件调试：http://127.0.0.1:8025"
 Write-Host "微信小程序项目：$miniappRoot"
-if (-not $AdminUsername) {
-    Write-Host '尚未指定登录账号。如需创建超级管理员，请运行：'
-    Write-Host '  ./scripts/create-admin.ps1 -Username jiumao'
-}

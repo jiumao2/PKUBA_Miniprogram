@@ -59,6 +59,11 @@ describe("LoginScreen", () => {
     await screen.findByAltText("管理员网页登录二维码");
     expect(client.createWebLoginChallenge).toHaveBeenCalledTimes(1);
     expect(screen.getByText(/扫码登录管理后台/)).toBeTruthy();
+    expect(screen.getByText("篮球赛事管理系统")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "京ICP备2024054219号-2" })).toHaveAttribute(
+      "href",
+      "https://beian.miit.gov.cn/",
+    );
   });
 
   it("consumes a confirmed challenge and restores the admin session", async () => {

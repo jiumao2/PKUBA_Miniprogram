@@ -35,9 +35,9 @@ if [[ -r $config_file ]]; then
   source "$config_file"
 fi
 
-deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/deploy}
-repository_dir=${PKUBA_REPOSITORY_DIR:-/opt/pkuba/repository}
-env_file=${PKUBA_ENV_FILE:-/opt/pkuba/ip-test/.env}
+deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/production/deploy}
+repository_dir=${PKUBA_REPOSITORY_DIR:-/opt/pkuba/production/repository}
+env_file=${PKUBA_ENV_FILE:-/opt/pkuba/production/.env}
 state_dir=$deploy_root/state
 slot_state_dir=$state_dir/slots
 release_root=$deploy_root/releases
@@ -45,12 +45,20 @@ backup_root=$deploy_root/backups
 log_root=$deploy_root/logs
 current_state=$state_dir/current.env
 upstreams_file=$state_dir/upstreams.caddy
-runtime_network=${PKUBA_RUNTIME_NETWORK:-pkuba-production}
+runtime_network=${PKUBA_RUNTIME_NETWORK:-pkuba-prod-runtime}
 data_project=${PKUBA_DATA_PROJECT:-pkuba-data}
 gateway_project=${PKUBA_GATEWAY_PROJECT:-pkuba-gateway}
-postgres_volume=${PKUBA_POSTGRES_VOLUME:-pkuba-ip-test_postgres-data}
-media_volume=${PKUBA_MEDIA_VOLUME:-pkuba-ip-test_private-media}
-archive_volume=${PKUBA_ARCHIVE_VOLUME:-pkuba-ip-test_archive-staging}
+postgres_volume=${PKUBA_POSTGRES_VOLUME:-pkuba-prod-postgres}
+media_volume=${PKUBA_MEDIA_VOLUME:-pkuba-prod-media}
+archive_volume=${PKUBA_ARCHIVE_VOLUME:-pkuba-prod-archives}
+postgres_source_digest=sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+caddy_source_digest=sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+postgres_image=${PKUBA_POSTGRES_IMAGE:-ghcr.io/jiumao2/pkuba-postgres@$postgres_source_digest}
+caddy_image=${PKUBA_CADDY_IMAGE:-ghcr.io/jiumao2/pkuba-caddy@$caddy_source_digest}
+[[ $postgres_image == "ghcr.io/jiumao2/pkuba-postgres@$postgres_source_digest" ]] \
+  || die "PostgreSQL must use the approved mirrored digest"
+[[ $caddy_image == "ghcr.io/jiumao2/pkuba-caddy@$caddy_source_digest" ]] \
+  || die "Caddy must use the approved mirrored digest"
 blue_api_port=${PKUBA_BLUE_API_PORT:-18000}
 blue_web_port=${PKUBA_BLUE_WEB_PORT:-18080}
 green_api_port=${PKUBA_GREEN_API_PORT:-18001}
@@ -105,6 +113,10 @@ IFS=$'\t' read -r \
   ACTIVE_SLOT CURRENT_TAG CURRENT_COMMIT CURRENT_API_IMAGE CURRENT_WEB_IMAGE CURRENT_RELEASE_DIR CURRENT_APP_CAPABILITY CURRENT_ROLLBACK_ALLOWED_FROM \
   <<<"$parsed_current"
 docker compose version >/dev/null 2>&1 || die "docker compose is unavailable"
+docker pull "$postgres_image"
+docker pull "$caddy_image"
+docker image inspect "$postgres_image" >/dev/null
+docker image inspect "$caddy_image" >/dev/null
 
 # Build the cleanup input while the deployment still has no candidate
 # worktree, maintenance state, backup payload or slot-state side effect.  A
@@ -144,6 +156,7 @@ compose_data() {
   shift
   env \
     PKUBA_ENV_FILE="$env_file" \
+    PKUBA_POSTGRES_IMAGE="$postgres_image" \
     PKUBA_POSTGRES_VOLUME="$postgres_volume" \
     PKUBA_RUNTIME_NETWORK="$runtime_network" \
     docker compose \
@@ -159,6 +172,7 @@ compose_gateway() {
   shift
   env \
     PKUBA_DEPLOY_STATE_DIR="$state_dir" \
+    PKUBA_CADDY_IMAGE="$caddy_image" \
     PKUBA_RUNTIME_NETWORK="$runtime_network" \
     docker compose \
       --project-name "$gateway_project" \
@@ -311,7 +325,7 @@ database_bytes=$(compose_data "$release_dir" exec -T db sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT pg_database_size(current_database())"')
 [[ $database_bytes =~ ^[0-9]+$ ]] || die "could not determine database size"
 volume_bytes() {
-  docker run --rm --entrypoint sh -v "$1:/source:ro" postgres:17-alpine \
+  docker run --rm --entrypoint sh -v "$1:/source:ro" "$postgres_image" \
     -ec "du -sk /source | awk '{print \$1 * 1024}'"
 }
 media_bytes=$(volume_bytes "$media_volume")
@@ -322,7 +336,12 @@ read -r filesystem_bytes available_bytes < <(df -PB1 "$deploy_root" | awk 'NR ==
 reserve_bytes=$((filesystem_bytes / 4))
 (( reserve_bytes >= 10737418240 )) || reserve_bytes=10737418240
 payload_bytes=$((database_bytes + media_bytes + archive_bytes))
+startup_headroom_bytes=${PKUBA_DEPLOY_STARTUP_HEADROOM_BYTES:-16106127360}
+hard_floor_bytes=${PKUBA_DEPLOY_HARD_FLOOR_BYTES:-10737418240}
+(( available_bytes >= hard_floor_bytes )) \
+  || die "deployment hard-blocked below 10 GiB free space: available=$available_bytes"
 required_bytes=$((payload_bytes * 115 / 100 + reserve_bytes))
+(( required_bytes >= startup_headroom_bytes )) || required_bytes=$startup_headroom_bytes
 (( available_bytes >= required_bytes )) \
   || die "insufficient disk space: available=$available_bytes required=$required_bytes"
 
@@ -401,7 +420,7 @@ cat >"$next_dir/upstreams.caddy" <<EOF
 }
 EOF
 cat >"$next_dir/release.json" <<EOF
-{"tag":"$release_tag","commit":"$release_commit","slot":"$candidate_slot","previous_slot":"$ACTIVE_SLOT","switched_at":"$switched_at"}
+{"tag":"$release_tag","commit":"$release_commit","slot":"$candidate_slot","previous_slot":"$ACTIVE_SLOT","api_image":"$api_image","web_image":"$web_image","postgres_source_digest":"$postgres_source_digest","postgres_mirror_digest":"${postgres_image##*@}","caddy_source_digest":"$caddy_source_digest","caddy_mirror_digest":"${caddy_image##*@}","switched_at":"$switched_at"}
 EOF
 chmod 600 "$next_dir/current.env" "$next_dir/retained.env" \
   "$next_dir/retained.retain-until" "$next_dir/release.json"
@@ -607,16 +626,16 @@ compose_data "$release_dir" exec -T db sh -ec \
 compose_data "$release_dir" exec -T db sh -ec 'pg_restore --list >/dev/null' \
   <"$backup_dir/database.dump"
 docker run --rm --entrypoint sh \
-  -v "$media_volume:/source:ro" -v "$backup_dir:/backup" postgres:17-alpine \
+  -v "$media_volume:/source:ro" -v "$backup_dir:/backup" "$postgres_image" \
   -ec 'tar -C /source -czf /backup/private-media.tar.gz .'
 docker run --rm --entrypoint sh \
-  -v "$archive_volume:/source:ro" -v "$backup_dir:/backup" postgres:17-alpine \
+  -v "$archive_volume:/source:ro" -v "$backup_dir:/backup" "$postgres_image" \
   -ec 'tar -C /source -czf /backup/archive-staging.tar.gz .'
 docker run --rm --entrypoint sh \
-  -v "$media_volume:/source:ro" -v "$backup_dir:/backup" postgres:17-alpine \
+  -v "$media_volume:/source:ro" -v "$backup_dir:/backup" "$postgres_image" \
   -ec 'cd /source && find . -type f -exec sha256sum "{}" ";" | sort -k2 > /backup/private-media.files.sha256'
 docker run --rm --entrypoint sh \
-  -v "$archive_volume:/source:ro" -v "$backup_dir:/backup" postgres:17-alpine \
+  -v "$archive_volume:/source:ro" -v "$backup_dir:/backup" "$postgres_image" \
   -ec 'cd /source && find . -type f -exec sha256sum "{}" ";" | sort -k2 > /backup/archive-staging.files.sha256'
 tar -tzf "$backup_dir/private-media.tar.gz" >/dev/null
 tar -tzf "$backup_dir/archive-staging.tar.gz" >/dev/null

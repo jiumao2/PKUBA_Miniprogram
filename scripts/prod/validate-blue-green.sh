@@ -12,6 +12,8 @@ cp "$repo_root/infra/upstreams.example.caddy" "$state_dir/upstreams.caddy"
 common_env=(
   PKUBA_ENV_FILE="$env_file"
   PKUBA_RUNTIME_NETWORK=pkuba-production-validation
+  PKUBA_POSTGRES_IMAGE=ghcr.io/jiumao2/pkuba-postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+  PKUBA_CADDY_IMAGE=ghcr.io/jiumao2/pkuba-caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
   PKUBA_POSTGRES_VOLUME=pkuba-validation-postgres
   PKUBA_MEDIA_VOLUME=pkuba-validation-media
   PKUBA_ARCHIVE_VOLUME=pkuba-validation-archives
@@ -58,17 +60,28 @@ docker run --rm \
   -e ACME_EMAIL=admin@example.com \
   -v "$repo_root/infra/Caddyfile.gateway:/etc/caddy/Caddyfile:ro" \
   -v "$state_dir:/srv/deployment-state:ro" \
-  caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
+  caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d \
+  caddy validate --config /etc/caddy/Caddyfile
 
 docker run --rm \
   -e PKUBA_SLOT_API_UPSTREAM=pkuba-blue-api:8000 \
-  -e PKUBA_RELEASE_TAG=v0.0.0 \
+  -e PKUBA_RELEASE_TAG=v1.0.0 \
   -e PKUBA_GIT_COMMIT=0000000000000000000000000000000000000000 \
   -v "$repo_root/infra/Caddyfile.slot:/etc/caddy/Caddyfile:ro" \
-  caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile
+  caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d \
+  caddy validate --config /etc/caddy/Caddyfile
 
 bash -n "$repo_root"/scripts/prod/*.sh
 bash "$repo_root/scripts/prod/test-release-safety.sh"
+
+! grep -Fq 'COPY core/management ./core/management' \
+  "$repo_root/apps/api/Dockerfile"
+grep -Fq 'test ! -e /app/core/management/commands/sample_2026_schedule_v3.py' \
+  "$repo_root/apps/api/Dockerfile"
+! grep -Fq 'COPY apps/api/core/management' \
+  "$repo_root/infra/admin-web.Dockerfile"
+grep -Fq 'test ! -e /app/core/management' \
+  "$repo_root/infra/admin-web.Dockerfile"
 
 contract=$(sed -n 's/^PKUBA_PREVIOUS_APP_COMPATIBLE=//p' \
   "$repo_root/infra/release-contract.env")
@@ -96,10 +109,20 @@ grep -Fq 'PKUBA_OLD_SLOT_RETENTION_SECONDS:-86400' \
   "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'PKUBA_PRODUCTION_AUTOMATION_ARMED=0' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
-grep -Fq 'baseline-conversion.env' \
+grep -Fq 'release_tag == v1.0.0' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
-! grep -Fq -- '--current-app-capability' \
+grep -Fq 'bootstrap_first_superadmin' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'pkuba-backup-daily.timer' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'pkuba-backup-weekly.timer' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'available_bytes >= 16106127360' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'hard_floor_bytes=${PKUBA_DEPLOY_HARD_FLOOR_BYTES:-10737418240}' \
+  "$repo_root/scripts/prod/deploy-blue-green.sh"
+grep -Fq 'startup_headroom_bytes=${PKUBA_DEPLOY_STARTUP_HEADROOM_BYTES:-16106127360}' \
+  "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'derive-release-capability.sh' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'rollback-retained-application.sh' \
@@ -137,6 +160,16 @@ grep -Fq 'pkuba-start-current-application' \
 [[ $(grep -c 'restart: "no"' "$repo_root/infra/compose.prod.slot.yml") -ge 5 ]]
 grep -Fq 'MANIFEST.env' \
   "$repo_root/scripts/prod/backup-current-server.sh"
+grep -Fq 'keep_count=5' \
+  "$repo_root/scripts/prod/backup-current-server.sh"
+grep -Fq '[[ $backup_kind == weekly ]] && keep_count=4' \
+  "$repo_root/scripts/prod/backup-current-server.sh"
+grep -Fq 'PKUBA_START_UNDER_MAINTENANCE=1' \
+  "$repo_root/scripts/prod/backup-current-server.sh"
+grep -Fq 'postgres_source_digest=sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73' \
+  "$repo_root/scripts/prod/deploy-blue-green.sh"
+grep -Fq 'caddy_source_digest=sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d' \
+  "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'DATABASE_RESTORED=1' \
   "$repo_root/scripts/prod/restore-paired-data.sh"
 grep -Fq 'MEDIA_RESTORED=1' \
@@ -160,7 +193,7 @@ CURRENT_TAG=v1.2.3
 CURRENT_COMMIT=0123456789abcdef0123456789abcdef01234567
 CURRENT_API_IMAGE=ghcr.io/jiumao2/pkuba-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 CURRENT_WEB_IMAGE=ghcr.io/jiumao2/pkuba-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-CURRENT_RELEASE_DIR=/opt/pkuba/deploy/releases/v1.2.3
+CURRENT_RELEASE_DIR=/opt/pkuba/production/deploy/releases/v1.2.3
 CURRENT_APP_CAPABILITY=reschedule-route-v1
 SWITCHED_AT=2026-08-25T00:00:00Z
 EOF

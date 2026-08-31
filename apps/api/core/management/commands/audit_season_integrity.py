@@ -44,11 +44,6 @@ CHECKS = {
         + (SELECT COUNT(*) FROM core_scheduleslotfamily family
            JOIN core_division division ON division.id = family.division_id
            WHERE family.season_id <> division.season_id)
-        + (SELECT COUNT(*) FROM core_schedulegridcolumn grid_column
-           JOIN core_period period ON period.id = grid_column.period_id
-           JOIN core_venue venue ON venue.id = grid_column.venue_id
-           WHERE grid_column.season_id <> period.season_id
-              OR grid_column.season_id <> venue.season_id)
         + (SELECT COUNT(*) FROM core_scheduleslotlock slot_lock
            JOIN core_period period ON period.id = slot_lock.period_id
            WHERE slot_lock.season_id <> period.season_id)

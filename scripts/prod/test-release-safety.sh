@@ -1494,6 +1494,7 @@ done
 create_synthetic_backup() {
   local template=$1 created_at=$2 from_tag=$3 from_commit=$4 from_api=$5
   local from_web=$6 from_release=$7 to_tag=$8 to_commit=$9
+  local to_api=${10} to_web=${11}
   local compact=${created_at//[-:]/}
   local destination=$fixture/deploy/backups/$compact-pre-$to_tag
   local transaction_id=deploy-$compact-$from_tag-to-$to_tag
@@ -1516,7 +1517,7 @@ MEDIA_BYTES=$(stat -c %s "$destination/private-media.tar.gz")
 ARCHIVE_BYTES=$(stat -c %s "$destination/archive-staging.tar.gz")
 EOF
   cat >"$destination/release.json" <<EOF
-{"tag":"$to_tag","commit":"$to_commit","slot":"green","previous_slot":"blue","switched_at":"$created_at"}
+{"tag":"$to_tag","commit":"$to_commit","slot":"green","previous_slot":"blue","api_image":"$to_api","web_image":"$to_web","postgres_source_digest":"sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73","postgres_mirror_digest":"sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73","caddy_source_digest":"sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d","caddy_mirror_digest":"sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d","switched_at":"$created_at"}
 EOF
   (
     cd "$destination"
@@ -1536,16 +1537,16 @@ EOF
 
 synthetic_one=$(create_synthetic_backup "$paired_backup" 2026-08-20T00:00:00Z \
   v1.2.4 "$commit_two" "$api_two" "$web_two" "$release_root/v1.2.4" \
-  v1.2.5 "$commit_5")
+  v1.2.5 "$commit_5" "$api_five" "$web_five")
 synthetic_two=$(create_synthetic_backup "$paired_backup" 2026-08-21T00:00:00Z \
   v1.2.5 "$commit_5" "$api_five" "$web_five" "$release_root/v1.2.5" \
-  v1.2.6 "$commit_6")
+  v1.2.6 "$commit_6" "$api_six" "$web_six")
 synthetic_three=$(create_synthetic_backup "$paired_backup" 2026-08-22T00:00:00Z \
   v1.2.6 "$commit_6" "$api_six" "$web_six" "$release_root/v1.2.6" \
-  v1.2.7 "$commit_7")
+  v1.2.7 "$commit_7" "$api_seven" "$web_seven")
 synthetic_four=$(create_synthetic_backup "$paired_backup" 2026-08-23T00:00:00Z \
   v1.2.7 "$commit_7" "$api_seven" "$web_seven" "$release_root/v1.2.7" \
-  v1.2.8 "$commit_8")
+  v1.2.8 "$commit_8" "$api_eight" "$web_eight")
 run_root /usr/bin/rm -rf -- "$paired_backup"
 
 # Reset only runtime state; keep the four synthetic rollback points.

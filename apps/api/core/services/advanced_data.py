@@ -73,7 +73,6 @@ MODEL_SPECS = (
     ),
     ModelSpec("games", core_models.Game, "比赛"),
     ModelSpec("schedule-slot-families", core_models.ScheduleSlotFamily, "签位方案"),
-    ModelSpec("schedule-grid-columns", core_models.ScheduleGridColumn, "赛程网格列"),
     ModelSpec("schedule-grid-drafts", core_models.ScheduleGridDraft, "赛程草稿"),
     ModelSpec("schedule-grid-draft-columns", core_models.ScheduleGridDraftColumn, "赛程草稿列"),
     ModelSpec("schedule-grid-draft-cells", core_models.ScheduleGridDraftCell, "赛程草稿单元格"),

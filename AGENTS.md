@@ -9,7 +9,7 @@
 ## 权威与规则
 - 本仓库是新版系统唯一实现；旧小程序与 `ScoresheetReader` 只读。
 - Django/PostgreSQL 是业务权威；客户端只呈现状态并提交意图。
-- 规则优先级：最新用户决定 > `Plan.md` / 新版规格 > 专题规范与 `docs/USER_GUIDE.md` > 当前代码和动态测试证据 > 旧项目 / 《参赛手册》。
+- 规则优先级：最新用户决定 > `docs/SYSTEM_SPEC.md` > 专题规范与 `docs/USER_GUIDE.md` > `Plan.md` > 当前代码和动态测试证据 > 旧项目 / 《参赛手册》。
 - 旧资料只用于理解历史；与新版决定冲突时不得覆盖新版规则。
 
 ## 业务不变量
@@ -54,7 +54,7 @@
 - 本地环境、微信开发者工具与检查命令：`docs/DEVELOPMENT.md`
 - 团队协作、评审与发布流程：`WORKFLOW.md`
 - 总体计划与里程碑：`Plan.md`
-- 现有系统审计与验收基线：`PKUBA_现有小程序功能与逻辑规格.md`
+- 稳定系统规范：`docs/SYSTEM_SPEC.md`
 - 用户可见与隐式规则：`docs/USER_GUIDE.md`
 - 调赛状态机与兼容：`docs/RESCHEDULING.md`
 - 赛程导入：`docs/SCHEDULE_IMPORT_V3.md`

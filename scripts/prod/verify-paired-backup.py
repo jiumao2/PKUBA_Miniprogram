@@ -33,6 +33,13 @@ SHA_LINE = re.compile(r"^([0-9a-f]{64})  ([^\r\n]+)$")
 TAG = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 COMPACT_TIME = re.compile(r"^[0-9]{8}T[0-9]{6}Z$")
+IMAGE = re.compile(r"^ghcr\.io/jiumao2/pkuba-(api|web)@sha256:[0-9a-f]{64}$")
+POSTGRES_SOURCE_DIGEST = (
+    "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
+)
+CADDY_SOURCE_DIGEST = (
+    "sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d"
+)
 
 
 def fail(message: str) -> None:
@@ -234,11 +241,38 @@ def main() -> None:
         "commit",
         "slot",
         "previous_slot",
+        "api_image",
+        "web_image",
+        "postgres_source_digest",
+        "postgres_mirror_digest",
+        "caddy_source_digest",
+        "caddy_mirror_digest",
         "switched_at",
     }:
         fail("release.json does not use the fixed deployment schema")
     if release.get("tag") != manifest["TO_TAG"] or release.get("commit") != manifest["TO_COMMIT"]:
         fail("release.json does not match the backup manifest")
+    if release.get("slot") not in {"blue", "green"}:
+        fail("release.json contains an invalid target slot")
+    if release.get("previous_slot") not in {"blue", "green"}:
+        fail("release.json contains an invalid previous slot")
+    if release["slot"] == release["previous_slot"]:
+        fail("release.json target and previous slots must differ")
+    if not IMAGE.fullmatch(str(release.get("api_image", ""))):
+        fail("release.json contains an invalid API image")
+    if not IMAGE.fullmatch(str(release.get("web_image", ""))):
+        fail("release.json contains an invalid web image")
+    if release["postgres_source_digest"] != POSTGRES_SOURCE_DIGEST:
+        fail("release.json contains an unapproved PostgreSQL source digest")
+    if release["postgres_mirror_digest"] != POSTGRES_SOURCE_DIGEST:
+        fail("release.json PostgreSQL mirror does not match its source digest")
+    if release["caddy_source_digest"] != CADDY_SOURCE_DIGEST:
+        fail("release.json contains an unapproved Caddy source digest")
+    if release["caddy_mirror_digest"] != CADDY_SOURCE_DIGEST:
+        fail("release.json Caddy mirror does not match its source digest")
+    switched_compact = str(release.get("switched_at", "")).replace("-", "").replace(":", "")
+    if not COMPACT_TIME.fullmatch(switched_compact):
+        fail("release.json contains an invalid switch time")
     json.loads((backup_dir / "season-integrity-after-migrate.json").read_text(encoding="utf-8"))
     if not (backup_dir / "core-migrations.txt").read_text(encoding="utf-8").strip():
         fail("core migration audit is empty")

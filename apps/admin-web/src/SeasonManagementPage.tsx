@@ -20,7 +20,6 @@ type DivisionDraft = SeasonConfiguration["divisions"][number] & { key: string };
 type VenueDraft = SeasonConfiguration["venues"][number] & { key: string };
 type PeriodDraft = SeasonConfiguration["periods"][number] & { key: string };
 type SlotFamilyDraft = SeasonConfiguration["slot_families"][number] & { key: string };
-type GridColumnDraft = SeasonConfiguration["grid_columns"][number] & { key: string };
 type OverrideDraft = SeasonConfiguration["date_capacity_overrides"][number] & { key: string };
 type OrderedCollection = "divisions" | "slot_families" | "venues" | "periods";
 type ConfigurationDraft = Omit<
@@ -29,14 +28,12 @@ type ConfigurationDraft = Omit<
   | "venues"
   | "periods"
   | "slot_families"
-  | "grid_columns"
   | "date_capacity_overrides"
 > & {
   divisions: DivisionDraft[];
   venues: VenueDraft[];
   periods: PeriodDraft[];
   slot_families: SlotFamilyDraft[];
-  grid_columns: GridColumnDraft[];
   date_capacity_overrides: OverrideDraft[];
 };
 
@@ -128,7 +125,6 @@ function toDraft(configuration: SeasonConfiguration): ConfigurationDraft {
     slot_families: continuousOrder([...configuration.slot_families]
       .sort((left, right) => left.sort_order - right.sort_order)
       .map((row) => ({ ...row, key: row.id }))),
-    grid_columns: configuration.grid_columns.map((row) => ({ ...row, key: row.id })),
     date_capacity_overrides: configuration.date_capacity_overrides.map((row) => ({
       ...row,
       key: row.id,

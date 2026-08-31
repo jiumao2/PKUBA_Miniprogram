@@ -10,7 +10,6 @@ from core.models import (
     ParticipantSlot,
     Period,
     PeriodCapacity,
-    ScheduleGridColumn,
     ScheduleSlotFamily,
     Season,
     SeasonLeaderBinding,
@@ -128,13 +127,6 @@ def reschedule_setup(*, capacity: int = 3):
         )
         for index, name in enumerate(("五四东一", "五四东二", "五四东三"), start=1)
     ]
-    for index, venue in enumerate(venues, 1):
-        ScheduleGridColumn.objects.create(
-            season=target_season,
-            period=period,
-            venue=venue,
-            sort_order=index,
-        )
     teams = [
         Team.objects.create(
             season=target_season,

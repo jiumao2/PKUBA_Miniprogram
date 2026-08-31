@@ -113,29 +113,3 @@ def test_default_ledger_expands_to_admin_override_outside_planning_dates():
         for row in rows
         if row["date"] == target_date and row["period_id"] == setup["period"].id
     )["effective_capacity"] == 2
-
-
-def test_legacy_inferred_override_is_preserved_but_not_used_as_capacity():
-    setup = reschedule_setup(capacity=3)
-    target_date = setup["target_date"]
-    DatePeriodCapacityOverride.objects.create(
-        season=setup["season"],
-        date=target_date,
-        period=setup["period"],
-        capacity=9,
-        note="由 2026 历史赛程自动保留",
-        origin=DatePeriodCapacityOverride.Origin.LEGACY_INFERRED,
-    )
-
-    rows = capacity_ledger(
-        season=setup["season"], starts_on=target_date, ends_on=target_date
-    )
-    row = next(item for item in rows if item["period_code"] == "P1")
-
-    assert effective_capacity(
-        season_id=setup["season"].id,
-        target_date=target_date,
-        period_id=setup["period"].id,
-    ) == 3
-    assert row["override_capacity"] is None
-    assert row["effective_capacity"] == 3

@@ -6,6 +6,7 @@ import {
 } from "@pkuba/api-client";
 import logoUrl from "@pkuba/design-tokens/pkuba-logo.png";
 import * as QRCode from "qrcode";
+import { SiteFooter } from "./SiteFooter";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type LoginMode = "wechat" | "password";
@@ -262,6 +263,7 @@ export function LoginScreen({
               </p>
             </form>
           )}
+          <SiteFooter />
         </section>
       </div>
     </main>

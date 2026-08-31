@@ -366,18 +366,6 @@ class ScheduleSlotFamilyOut(Schema):
     expected_game_count: int
 
 
-class ScheduleGridColumnOut(Schema):
-    id: UUID
-    period_id: UUID
-    period_code: str
-    period_name: str
-    start_time: str
-    venue_id: UUID
-    venue_name: str
-    final_only: bool
-    sort_order: int
-
-
 class DateCapacityOverrideOut(Schema):
     id: UUID
     date: date
@@ -411,7 +399,6 @@ class SeasonConfigurationOut(Schema):
     venues: list[SeasonVenueConfigurationOut]
     periods: list[SeasonPeriodConfigurationOut]
     slot_families: list[ScheduleSlotFamilyOut]
-    grid_columns: list[ScheduleGridColumnOut]
     date_capacity_overrides: list[DateCapacityOverrideOut]
     over_capacity: list[OverCapacityOut]
 
@@ -488,14 +475,6 @@ class ScheduleSlotFamilyIn(Schema):
     slot_count: int
 
 
-class ScheduleGridColumnIn(Schema):
-    id: UUID | None = None
-    period_id: UUID
-    venue_id: UUID
-    final_only: bool = False
-    sort_order: int
-
-
 class UpdateSeasonConfigurationIn(Schema):
     expected_version: int
     name: str
@@ -507,7 +486,6 @@ class UpdateSeasonConfigurationIn(Schema):
     venues: list[SeasonVenueConfigurationIn]
     periods: list[SeasonPeriodConfigurationIn]
     slot_families: list[ScheduleSlotFamilyIn] = []
-    grid_columns: list[ScheduleGridColumnIn] = []
     date_capacity_overrides: list[DateCapacityOverrideIn] = []
     maintenance_confirmed: bool = False
     impact_hash: str | None = None
@@ -525,7 +503,6 @@ class PreviewSeasonConfigurationIn(Schema):
     venues: list[SeasonVenueConfigurationIn]
     periods: list[SeasonPeriodConfigurationIn]
     slot_families: list[ScheduleSlotFamilyIn] = []
-    grid_columns: list[ScheduleGridColumnIn] = []
     date_capacity_overrides: list[DateCapacityOverrideIn] = []
 
 

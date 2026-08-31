@@ -42,8 +42,6 @@ export function buildSeasonConfigurationPayload(
         prefix: row.prefix,
         slot_count: row.slot_count,
       })),
-    // V3.3 的动态排期列由独立赛程草稿保存，不再进入赛季基础配置事务。
-    grid_columns: [],
     date_capacity_overrides: configuration.date_capacity_overrides.map((row) => ({
       date: row.date,
       period_code: row.period_code.toLowerCase(),

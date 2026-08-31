@@ -1,9 +1,9 @@
 {
   "name": "@pkuba/api-client",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@pkuba/scoresheet-domain": "0.1.0"
+    "@pkuba/scoresheet-domain": "1.0.0"
   },
   "type": "module",
   "exports": {

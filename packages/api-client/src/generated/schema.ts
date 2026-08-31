@@ -3463,36 +3463,6 @@ export interface components {
             /** Occupied */
             occupied: number;
         };
-        /** ScheduleGridColumnOut */
-        ScheduleGridColumnOut: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Period Id
-             * Format: uuid
-             */
-            period_id: string;
-            /** Period Code */
-            period_code: string;
-            /** Period Name */
-            period_name: string;
-            /** Start Time */
-            start_time: string;
-            /**
-             * Venue Id
-             * Format: uuid
-             */
-            venue_id: string;
-            /** Venue Name */
-            venue_name: string;
-            /** Final Only */
-            final_only: boolean;
-            /** Sort Order */
-            sort_order: number;
-        };
         /** ScheduleSlotFamilyOut */
         ScheduleSlotFamilyOut: {
             /**
@@ -3569,8 +3539,6 @@ export interface components {
             periods: components["schemas"]["SeasonPeriodConfigurationOut"][];
             /** Slot Families */
             slot_families: components["schemas"]["ScheduleSlotFamilyOut"][];
-            /** Grid Columns */
-            grid_columns: components["schemas"]["ScheduleGridColumnOut"][];
             /** Date Capacity Overrides */
             date_capacity_overrides: components["schemas"]["DateCapacityOverrideOut"][];
             /** Over Capacity */
@@ -3678,28 +3646,6 @@ export interface components {
              */
             note: string;
         };
-        /** ScheduleGridColumnIn */
-        ScheduleGridColumnIn: {
-            /** Id */
-            id?: string | null;
-            /**
-             * Period Id
-             * Format: uuid
-             */
-            period_id: string;
-            /**
-             * Venue Id
-             * Format: uuid
-             */
-            venue_id: string;
-            /**
-             * Final Only
-             * @default false
-             */
-            final_only: boolean;
-            /** Sort Order */
-            sort_order: number;
-        };
         /** ScheduleSlotFamilyIn */
         ScheduleSlotFamilyIn: {
             /** Id */
@@ -3787,11 +3733,6 @@ export interface components {
              */
             slot_families: components["schemas"]["ScheduleSlotFamilyIn"][];
             /**
-             * Grid Columns
-             * @default []
-             */
-            grid_columns: components["schemas"]["ScheduleGridColumnIn"][];
-            /**
              * Date Capacity Overrides
              * @default []
              */
@@ -3862,11 +3803,6 @@ export interface components {
              * @default []
              */
             slot_families: components["schemas"]["ScheduleSlotFamilyIn"][];
-            /**
-             * Grid Columns
-             * @default []
-             */
-            grid_columns: components["schemas"]["ScheduleGridColumnIn"][];
             /**
              * Date Capacity Overrides
              * @default []

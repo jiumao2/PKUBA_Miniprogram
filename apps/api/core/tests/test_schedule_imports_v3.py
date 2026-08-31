@@ -17,7 +17,6 @@ from core.models import (
     Period,
     PeriodCapacity,
     RescheduleRequest,
-    ScheduleGridColumn,
     ScheduleImportBatch,
     ScheduleSlotFamily,
     Season,
@@ -96,34 +95,13 @@ def _setup():
             day_type=day_type,
             capacity=1,
         )
-    east_one = Venue.objects.create(
+    Venue.objects.create(
         season=season, name="五四东一", sort_order=1, active=True
     )
-    east_two = Venue.objects.create(
+    Venue.objects.create(
         season=season, name="五四东二", sort_order=2, active=True
     )
-    qiu = Venue.objects.create(season=season, name="邱德拔", sort_order=3, active=True)
-    ScheduleGridColumn.objects.create(
-        season=season,
-        period=regular,
-        venue=east_one,
-        final_only=False,
-        sort_order=1,
-    )
-    ScheduleGridColumn.objects.create(
-        season=season,
-        period=regular,
-        venue=east_two,
-        final_only=False,
-        sort_order=2,
-    )
-    ScheduleGridColumn.objects.create(
-        season=season,
-        period=final,
-        venue=qiu,
-        final_only=True,
-        sort_order=3,
-    )
+    Venue.objects.create(season=season, name="邱德拔", sort_order=3, active=True)
     ScheduleSlotFamily.objects.create(
         season=season,
         division=men,
@@ -347,7 +325,6 @@ def test_valid_v3_upload_stages_then_atomically_confirms_and_resets(tmp_path):
     )
     assert result["game_count"] == 7
     assert not Game.objects.filter(season=setup["season"]).exists()
-    assert ScheduleGridColumn.objects.filter(season=setup["season"]).count() == 3
     assert ScheduleSlotFamily.objects.filter(season=setup["season"]).count() == 2
 
 

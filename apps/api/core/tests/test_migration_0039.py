@@ -22,6 +22,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 MIGRATE_FROM = ("core", "0038_validate_season_scope_foreign_keys")
 MIGRATE_TO = ("core", "0039_reschedule_process_route")
+MIGRATE_LATEST = ("core", "0042_normalize_draw_assignment_validation")
 CONSTRAINT_NAMES = {
     "reschedule_request_type_valid",
     "reschedule_process_route_valid",
@@ -319,7 +320,7 @@ def test_real_migration_graph_backfills_legacy_rows_and_validates_constraints():
         assert set(confirmation_constraints) == CONFIRMATION_CONSTRAINT_NAMES
         assert all(confirmation_constraints.values())
     finally:
-        MigrationExecutor(connection).migrate([MIGRATE_TO])
+        MigrationExecutor(connection).migrate([MIGRATE_LATEST])
 
 
 def test_migration_rejects_invalid_legacy_enum_atomically_before_schema_changes():
@@ -382,6 +383,7 @@ def test_migration_rejects_invalid_legacy_enum_atomically_before_schema_changes(
             LegacyRequest = legacy_apps.get_model("core", "RescheduleRequest")
             LegacyRequest.objects.filter(id=request.id).update(request_type="SAME_WEEK")
             MigrationExecutor(connection).migrate([MIGRATE_TO])
+        MigrationExecutor(connection).migrate([MIGRATE_LATEST])
 
 
 @pytest.mark.parametrize(
@@ -478,6 +480,7 @@ def test_migration_rejects_invalid_legacy_confirmation_atomically(
                 responded_at=None,
             )
             MigrationExecutor(connection).migrate([MIGRATE_TO])
+        MigrationExecutor(connection).migrate([MIGRATE_LATEST])
 
 
 def test_activation_preflight_still_blocks_active_request_after_0039_backfill():
@@ -518,7 +521,7 @@ def test_activation_preflight_still_blocks_active_request_after_0039_backfill():
             expected_version=current.version,
         )
     finally:
-        MigrationExecutor(connection).migrate([MIGRATE_TO])
+        MigrationExecutor(connection).migrate([MIGRATE_LATEST])
 
 
 @pytest.mark.parametrize(
@@ -643,3 +646,4 @@ def test_migration_rejects_unproven_legacy_vote_states_atomically(
             ).delete()
             LegacyRequest.objects.filter(id=request.id).update(status="WAITING_OPPONENT")
             MigrationExecutor(connection).migrate([MIGRATE_TO])
+        MigrationExecutor(connection).migrate([MIGRATE_LATEST])

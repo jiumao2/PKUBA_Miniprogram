@@ -6,7 +6,7 @@
 
 ## 1. 开始修改前
 
-1. 先完整阅读 `AGENTS.md` 与 `docs/MAINTAINER_GUIDE.md`，确认最新用户决定，并找到权威规则：总体决定与里程碑在 `Plan.md`，用户可见规则在 `docs/USER_GUIDE.md`，领域规则在对应专题规范。
+1. 先完整阅读 `AGENTS.md` 与 `docs/MAINTAINER_GUIDE.md`，确认最新用户决定，并找到权威规则：稳定系统合同在 `docs/SYSTEM_SPEC.md`，路线图在 `Plan.md`，用户可见规则在 `docs/USER_GUIDE.md`，领域规则在对应专题规范。
 2. 在任务说明中写清范围、不做什么、验收场景、数据影响、迁移风险、旧版本兼容和回滚边界；未确定的产品语义先确认，不能由实现者自行补写规则。
 3. 从最新 `origin/main` 建短生命周期分支：
 
@@ -76,6 +76,8 @@ PR 至少由一名非作者审核者批准，所有评论和会话必须解决�
 - 限制 bypass；紧急 break-glass 只能由授权负责人使用，并必须补 PR、事故记录和事后审计。
 - 启用线性历史，只允许 squash merge；合并后自动删除短期分支。
 - 配置有效的 `CODEOWNERS`，并对数据库、权限、隐私和发布目录指定领域审核。
+- 启用 GitHub private vulnerability reporting、secret scanning、push protection、Dependabot、
+  dependency graph、dependency review 与 CodeQL；工作流文件存在不等于平台功能已启用。
 - 为 `v*` 配置 tag ruleset：仅授权发布负责人可创建或删除，且 tag 必须指向受保护 `main` 上已经绑定独立验收结论的 SHA。tag ruleset 限制候选镜像和小程序 artifact 的产生；`production` Environment 是实际生产部署的独立硬门禁。
 
 ## 6. 合并、候选版本与上线
@@ -104,7 +106,7 @@ PR 至少由一名非作者审核者批准，所有评论和会话必须解决�
 - `README.md` 只管公开项目定位、稳定能力、架构入口和许可证，不记录日期化 QA 或发布状态。
 - `docs/MAINTAINER_GUIDE.md` 管接手、影响矩阵、候选冻结、精确提交和远端闭环；`docs/DEVELOPMENT.md` 管本地环境与检查命令。
 - `WORKFLOW.md` 只管协作、评审、发布和事故过程。
-- `Plan.md` 管架构决定、里程碑和未完成事项。
+- `docs/SYSTEM_SPEC.md` 管稳定系统合同；`Plan.md` 只管架构方向、路线图和真实未完成事项。
 - 专题规范与 `docs/USER_GUIDE.md` 管业务规则和用户行为。
 - `docs/DEPLOYMENT.md` 管部署技术细节。
 - `docs/INDEPENDENT_TEST_PLAN_AND_RESULTS.md` 仅由独立测试任务维护。

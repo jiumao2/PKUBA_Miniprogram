@@ -13256,62 +13256,6 @@
         "title": "OverCapacityOut",
         "type": "object"
       },
-      "ScheduleGridColumnOut": {
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "period_id": {
-            "format": "uuid",
-            "title": "Period Id",
-            "type": "string"
-          },
-          "period_code": {
-            "title": "Period Code",
-            "type": "string"
-          },
-          "period_name": {
-            "title": "Period Name",
-            "type": "string"
-          },
-          "start_time": {
-            "title": "Start Time",
-            "type": "string"
-          },
-          "venue_id": {
-            "format": "uuid",
-            "title": "Venue Id",
-            "type": "string"
-          },
-          "venue_name": {
-            "title": "Venue Name",
-            "type": "string"
-          },
-          "final_only": {
-            "title": "Final Only",
-            "type": "boolean"
-          },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "period_id",
-          "period_code",
-          "period_name",
-          "start_time",
-          "venue_id",
-          "venue_name",
-          "final_only",
-          "sort_order"
-        ],
-        "title": "ScheduleGridColumnOut",
-        "type": "object"
-      },
       "ScheduleSlotFamilyOut": {
         "properties": {
           "id": {
@@ -13463,13 +13407,6 @@
             "title": "Slot Families",
             "type": "array"
           },
-          "grid_columns": {
-            "items": {
-              "$ref": "#/components/schemas/ScheduleGridColumnOut"
-            },
-            "title": "Grid Columns",
-            "type": "array"
-          },
           "date_capacity_overrides": {
             "items": {
               "$ref": "#/components/schemas/DateCapacityOverrideOut"
@@ -13502,7 +13439,6 @@
           "venues",
           "periods",
           "slot_families",
-          "grid_columns",
           "date_capacity_overrides",
           "over_capacity"
         ],
@@ -13725,48 +13661,6 @@
         "title": "DateCapacityOverrideIn",
         "type": "object"
       },
-      "ScheduleGridColumnIn": {
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id"
-          },
-          "period_id": {
-            "format": "uuid",
-            "title": "Period Id",
-            "type": "string"
-          },
-          "venue_id": {
-            "format": "uuid",
-            "title": "Venue Id",
-            "type": "string"
-          },
-          "final_only": {
-            "default": false,
-            "title": "Final Only",
-            "type": "boolean"
-          },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "period_id",
-          "venue_id",
-          "sort_order"
-        ],
-        "title": "ScheduleGridColumnIn",
-        "type": "object"
-      },
       "ScheduleSlotFamilyIn": {
         "properties": {
           "id": {
@@ -13969,14 +13863,6 @@
             "title": "Slot Families",
             "type": "array"
           },
-          "grid_columns": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/ScheduleGridColumnIn"
-            },
-            "title": "Grid Columns",
-            "type": "array"
-          },
           "date_capacity_overrides": {
             "default": [],
             "items": {
@@ -14136,14 +14022,6 @@
               "$ref": "#/components/schemas/ScheduleSlotFamilyIn"
             },
             "title": "Slot Families",
-            "type": "array"
-          },
-          "grid_columns": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/ScheduleGridColumnIn"
-            },
-            "title": "Grid Columns",
             "type": "array"
           },
           "date_capacity_overrides": {

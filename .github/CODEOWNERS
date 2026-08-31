@@ -1,0 +1,8 @@
+* @jiumao2
+
+# These paths always need their designated owner to review release, data and
+# identity boundaries. Branch protection must require CODEOWNERS in GitHub.
+/.github/ @jiumao2
+/apps/api/core/migrations/ @jiumao2
+/infra/ @jiumao2
+/scripts/prod/ @jiumao2

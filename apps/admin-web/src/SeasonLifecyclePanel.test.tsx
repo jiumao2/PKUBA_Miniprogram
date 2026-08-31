@@ -36,7 +36,6 @@ const configuration: SeasonConfiguration = {
   venues: [],
   periods: [],
   slot_families: [],
-  grid_columns: [],
   date_capacity_overrides: [],
   over_capacity: [],
 };

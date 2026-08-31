@@ -42,8 +42,8 @@ if [[ -r $config_file ]]; then
 fi
 
 isolated=${PKUBA_RESTORE_ISOLATED:-0}
-deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/deploy}
-repository_dir=${PKUBA_REPOSITORY_DIR:-/opt/pkuba/repository}
+deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/production/deploy}
+repository_dir=${PKUBA_REPOSITORY_DIR:-/opt/pkuba/production/repository}
 release_root=${PKUBA_RELEASE_ROOT:-$deploy_root/releases}
 backup_root=${PKUBA_BACKUP_ROOT:-$deploy_root/backups}
 state_dir=${PKUBA_DEPLOY_STATE_DIR:-$deploy_root/state}
@@ -57,13 +57,19 @@ legacy_marker=$state_dir/paired-restore-incomplete.env
 current_state=$state_dir/current.env
 upstreams_file=$state_dir/upstreams.caddy
 maintenance_file=$state_dir/maintenance.enabled
-env_file=${PKUBA_ENV_FILE:-/opt/pkuba/ip-test/.env}
+env_file=${PKUBA_ENV_FILE:-/opt/pkuba/production/.env}
 data_project=${PKUBA_DATA_PROJECT:-pkuba-data}
 gateway_project=${PKUBA_GATEWAY_PROJECT:-pkuba-gateway}
-runtime_network=${PKUBA_RUNTIME_NETWORK:-pkuba-production}
-postgres_volume=${PKUBA_POSTGRES_VOLUME:-pkuba-ip-test_postgres-data}
-media_volume=${PKUBA_MEDIA_VOLUME:-pkuba-ip-test_private-media}
-archive_volume=${PKUBA_ARCHIVE_VOLUME:-pkuba-ip-test_archive-staging}
+runtime_network=${PKUBA_RUNTIME_NETWORK:-pkuba-prod-runtime}
+postgres_volume=${PKUBA_POSTGRES_VOLUME:-pkuba-prod-postgres}
+media_volume=${PKUBA_MEDIA_VOLUME:-pkuba-prod-media}
+archive_volume=${PKUBA_ARCHIVE_VOLUME:-pkuba-prod-archives}
+postgres_image=${PKUBA_POSTGRES_IMAGE:-ghcr.io/jiumao2/pkuba-postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73}
+caddy_image=${PKUBA_CADDY_IMAGE:-ghcr.io/jiumao2/pkuba-caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d}
+[[ $postgres_image == ghcr.io/jiumao2/pkuba-postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73 ]] \
+  || die "PostgreSQL must use the approved mirrored digest"
+[[ $caddy_image == ghcr.io/jiumao2/pkuba-caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d ]] \
+  || die "Caddy must use the approved mirrored digest"
 blue_api_port=${PKUBA_BLUE_API_PORT:-18000}
 green_api_port=${PKUBA_GREEN_API_PORT:-18001}
 blue_web_port=${PKUBA_BLUE_WEB_PORT:-18080}
@@ -209,7 +215,7 @@ verify_backup() {
   [[ -n $VERIFIED_BACKUP && -n $BACKUP_TRANSACTION_ID ]] \
     || die "paired backup verifier returned incomplete identity"
   docker run --rm --entrypoint pg_restore \
-    -v "$VERIFIED_BACKUP:/backup:ro" postgres:17-alpine \
+    -v "$VERIFIED_BACKUP:/backup:ro" "$postgres_image" \
     --list /backup/database.dump >/dev/null \
     || die "database dump cannot be listed before restore"
   parsed_target=$(bash "$identity_validator" \
@@ -403,7 +409,7 @@ verify_incident_snapshot() {
     && ${success[COMMITTED_AT]:-} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] \
     || return 1
   docker run --rm --entrypoint pg_restore \
-    -v "$incident_dir:/incident:ro" postgres:17-alpine \
+    -v "$incident_dir:/incident:ro" "$postgres_image" \
     --list /incident/database.dump >/dev/null || return 1
   tar -tzf "$incident_dir/private-media.tar.gz" >/dev/null || return 1
   tar -tzf "$incident_dir/archive-staging.tar.gz" >/dev/null || return 1
@@ -421,10 +427,10 @@ capture_incident_snapshot() {
     'pg_dump -Fc --no-owner --no-acl -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
     >"$staging/database.dump"
   docker run --rm --entrypoint sh \
-    -v "$media_volume:/source:ro" -v "$staging:/incident" postgres:17-alpine \
+    -v "$media_volume:/source:ro" -v "$staging:/incident" "$postgres_image" \
     -ec 'tar -C /source -czf /incident/private-media.tar.gz .'
   docker run --rm --entrypoint sh \
-    -v "$archive_volume:/source:ro" -v "$staging:/incident" postgres:17-alpine \
+    -v "$archive_volume:/source:ro" -v "$staging:/incident" "$postgres_image" \
     -ec 'tar -C /source -czf /incident/archive-staging.tar.gz .'
   if [[ -f $current_state ]]; then cp "$current_state" "$staging/before-current.env";
   else cp "$backup_dir/previous-release.env" "$staging/before-current.env"; fi
@@ -437,7 +443,7 @@ capture_incident_snapshot() {
     sha256sum --check SHA256SUMS >/dev/null
   )
   docker run --rm --entrypoint pg_restore \
-    -v "$staging:/incident:ro" postgres:17-alpine \
+    -v "$staging:/incident:ro" "$postgres_image" \
     --list /incident/database.dump >/dev/null
   tar -tzf "$staging/private-media.tar.gz" >/dev/null
   tar -tzf "$staging/archive-staging.tar.gz" >/dev/null
@@ -468,7 +474,7 @@ fi
 restore_volume() {
   local volume=$1 archive=$2 file_manifest=$3
   docker run --rm --entrypoint sh \
-    -v "$volume:/target" -v "$backup_dir:/backup:ro" postgres:17-alpine \
+    -v "$volume:/target" -v "$backup_dir:/backup:ro" "$postgres_image" \
     -ec "find /target -mindepth 1 -delete; tar -C /target -xzf /backup/$archive; cd /target; if [ -s /backup/$file_manifest ]; then sha256sum -c /backup/$file_manifest; else [ -z \"\$(find . -type f -print -quit)\" ]; fi"
 }
 
@@ -525,6 +531,7 @@ compose_slot() {
 
 compose_gateway() {
   env PKUBA_DEPLOY_STATE_DIR="$state_dir" PKUBA_RUNTIME_NETWORK="$runtime_network" \
+    PKUBA_CADDY_IMAGE="$caddy_image" \
     docker compose --project-name "$gateway_project" \
       --project-directory "${journal[TARGET_RELEASE_DIR]}" --env-file "$env_file" \
       -f "${journal[TARGET_RELEASE_DIR]}/infra/compose.prod.gateway.yml" "$@"

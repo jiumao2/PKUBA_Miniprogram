@@ -97,6 +97,7 @@ Copy-Item .env.example .env
 
 ## 文档导航
 
+- [系统规范](docs/SYSTEM_SPEC.md)
 - [小程序与管理后台使用说明](docs/USER_GUIDE.md)
 - [本地开发与验证](docs/DEVELOPMENT.md)
 - [维护者与 Agent 接手指南](docs/MAINTAINER_GUIDE.md)

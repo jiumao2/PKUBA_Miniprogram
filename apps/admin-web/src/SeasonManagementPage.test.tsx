@@ -80,19 +80,6 @@ const historical: SeasonConfiguration = {
       expected_game_count: 66,
     },
   ],
-  grid_columns: [
-    {
-      id: "60000000-0000-0000-0000-000000000001",
-      period_id: "40000000-0000-0000-0000-000000000001",
-      period_code: "P1",
-      period_name: "12:50",
-      start_time: "12:50",
-      venue_id: "30000000-0000-0000-0000-000000000001",
-      venue_name: "五四东一",
-      final_only: false,
-      sort_order: 1,
-    },
-  ],
   date_capacity_overrides: [],
   over_capacity: [],
 };
@@ -255,7 +242,6 @@ describe("SeasonManagementPage", () => {
     const [, payload] = updateSeasonConfiguration.mock.calls[0];
     expect(payload.slot_families).toHaveLength(2);
     expect(payload.slot_families[1]).toMatchObject({ prefix: "B", stage: "GROUP" });
-    expect(payload.grid_columns).toHaveLength(0);
   });
 
   it("lets a superadmin extend the ordered automatic-allocation venue pool", async () => {

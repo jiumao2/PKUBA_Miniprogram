@@ -302,10 +302,6 @@ def _normalize_configuration(payload: dict, *, season: Season) -> dict:
             }
         )
 
-    # 当前 V3.3 赛程列属于独立 ScheduleGridDraft，不再作为赛季基础配置保存。
-    # 保留空字段一段时间只为兼容已生成的管理端类型；传入旧字段会被忽略。
-    grid_columns: list[dict] = []
-
     return {
         "name": name,
         "competition_type": competition_type,
@@ -317,7 +313,6 @@ def _normalize_configuration(payload: dict, *, season: Season) -> dict:
         "periods": periods,
         "date_capacity_overrides": overrides,
         "slot_families": slot_families,
-        "grid_columns": grid_columns,
     }
 
 
@@ -510,9 +505,7 @@ def season_configuration(season: Season) -> dict:
     }
     override_map = {
         (row.date, row.period_id): row.capacity
-        for row in DatePeriodCapacityOverride.objects.filter(
-            season=season, origin=DatePeriodCapacityOverride.Origin.ADMIN
-        )
+        for row in DatePeriodCapacityOverride.objects.filter(season=season)
     }
     over_capacity = []
     for (target_date, period_id), occupied in sorted(
@@ -558,7 +551,6 @@ def season_configuration(season: Season) -> dict:
             _slot_family_snapshot(item)
             for item in season.schedule_slot_families.select_related("division").all()
         ],
-        "grid_columns": [],
         "date_capacity_overrides": [
             {
                 "id": str(item.id),
@@ -567,9 +559,7 @@ def season_configuration(season: Season) -> dict:
                 "capacity": item.capacity,
                 "note": item.note,
             }
-            for item in season.date_capacity_overrides.select_related("period").filter(
-                origin=DatePeriodCapacityOverride.Origin.ADMIN
-            )
+            for item in season.date_capacity_overrides.select_related("period").all()
         ],
         "over_capacity": over_capacity,
     }
@@ -867,9 +857,7 @@ def update_season_configuration(
                 defaults={"capacity": capacity},
             )
 
-    season.date_capacity_overrides.filter(
-        origin=DatePeriodCapacityOverride.Origin.ADMIN
-    ).delete()
+    season.date_capacity_overrides.all().delete()
     DatePeriodCapacityOverride.objects.bulk_create(
         [
             DatePeriodCapacityOverride(
@@ -878,7 +866,6 @@ def update_season_configuration(
                 period=periods_by_code[row["period_code"]],
                 capacity=row["capacity"],
                 note=row["note"],
-                origin=DatePeriodCapacityOverride.Origin.ADMIN,
             )
             for row in normalized["date_capacity_overrides"]
         ]

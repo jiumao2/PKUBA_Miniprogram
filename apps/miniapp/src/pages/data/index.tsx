@@ -119,8 +119,8 @@ export default function DataPage() {
     const current = tab === "teams" ? teamSort : playerSort;
     requestVersion.current += 1;
     if (tab === "teams") setTeams([]); else setPlayers([]);
-    setLoading(true);
-    setError("");
+    setLoading(Boolean(divisionId));
+    if (divisionId) setError("");
     setPlayerPage(1);
     if (nextSort === current) setOrder((value) => value === "desc" ? "asc" : "desc");
     else {
@@ -143,7 +143,9 @@ export default function DataPage() {
             if (value === tab) return;
             requestVersion.current += 1;
             setTeams([]); setPlayers([]); setGames([]);
-            setTab(value); setOrder("desc"); setPlayerPage(1); setLoading(true); setError("");
+            setTab(value); setOrder("desc"); setPlayerPage(1);
+            setLoading(Boolean(divisionId));
+            if (divisionId) setError("");
           }}
         >{value === "teams" ? "球队" : value === "players" ? "球员" : "单场"}</Button>)}
       </View>

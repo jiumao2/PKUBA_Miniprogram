@@ -1,0 +1,33 @@
+name: Production external readiness probe
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pkuba-production-probe
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    if: ${{ vars.PRODUCTION_PROBES_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe the public API and admin entry
+        env:
+          API_READY_URL: ${{ vars.PRODUCTION_API_READY_URL }}
+          ADMIN_URL: ${{ vars.PRODUCTION_ADMIN_URL }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$API_READY_URL" == https://api.pkuba.cn/api/v1/health/ready ]]
+          [[ "$ADMIN_URL" == https://admin.pkuba.cn/ ]]
+          api_body=$(curl --fail --silent --show-error \
+            --connect-timeout 10 --max-time 20 "$API_READY_URL")
+          [[ "$api_body" == *'"status":"ok"'* || "$api_body" == *'"status": "ok"'* ]]
+          curl --fail --silent --show-error --location \
+            --connect-timeout 10 --max-time 20 "$ADMIN_URL" >/dev/null

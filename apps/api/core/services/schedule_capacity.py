@@ -29,7 +29,6 @@ def effective_capacity(*, season_id: UUID, target_date: date, period_id: UUID) -
         season_id=season_id,
         date=target_date,
         period_id=period_id,
-        origin=DatePeriodCapacityOverride.Origin.ADMIN,
     ).values_list("capacity", flat=True).first()
     if override is not None:
         return override
@@ -55,7 +54,6 @@ def effective_capacity_map(
         for row in DatePeriodCapacityOverride.objects.filter(
             season=season,
             date__in=dates,
-            origin=DatePeriodCapacityOverride.Origin.ADMIN,
         )
     }
     return {
@@ -118,10 +116,9 @@ def capacity_ledger(
         season=season,
         status=SlotReservation.Status.ACTIVE,
     ).aggregate(first=Min("date"), last=Max("date"))
-    override_bounds = DatePeriodCapacityOverride.objects.filter(
-        season=season,
-        origin=DatePeriodCapacityOverride.Origin.ADMIN,
-    ).aggregate(first=Min("date"), last=Max("date"))
+    override_bounds = DatePeriodCapacityOverride.objects.filter(season=season).aggregate(
+        first=Min("date"), last=Max("date")
+    )
     known_dates = [
         season.starts_on,
         season.ends_on,
@@ -151,7 +148,6 @@ def capacity_ledger(
         for row in DatePeriodCapacityOverride.objects.filter(
             season=season,
             date__range=(range_start, range_end),
-            origin=DatePeriodCapacityOverride.Origin.ADMIN,
         )
     }
     game_counts = {

@@ -1,6 +1,6 @@
 {
   "name": "@pkuba/admin-web",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,9 +12,9 @@
     "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
-    "@pkuba/api-client": "0.1.0",
-    "@pkuba/design-tokens": "0.1.0",
-    "@pkuba/scoresheet-domain": "0.1.0",
+    "@pkuba/api-client": "1.0.0",
+    "@pkuba/design-tokens": "1.0.0",
+    "@pkuba/scoresheet-domain": "1.0.0",
     "lucide-react": "^1.32.0",
     "pdfjs-dist": "^6.2.108",
     "qrcode": "^1.5.4",

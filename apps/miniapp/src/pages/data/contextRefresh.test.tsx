@@ -3,6 +3,7 @@ import React from 'react';
 import '@testing-library/jest-dom/vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@pkuba/api-client';
 
 const state = vi.hoisted(() => ({
   shown: null as null | (() => void),
@@ -44,6 +45,82 @@ beforeEach(() => {
 });
 
 describe('DEF042 fixed-source DataPage request-context probes (React + mocked API, not WeChat)', () => {
+  it('keeps the offseason state while switching every data tab without a division request', async () => {
+    state.api.getCurrentSeason.mockRejectedValue(
+      new ApiError('当前处于休赛期，暂无公开赛季。', 404, 'NO_PUBLIC_SEASON'),
+    );
+    render(<DataPage />);
+    await screen.findByText('当前处于休赛期，暂无公开赛季。');
+
+    for (const [tab, title] of [['球员', '球员榜'], ['单场', '单场数据'], ['球队', '球队榜']] as const) {
+      fireEvent.click(screen.getByRole('button', { name: tab }));
+      expect(screen.getByText(title)).toBeInTheDocument();
+      expect(screen.getByText('当前处于休赛期，暂无公开赛季。')).toBeInTheDocument();
+      expect(screen.queryByText('正在读取数据…')).not.toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByRole('button', { name: '场均得分 ↓' }));
+    expect(screen.getByRole('button', { name: '场均得分 ↑' })).toBeInTheDocument();
+    expect(screen.getByText('当前处于休赛期，暂无公开赛季。')).toBeInTheDocument();
+    expect(screen.queryByText('正在读取数据…')).not.toBeInTheDocument();
+    expect(state.api.getTeamLeaderboard).not.toHaveBeenCalled();
+    expect(state.api.getPlayerLeaderboard).not.toHaveBeenCalled();
+    expect(state.api.getPublishedGameSummaries).not.toHaveBeenCalled();
+  });
+
+  it('keeps the unconfigured-division state while switching every data tab', async () => {
+    state.api.getCurrentSeason.mockResolvedValue(season());
+    render(<DataPage />);
+    await screen.findByText('当前赛季尚未配置组别');
+
+    for (const [tab, title] of [['球员', '球员榜'], ['单场', '单场数据'], ['球队', '球队榜']] as const) {
+      fireEvent.click(screen.getByRole('button', { name: tab }));
+      expect(screen.getByText(title)).toBeInTheDocument();
+      expect(screen.getByText('当前赛季尚未配置组别')).toBeInTheDocument();
+      expect(screen.queryByText('正在读取数据…')).not.toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByRole('button', { name: '场均得分 ↓' }));
+    expect(screen.getByRole('button', { name: '场均得分 ↑' })).toBeInTheDocument();
+    expect(screen.getByText('当前赛季尚未配置组别')).toBeInTheDocument();
+    expect(screen.queryByText('正在读取数据…')).not.toBeInTheDocument();
+    expect(state.api.getTeamLeaderboard).not.toHaveBeenCalled();
+    expect(state.api.getPlayerLeaderboard).not.toHaveBeenCalled();
+    expect(state.api.getPublishedGameSummaries).not.toHaveBeenCalled();
+  });
+
+  it('starts the selected tab request when a division exists', async () => {
+    const rows = deferred<{ items: never[]; total: number; page: number; page_size: number }>();
+    state.api.getCurrentSeason.mockResolvedValue(season(division('a', '甲组')));
+    state.api.getTeamLeaderboard.mockResolvedValue(leaderboard('a', '甲季球队'));
+    state.api.getPlayerLeaderboard.mockReturnValue(rows.promise);
+    render(<DataPage />);
+    await screen.findByText('甲季球队');
+
+    fireEvent.click(screen.getByRole('button', { name: '球员' }));
+
+    expect(screen.getByText('正在读取数据…')).toBeInTheDocument();
+    await waitFor(() => expect(state.api.getPlayerLeaderboard).toHaveBeenCalledWith(expect.stringContaining('division_id=a')));
+    await act(async () => rows.resolve({ items: [], total: 0, page: 1, page_size: 20 }));
+    expect(await screen.findByText('暂无球员数据')).toBeInTheDocument();
+  });
+
+  it('starts the sorted request when a division exists', async () => {
+    const sorted = deferred<ReturnType<typeof leaderboard>>();
+    state.api.getCurrentSeason.mockResolvedValue(season(division('a', '甲组')));
+    state.api.getTeamLeaderboard
+      .mockResolvedValueOnce(leaderboard('a', '甲季球队'))
+      .mockReturnValueOnce(sorted.promise);
+    render(<DataPage />);
+    await screen.findByText('甲季球队');
+
+    fireEvent.click(screen.getByRole('button', { name: '场均得分 ↓' }));
+
+    expect(screen.getByText('正在读取数据…')).toBeInTheDocument();
+    await waitFor(() => expect(state.api.getTeamLeaderboard).toHaveBeenCalledTimes(2));
+    expect(state.api.getTeamLeaderboard.mock.calls[1][0]).toContain('order=asc');
+    await act(async () => sorted.resolve(leaderboard('a', '甲季球队')));
+    expect(await screen.findByText('甲季球队')).toBeInTheDocument();
+  });
+
   it('manual division B failure does not retain A rows (control)', async () => {
     const next = deferred<ReturnType<typeof leaderboard>>();
     state.api.getCurrentSeason.mockResolvedValue(season(division('a', '甲组'), division('b', '乙组')));

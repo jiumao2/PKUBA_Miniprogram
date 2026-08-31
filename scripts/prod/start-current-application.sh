@@ -11,15 +11,15 @@ if [[ -r $config_file ]]; then
   # shellcheck disable=SC1090
   source "$config_file"
 fi
-deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/deploy}
-repository_dir=${PKUBA_REPOSITORY_DIR:-/opt/pkuba/repository}
-env_file=${PKUBA_ENV_FILE:-/opt/pkuba/ip-test/.env}
+deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/production/deploy}
+repository_dir=${PKUBA_REPOSITORY_DIR:-/opt/pkuba/production/repository}
+env_file=${PKUBA_ENV_FILE:-/opt/pkuba/production/.env}
 state_dir=${PKUBA_DEPLOY_STATE_DIR:-$deploy_root/state}
 release_root=$deploy_root/releases
 current_state=$state_dir/current.env
-runtime_network=${PKUBA_RUNTIME_NETWORK:-pkuba-production}
-media_volume=${PKUBA_MEDIA_VOLUME:-pkuba-ip-test_private-media}
-archive_volume=${PKUBA_ARCHIVE_VOLUME:-pkuba-ip-test_archive-staging}
+runtime_network=${PKUBA_RUNTIME_NETWORK:-pkuba-prod-runtime}
+media_volume=${PKUBA_MEDIA_VOLUME:-pkuba-prod-media}
+archive_volume=${PKUBA_ARCHIVE_VOLUME:-pkuba-prod-archives}
 blue_api_port=${PKUBA_BLUE_API_PORT:-18000}
 blue_web_port=${PKUBA_BLUE_WEB_PORT:-18080}
 green_api_port=${PKUBA_GREEN_API_PORT:-18001}
@@ -40,7 +40,8 @@ fi
   && ! -e $state_dir/paired-restore-transaction \
   && ! -e $state_dir/paired-restore-completed ]] \
   || die "an unfinished transaction must recover before writers start"
-[[ ! -e $state_dir/maintenance.enabled ]] \
+[[ ! -e $state_dir/maintenance.enabled \
+  || ${PKUBA_START_UNDER_MAINTENANCE:-0} == 1 ]] \
   || die "maintenance is enabled; writers remain fenced"
 [[ -f $current_state ]] || die "missing current release state"
 

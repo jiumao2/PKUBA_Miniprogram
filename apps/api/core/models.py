@@ -254,7 +254,6 @@ class DrawAssignment(UUIDModel):
         NOT_APPLICABLE = "NOT_APPLICABLE", "无需校验"
         WINNER_CONFIRMED = "WINNER_CONFIRMED", "上一轮胜队已确认"
         SUPERADMIN_OVERRIDE = "SUPERADMIN_OVERRIDE", "超级管理员越过校验"
-        LEGACY_IMPORTED = "LEGACY_IMPORTED", "旧数据导入"
 
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="draw_assignments")
     slot = models.OneToOneField(
@@ -401,10 +400,6 @@ class PeriodCapacity(UUIDModel):
 
 
 class DatePeriodCapacityOverride(UUIDModel):
-    class Origin(models.TextChoices):
-        ADMIN = "ADMIN", "管理员设置"
-        LEGACY_INFERRED = "LEGACY_INFERRED", "旧系统自动推导"
-
     season = models.ForeignKey(
         Season, on_delete=models.PROTECT, related_name="date_capacity_overrides"
     )
@@ -414,9 +409,6 @@ class DatePeriodCapacityOverride(UUIDModel):
     )
     capacity = models.PositiveSmallIntegerField(default=0)
     note = models.CharField(max_length=160, blank=True)
-    origin = models.CharField(
-        max_length=24, choices=Origin.choices, default=Origin.ADMIN
-    )
 
     class Meta:
         ordering = ["date", "period__sort_order"]
@@ -596,39 +588,6 @@ class ScheduleSlotFamily(UUIDModel):
             self.slot_count < 2 or self.slot_count % 2
         ):
             raise ValidationError("淘汰赛和保级赛签位数必须是不少于 2 的偶数。")
-
-
-class ScheduleGridColumn(UUIDModel):
-    season = models.ForeignKey(
-        Season, on_delete=models.PROTECT, related_name="schedule_grid_columns"
-    )
-    period = models.ForeignKey(
-        Period, on_delete=models.PROTECT, related_name="schedule_grid_columns"
-    )
-    venue = models.ForeignKey(
-        Venue, on_delete=models.PROTECT, related_name="schedule_grid_columns"
-    )
-    final_only = models.BooleanField(default=False)
-    sort_order = models.PositiveSmallIntegerField(default=0)
-
-    class Meta:
-        ordering = ["sort_order"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["season", "period", "venue"],
-                name="uniq_schedule_grid_period_venue",
-            ),
-            models.UniqueConstraint(
-                fields=["season", "sort_order"],
-                name="uniq_schedule_grid_column_order",
-            ),
-        ]
-
-    def clean(self):
-        if self.season_id and self.period_id and self.period.season_id != self.season_id:
-            raise ValidationError("赛程网格时段必须属于同一赛季。")
-        if self.season_id and self.venue_id and self.venue.season_id != self.season_id:
-            raise ValidationError("赛程网格场地必须属于同一赛季。")
 
 
 class ScheduleGridDraft(UUIDModel):

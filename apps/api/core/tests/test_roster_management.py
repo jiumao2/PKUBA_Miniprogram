@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import os
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 from django.db import IntegrityError, transaction
@@ -361,36 +359,3 @@ def test_active_jersey_numbers_are_unique_in_service_and_database():
     RosterPlayer.objects.create(team=team, name="王二", jersey_number="8", active=False)
     with pytest.raises(IntegrityError), transaction.atomic():
         RosterPlayer.objects.create(team=team, name="王三", jersey_number="8", active=True)
-
-
-REFERENCE_PATH = Path(
-    os.environ.get(
-        "PKUBA_ROSTER_REFERENCE_XLSX",
-        r"C:\Users\jiumao\Desktop\ScoresheetReader\test\球员名单.xlsx",
-    )
-)
-
-
-@pytest.mark.skipif(not REFERENCE_PATH.exists(), reason="local reference workbook unavailable")
-def test_local_reference_workbook_is_audited_without_confirmation(tmp_path):
-    setup = _setup(four_divisions=True)
-    source = load_workbook(REFERENCE_PATH, data_only=False)
-    template = load_workbook(BytesIO(generate_roster_template(setup["season"])))
-    for source_title, target_title in zip(
-        source.sheetnames, ["男甲", "男乙", "女甲", "女乙"], strict=True
-    ):
-        source_sheet = source[source_title]
-        target_sheet = template[target_title]
-        for row in source_sheet.iter_rows(min_row=2, max_col=3, values_only=True):
-            target_sheet.append(row)
-    output = BytesIO()
-    template.save(output)
-    batch = _upload(setup, tmp_path, output.getvalue())
-    codes = set(batch.issues.values_list("code", flat=True))
-
-    assert "TEAM_DUPLICATE_ACROSS_DIVISIONS" in codes
-    assert "INVALID_JERSEY_NUMBER" in codes
-    assert "DUPLICATE_JERSEY_NUMBER" in codes
-    assert "SIMILAR_TEAM_NAMES" in codes
-    assert batch.status == RosterImportBatch.Status.VALIDATED
-    assert not Team.objects.filter(created_by_roster_import_batch=batch).exists()

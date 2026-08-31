@@ -107,4 +107,4 @@ volumes:
 networks:
   runtime:
     external: true
-    name: ${PKUBA_RUNTIME_NETWORK:-pkuba-production}
+    name: ${PKUBA_RUNTIME_NETWORK:-pkuba-prod-runtime}

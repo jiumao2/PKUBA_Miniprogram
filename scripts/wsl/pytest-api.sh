@@ -15,18 +15,6 @@ set -a
 source "$env_file"
 set +a
 
-extra_mounts=()
-if [[ -n "${PKUBA_ROSTER_REFERENCE_XLSX:-}" ]]; then
-  if [[ ! -f "$PKUBA_ROSTER_REFERENCE_XLSX" ]]; then
-    echo "Roster reference workbook not found: $PKUBA_ROSTER_REFERENCE_XLSX" >&2
-    exit 1
-  fi
-  extra_mounts+=(
-    -v "$PKUBA_ROSTER_REFERENCE_XLSX:/reference/roster.xlsx:ro"
-    -e "PKUBA_ROSTER_REFERENCE_XLSX=/reference/roster.xlsx"
-  )
-fi
-
 exec docker run --rm \
   --network pkuba-wsl_default \
   -v "$repo_root/apps/api:/app" \
@@ -38,6 +26,5 @@ exec docker run --rm \
   -e "QWEN_REASONING_EFFORT=${QWEN_REASONING_EFFORT:-xhigh}" \
   -e "SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=${SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS:-8000000}" \
   -e "SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=${SCORESHEET_RECOGNITION_TIMEOUT_SECONDS:-180}" \
-  "${extra_mounts[@]}" \
   pkuba-dev-api:latest \
   pytest "$@"

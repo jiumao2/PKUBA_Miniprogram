@@ -34,5 +34,4 @@ else {
 }
 Invoke-PkubaCompose up -d db mailpit
 Invoke-PkubaCompose run --rm api python manage.py migrate
-Invoke-PkubaCompose run --rm api python manage.py seed_demo --if-empty
 Write-Host '初始化完成。运行 scripts/start-local.ps1 打开管理网站和微信小程序。'

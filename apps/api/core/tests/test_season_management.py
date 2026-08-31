@@ -91,16 +91,6 @@ def _update_payload(configuration: dict[str, object]) -> dict[str, object]:
             }
             for row in configuration["slot_families"]
         ],
-        "grid_columns": [
-            {
-                "id": row["id"],
-                "period_id": row["period_id"],
-                "venue_id": row["venue_id"],
-                "final_only": row["final_only"],
-                "sort_order": row["sort_order"],
-            }
-            for row in configuration["grid_columns"]
-        ],
         "date_capacity_overrides": [
             {
                 "date": row["date"],
@@ -181,7 +171,6 @@ def test_superadmin_can_create_setup_season_from_historical_configuration():
         "20:40",
     ]
     assert len(created["slot_families"]) == 1
-    assert created["grid_columns"] == []
     assert AdminAuditLog.objects.filter(
         action="SEASON_CREATED", object_id=created["id"]
     ).exists()
@@ -233,7 +222,6 @@ def test_default_pku_cup_leaves_schedule_grid_to_independent_draft():
     assert capacities["20:30"] == {"WEEKDAY": 0, "WEEKEND": 0}
     assert Venue.objects.filter(season_id=created["id"], is_standard=True).count() == 3
     assert not Venue.objects.filter(season_id=created["id"], name="邱德拔").exists()
-    assert created["grid_columns"] == []
 
 
 def test_superadmin_can_extend_standard_venues_and_template_preserves_them():

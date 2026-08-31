@@ -1,3 +1,5 @@
+ARG CADDY_BASE_IMAGE=caddy:2.10-alpine
+
 FROM node:24-alpine AS build
 
 WORKDIR /workspace
@@ -31,13 +33,19 @@ FROM python:3.13-slim AS django-static
 WORKDIR /app
 COPY apps/api/pyproject.toml apps/api/requirements.lock ./
 COPY apps/api/config ./config
-COPY apps/api/core ./core
+COPY apps/api/core/*.py ./core/
+COPY apps/api/core/assets ./core/assets
+COPY apps/api/core/migrations ./core/migrations
+COPY apps/api/core/scoresheet_v2 ./core/scoresheet_v2
+COPY apps/api/core/services ./core/services
 COPY apps/api/manage.py ./
 RUN pip install --no-cache-dir -r requirements.lock \
     && pip install --no-cache-dir --no-deps -e . \
+    && test ! -e /app/core/tests \
+    && test ! -e /app/core/management \
     && python manage.py collectstatic --noinput
 
-FROM caddy:2.10-alpine
+FROM ${CADDY_BASE_IMAGE}
 
 COPY --from=build /workspace/apps/admin-web/dist /srv/admin-web
 COPY --from=django-static /app/staticfiles /srv/django-static

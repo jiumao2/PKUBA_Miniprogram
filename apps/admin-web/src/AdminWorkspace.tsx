@@ -19,12 +19,13 @@ import { AdminAccountsPage } from "./AdminAccountsPage";
 import { CapacityCalendar } from "./CapacityCalendar";
 import { DrawMappingPage } from "./DrawMappingPage";
 import { LoginScreen } from "./LoginScreen";
-import { CompetitionMediaPage } from "./CompetitionMediaPage";
+import { GameMediaWorkbench } from "./GameMediaWorkbench";
 import { RescheduleManagementPage } from "./RescheduleManagementPage";
 import { ScheduleEditorPage } from "./ScheduleEditorPage";
 import { SchedulePlannerWorkspace } from "./SchedulePlannerWorkspace";
 import { ScheduleOverview } from "./ScheduleOverview";
 import { SeasonManagementPage } from "./SeasonManagementPage";
+import { SiteFooter } from "./SiteFooter";
 import { TeamRosterPage } from "./TeamRosterPage";
 import { confirmAdminNavigation, hasUnsavedAdminWork } from "./dirtyGuard";
 
@@ -309,6 +310,7 @@ export function AdminWorkspace() {
             退出登录
           </button>
         </div>
+        <SiteFooter compact />
       </aside>
 
       <main className={page === "schedule-import" ? "workspace workspace-schedule-planner" : "workspace"}>
@@ -426,7 +428,7 @@ export function AdminWorkspace() {
           />
         )}
         {!loading && !error && page === "media" && (
-          <CompetitionMediaPage
+          <GameMediaWorkbench
             client={adminClient}
             seasons={adminSeasons}
             seasonId={selectedAdminSeasonId || season?.id || ""}
@@ -455,6 +457,16 @@ export function AdminWorkspace() {
         )}
         {page === "advanced" && account.role === "SUPERADMIN" && (
           <AdvancedDataPage client={adminClient} />
+        )}
+        {!loading && !error && !season && page === "overview" && (
+          <section className="state-panel" role="status">
+            <h2>暂无已公开赛季</h2>
+            <p>
+              {account.role === "SUPERADMIN"
+                ? "请前往左侧“赛季与组别”完成赛季配置并公开；准备中的赛季不会显示为赛事总览。"
+                : "赛季公开后可在此查看赛事总览；如需开放新赛季，请联系超级管理员。"}
+            </p>
+          </section>
         )}
         {!loading && !error && season && page === "overview" && (
           <>

@@ -22,7 +22,6 @@ from core.models import (
     RescheduleRequest,
     RosterImportBatch,
     RosterPlayer,
-    ScheduleGridColumn,
     ScheduleGridDraft,
     ScheduleGridDraftCell,
     ScheduleGridDraftColumn,
@@ -155,11 +154,11 @@ def test_database_rejects_cross_season_game_relationships(foreign_field):
     assert not Game.objects.filter(code=f"CROSS-{foreign_field}").exists()
 
 
-def test_database_rejects_cross_season_capacity_leader_grid_and_reservation():
+def test_database_rejects_cross_season_capacity_leader_and_reservation():
     season_a, _division_a, period_a, _slots_a, teams_a = _season_graph("A")
     season_b, _division_b, period_b, _slots_b, _teams_b = _season_graph("B")
     venue_a = Venue.objects.create(season=season_a, name="A 场地")
-    venue_b = Venue.objects.create(season=season_b, name="B 场地")
+    Venue.objects.create(season=season_b, name="B 场地")
     account = Account.objects.create_user(username="season-scope-leader")
 
     invalid_operations = [
@@ -173,12 +172,6 @@ def test_database_rejects_cross_season_capacity_leader_grid_and_reservation():
             season=season_b,
             account=account,
             team=teams_a[0],
-        ),
-        lambda: ScheduleGridColumn.objects.create(
-            season=season_a,
-            period=period_a,
-            venue=venue_b,
-            sort_order=1,
         ),
         lambda: SlotReservation.objects.create(
             season=season_a,
@@ -194,7 +187,6 @@ def test_database_rejects_cross_season_capacity_leader_grid_and_reservation():
 
     assert PeriodCapacity.objects.count() == 0
     assert SeasonLeaderBinding.objects.count() == 0
-    assert ScheduleGridColumn.objects.count() == 0
     assert SlotReservation.objects.count() == 0
 
 
@@ -559,8 +551,6 @@ def test_core_season_scope_constraints_are_installed():
         "game_away_slot_same_division",
         "leader_team_same_season",
         "capacity_period_same_season",
-        "grid_period_same_season",
-        "grid_venue_same_season",
         "reservation_period_same_season",
         "reservation_venue_same_season",
         "draw_team_same_season",
@@ -607,8 +597,6 @@ def test_existing_rows_are_covered_by_validated_season_scope_foreign_keys():
         "capacity_period_same_season",
         "override_period_same_season",
         "slot_family_same_season",
-        "grid_period_same_season",
-        "grid_venue_same_season",
         "slot_lock_same_season",
         "reservation_period_same_season",
         "reservation_venue_same_season",

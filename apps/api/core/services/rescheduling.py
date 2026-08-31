@@ -382,7 +382,6 @@ def available_reschedule_targets(
     candidate_dates.extend(
         DatePeriodCapacityOverride.objects.filter(
             season=game.season,
-            origin=DatePeriodCapacityOverride.Origin.ADMIN,
         ).values_list("date", flat=True)
     )
     targets: list[dict[str, object]] = []

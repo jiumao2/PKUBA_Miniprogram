@@ -32,18 +32,25 @@ import /srv/deployment-state/upstreams.caddy
 
 api.{$PKUBA_DOMAIN} {
 	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	@deployment_health path /api/v1/health/live /api/v1/health/ready
 	handle @deployment_health {
 		import active_api
 	}
 	import deployment_maintenance_json
-	handle {
+	@api path /api/*
+	handle @api {
 		import active_api
+	}
+	handle {
+		header Content-Type "application/json; charset=utf-8"
+		respond `{"code":"NOT_FOUND","message":"接口不存在。"}` 404
 	}
 }
 
 admin.{$PKUBA_DOMAIN} {
 	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	handle /_deployment/ready {
 		import active_web
 	}
@@ -51,4 +58,9 @@ admin.{$PKUBA_DOMAIN} {
 	handle {
 		import active_web
 	}
+}
+
+{$PKUBA_DOMAIN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	redir https://admin.{$PKUBA_DOMAIN}{uri} permanent
 }

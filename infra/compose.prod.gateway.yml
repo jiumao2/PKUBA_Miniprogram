@@ -1,6 +1,6 @@
 services:
   gateway:
-    image: caddy:2.10-alpine
+    image: ${PKUBA_CADDY_IMAGE:?PKUBA_CADDY_IMAGE is required}
     container_name: pkuba-gateway
     restart: unless-stopped
     environment:
@@ -24,11 +24,11 @@ services:
 
 volumes:
   caddy-data:
-    name: ${PKUBA_CADDY_DATA_VOLUME:-pkuba-gateway-caddy-data}
+    name: ${PKUBA_CADDY_DATA_VOLUME:-pkuba-prod-caddy-data}
   caddy-config:
-    name: ${PKUBA_CADDY_CONFIG_VOLUME:-pkuba-gateway-caddy-config}
+    name: ${PKUBA_CADDY_CONFIG_VOLUME:-pkuba-prod-caddy-config}
 
 networks:
   runtime:
     external: true
-    name: ${PKUBA_RUNTIME_NETWORK:-pkuba-production}
+    name: ${PKUBA_RUNTIME_NETWORK:-pkuba-prod-runtime}

@@ -89,6 +89,7 @@ jobs:
             echo "unapproved production API host unexpectedly passed" >&2
             exit 1
           fi
+      - run: npm run build:packages
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

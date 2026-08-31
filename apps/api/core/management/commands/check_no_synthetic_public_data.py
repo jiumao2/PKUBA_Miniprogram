@@ -3,9 +3,9 @@ from django.db.models import Count
 
 from core.models import AdminAuditLog, GameMediaAsset, Season
 
-from .seed_demo import AUDIT_ACTION as DEMO_AUDIT_ACTION
-from .seed_game_media_demo import AUDIT_ACTION as MEDIA_AUDIT_ACTION
-from .seed_public_leaderboard_demo import AUDIT_ACTION as LEADERBOARD_AUDIT_ACTION
+DEMO_AUDIT_ACTION = "SEED_DEMO_SYNTHETIC_PUBLIC_SEASON"
+MEDIA_AUDIT_ACTION = "LOCAL_GAME_MEDIA_DEMO_SEEDED"
+LEADERBOARD_AUDIT_ACTION = "PUBLIC_LEADERBOARD_SYNTHETIC_SEEDED"
 
 
 class Command(BaseCommand):

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version_tag:
-        description: Existing immutable version tag, for example v0.3.0
+        description: Existing immutable version tag, for example v1.0.0
         required: true
         type: string
       confirmation:

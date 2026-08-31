@@ -23,9 +23,9 @@ if [[ -r $config_file ]]; then
   source "$config_file"
 fi
 
-deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/deploy}
-repository_dir=${PKUBA_REPOSITORY_DIR:-/opt/pkuba/repository}
-env_file=${PKUBA_ENV_FILE:-/opt/pkuba/ip-test/.env}
+deploy_root=${PKUBA_DEPLOY_ROOT:-/opt/pkuba/production/deploy}
+repository_dir=${PKUBA_REPOSITORY_DIR:-/opt/pkuba/production/repository}
+env_file=${PKUBA_ENV_FILE:-/opt/pkuba/production/.env}
 state_dir=$deploy_root/state
 slot_state_dir=$state_dir/slots
 release_root=$deploy_root/releases
@@ -35,10 +35,13 @@ target_state=$slot_state_dir/$target_slot.env
 target_deadline_file=$target_state.retain-until
 maintenance_file=$state_dir/maintenance.enabled
 upstreams_file=$state_dir/upstreams.caddy
-runtime_network=${PKUBA_RUNTIME_NETWORK:-pkuba-production}
+runtime_network=${PKUBA_RUNTIME_NETWORK:-pkuba-prod-runtime}
 gateway_project=${PKUBA_GATEWAY_PROJECT:-pkuba-gateway}
-media_volume=${PKUBA_MEDIA_VOLUME:-pkuba-ip-test_private-media}
-archive_volume=${PKUBA_ARCHIVE_VOLUME:-pkuba-ip-test_archive-staging}
+media_volume=${PKUBA_MEDIA_VOLUME:-pkuba-prod-media}
+archive_volume=${PKUBA_ARCHIVE_VOLUME:-pkuba-prod-archives}
+caddy_image=${PKUBA_CADDY_IMAGE:-ghcr.io/jiumao2/pkuba-caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d}
+[[ $caddy_image == ghcr.io/jiumao2/pkuba-caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d ]] \
+  || die "Caddy must use the approved mirrored digest"
 blue_api_port=${PKUBA_BLUE_API_PORT:-18000}
 blue_web_port=${PKUBA_BLUE_WEB_PORT:-18080}
 green_api_port=${PKUBA_GREEN_API_PORT:-18001}
@@ -151,6 +154,7 @@ compose_target() {
 compose_gateway() {
   env \
     PKUBA_DEPLOY_STATE_DIR="$state_dir" \
+    PKUBA_CADDY_IMAGE="$caddy_image" \
     PKUBA_RUNTIME_NETWORK="$runtime_network" \
     docker compose \
       --project-name "$gateway_project" \

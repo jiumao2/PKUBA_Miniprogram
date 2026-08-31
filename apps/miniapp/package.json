@@ -1,6 +1,6 @@
 {
   "name": "@pkuba/miniapp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev:weapp": "node ./scripts/watch-weapp.mjs",
@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pkuba/api-client": "0.1.0",
-    "@pkuba/scoresheet-domain": "0.1.0",
+    "@pkuba/api-client": "1.0.0",
+    "@pkuba/scoresheet-domain": "1.0.0",
     "@tarojs/components": "4.2.1",
     "@tarojs/helper": "4.2.1",
     "@tarojs/react": "4.2.1",

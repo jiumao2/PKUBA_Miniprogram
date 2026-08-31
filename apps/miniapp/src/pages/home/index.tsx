@@ -1,7 +1,7 @@
 import { Button, Image, Text, View } from "@tarojs/components";
 import Taro, { useDidShow } from "@tarojs/taro";
 import { useState } from "react";
-import type { HomeDashboard, Season } from "@pkuba/api-client";
+import { ApiError, type HomeDashboard, type Season } from "@pkuba/api-client";
 
 import logoUrl from "../../assets/pkuba-logo.png";
 import { api } from "../../api";
@@ -19,22 +19,43 @@ import {
 } from "./calendar";
 import "./index.css";
 
+type HomeLoadNotice = {
+  title: string;
+  detail: string;
+};
+
+function describeHomeLoadFailure(reason: unknown): HomeLoadNotice {
+  if (reason instanceof ApiError && reason.code === "NO_PUBLIC_SEASON") {
+    return {
+      title: "当前处于休赛期",
+      detail: "暂无公开赛季。",
+    };
+  }
+  const message = reason instanceof Error ? reason.message.trim() : "读取失败";
+  return {
+    title: "暂时无法加载",
+    detail: /[。！？!?]$/.test(message)
+      ? `${message}请稍后重试。`
+      : `${message}，请稍后重试。`,
+  };
+}
+
 export default function HomePage() {
   const [season, setSeason] = useState<Season | null>(null);
   const [dashboard, setDashboard] = useState<HomeDashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<HomeLoadNotice | null>(null);
 
   useDidShow(() => {
     syncTabBar(0);
     setLoading(true);
-    setError(null);
+    setNotice(null);
     Promise.all([api.getCurrentSeason(), api.getHomeDashboard()])
       .then(([currentSeason, currentDashboard]) => {
         setSeason(currentSeason);
         setDashboard(currentDashboard);
       })
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "读取失败"))
+      .catch((reason: unknown) => setNotice(describeHomeLoadFailure(reason)))
       .finally(() => setLoading(false));
 
   });
@@ -56,8 +77,8 @@ export default function HomePage() {
       </View>
 
       {loading && <State title="正在加载" />}
-      {error && <State title="暂时无法加载" detail={`${error}，请稍后重试。`} />}
-      {!loading && !error && dashboard && (
+      {notice && <State title={notice.title} detail={notice.detail} />}
+      {!loading && !notice && dashboard && (
         <>
           <GameDensity dashboard={dashboard} />
           <Matchday
