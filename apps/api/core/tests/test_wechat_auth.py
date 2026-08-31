@@ -203,6 +203,7 @@ def test_team_can_only_be_claimed_once():
 
 def test_superadmin_can_rotate_season_invite_without_exposing_value():
     season, _ = active_season_with_team()
+    initial_version = season.version
     superadmin = Account.objects.create_user(
         username="root-admin",
         password="StrongPass!2026",
@@ -222,9 +223,40 @@ def test_superadmin_can_rotate_season_invite_without_exposing_value():
     assert "invite_code" not in response.json()
     assert response.json()["uses_default_invite"] is False
     season.refresh_from_db()
+    assert season.version == initial_version + 1
     assert check_password("NEW-PKUBA-2026", season.admin_invite_code_hash)
     assert not check_password("PKUBA1997", season.admin_invite_code_hash)
     assert AdminAuditLog.objects.filter(action="SEASON_ADMIN_INVITE_UPDATED").exists()
+
+    registration_client = Client()
+    token = onboard(
+        registration_client,
+        openid="openid-rotated-invite",
+        username="新邀请码管理员",
+    )
+    old_code = post_json(
+        registration_client,
+        "/api/v1/auth/admin/register",
+        {
+            "season_id": str(season.id),
+            "invite_code": "PKUBA1997",
+            "password": "1234",
+        },
+        token,
+    )
+    assert old_code.status_code == 401
+    registered = post_json(
+        registration_client,
+        "/api/v1/auth/admin/register",
+        {
+            "season_id": str(season.id),
+            "invite_code": "NEW-PKUBA-2026",
+            "password": "1234",
+        },
+        token,
+    )
+    assert registered.status_code == 200
+    assert registered.json()["admin_role"] == Account.Role.ADMIN
 
 
 def test_archived_season_invite_cannot_be_rotated():
@@ -247,6 +279,87 @@ def test_archived_season_invite_cannot_be_rotated():
 
     assert response.status_code == 409
     assert response.json()["code"] == "SEASON_ARCHIVED"
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (Season.Status.SETUP, "SEASON_NOT_PUBLIC"),
+        (Season.Status.ARCHIVED, "SEASON_ARCHIVED"),
+    ],
+)
+def test_non_public_season_invite_is_not_readable_or_mutable(status, code):
+    season, _ = active_season_with_team()
+    season.status = status
+    season.save(update_fields=["status", "updated_at"])
+    superadmin = Account.objects.create_user(
+        username=f"invite-guard-{status.lower()}",
+        password="StrongPass!2026",
+        role=Account.Role.SUPERADMIN,
+    )
+    client = Client()
+    client.force_login(superadmin)
+    before = {
+        "hash": season.admin_invite_code_hash,
+        "updated_at": season.admin_invite_updated_at,
+        "version": season.version,
+        "audit_count": AdminAuditLog.objects.count(),
+    }
+
+    read_response = client.get(
+        f"/api/v1/admin/seasons/{season.id}/admin-invite-code"
+    )
+    write_responses = [
+        client.put(
+            f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
+            data=json.dumps(
+                {"invite_code": invite_code, "expected_version": season.version}
+            ),
+            content_type="application/json",
+        )
+        for invite_code in ("NEW-PKUBA-2026", "bad")
+    ]
+
+    assert read_response.status_code == 409
+    assert read_response.json()["code"] == code
+    assert [response.status_code for response in write_responses] == [409, 409]
+    assert [response.json()["code"] for response in write_responses] == [code, code]
+    season.refresh_from_db()
+    assert season.admin_invite_code_hash == before["hash"]
+    assert season.admin_invite_updated_at == before["updated_at"]
+    assert season.version == before["version"]
+    assert AdminAuditLog.objects.count() == before["audit_count"]
+
+
+def test_published_season_rejects_short_invite_without_writing():
+    season, _ = active_season_with_team()
+    superadmin = Account.objects.create_user(
+        username="published-short-invite-admin",
+        password="StrongPass!2026",
+        role=Account.Role.SUPERADMIN,
+    )
+    client = Client()
+    client.force_login(superadmin)
+    before = {
+        "hash": season.admin_invite_code_hash,
+        "updated_at": season.admin_invite_updated_at,
+        "version": season.version,
+        "audit_count": AdminAuditLog.objects.count(),
+    }
+
+    response = client.put(
+        f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
+        data=json.dumps({"invite_code": "bad", "expected_version": season.version}),
+        content_type="application/json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "INVITE_CODE_TOO_SHORT"
+    season.refresh_from_db()
+    assert season.admin_invite_code_hash == before["hash"]
+    assert season.admin_invite_updated_at == before["updated_at"]
+    assert season.version == before["version"]
+    assert AdminAuditLog.objects.count() == before["audit_count"]
 
 
 def test_wrong_invite_code_never_locks_and_keeps_redacted_audit():

@@ -33,6 +33,7 @@ button:not(:disabled) {
   position: sticky;
   top: 0;
   height: 100vh;
+  min-height: 0;
   flex-direction: column;
   padding: 26px 18px 20px;
   background: var(--pkuba-warm-white);
@@ -40,6 +41,7 @@ button:not(:disabled) {
 }
 
 .brand {
+  flex: 0 0 auto;
   width: 142px;
   height: 102px;
   object-fit: contain;
@@ -49,7 +51,12 @@ button:not(:disabled) {
 
 .sidebar nav {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .nav-item {
@@ -88,6 +95,7 @@ button:not(:disabled) {
   margin-top: auto;
   padding: 14px 12px 0;
   border-top: 1px solid var(--pkuba-line);
+  flex: 0 0 auto;
 }
 
 .sidebar-account span {
@@ -1260,9 +1268,12 @@ h2 {
 
   .sidebar nav {
     display: flex;
+    flex: initial;
     min-width: 0;
+    min-height: auto;
     gap: 5px;
     overflow-x: auto;
+    overflow-y: visible;
     overscroll-behavior-inline: contain;
     scrollbar-width: thin;
   }

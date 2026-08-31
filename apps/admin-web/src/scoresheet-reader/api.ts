@@ -14,6 +14,7 @@ import type {
   TemplateDefinition,
   ValidationIssue,
   ValidationReport,
+  ValidationResult,
 } from './types';
 
 type RawLease = {
@@ -533,13 +534,16 @@ export const api = {
     return documentFromDetail(raw as unknown as RawDetail);
   },
 
-  async validate(id: string, baseRevision: number): Promise<ValidationReport> {
+  async validate(id: string, baseRevision: number): Promise<ValidationResult> {
     await ensureEditable(id);
     const raw = (await admin.validateScoresheet(
       id,
       targetContext(id, baseRevision),
     )) as unknown as RawDetail;
-    return reportFromDetail(raw);
+    return {
+      document: documentFromDetail(raw),
+      report: reportFromDetail(raw),
+    };
   },
 
   async confirm(

@@ -22,6 +22,7 @@ import {
   type ScheduleGridValue,
 } from "./ScheduleGridEditor";
 import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
+import { formatAdminSeasonLabel } from "./seasonLabel";
 import "./schedule-planner.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -547,7 +548,7 @@ export function SchedulePlannerWorkspace({
             }}
           >
             {seasons.map((item) => (
-              <option key={item.id} value={item.id}>{item.name}</option>
+              <option key={item.id} value={item.id}>{formatAdminSeasonLabel(item)}</option>
             ))}
           </select>
         </div>

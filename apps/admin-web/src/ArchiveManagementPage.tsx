@@ -18,6 +18,7 @@ import {
 } from "@pkuba/api-client";
 
 import { useAdminDirtySource } from "./dirtyGuard";
+import { formatAdminSeasonLabel } from "./seasonLabel";
 import "./archive-management.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -247,7 +248,7 @@ export function ArchiveManagementPage({
         <label>
           当前赛季
           <select value={season.id} onChange={(event) => onSeasonChange(event.target.value)}>
-            {seasons.map((item) => <option key={item.id} value={item.id}>{item.year} · {item.name}</option>)}
+            {seasons.map((item) => <option key={item.id} value={item.id}>{formatAdminSeasonLabel(item)}</option>)}
           </select>
         </label>
       </section>

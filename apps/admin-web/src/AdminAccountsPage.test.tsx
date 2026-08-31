@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdminAccount, AdminManagedAccount, createAdminClient } from "@pkuba/api-client";
+import type { AdminSeason } from "@pkuba/api-client";
 
 import { AdminAccountsPage } from "./AdminAccountsPage";
 
@@ -56,5 +57,48 @@ describe("AdminAccountsPage", () => {
     await waitFor(() => {
       expect(client.demoteSuperadmin).toHaveBeenCalledWith("super-other", 4);
     });
+  });
+
+  it("disables invite rotation when there is no published season", async () => {
+    const client = {
+      listAdminAccounts: vi.fn().mockResolvedValue(accounts),
+      getSeasonInvite: vi.fn(),
+    } as unknown as AdminClient;
+
+    render(<AdminAccountsPage account={current} client={client} season={null} />);
+
+    expect(await screen.findByText("管理员邀请码暂不可用")).toBeVisible();
+    expect(screen.getByText(/当前没有已公开赛季/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "更新邀请码" })).toBeDisabled();
+    expect(client.getSeasonInvite).not.toHaveBeenCalled();
+  });
+
+  it("shows the full published-season identity for invite rotation", async () => {
+    const published = {
+      id: "season-published",
+      year: 2026,
+      name: "北大杯",
+      status: "PUBLISHED",
+      competition_type: "PKU_CUP",
+      starts_on: "2026-03-01",
+      ends_on: "2026-05-31",
+      version: 3,
+      divisions: [],
+    } as AdminSeason;
+    const client = {
+      listAdminAccounts: vi.fn().mockResolvedValue(accounts),
+      getSeasonInvite: vi.fn().mockResolvedValue({
+        season_id: published.id,
+        configured: true,
+        uses_default_invite: false,
+        updated_at: null,
+        version: 3,
+      }),
+    } as unknown as AdminClient;
+
+    render(<AdminAccountsPage account={current} client={client} season={published} />);
+
+    expect(await screen.findByText(/2026 · 北大杯 · 已公开/)).toBeVisible();
+    expect(client.getSeasonInvite).toHaveBeenCalledWith(published.id);
   });
 });

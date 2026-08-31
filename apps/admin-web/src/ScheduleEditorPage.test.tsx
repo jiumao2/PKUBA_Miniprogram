@@ -134,4 +134,36 @@ describe("ScheduleEditorPage colors", () => {
     expect(html).toContain("game-women game-locked");
     expect(html).toContain("已锁定 · 领队不可调");
   });
+
+  it("keeps archived schedule details visible but prevents every mutation", async () => {
+    const archived = { ...season, status: "ARCHIVED" as const };
+    const client = {
+      getAdminScheduleOptions: vi.fn().mockResolvedValue({
+        periods: [{ id: "period-1", code: "P1", name: "第一时段", start_time: "12:50:00" }],
+        venues: [{ id: "venue-1", name: "五四东一" }],
+        teams: [],
+      }),
+      getAdminScheduleGame: vi.fn().mockResolvedValue(baseGame),
+      updateAdminScheduleGame: vi.fn(),
+    };
+
+    render(
+      <ScheduleEditorPage
+        client={client as never}
+        games={[baseGame]}
+        seasons={[archived]}
+        season={archived}
+        onSeasonChange={vi.fn()}
+        onUpdated={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /男甲.*甲队.*乙队/ }));
+    expect(await screen.findByText(/归档赛季只读/)).toBeVisible();
+    expect(screen.getByLabelText("比赛日期")).toBeDisabled();
+    expect(screen.getByLabelText(/允许领队申请调赛/)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "二次确认并保存" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "二次确认并保存" }));
+    expect(client.updateAdminScheduleGame).not.toHaveBeenCalled();
+  });
 });

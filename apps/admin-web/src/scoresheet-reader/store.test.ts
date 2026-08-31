@@ -3,6 +3,7 @@ import { setTablePersonnel } from '@pkuba/scoresheet-domain';
 import { api } from './api';
 import { useEditorStore } from './store';
 import { makeDocument, makeTemplate } from './test/fixtures';
+import type { ValidationResult } from './types';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -17,6 +18,16 @@ function deferred<T>() {
 const emptyGamePage = {
   items: [], total: 0, page: 1, page_size: 20, division_names: [],
 };
+
+function validationResult(
+  document: ReturnType<typeof makeDocument>,
+  status: 'valid' | 'needs_review' | 'invalid' = 'valid',
+): ValidationResult {
+  return {
+    document: structuredClone(document),
+    report: { status, issues: [], checked_at: '2026-08-21T00:00:00Z' },
+  };
+}
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -71,8 +82,10 @@ describe('editor persistence and history', () => {
     } });
     const pending = deferred<typeof reviewed>();
     const review = vi.spyOn(api, 'reviewGameContext').mockReturnValue(pending.promise);
+    const authoritative = { ...structuredClone(reviewed), status: 'validated' as const };
     const validate = vi.spyOn(api, 'validate').mockResolvedValue({
-      status: 'valid', checked_at: '2026-08-27T00:00:01Z', issues: [],
+      document: authoritative,
+      report: { status: 'valid', checked_at: '2026-08-27T00:00:01Z', issues: [] },
     });
     const operation = useEditorStore.getState().reviewGameContext([]);
     expect(useEditorStore.getState().contextReviewing).toBe(true);
@@ -418,10 +431,35 @@ describe('editor persistence and history', () => {
     expect(useEditorStore.getState().error).toBe('草稿尚未成功保存，已停止校验和提交。');
   });
 
+  it.each([
+    ['valid', 'validated'],
+    ['invalid', 'needs_review'],
+  ] as const)('projects the authoritative %s validation document status', async (reportStatus, documentStatus) => {
+    const document = { ...makeDocument('validation-authority'), revision: 2 };
+    const authoritative = { ...structuredClone(document), status: documentStatus };
+    useEditorStore.setState({ document, serverRevision: 2, dirty: false });
+    vi.spyOn(api, 'validate').mockResolvedValue({
+      document: authoritative,
+      report: {
+        status: reportStatus,
+        issues: [],
+        checked_at: '2026-08-21T00:00:00Z',
+      },
+    });
+
+    const report = await useEditorStore.getState().validate();
+
+    expect(report?.status).toBe(reportStatus);
+    expect(useEditorStore.getState().document).toEqual(authoritative);
+    expect(useEditorStore.getState().document?.status).toBe(documentStatus);
+    expect(useEditorStore.getState().serverRevision).toBe(2);
+  });
+
   it('discards a validation result when the document changes during validation', async () => {
     const document = makeDocument('persisted-document');
     useEditorStore.setState({ document, serverRevision: 3 });
-    const pending = deferred<{ status: 'valid'; issues: []; checked_at: string }>();
+    const authoritative = { ...structuredClone(document), revision: 3, status: 'validated' as const };
+    const pending = deferred<ReturnType<typeof validationResult>>();
     vi.spyOn(api, 'validate').mockReturnValue(pending.promise);
 
     const validating = useEditorStore.getState().validate();
@@ -429,7 +467,7 @@ describe('editor persistence and history', () => {
     useEditorStore.getState().mutate((draft) => {
       draft.header.game_number = '校验期间修改';
     });
-    pending.resolve({ status: 'valid', issues: [], checked_at: '2026-08-21T00:00:00Z' });
+    pending.resolve(validationResult(authoritative));
 
     expect(await validating).toBeNull();
     expect(useEditorStore.getState().validation).toBeNull();
@@ -439,9 +477,7 @@ describe('editor persistence and history', () => {
   it('keeps edits made while confirmation is in flight and requires resubmission', async () => {
     const document = makeDocument('persisted-document');
     useEditorStore.setState({ document, serverRevision: 0 });
-    vi.spyOn(api, 'validate').mockResolvedValue({
-      status: 'valid', issues: [], checked_at: '2026-08-21T00:00:00Z',
-    });
+    vi.spyOn(api, 'validate').mockResolvedValue(validationResult(document));
     const pending = deferred<ReturnType<typeof makeDocument>>();
     vi.spyOn(api, 'confirm').mockReturnValue(pending.promise);
     vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
@@ -465,9 +501,7 @@ describe('editor persistence and history', () => {
     const document = makeDocument('published-document');
     const confirmed = { ...structuredClone(document), revision: 1, status: 'confirmed' as const };
     useEditorStore.setState({ document, serverRevision: 0 });
-    vi.spyOn(api, 'validate').mockResolvedValue({
-      status: 'valid', issues: [], checked_at: '2026-08-21T00:00:00Z',
-    });
+    vi.spyOn(api, 'validate').mockResolvedValue(validationResult(document));
     vi.spyOn(api, 'confirm').mockResolvedValue(confirmed);
     vi.spyOn(api, 'games').mockResolvedValue(emptyGamePage);
     vi.spyOn(api, 'leaseState').mockReturnValue(null);

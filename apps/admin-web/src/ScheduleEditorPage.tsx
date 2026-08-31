@@ -7,6 +7,7 @@ import type {
 } from "@pkuba/api-client";
 
 import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
+import { formatAdminSeasonLabel } from "./seasonLabel";
 import "./operation-pages.css";
 
 type AdminClient = ReturnType<typeof import("@pkuba/api-client").createAdminClient>;
@@ -46,6 +47,7 @@ export function ScheduleEditorPage({
   const [message, setMessage] = useState<string | null>(null);
   const optionsGeneration = useRef(0);
   const gameGeneration = useRef(0);
+  const readOnly = season.status === "ARCHIVED";
 
   const selectedDirty = Boolean(
     selected
@@ -112,7 +114,7 @@ export function ScheduleEditorPage({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selected || !acknowledged) return;
+    if (readOnly || !selected || !acknowledged) return;
     if (!window.confirm("确认直接修改这场比赛？保存后会立即影响公开赛程并写入审计日志。")) return;
     setBusy(true);
     setMessage(null);
@@ -166,7 +168,7 @@ export function ScheduleEditorPage({
               if (confirmed) onSeasonChange(nextSeasonId);
             });
           }}>
-            {seasons.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {seasons.map((item) => <option key={item.id} value={item.id}>{formatAdminSeasonLabel(item)}</option>)}
           </select>
         </label>
         <div className="schedule-editor-filters">
@@ -211,6 +213,8 @@ export function ScheduleEditorPage({
             <div className="operation-heading">
               <div><p>{selected.division_name}</p><h2>{selected.home_name}　—　{selected.away_name}</h2></div>
             </div>
+            {readOnly && <div className="operation-warning">归档赛季只读；可以查看比赛，但不能修改正式赛程。</div>}
+            <fieldset className="schedule-editor-readonly-fields" disabled={readOnly}>
             {selected.active_reschedule_request_id && (
               <div className="operation-warning">本场存在活动调赛申请。修改前必须明确取消，并释放其预留。</div>
             )}
@@ -227,9 +231,9 @@ export function ScheduleEditorPage({
               <label>比赛状态<select value={selected.status} onChange={(event) => setSelected({ ...selected, status: event.target.value })}>{statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></label>
               {selected.participants_managed_by_draw ? (
                 <div className="draw-managed-participants">
-                  <span>参赛双方由抽签映射管理</span>
+                  <span>参赛双方由签位结果录入管理</span>
                   <strong>{selected.home_name}　—　{selected.away_name}</strong>
-                  <small>如需更换球队，请前往“抽签映射”按比赛重新预览并保存。</small>
+                  <small>如需更换球队，请前往“签位结果录入”按比赛重新预览并保存。</small>
                 </div>
               ) : (
                 <>
@@ -247,6 +251,7 @@ export function ScheduleEditorPage({
               <label className="critical-check"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />我已核对日期、时段、场地、双方、比分及关联申请</label>
             </div>
             <button className="primary-action" disabled={!acknowledged || busy} type="submit">{busy ? "正在保存…" : "二次确认并保存"}</button>
+            </fieldset>
           </form>
         )}
         {message && <p className="operation-message" role="status">{message}</p>}

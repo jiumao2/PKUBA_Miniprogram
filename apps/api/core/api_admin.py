@@ -893,13 +893,26 @@ def update_admin_season_configuration(
 @router.get(
     "/seasons/{season_id}/admin-invite-code",
     auth=superadmin_session_auth,
-    response={200: SeasonInviteOut, 404: AdminErrorOut},
+    response={200: SeasonInviteOut, 404: AdminErrorOut, 409: AdminErrorOut},
 )
 def get_season_admin_invite(request: HttpRequest, season_id: UUID):
     del request
     season = Season.objects.filter(id=season_id).first()
     if season is None:
         return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
+    if season.status == Season.Status.ARCHIVED:
+        return Status(
+            409,
+            {"code": "SEASON_ARCHIVED", "message": "已归档赛季只读。"},
+        )
+    if season.status != Season.Status.PUBLISHED:
+        return Status(
+            409,
+            {
+                "code": "SEASON_NOT_PUBLIC",
+                "message": "管理员邀请码只属于当前已公开赛季。",
+            },
+        )
     return {
         "season_id": season.id,
         "configured": bool(season.admin_invite_code_hash),
@@ -920,11 +933,6 @@ def set_season_admin_invite(
     payload: SetSeasonInviteIn,
 ):
     invite_code = payload.invite_code.strip()
-    if len(invite_code) < 8:
-        return Status(
-            400,
-            {"code": "INVITE_CODE_TOO_SHORT", "message": "邀请码至少需要 8 个字符。"},
-        )
     with transaction.atomic():
         season = Season.objects.select_for_update().filter(id=season_id).first()
         if season is None:
@@ -933,6 +941,19 @@ def set_season_admin_invite(
             return Status(
                 409,
                 {"code": "SEASON_ARCHIVED", "message": "已归档赛季只读。"},
+            )
+        if season.status != Season.Status.PUBLISHED:
+            return Status(
+                409,
+                {
+                    "code": "SEASON_NOT_PUBLIC",
+                    "message": "管理员邀请码只属于当前已公开赛季。",
+                },
+            )
+        if len(invite_code) < 8:
+            return Status(
+                400,
+                {"code": "INVITE_CODE_TOO_SHORT", "message": "邀请码至少需要 8 个字符。"},
             )
         if season.version != payload.expected_version:
             return Status(
@@ -1046,9 +1067,12 @@ def import_schedule_draft(
 @router.get(
     "/seasons/{season_id}/schedule-draft/export-xlsx",
     auth=superadmin_session_auth,
+    response={200: None, 400: AdminErrorOut, 404: AdminErrorOut, 409: AdminErrorOut},
 )
 def export_schedule_draft(request: HttpRequest, season_id: UUID):
-    season = get_object_or_404(Season, id=season_id)
+    season = Season.objects.filter(id=season_id).first()
+    if season is None:
+        return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
     try:
         content = export_schedule_draft_xlsx(actor=request.auth, season=season)
     except ScheduleImportError as error:
@@ -1098,10 +1122,16 @@ def get_schedule_import_readiness(request: HttpRequest, season_id: UUID):
     return schedule_import_readiness(season)
 
 
-@router.get("/seasons/{season_id}/schedule-template", auth=superadmin_session_auth)
+@router.get(
+    "/seasons/{season_id}/schedule-template",
+    auth=superadmin_session_auth,
+    response={200: None, 400: AdminErrorOut, 404: AdminErrorOut, 409: AdminErrorOut},
+)
 def download_schedule_template(request: HttpRequest, season_id: UUID):
     del request
-    season = get_object_or_404(Season, id=season_id)
+    season = Season.objects.filter(id=season_id).first()
+    if season is None:
+        return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
     try:
         content = generate_schedule_template(season)
     except ScheduleImportError as error:

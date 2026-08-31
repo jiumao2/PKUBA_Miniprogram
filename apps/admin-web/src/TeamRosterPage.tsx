@@ -12,6 +12,7 @@ import type {
 } from "@pkuba/api-client";
 
 import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
+import { formatAdminSeasonLabel } from "./seasonLabel";
 import "./team-roster.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -512,7 +513,7 @@ export function TeamRosterPage({
               if (confirmed) onSeasonChange(nextSeasonId);
             });
           }}>
-            {seasons.map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}
+            {seasons.map((season) => <option key={season.id} value={season.id}>{formatAdminSeasonLabel(season)}</option>)}
           </select>
         </label>
         <div className="roster-toolbar-actions">

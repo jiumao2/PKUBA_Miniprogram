@@ -8,7 +8,14 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
 from django.utils import timezone
 
-from core.models import Account, AdminAuditLog, Game, WebLoginChallenge
+from core.models import (
+    Account,
+    AdminAuditLog,
+    Game,
+    ScheduleGridDraft,
+    Season,
+    WebLoginChallenge,
+)
 from core.services.admin_accounts import AdminAccountError, demote_superadmin
 from core.services.wechat import issue_session
 from core.tests.factories import reschedule_setup
@@ -338,6 +345,95 @@ def test_admin_web_login_rechecks_account_state_before_creating_session():
     assert browser.get("/api/v1/auth/admin/me").status_code == 401
 
 
+def test_schedule_template_readiness_error_is_json_and_read_only():
+    setup = reschedule_setup()
+    empty = Season.objects.create(
+        name="空白模板赛季",
+        competition_type=Season.CompetitionType.PKU_CUP,
+        year=timezone.localdate().year + 2,
+        status=Season.Status.SETUP,
+        starts_on=timezone.localdate(),
+        ends_on=timezone.localdate() + timedelta(days=30),
+    )
+    client = Client()
+    client.force_login(setup["superadmin"])
+    before = {
+        "version": empty.version,
+        "game_count": Game.objects.count(),
+        "audit_count": AdminAuditLog.objects.count(),
+    }
+
+    response = client.get(f"/api/v1/admin/seasons/{empty.id}/schedule-template")
+
+    assert response.status_code == 400
+    assert response["Content-Type"].startswith("application/json")
+    assert response.json() == {
+        "code": "NO_DIVISIONS",
+        "message": "赛季尚未配置组别。",
+    }
+    empty.refresh_from_db()
+    assert empty.version == before["version"]
+    assert Game.objects.count() == before["game_count"]
+    assert AdminAuditLog.objects.count() == before["audit_count"]
+
+
+def test_schedule_template_missing_season_is_json():
+    setup = reschedule_setup()
+    client = Client()
+    client.force_login(setup["superadmin"])
+
+    response = client.get(
+        "/api/v1/admin/seasons/00000000-0000-0000-0000-000000000000/schedule-template"
+    )
+
+    assert response.status_code == 404
+    assert response["Content-Type"].startswith("application/json")
+    assert response.json() == {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"}
+
+
+def test_schedule_draft_export_errors_are_json_and_leave_no_draft():
+    setup = reschedule_setup()
+    empty = Season.objects.create(
+        name="空白在线草稿赛季",
+        competition_type=Season.CompetitionType.PKU_CUP,
+        year=timezone.localdate().year + 3,
+        status=Season.Status.SETUP,
+        starts_on=timezone.localdate(),
+        ends_on=timezone.localdate() + timedelta(days=30),
+    )
+    client = Client()
+    client.force_login(setup["superadmin"])
+    before = {
+        "version": empty.version,
+        "draft_count": ScheduleGridDraft.objects.count(),
+        "game_count": Game.objects.count(),
+        "audit_count": AdminAuditLog.objects.count(),
+    }
+
+    invalid = client.get(
+        f"/api/v1/admin/seasons/{empty.id}/schedule-draft/export-xlsx"
+    )
+    missing = client.get(
+        "/api/v1/admin/seasons/00000000-0000-0000-0000-000000000000/"
+        "schedule-draft/export-xlsx"
+    )
+
+    assert invalid.status_code == 400
+    assert invalid["Content-Type"].startswith("application/json")
+    assert invalid.json() == {
+        "code": "NO_DEFAULT_GRID_COLUMNS",
+        "message": "当前赛季没有可用于新草稿的默认时段。",
+    }
+    assert missing.status_code == 404
+    assert missing["Content-Type"].startswith("application/json")
+    assert missing.json() == {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"}
+    empty.refresh_from_db()
+    assert empty.version == before["version"]
+    assert ScheduleGridDraft.objects.count() == before["draft_count"]
+    assert Game.objects.count() == before["game_count"]
+    assert AdminAuditLog.objects.count() == before["audit_count"]
+
+
 def test_superadmin_can_download_validate_and_confirm_schedule(tmp_path):
     setup = _setup()
     superadmin = setup["actor"]
@@ -512,6 +608,10 @@ def test_superadmin_schedule_draft_api_supports_save_xlsx_replace_export_and_val
     exported = client.get(f"{draft_path}/export-xlsx")
     assert exported.status_code == 200
     assert exported["Content-Type"].endswith("spreadsheetml.sheet")
+    assert exported["Content-Disposition"].startswith("attachment;")
+    assert exported["Cache-Control"] == "private, no-store"
+    assert exported["X-Content-Type-Options"] == "nosniff"
+    assert int(exported["Content-Length"]) == len(exported.content)
     assert len(exported.content) > 0
 
     with override_settings(MEDIA_ROOT=tmp_path):

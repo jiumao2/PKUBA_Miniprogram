@@ -50,6 +50,7 @@ def test_outbox_sends_only_queued_public_mailbox_message(monkeypatch):
     message = _message()
 
     assert Command().process_one() is True
+    assert Command().process_one() is False
 
     message.refresh_from_db()
     assert message.status == EmailOutbox.Status.SENT
@@ -57,6 +58,7 @@ def test_outbox_sends_only_queued_public_mailbox_message(monkeypatch):
     assert message.last_attempt_at is not None
     assert message.sent_at is not None
     assert sent[0]["recipient_list"] == [PUBLIC_MAILBOX]
+    assert len(sent) == 1
 
 
 def test_terminal_delivery_failure_creates_superadmin_task(monkeypatch):

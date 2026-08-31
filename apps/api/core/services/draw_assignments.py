@@ -362,7 +362,7 @@ def serialize_draw_dataset(season: Season) -> dict[str, object]:
         "season_status": season.status,
         "season_version": season.version,
         "read_only": read_only,
-        "locked_reason": "归档赛季的抽签映射只读。" if read_only else "",
+        "locked_reason": "归档赛季的签位结果录入只读。" if read_only else "",
         "divisions": division_rows,
     }
 
@@ -420,7 +420,7 @@ def _normalize_assignments(
             (UUID(str(row["slot_id"])), UUID(str(row["team_id"]))) for row in assignment_rows
         ]
     except (KeyError, TypeError, ValueError) as error:
-        raise DrawAssignmentError("抽签映射包含无效的签位或球队 ID。") from error
+        raise DrawAssignmentError("签位结果包含无效的签位或球队 ID。") from error
 
     if len(normalized_pairs) != len(slots):
         raise DrawAssignmentError("必须一次提交当前组别的全部初始签位。", "DRAW_MAPPING_INCOMPLETE")
@@ -528,7 +528,7 @@ def _analyze(
     blockers: list[dict[str, object]] = []
     if season.status == Season.Status.ARCHIVED and changes:
         blockers.append(
-            {"code": "SEASON_ARCHIVED", "message": "归档赛季的抽签映射只读。", "count": 1}
+            {"code": "SEASON_ARCHIVED", "message": "归档赛季的签位结果录入只读。", "count": 1}
         )
     if games:
         unsafe_game_ids = {
@@ -652,11 +652,11 @@ def apply_draw_assignments(
             )
             if impact_hash != preview["impact_hash"]:
                 raise DrawAssignmentError(
-                    "抽签影响已变化，请重新预览后再确认。", "IMPACT_HASH_MISMATCH"
+                    "签位结果影响已变化，请重新预览后再确认。", "IMPACT_HASH_MISMATCH"
                 )
             if preview["blockers"]:
                 raise DrawAssignmentError(
-                    "当前抽签修正存在阻塞项，不能写入。", "DRAW_CORRECTION_BLOCKED"
+                    "当前签位结果修正存在阻塞项，不能写入。", "DRAW_CORRECTION_BLOCKED"
                 )
             changed_slot_ids: list[UUID] = context["changed_slot_ids"]
             if not changed_slot_ids:
@@ -742,7 +742,7 @@ def apply_draw_assignments(
             return serialize_draw_dataset(season)
     except IntegrityError as error:
         raise DrawAssignmentError(
-            "抽签映射与并发数据发生冲突，整次保存已回滚。",
+            "签位结果与并发数据发生冲突，整次保存已回滚。",
             "DRAW_INTEGRITY_CONFLICT",
         ) from error
 
@@ -787,7 +787,7 @@ def _analyze_game_assignment(
         raise DrawAssignmentError("只有淘汰赛、半决赛、决赛和保级赛可逐场设置。")
     if not game.home_slot_id or not game.away_slot_id:
         raise DrawAssignmentError(
-            "当前比赛缺少主方或客方签位，不能通过抽签映射设置。",
+            "当前比赛缺少主方或客方签位，不能通过签位结果录入设置。",
             "GAME_SLOTS_MISSING",
         )
     if home_team_id == away_team_id:
@@ -878,7 +878,7 @@ def _analyze_game_assignment(
         )
     if season.status == Season.Status.ARCHIVED:
         blockers.append(
-            {"code": "SEASON_ARCHIVED", "message": "归档赛季的抽签映射只读。", "count": 1}
+            {"code": "SEASON_ARCHIVED", "message": "归档赛季的签位结果录入只读。", "count": 1}
         )
 
     participant_changed = (

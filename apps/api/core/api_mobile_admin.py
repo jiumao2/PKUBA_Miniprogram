@@ -467,7 +467,7 @@ def update_admin_game(
             if participant_changed and (game.home_slot_id or game.away_slot_id):
                 return _error(
                     "SLOT_ASSIGNMENT_MANAGED_BY_DRAW",
-                    "有签位的比赛只能在抽签映射页面修改参赛球队。",
+                    "有签位的比赛只能在签位结果录入页面修改参赛球队。",
                     409,
                 )
             if (payload.home_team_id is None) != (payload.away_team_id is None):

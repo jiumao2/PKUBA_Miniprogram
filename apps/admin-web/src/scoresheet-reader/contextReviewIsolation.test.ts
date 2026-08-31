@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './api';
 import { useEditorStore } from './store';
 import { makeDocument } from './test/fixtures';
-import type { DocumentChangeLogPage, ScoresheetDocument, ValidationReport } from './types';
+import type { DocumentChangeLogPage, ScoresheetDocument, ValidationReport, ValidationResult } from './types';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -65,7 +65,10 @@ beforeEach(() => {
     token: 'fixture-token', readOnly: false, reason: '', holder: null, event: 0,
   });
   vi.spyOn(api, 'changes').mockResolvedValue(emptyChanges);
-  vi.spyOn(api, 'validate').mockResolvedValue(valid);
+  vi.spyOn(api, 'validate').mockImplementation(async () => ({
+    document: structuredClone(useEditorStore.getState().document!),
+    report: valid,
+  }));
 });
 
 describe('game-context review belongs to one open record session', () => {
@@ -153,14 +156,17 @@ describe('game-context review belongs to one open record session', () => {
     'does not publish old post-review validation into a new record (%s)', async (outcome) => {
       const original = useEditorStore.getState().document!;
       vi.spyOn(api, 'reviewGameContext').mockResolvedValue({ ...original, revision: 1 });
-      const validating = deferred<ValidationReport>();
+      const validating = deferred<ValidationResult>();
       vi.mocked(api.validate).mockReturnValueOnce(validating.promise);
       const reviewing = useEditorStore.getState().reviewGameContext([]);
       await vi.waitFor(() => expect(api.validate).toHaveBeenCalledWith(original.id, 1));
       await useEditorStore.getState().openDocument(target('review-b', 7).id);
       const before = snapshot();
       const historyCalls = vi.mocked(api.changes).mock.calls.length;
-      if (outcome === 'success') validating.resolve(valid);
+      if (outcome === 'success') validating.resolve({
+        document: { ...structuredClone(original), revision: 1 },
+        report: valid,
+      });
       else validating.reject(new Error('旧 A 校验失败'));
       await reviewing;
       expect(snapshot()).toEqual(before);

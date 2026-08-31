@@ -238,10 +238,12 @@ def get_roster_import_readiness(request: HttpRequest, season_id: UUID):
 
 @router.get(
     "/seasons/{season_id}/roster-template",
-    response={200: None, 400: RosterErrorOut},
+    response={200: None, 400: RosterErrorOut, 404: RosterErrorOut, 409: RosterErrorOut},
 )
 def download_roster_template(request: HttpRequest, season_id: UUID):
-    season = get_object_or_404(Season, id=season_id)
+    season = Season.objects.filter(id=season_id).first()
+    if season is None:
+        return Status(404, {"message": "赛季不存在。", "code": "SEASON_NOT_FOUND"})
     try:
         content = generate_roster_template(season)
     except RosterManagementError as error:

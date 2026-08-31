@@ -22,6 +22,7 @@ import type {
 
 import { buildSeasonConfigurationPayload } from "./season-configuration-payload";
 import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
+import { formatAdminSeasonLabel } from "./seasonLabel";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type GridColumnDraft = SeasonConfiguration["grid_columns"][number] & { key: string };
@@ -517,7 +518,7 @@ export function ScheduleImportWorkspace({
               >
                 {seasons.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name} · {statusLabels[item.status] ?? item.status}
+                    {formatAdminSeasonLabel(item)}
                   </option>
                 ))}
               </select>

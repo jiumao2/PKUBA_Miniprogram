@@ -19,6 +19,7 @@ import type {
 } from "@pkuba/api-client";
 import { ApiError, createIdempotencyKey } from "@pkuba/api-client";
 
+import { formatAdminSeasonLabel } from "./seasonLabel";
 import "./competition-media.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -310,7 +311,7 @@ export function GameMediaWorkbench({
             <span>赛季</span>
             <select value={seasonId} onChange={(event) => onSeasonChange(event.target.value)}>
               {seasons.map((item) => (
-                <option value={item.id} key={item.id}>{item.name} · {seasonStatusLabel(item.status)}</option>
+                <option value={item.id} key={item.id}>{formatAdminSeasonLabel(item)}</option>
               ))}
             </select>
           </label>
@@ -634,10 +635,6 @@ function recognitionLabel(status: string) {
     pending: "排队中", connecting: "连接识别服务", thinking: "识别中", structuring: "整理字段",
     validating: "检查结果", succeeded: "识别完成", failed: "识别失败", interrupted: "识别中断",
   } as Record<string, string>)[status.toLocaleLowerCase()] ?? status;
-}
-
-function seasonStatusLabel(status: string) {
-  return ({ SETUP: "准备中", PUBLISHED: "已公开", ARCHIVED: "已归档" } as Record<string, string>)[status] ?? status;
 }
 
 function mediaKindLabel(kind: string) {

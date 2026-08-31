@@ -44,7 +44,7 @@ services:
       LOCAL_ARCHIVE_ROOT: /app/archives
       PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
       PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
-      PKUBA_REQUIRED_WORKERS: scoresheet,archive,expiry
+      PKUBA_REQUIRED_WORKERS: scoresheet,archive,expiry,outbox
     volumes:
       - pkuba-wsl-media:/app/media
       - pkuba-wsl-archives:/app/archives
@@ -127,6 +127,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  outbox-worker:
+    build:
+      context: ./apps/api
+      target: production
+    restart: unless-stopped
+    command: python manage.py process_outbox --loop --interval 5
+    environment:
+      DATABASE_URL: postgresql://pkuba:${PKUBA_DB_PASSWORD}@db:5432/pkuba
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: "1025"
+      PKUBA_RELEASE_TAG: ${PKUBA_RELEASE_TAG:-development}
+      PKUBA_GIT_COMMIT: ${PKUBA_GIT_COMMIT:-unknown}
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
 
   web:
     build:

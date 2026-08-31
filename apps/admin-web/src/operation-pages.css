@@ -19,6 +19,13 @@
   padding: 28px 0 0 34px;
 }
 
+.schedule-editor-readonly-fields {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .operation-heading {
   display: flex;
   align-items: flex-start;

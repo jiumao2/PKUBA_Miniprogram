@@ -16,11 +16,16 @@ function taroRequest<T>(
     Taro.request({
       url,
       method: options.method ?? "GET",
+      timeout: 30_000,
       header: { Accept: "application/json", ...options.headers },
       data: options.body,
       success: (response) =>
         resolve({ status: response.statusCode, data: response.data as T }),
-      fail: (error) => reject(new Error(error.errMsg)),
+      fail: (error) => reject(new Error(
+        error.errMsg.toLowerCase().includes("timeout")
+          ? "请求超时，请重试。"
+          : error.errMsg,
+      )),
     });
   });
 }

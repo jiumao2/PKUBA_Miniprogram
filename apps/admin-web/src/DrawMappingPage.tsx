@@ -9,6 +9,7 @@ import type {
 } from "@pkuba/api-client";
 
 import { useAdminDirtySource } from "./dirtyGuard";
+import { formatAdminSeasonLabel } from "./seasonLabel";
 import "./draw-mapping.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -29,7 +30,6 @@ interface DrawMappingPageProps {
 interface GameDraft {
   homeTeamId: string;
   awayTeamId: string;
-  dirty: boolean;
 }
 
 const statusLabels: Record<string, string> = {
@@ -54,7 +54,6 @@ function initialGameDrafts(division: DrawDivision): Record<string, GameDraft> {
         {
           homeTeamId: game.home_team_id ?? "",
           awayTeamId: game.away_team_id ?? "",
-          dirty: false,
         },
       ]),
     ),
@@ -75,7 +74,6 @@ export function DrawMappingPage({
   const [selectedPhaseKey, setSelectedPhaseKey] = useState("GROUP");
   const [groupDraft, setGroupDraft] = useState<Record<string, string>>({});
   const [gameDrafts, setGameDrafts] = useState<Record<string, GameDraft>>({});
-  const [groupDirty, setGroupDirty] = useState(false);
   const [groupPreview, setGroupPreview] = useState<DrawAssignmentPreview | null>(null);
   const [gamePreview, setGamePreview] = useState<DrawGameAssignmentPreview | null>(null);
   const [focusedGameId, setFocusedGameId] = useState("");
@@ -97,7 +95,6 @@ export function DrawMappingPage({
     setSelectedDivisionId(nextDivision?.id ?? "");
     setGroupDraft(nextDivision ? initialGroupDraft(nextDivision) : {});
     setGameDrafts(nextDivision ? initialGameDrafts(nextDivision) : {});
-    setGroupDirty(false);
     setGroupPreview(null);
     setGamePreview(null);
     setOverrideConfirmed(false);
@@ -120,7 +117,7 @@ export function DrawMappingPage({
     } catch (caught) {
       if (generation !== loadGeneration.current) return;
       setDataset(null);
-      setError(caught instanceof Error ? caught.message : "无法读取抽签映射。");
+      setError(caught instanceof Error ? caught.message : "无法读取签位结果。");
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
@@ -132,17 +129,6 @@ export function DrawMappingPage({
       loadGeneration.current += 1;
     };
   }, [seasonId]);
-
-  const anyDirty =
-    groupDirty || Object.values(gameDrafts).some((draft) => draft.dirty);
-  useAdminDirtySource(`draw-mapping:${seasonId}`, anyDirty);
-  useEffect(() => {
-    const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (anyDirty) event.preventDefault();
-    };
-    window.addEventListener("beforeunload", beforeUnload);
-    return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, [anyDirty]);
 
   const division = dataset?.divisions.find((item) => item.id === selectedDivisionId);
   const phase = division?.phases.find((item) => item.key === selectedPhaseKey);
@@ -167,6 +153,27 @@ export function DrawMappingPage({
     division && division.active_team_count !== division.slot_count,
   );
   const readOnly = dataset?.read_only ?? true;
+  const groupDirty = Boolean(division) && slots.some(
+    (slot) => (groupDraft[slot.id] ?? "") !== (slot.team_id ?? ""),
+  );
+  const gameDirty = (game: DrawPhaseGame, draft: GameDraft | undefined) => Boolean(
+    draft
+    && (
+      draft.homeTeamId !== (game.home_team_id ?? "")
+      || draft.awayTeamId !== (game.away_team_id ?? "")
+    )
+  );
+  const anyDirty = groupDirty || Boolean(
+    division?.phases.some((item) => item.games.some((game) => gameDirty(game, gameDrafts[game.id]))),
+  );
+  useAdminDirtySource(`draw-mapping:${seasonId}`, anyDirty);
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (anyDirty) event.preventDefault();
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [anyDirty]);
 
   const switchDivision = (next: DrawDivision) => {
     if (
@@ -179,7 +186,6 @@ export function DrawMappingPage({
     setSelectedPhaseKey("GROUP");
     setGroupDraft(initialGroupDraft(next));
     setGameDrafts(initialGameDrafts(next));
-    setGroupDirty(false);
     setGroupPreview(null);
     setGamePreview(null);
     setFocusedGameId("");
@@ -264,7 +270,6 @@ export function DrawMappingPage({
       [gameId]: {
         ...current[gameId],
         [side]: teamId,
-        dirty: true,
       },
     }));
     setFocusedGameId(gameId);
@@ -337,7 +342,7 @@ export function DrawMappingPage({
   if (!dataset) {
     return (
       <section className="draw-state draw-state-error">
-        {error ?? "暂无抽签数据"}
+        {error ?? "暂无签位结果"}
       </section>
     );
   }
@@ -373,7 +378,7 @@ export function DrawMappingPage({
           >
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
-                {season.name}
+                {formatAdminSeasonLabel(season)}
               </option>
             ))}
           </select>
@@ -426,7 +431,7 @@ export function DrawMappingPage({
         <div className="draw-empty">当前赛季没有可用组别。</div>
       ) : (
         <div className="draw-operation-layout">
-          <nav className="draw-stage-nav" aria-label="抽签阶段">
+          <nav className="draw-stage-nav" aria-label="签位阶段">
             <p>阶段</p>
             <button
               className={selectedPhaseKey === "GROUP" ? "active" : ""}
@@ -478,14 +483,12 @@ export function DrawMappingPage({
                     ...current,
                     [slotId]: teamId,
                   }));
-                  setGroupDirty(true);
                   setGroupPreview(null);
                   setError(null);
                 }}
                 onPreview={() => void previewGroup()}
                 onReset={() => {
                   setGroupDraft(initialGroupDraft(division));
-                  setGroupDirty(false);
                   setGroupPreview(null);
                 }}
                 onOpenTeams={onOpenTeams}
@@ -513,6 +516,7 @@ export function DrawMappingPage({
                       key={game.id}
                       game={game}
                       draft={draft}
+                      dirty={gameDirty(game, draft)}
                       teams={activeTeams}
                       phaseUsedTeams={phaseUsedTeams}
                       readOnly={readOnly}
@@ -715,6 +719,7 @@ function GroupEditor({
 function GameEditor({
   game,
   draft,
+  dirty,
   teams,
   phaseUsedTeams,
   readOnly,
@@ -726,6 +731,7 @@ function GameEditor({
 }: {
   game: DrawPhaseGame;
   draft: GameDraft;
+  dirty: boolean;
   teams: DrawDivision["teams"];
   phaseUsedTeams: Set<string>;
   readOnly: boolean;
@@ -808,14 +814,14 @@ function GameEditor({
         </label>
       </div>
       <footer className="draw-game-save">
-        <span>{draft?.dirty ? "本场有未保存修改" : "本场已保存"}</span>
+        <span>{dirty ? "本场有未保存修改" : "本场已保存"}</span>
         <button
           className="primary-action"
           type="button"
           disabled={
             readOnly ||
             busy ||
-            !draft?.dirty ||
+            !dirty ||
             !draft.homeTeamId ||
             !draft.awayTeamId
           }

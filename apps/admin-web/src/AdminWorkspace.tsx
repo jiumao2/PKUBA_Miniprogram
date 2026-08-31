@@ -38,7 +38,7 @@ export const navigation = [
   { id: "teams", label: "球队与名单", available: true },
   { id: "schedule-import", label: "赛程编排", available: true },
   { id: "schedule-edit", label: "赛程编辑", available: true },
-  { id: "draw", label: "抽签映射", available: true },
+  { id: "draw", label: "签位结果录入", available: true },
   { id: "reschedule", label: "调赛处理", available: true },
   { id: "media", label: "比赛资料", available: true },
   { id: "admins", label: "管理员账户", available: true },
@@ -65,6 +65,10 @@ export function selectAdminSeason(seasons: AdminSeason[], preferredSeasonId = ""
   return seasons.find((item) => item.id === preferredSeasonId)
     ?? seasons.find((item) => item.status === "SETUP")
     ?? seasons[0];
+}
+
+export function selectRegistrationSeason(seasons: AdminSeason[]) {
+  return seasons.find((item) => item.status === "PUBLISHED") ?? null;
 }
 
 const superadminPages: PageId[] = [
@@ -242,6 +246,7 @@ export function AdminWorkspace() {
   const selectedAdminSeason = adminSeasons.find(
     (item) => item.id === selectedAdminSeasonId,
   );
+  const registrationSeason = selectRegistrationSeason(adminSeasons);
 
   if (account === undefined) {
     return <StatePanel title="正在检查登录状态" detail="请稍候。" />;
@@ -320,7 +325,7 @@ export function AdminWorkspace() {
                 : page === "schedule-edit"
                   ? "赛程编辑"
                 : page === "draw"
-                  ? "抽签映射"
+                  ? "签位结果录入"
                 : page === "media"
                     ? "比赛资料"
                 : page === "reschedule"
@@ -437,7 +442,7 @@ export function AdminWorkspace() {
           <AdminAccountsPage
             account={account}
             client={adminClient}
-            season={selectedAdminSeason ?? null}
+            season={registrationSeason}
           />
         )}
         {!loading && !error && page === "archives" && account.role === "SUPERADMIN" && (

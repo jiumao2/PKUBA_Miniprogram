@@ -681,19 +681,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const validationDocument = document;
     const validationRevision = get().serverRevision;
     try {
-      const report = await api.validate(document.id, validationRevision);
+      const result = await api.validate(document.id, validationRevision);
       const current = get();
       if (generation !== documentSessionGeneration || current.document?.id !== documentId) return null;
       if (
         current.document !== validationDocument ||
         current.serverRevision !== validationRevision ||
-        current.dirty
+        current.dirty ||
+        result.document.id !== documentId ||
+        result.document.revision !== validationRevision
       ) {
         set({ error: '校验期间草稿发生了变化，旧校验结果已丢弃。' });
         return null;
       }
-      set({ validation: report });
-      return report;
+      set({
+        document: result.document,
+        serverRevision: result.document.revision,
+        validation: result.report,
+      });
+      return result.report;
     } catch (error) {
       if (generation !== documentSessionGeneration || get().document !== validationDocument
         || get().serverRevision !== validationRevision) return null;

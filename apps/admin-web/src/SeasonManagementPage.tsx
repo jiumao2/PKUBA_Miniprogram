@@ -11,6 +11,7 @@ import type {
 import { CapacityCalendar } from "./CapacityCalendar";
 import { useAdminDirtySource } from "./dirtyGuard";
 import { buildSeasonConfigurationPayload } from "./season-configuration-payload";
+import { formatAdminSeasonLabel } from "./seasonLabel";
 import { SeasonLifecyclePanel } from "./SeasonLifecyclePanel";
 import "./season-management.css";
 
@@ -417,7 +418,7 @@ export function SeasonManagementPage({
       <label>管理赛季<select value={seasonId} onChange={(event) => {
         if (dirty && !window.confirm("当前修改尚未保存，确认切换赛季？")) return;
         onSeasonChange(event.target.value);
-      }}>{seasons.map((season) => <option key={season.id} value={season.id}>{season.year} · {season.name} · {statusLabels[season.status] ?? season.status}</option>)}</select></label>
+      }}>{seasons.map((season) => <option key={season.id} value={season.id}>{formatAdminSeasonLabel(season)}</option>)}</select></label>
       <div><button className="secondary-action" type="button" onClick={() => void loadConfiguration()}>重新读取</button><button className="primary-action" type="button" onClick={() => setShowCreate(true)}>新建赛季</button></div>
     </div>
 
@@ -663,7 +664,7 @@ function CreateSeasonDialog({ client, seasons, onClose, onCreated }: {
         <label>赛季年份<input min="1" step="1" required type="number" value={form.year} onChange={(event) => setForm({ ...form, year: Number(event.target.value) })} /></label>
         <label>开始日期<input required type="date" value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} /></label>
         <label>结束日期<input required type="date" value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} /></label>
-        <label className="wide">配置来源<select aria-label="配置来源" value={form.template_season_id ?? ""} onChange={(event) => setForm({ ...form, template_season_id: event.target.value || null })}><option value="">系统默认配置（推荐）</option>{seasons.map((season) => <option key={season.id} value={season.id}>明确沿用 {season.year} · {season.name} 的组别、场地、签位与容量</option>)}</select><small>默认从当前代码生成组别、三个标准场地、八个标准时段和容量；只有主动选择时才沿用历史配置。比赛时段始终使用当前系统默认值。</small></label>
+        <label className="wide">配置来源<select aria-label="配置来源" value={form.template_season_id ?? ""} onChange={(event) => setForm({ ...form, template_season_id: event.target.value || null })}><option value="">系统默认配置（推荐）</option>{seasons.map((season) => <option key={season.id} value={season.id}>明确沿用 {formatAdminSeasonLabel(season)} 的组别、场地、签位与容量</option>)}</select><small>默认从当前代码生成组别、三个标准场地、八个标准时段和容量；只有主动选择时才沿用历史配置。比赛时段始终使用当前系统默认值。</small></label>
         {error && <p className="dialog-error wide" role="alert">{error}</p>}
         <div className="dialog-actions wide"><button className="secondary-action" type="button" onClick={onClose}>取消</button><button className="primary-action" disabled={busy} type="submit">{busy ? "正在创建…" : "创建赛季"}</button></div>
       </form>

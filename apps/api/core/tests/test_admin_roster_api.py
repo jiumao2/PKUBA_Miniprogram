@@ -6,7 +6,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
 
-from core.models import Team
+from core.models import AdminAuditLog, Season, Team
 from core.tests.test_admin_api import login_admin
 from core.tests.test_roster_management import _setup, _workbook
 
@@ -81,3 +81,50 @@ def test_roster_routes_require_superadmin_session():
     )
     assert response.status_code == 401
 
+
+def test_roster_template_readiness_error_is_json_and_read_only():
+    setup = _setup()
+    empty = Season.objects.create(
+        name="空白名单赛季",
+        competition_type=Season.CompetitionType.PKU_CUP,
+        year=setup["season"].year + 2,
+        status=Season.Status.SETUP,
+        starts_on=setup["season"].starts_on,
+        ends_on=setup["season"].ends_on,
+    )
+    client = Client()
+    client.force_login(setup["actor"])
+    before = {
+        "version": empty.version,
+        "team_count": Team.objects.count(),
+        "audit_count": AdminAuditLog.objects.count(),
+    }
+
+    response = client.get(
+        f"/api/v1/admin/roster/seasons/{empty.id}/roster-template"
+    )
+
+    assert response.status_code == 400
+    assert response["Content-Type"].startswith("application/json")
+    assert response.json() == {
+        "message": "请先在“赛季与组别”中创建至少一个组别。",
+        "code": "NO_DIVISIONS",
+    }
+    empty.refresh_from_db()
+    assert empty.version == before["version"]
+    assert Team.objects.count() == before["team_count"]
+    assert AdminAuditLog.objects.count() == before["audit_count"]
+
+
+def test_roster_template_missing_season_is_json():
+    setup = _setup()
+    client = Client()
+    client.force_login(setup["actor"])
+
+    response = client.get(
+        "/api/v1/admin/roster/seasons/00000000-0000-0000-0000-000000000000/roster-template"
+    )
+
+    assert response.status_code == 404
+    assert response["Content-Type"].startswith("application/json")
+    assert response.json() == {"message": "赛季不存在。", "code": "SEASON_NOT_FOUND"}

@@ -79,6 +79,11 @@ export interface ValidationReport {
   game_context?: ScoresheetGameContextReview;
 }
 
+export interface ValidationResult {
+  document: ScoresheetDocument;
+  report: ValidationReport;
+}
+
 export type ChangeLogAction =
   | 'human_edit'
   | 'undo'

@@ -131,6 +131,28 @@ const preview: DrawAssignmentPreview = {
   blockers: [],
 };
 
+const assignedDataset: DrawAssignmentDataset = {
+  ...dataset,
+  season_version: 5,
+  divisions: dataset.divisions.map((division) => ({
+    ...division,
+    assigned_count: 4,
+    complete: true,
+    groups: division.groups.map((group) => ({
+      ...group,
+      slots: group.slots.map((slot) => {
+        const index = slotIds.indexOf(slot.id);
+        return {
+          ...slot,
+          team_id: teamIds[index],
+          team_name: `球队${index + 1}`,
+          team_active: true,
+        };
+      }),
+    })),
+  })),
+};
+
 const gamePreview: DrawGameAssignmentPreview = {
   season_id: season.id,
   season_version: 4,
@@ -312,12 +334,66 @@ describe("DrawMappingPage", () => {
     ).toBe(true);
   });
 
+  it("clears group dirty state when a slot is restored to its server value", async () => {
+    const user = userEvent.setup();
+    renderPage(clientWith());
+
+    const first = await screen.findByRole("combobox", { name: "M-A-1 对应球队" });
+    expect(screen.getByText("已与服务器同步")).toBeVisible();
+    await user.selectOptions(first, teamIds[0]);
+    expect(screen.getByText("有未保存修改")).toBeVisible();
+    await user.selectOptions(first, "");
+    expect(screen.getByText("已与服务器同步")).toBeVisible();
+    expect(screen.getByRole("button", { name: "撤销" })).toBeDisabled();
+  });
+
+  it("uses a successful group save as the next dirty-state baseline", async () => {
+    const user = userEvent.setup();
+    const client = clientWith(dataset, {
+      updateDrawAssignments: vi.fn().mockResolvedValue(assignedDataset),
+    });
+    renderPage(client);
+
+    for (const index of slotIds.keys()) {
+      await user.selectOptions(
+        await screen.findByRole("combobox", { name: `${index < 2 ? "M-A" : "M-B"}-${index < 2 ? index + 1 : index - 1} 对应球队` }),
+        teamIds[index],
+      );
+    }
+    await user.click(screen.getByRole("button", { name: "预览整组影响" }));
+    await user.click(await screen.findByRole("button", { name: "确认整组保存" }));
+    expect(await screen.findByText("已与服务器同步")).toBeVisible();
+
+    const first = screen.getByRole("combobox", { name: "M-A-1 对应球队" });
+    await user.selectOptions(first, "");
+    expect(screen.getByText("有未保存修改")).toBeVisible();
+    await user.selectOptions(first, teamIds[0]);
+    expect(screen.getByText("已与服务器同步")).toBeVisible();
+  });
+
+  it("derives each game dirty state from the current server baseline", async () => {
+    const user = userEvent.setup();
+    renderPage(clientWith(knockoutDataset), knockoutDataset);
+
+    await user.click(await screen.findByRole("button", { name: /淘汰赛第 2 轮/ }));
+    const home = screen.getByRole("combobox", { name: "KO2-1 主方球队" });
+    const away = screen.getByRole("combobox", { name: "KO2-1 客方球队" });
+    await user.selectOptions(home, teamIds[2]);
+    await user.selectOptions(away, teamIds[1]);
+    expect(screen.getByText("本场有未保存修改")).toBeVisible();
+    await user.selectOptions(home, "");
+    await user.selectOptions(away, "");
+    expect(screen.getByText("本场已保存")).toBeVisible();
+    await user.selectOptions(home, teamIds[2]);
+    expect(screen.getByText("本场有未保存修改")).toBeVisible();
+  });
+
   it("keeps archived seasons read-only", async () => {
     const archived = {
       ...dataset,
       season_status: "ARCHIVED",
       read_only: true,
-      locked_reason: "归档赛季的抽签映射只读。",
+      locked_reason: "归档赛季的签位结果录入只读。",
     } as DrawAssignmentDataset;
     renderPage(clientWith(archived), archived);
 

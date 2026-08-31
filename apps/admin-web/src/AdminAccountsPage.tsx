@@ -8,6 +8,7 @@ import {
 } from "@pkuba/api-client";
 
 import { useAdminDirtySource } from "./dirtyGuard";
+import { formatAdminSeasonLabel } from "./seasonLabel";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type PendingAction =
@@ -104,7 +105,7 @@ export function AdminAccountsPage({
   };
 
   const rotateInvite = async () => {
-    if (!season || !invite || season.status === "ARCHIVED") return;
+    if (!season || !invite || season.status !== "PUBLISHED") return;
     if (inviteCode.length < 8) {
       setError("邀请码至少需要 8 个字符。");
       return;
@@ -153,22 +154,30 @@ export function AdminAccountsPage({
         </button>
       </section>
 
+      {!season && (
+        <section className="panel invite-panel">
+          <div className="invite-copy">
+            <p className="eyebrow">当前公开赛季</p>
+            <h2>管理员邀请码暂不可用</h2>
+            <p>当前没有已公开赛季。邀请码只用于当前已公开赛季的管理员注册。</p>
+          </div>
+          <button className="primary-action" disabled type="button">更新邀请码</button>
+        </section>
+      )}
+
       {season && invite && (
         <section className="panel invite-panel">
           <div className="invite-copy">
             <p className="eyebrow">赛季元信息</p>
             <h2>管理员邀请码</h2>
             <p>
-              当前赛季：{season.name}。系统只保存邀请码摘要；更新后旧邀请码立即失效，已注册管理员不受影响。
+              注册赛季：{formatAdminSeasonLabel(season)}。系统只保存邀请码摘要；更新后旧邀请码立即失效，已注册管理员不受影响。
             </p>
             <span className="subtle">
               {invite.updated_at
                 ? `最近更新：${new Date(invite.updated_at).toLocaleString("zh-CN")}`
                 : "尚未设置"}
             </span>
-            {season.status === "ARCHIVED" && (
-              <span className="subtle">已归档赛季只读，不能轮换邀请码。</span>
-            )}
           </div>
           <div className="invite-form">
             <label>
@@ -181,7 +190,7 @@ export function AdminAccountsPage({
             </label>
             <button
               className="primary-action"
-              disabled={busy || season.status === "ARCHIVED"}
+              disabled={busy || season.status !== "PUBLISHED"}
               onClick={() => void rotateInvite()}
               type="button"
             >

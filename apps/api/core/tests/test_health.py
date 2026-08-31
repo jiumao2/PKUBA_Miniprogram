@@ -119,6 +119,33 @@ def test_readiness_requires_fresh_worker_heartbeats(tmp_path):
     assert healthy.json()["workers"] == {"scoresheet": "ok"}
 
 
+def test_readiness_tracks_the_local_outbox_worker(tmp_path):
+    media = tmp_path / "media"
+    archives = tmp_path / "archives"
+    media.mkdir()
+    archives.mkdir()
+
+    with override_settings(
+        MEDIA_ROOT=media,
+        ARCHIVE_ROOT=archives,
+        PKUBA_REQUIRED_WORKERS=("outbox",),
+        PKUBA_WORKER_HEARTBEAT_MAX_AGE=150,
+    ):
+        missing = Client().get("/api/v1/health/ready")
+        WorkerHeartbeat.objects.create(
+            kind=WorkerHeartbeat.Kind.OUTBOX,
+            instance_id="test-outbox-worker",
+            release_tag="development",
+            git_commit="unknown",
+        )
+        healthy = Client().get("/api/v1/health/ready")
+
+    assert missing.status_code == 503
+    assert missing.json()["workers"] == {"outbox": "missing"}
+    assert healthy.status_code == 200
+    assert healthy.json()["workers"] == {"outbox": "ok"}
+
+
 def test_readiness_rejects_worker_from_another_release(tmp_path, monkeypatch):
     media = tmp_path / "media"
     archives = tmp_path / "archives"
