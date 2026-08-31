@@ -1,5 +1,11 @@
 # PKUBA 项目宪法
 
+## 生产级默认
+- `main` 是生产发布来源；代码、配置、迁移、文档、测试和 Git 操作一律按可发布、可审计、可回滚标准执行，不接受“仅测试可用”的产品实现。
+- 发布级标准不等于生产操作授权。连接生产、修改仓库门禁、创建或删除标签、发布镜像、切换域名、迁移或恢复生产数据，仍须取得当前任务对精确目标和动作的明确授权。
+- `README.md` 是公开项目首页，只写稳定的产品定位、能力、架构、入口和许可证；日期化进度、QA 数据、私有路径、账号、阻断状态和临时操作不得进入 README。
+- 本地演示、故障注入和合成数据必须与生产配置、数据库、媒体和凭据隔离，并在代码和文档中明确标注仅限本地。
+
 ## 权威与规则
 - 本仓库是新版系统唯一实现；旧小程序与 `ScoresheetReader` 只读。
 - Django/PostgreSQL 是业务权威；客户端只呈现状态并提交意图。
@@ -34,7 +40,18 @@
 - 测试数据、生产系统、付费服务、发布标签和域名切换必须遵守当前任务授权边界。
 - 提交前检查敏感内容、迁移状态、生成文件、文档和未跟踪文件范围。
 
+## Agent 接手与交付
+- 接手任务先完整阅读本文件、`docs/MAINTAINER_GUIDE.md`、`WORKFLOW.md` 及受影响领域的权威文档，再检查分支、`HEAD`、`origin/main`、工作区和运行制品；不得从任务标题或旧对话摘要猜测当前状态。
+- 开始修改前冻结基线 SHA、任务范围、明确不做事项和文件 allowlist。若 `HEAD` 移动或出现他人产品改动，停止写入并重新核对，不得 reset、clean 或覆盖。
+- 实现者只修改批准范围并提供聚焦测试、相邻流程、完整门槛、已知边界和未验证事项。涉及 UI 必须使用真实浏览器或微信开发者工具；涉及数据库、并发、迁移和恢复必须使用隔离 PostgreSQL 或成套恢复副本。
+- 候选交接必须包含 base/HEAD、精确 allowlist、逐文件模式/大小/SHA-256、聚合指纹、实际测试输出、运行制品身份和剩余边界。任何候选变化都会使旧指纹和旧验收失效。
+- 独立测试任务拥有并维护 `docs/INDEPENDENT_TEST_PLAN_AND_RESULTS.md`；实现和提交任务不得读取后顺手改写、暂存或提交该报告，也不得用自己的测试替代独立结论。
+- 对纳入独立验收的产品候选，只有收到独立测试对冻结候选的 `ACCEPTED_FOR_COMMIT`，提交任务才可按批准 allowlist 暂存。纯文档等明确由用户授权直接提交的任务仍须冻结 allowlist 并完成同等 staged/远端核对。提交前检查 staged diff、文件模式、空白错误、敏感内容和未跟踪文件；推送后核对本地 `HEAD`、`origin/main`、GitHub `main`、最终 tree/哈希及全部 required CI。
+- 详细接手、验证、交接和提交命令以 `docs/MAINTAINER_GUIDE.md` 与 `WORKFLOW.md` 为准；本文件只保留不可违反的仓库级约束。
+
 ## 权威文档索引
+- 维护者与 Agent 接手、验证和交接：`docs/MAINTAINER_GUIDE.md`
+- 本地环境、微信开发者工具与检查命令：`docs/DEVELOPMENT.md`
 - 团队协作、评审与发布流程：`WORKFLOW.md`
 - 总体计划与里程碑：`Plan.md`
 - 现有系统审计与验收基线：`PKUBA_现有小程序功能与逻辑规格.md`
@@ -42,4 +59,5 @@
 - 调赛状态机与兼容：`docs/RESCHEDULING.md`
 - 赛程导入：`docs/SCHEDULE_IMPORT_V3.md`
 - 记录表：`docs/SCORESHEETS.md`
+- API 幂等、分页、超时与错误：`docs/API_RELIABILITY.md`
 - 备份归档与恢复：`docs/BACKUP_AND_ARCHIVE.md`、`docs/DEPLOYMENT.md`

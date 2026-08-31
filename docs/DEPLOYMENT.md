@@ -1,14 +1,17 @@
-# PKUBA 同机蓝绿部署方案（测试期草案，尚未启用）
+# PKUBA 生产部署、回滚与恢复
 
-项目当前仍处于测试阶段，独立复测结论为 **NO-GO**。现有服务器上的
-`pkuba-ip-test` 是单 project 测试栈，不是本方案已完成的生产基线。GitHub
+本文是 PKUBA 生产发布的唯一技术规范。每次发布必须先满足 `WORKFLOW.md` 的仓库门禁、
+独立验收、候选授权和恢复演练要求；缺少任何前置条件时立即停止，不得用人工跳步、测试
+环境成功或 readiness 代替生产验收。
+
+现有 `pkuba-ip-test` 单 project 只作为隔离测试栈，不得直接视为蓝绿生产基线。首次
+生产接入必须先完成受审计的基线转换，并核对 GitHub
 `PRODUCTION_DEPLOYMENTS_ENABLED`、服务器 `PKUBA_PRODUCTION_AUTOMATION_ARMED`
-和版本兼容合同必须继续保持关闭；本页目前只用于代码审查和隔离演练，禁止据此连接
-服务器执行切换。
+和版本 capability 合同全部绑定本次批准的发布。
 
-最终拓扑为：稳定 `pkuba-gateway` Caddy、稳定 `pkuba-data` PostgreSQL、独立
-`pkuba-blue`/`pkuba-green` 应用 project。现有 PostgreSQL、私有媒体和归档卷以
-external volume 复用，不复制到应用栈。管理站和 API 最终分别使用
+生产拓扑使用稳定 `pkuba-gateway` Caddy、稳定 `pkuba-data` PostgreSQL、独立
+`pkuba-blue`/`pkuba-green` 应用 project。PostgreSQL、私有媒体和归档卷以
+external volume 复用，不复制到应用栈。管理站和 API 分别使用
 `https://admin.pkuba.cn` 与 `https://api.pkuba.cn`。
 
 ```text
@@ -42,7 +45,7 @@ API / Web 镜像（tag + commit tag + 不可变 digest）
 - 旧应用栈切流后保留 24 小时且 worker 保持停止。发布时把已经验证的回切来源 capability 写入保留栈状态；回切命令必须同时验证 tag、commit、worktree、镜像 revision、release contract、期限和该持久化合同。capability 名不要求永远相等，但必须与本次发布实际批准的回切方向一致。
 - 部署和 application-only 回切在接触运行栈前建立 root-only 的持久事务目录，保存原状态、候选状态、SHA-256、阶段和恢复方向，并逐文件 `fsync` 后才发布日志。`PREPARED`、`RUNTIME_SWITCHED` 或 `STATE_COMMITTING` 中断一律恢复原应用；只有已经持久写入 `NEW_COMMITTED` 的事务才继续完成候选状态。维护模式覆盖整个多文件提交、Caddy reload、API/Web 稳定入口 tag/commit 探测和权威状态复核。
 - 专用启动恢复服务会在 Docker 就绪后、任何新部署或成对恢复前检查未完成事务。状态写入、旧 upstream reload、稳定入口探测或事务清理任一步失败时保持维护和诊断日志，不把半完成状态宣称为成功。应用恢复审计必须固定写明 `database_restored=0`、`media_restored=0`、`archive_restored=0`。
-- nullable schema 不等于业务语义兼容。`bf444ece` 只理解旧 `request_type`，不能处理同周手册通道，也不能在该能力激活后继续接流或作为普通回切点。首次启用应先发布 bridge，在同一 writer fence 内停止旧 API/worker、迁移并审计 0039，再运行 `python manage.py reschedule_route_activation_preflight --wait-seconds=86400 --json` 排空全部非终态申请与旧幂等窗口，最后才开放入口并切流。当前尚未上线，baseline conversion 自动脚本尚未实现；必须先完成等价的隔离演练，不能把独立预检命令称为已接入发布流程。
+- nullable schema 不等于业务语义兼容。`bf444ece` 只理解旧 `request_type`，不能处理同周手册通道，也不能在该能力激活后继续接流或作为普通回切点。首次启用应先发布 bridge，在同一 writer fence 内停止旧 API/worker、迁移并审计 0039，再运行 `python manage.py reschedule_route_activation_preflight --wait-seconds=86400 --json` 排空全部非终态申请与旧幂等窗口，最后才开放入口并切流。在受审计的 baseline conversion 自动流程及等价隔离演练完成前，必须保持该能力关闭；独立预检命令不能冒充已接入发布流程。
 - 生产数据与私有媒体的灾难恢复仍需独立异地备份；部署一致点不能替代跨磁盘、跨主机备份。
 - 邮件 worker 默认不启动。所有邮件只发篮协公邮，启用前需单独完成授权码轮换与
   Mailpit 验收。
@@ -50,7 +53,9 @@ API / Web 镜像（tag + commit tag + 不可变 digest）
 
 ## GitHub 自动发布
 
-当前仅允许运行 CI、构建镜像和小程序 artifact；部署 job 受仓库变量显式关闭，服务器端即使被误调用也会因武装开关和兼容合同为 0 而失败。不得为消除 skipped job 而提前开启这些开关。
+部署 job 只有在仓库变量、`production` Environment、服务器武装开关和 capability 合同
+全部匹配本次批准发布时才能运行。前置条件未满足时应保持 fail-closed；不得为了消除
+skipped job 而提前开启开关。
 
 `.github/workflows/release.yml` 是唯一正常发版入口：
 
@@ -152,7 +157,7 @@ docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' \
   --current-web-image ghcr.io/jiumao2/pkuba-web@sha256:WEB_DIGEST
 ```
 
-该脚本只检查现有卷、创建受限账号、安装 ForcedCommand、建立只读仓库和写入“尚未转换”的状态，不重启现有容器，也不会把当前单 project 变成蓝绿基线。执行后自动化仍强制关闭；必须先由后续独立的基线转换脚本和演练把 active slot 建立为 blue 或 green，当前版本尚未提供可批准执行的服务器转换流程。
+该脚本只检查现有卷、创建受限账号、安装 ForcedCommand、建立只读仓库和写入“尚未转换”的状态，不重启现有容器，也不会把当前单 project 变成蓝绿基线。执行后自动化仍须保持关闭；必须通过单独评审的基线转换脚本和演练把 active slot 建立为 blue 或 green。没有已批准、可回滚且经过隔离验证的服务器转换流程时，生产接入必须停止。
 
 ### 5. 配置 GitHub production Environment
 
@@ -171,11 +176,12 @@ known-hosts 使用非 22 端口时，主机部分必须写成 `[host]:port`。�
 
 ### 6. 首次演练
 
-只在本机或隔离服务器 Compose project 中演练，不连接现有测试服务器：候选 readiness 失败不切流、切流后 5xx 只回切应用、worker 卡死、数据库不可达、媒体只读、迁移不兼容，以及数据库/媒体同时损坏时按同一 manifest 成对恢复。每次都要保留日志证明普通故障没有恢复数据。全部通过并经用户明确批准进入上线阶段后，才设计并执行现有单 project 的一次性基线转换。
+只在本机或隔离服务器 Compose project 中演练，不连接生产：候选 readiness 失败不切流、切流后 5xx 只回切应用、worker 卡死、数据库不可达、媒体只读、迁移不兼容，以及数据库/媒体同时损坏时按同一 manifest 成对恢复。每次都要保留日志证明普通故障没有恢复数据。全部通过并取得用户对精确服务器和转换动作的明确批准后，才执行单 project 到蓝绿拓扑的一次性基线转换。
 
-## 日常发布（尚未开放）
+## 日常发布
 
-测试阶段不得创建用于部署的生产标签。未来只有独立报告改为 GO、基线转换与失败演练完成、用户明确要求上线后，才确认所有修改已提交并推送到 `main`，然后在仓库根目录运行：
+只有独立验收允许进入候选发布、基线转换与失败演练完成、用户或授权发布负责人明确批准
+本次版本，且所有修改已提交并推送到受保护 `main` 后，才可在干净仓库根目录运行：
 
 ```powershell
 ./scripts/release.ps1 -Version v0.3.0

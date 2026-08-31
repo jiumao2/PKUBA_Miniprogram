@@ -1,215 +1,129 @@
-# PKUBA
+<p align="center">
+  <img src="packages/design-tokens/src/assets/pkuba-logo.png" width="180" alt="北大篮协 PKUBA Logo">
+</p>
 
-北大篮协赛事小程序重写项目。Django/PostgreSQL 是唯一权威数据源，微信小程序和内部管理网站共享 `/api/v1`。
+<h1 align="center">PKUBA</h1>
 
-## 目录
+<p align="center">
+  <strong>北大篮协赛事管理系统</strong><br>
+  从赛季配置到赛果发布，一套系统完成赛事组织、协作与公开。
+</p>
 
-- `apps/api`：Django + Django Ninja。
-- `apps/admin-web`：React 管理网站。
-- `apps/miniapp`：Taro 微信小程序。
-- `packages/api-client`：OpenAPI 生成的 TypeScript 类型与客户端。
-- `packages/scoresheet-domain`：网页与小程序共享的记录表类型、纸面得分格和坐标规则。
-- `packages/design-tokens`：共享品牌变量。
-- `Plan.md`：目标架构、业务决定和里程碑。
-- `WORKFLOW.md`：2–4 人团队从需求、分支、PR、验证到发布与回滚的权威工作流。
-- `docs/USER_GUIDE.md`：公众、领队、管理员的完整使用说明，以及身份失效、字段错误、页面显示、期限、权限、重试和归档等规则。
-- `docs/RESCHEDULING.md`：调赛日期关系、处理通道、审核分类、迁移兼容与激活门禁。
-- `docs/DEPLOYMENT.md`：GitHub 一键生产发布、服务器首次接入、自动回滚和灾难恢复边界。
-- `docs/BACKUP_AND_ARCHIVE.md`：本地私有存储、三类导出、照片清理和隔离恢复。
+<p align="center">
+  <a href="docs/USER_GUIDE.md">使用说明</a> ·
+  <a href="docs/DEVELOPMENT.md">开发与验证</a> ·
+  <a href="WORKFLOW.md">参与贡献</a> ·
+  <a href="LICENSE">GPL-3.0</a>
+</p>
 
-## Ubuntu WSL 本地验收
+## 一套系统，贯穿整场赛事
 
-正式的本地验收基线是 Windows 上的 `Ubuntu-24.04` WSL。要求：管理员 PowerShell、WSL2、Node.js 24、npm 11 和微信开发者工具；脚本会在 Ubuntu 内安装 Docker Engine、Compose 和 Buildx。
+PKUBA 是面向高校篮球赛事的开源管理平台。系统以 Django/PostgreSQL 为权威数据源，
+通过微信小程序连接公众、参赛者与领队，通过网页后台支持赛事管理员，将分散的赛务工作
+组织成一条清晰、可靠、可追溯的数据链路。
 
-首次启动前复制本地环境文件：
+系统以北大篮协赛事流程为核心，面向高校篮球协会、校内联赛及长期运营的业余赛事开放
+源代码与自部署能力。
 
-```powershell
-Copy-Item .env.example .env
+<p align="center">
+  <strong>赛季与名单 → 赛程与签位 → 调赛与资料 → 记录表复核 → 赛果与统计 → 备份与归档</strong>
+</p>
+
+## 核心特性 / Highlights
+
+- **赛事全生命周期**：统一管理赛季、组别、球队名单、场地容量、在线排期、XLSX 导入、
+  签位结果、调赛、比赛资料、赛果和归档。
+- **一体化双端体验**：微信小程序提供赛程、淘汰赛、排名、数据、身份与领队工作台；
+  React 管理后台承载完整赛务操作。
+- **纸质记录表数字化**：支持图片上传、AI 辅助识别、网页与小程序人工复核、规则校验、
+  不可变 publication 和公开统计。
+- **服务端权威**：权限、状态迁移、版本、容量、比分、排名和派生数据均由服务端重新校验
+  与计算，客户端只呈现状态并提交意图。
+- **可靠且可审计**：关键命令使用事务、稳定 ID、版本检查和幂等键，失败不留下部分写入，
+  publication、revision 与审计记录持续保留。
+- **隐私与赛季隔离**：赛季专属数据在数据库层隔离；身份、记录表与私有媒体按角色授权，
+  公开接口只返回允许展示的内容。
+- **共享契约与设计系统**：OpenAPI 生成 TypeScript 客户端，双端复用记录表领域模型、
+  设计变量和品牌资源。
+- **可恢复运维**：提供一致性备份、私有媒体管理、赛季归档、发布回滚与隔离恢复流程。
+
+## 系统如何协作
+
+```mermaid
+flowchart LR
+    Public["公众 / 参赛者 / 领队"] --> Mini["微信小程序"]
+    Admin["赛事管理员"] --> Web["管理后台"]
+    Mini --> API["Django API"]
+    Web --> API
+    API --> DB[(PostgreSQL)]
+    API --> Jobs["识别 / 邮件 / 归档任务"]
+    Jobs --> DB
 ```
 
-只在本机 `.env` 中填写 `WECHAT_APP_ID=wxc9104b1a61511ee3` 和 `WECHAT_APP_SECRET=...`。AppSecret 只传给 WSL 中的 Django 容器用于微信 `code2session`，不得写入小程序、命令行、截图、日志或 Git。
+小程序使用 Taro、React 与 TypeScript；管理后台使用 React、Vite 与 TypeScript；
+服务端使用 Django、Django Ninja 与 Python；运行环境由 Docker Compose、Gunicorn、
+Caddy 和 GitHub Actions 组成。
 
-在管理员 PowerShell 中运行：
+## 仓库结构
+
+```text
+apps/
+  api/                Django API、业务服务与异步任务
+  admin-web/          React 管理后台
+  miniapp/            Taro 微信小程序
+packages/
+  api-client/         OpenAPI 生成客户端
+  design-tokens/      品牌变量与共用 Logo
+  scoresheet-domain/  双端共用的记录表领域模型
+docs/                 使用、开发、协议、部署与恢复文档
+infra/                Compose 与运行环境配置
+scripts/              初始化、检查、发布与运维脚本
+```
+
+## 快速开始
+
+正式本地开发与验收环境为 Windows + Ubuntu 24.04 WSL2。准备 Node.js 24、npm 11、
+WSL2 和微信开发者工具后：
 
 ```powershell
+git clone https://github.com/jiumao2/PKUBA_Miniprogram.git
+Set-Location PKUBA_Miniprogram
+Copy-Item .env.example .env
 ./scripts/deploy-wsl.ps1
 ```
 
-脚本在 Ubuntu 内构建并启动 PostgreSQL 17、Django/Gunicorn、Caddy、Mailpit、记录表识别 worker 和归档 worker，执行迁移与 readiness 检查，建立固定的 Windows `localhost` 端口转发，并构建微信小程序。它不会导入旧数据、生成演示赛季、创建管理员或重置密码。重复部署时可加 `-SkipInstall` 跳过 Ubuntu 包检查。
+请先在本机 `.env` 中填写自己的配置，任何密钥都不得提交到 Git。Windows、macOS、
+微信开发者工具、测试与静态资源步骤见[本地开发与验证](docs/DEVELOPMENT.md)。
 
-只有新建的空本地环境才需要显式初始化；下列命令与部署完全分离，必须输入固定确认词：
+## 文档导航
 
-```powershell
-./scripts/initialize-wsl.ps1 -Mode Demo -Confirmation INITIALIZE_LOCAL_DATA
-./scripts/initialize-wsl.ps1 -Mode Legacy2026 -Confirmation INITIALIZE_LOCAL_DATA `
-  -LegacySource 'C:\Users\jiumao\Desktop\北大篮协小程序\Backup'
-./scripts/create-admin-wsl.ps1 -Username local-admin
-```
+- [小程序与管理后台使用说明](docs/USER_GUIDE.md)
+- [本地开发与验证](docs/DEVELOPMENT.md)
+- [维护者与 Agent 接手指南](docs/MAINTAINER_GUIDE.md)
+- [赛程编排与 XLSX V3.3](docs/SCHEDULE_IMPORT_V3.md)
+- [调赛状态机与兼容规范](docs/RESCHEDULING.md)
+- [记录表识别、跨端复核与统计发布](docs/SCORESHEETS.md)
+- [API 可靠性](docs/API_RELIABILITY.md)
+- [备份与赛季归档](docs/BACKUP_AND_ARCHIVE.md)
+- [生产部署、回滚与恢复](docs/DEPLOYMENT.md)
+- [团队协作与发布工作流](WORKFLOW.md)
 
-演示初始化只接受完全没有赛季的数据库；旧数据导入会先执行 dry-run。以上初始化和管理员命令均不得用于生产。
+## 参与贡献
 
-默认入口：
+欢迎通过 Issue 或 Pull Request 提交问题、改进和适配。开始修改前请阅读
+[团队协作与发布工作流](WORKFLOW.md)，保持服务端权威、跨赛季隔离、隐私、审计和
+可恢复性等业务不变量，并同步更新实现、OpenAPI、生成客户端、测试与权威文档。
 
-- 管理网站：`http://localhost:8088/`
-- API：`http://localhost:8088/api/v1`
-- OpenAPI：`http://localhost:8088/api/v1/docs`
-- Mailpit：`http://localhost:8089/`
-- 微信小程序项目：`apps/miniapp`（开发者工具会读取其中的 `dist/`）
-
-微信开发者工具不会直接编译 `src/`。每次修改小程序源码后，开发时运行 `npm run dev:miniapp` 保持 Taro 监听，或重新执行 `./scripts/deploy-wsl.ps1 -SkipInstall` / `npm --workspace @pkuba/miniapp run build:weapp` 生成 `dist/`；随后在开发者工具点击“编译”。build/watch 启动时会定向清理对应的 Taro webpack 缓存，避免恢复源码后仍复用旧的空页面模块；候选产物通过注册页面完整性检查后才原子替换现有 `dist`。如果界面仍旧，先确认项目目录是 `apps/miniapp`，再检查 `dist/app.json` 的修改时间，不要导入旧仓库或单独导入 `dist/`。
-
-当前小程序使用自定义大字号底栏：首页、对阵、排名、数据、我的；“我的”按权威待处理任务数显示 1–99 或 `99+` 红点，打开任务不会提前消除。首页在 Logo 与赛季标题下首先展示以北京时间当前自然周为中心、前二周至后二周共 35 天的七列热图，无比赛日期显示 0。“对阵”页内容第一行固定“赛程赛果 / 淘汰赛”切换栏；长赛程滚动后仍可直接切换。赛程赛果初次只读取焦点日前后最多 5 个比赛日，随后按顶部/底部双向增量加载，不插入“今天无比赛”、今日高亮、赛季边界或总场次说明；“回到今天”回到今天的比赛日，今天无比赛时回到最近焦点比赛日。淘汰赛按男甲、男乙、女甲、女乙和唯一轮次键展示正式比赛中的双方、比分、胜者、日期、场地与保级赛；未录入显示“待抽签”，签位不一致保留原球队并标记“待复核”。赛程与淘汰赛分别请求，一侧失败不隐藏另一侧。若开发者工具仍显示系统默认小字号底栏，执行“清缓存 → 清除全部缓存”，重新点击编译，并确认 `dist/app.json` 中 `tabBar.custom` 为 `true`。
-
-管理网站默认显示微信扫码登录：管理员先在小程序“我的”中完成微信身份识别，再点击“扫码登录管理后台”，扫描网页二维码、核对登录提示并确认，不再使用六位校验码。二维码五分钟失效，只能由生成它的原浏览器使用一次；管理员确认时仍会由服务端重新检查账号状态。也可切换到“密码登录”：小程序管理员注册时必须填写当季邀请码，并自行设置至少 4 个字符的个人网页密码；本地超级管理员需用上方独立命令创建，不存在部署脚本赋予的默认密码。登录后可用右上角“修改密码”更改，新密码可以与当前密码相同，不执行其他强度限制；邀请码轮换不会改变已有管理员密码。
-
-部署脚本会启动隐藏的 WSL 保活进程；WSL 重启或 IP 变化后重新运行脚本即可刷新端口转发。本地开发者工具已关闭合法域名校验；真机与生产环境仍必须使用微信后台配置的 HTTPS 域名。
-
-Docker Desktop + Windows 前端监听脚本仍可用于快速开发：`./scripts/bootstrap.ps1`、`./scripts/start-local.ps1` 和 `./scripts/dev.ps1`。它们不是最终本地验收基线。
-
-## macOS 本地预览
-
-macOS 可用 Docker Desktop 运行同一套完整 Compose 拓扑，但只作为开发预览，不替代上方 Windows + Ubuntu WSL 正式验收基线。要求 Node.js 24、npm 11、[Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/) 和微信开发者工具；Intel Mac 若 Homebrew 因缺少 bottle 转为源码编译，可改用 [Node.js 24 官方 `darwin-x64` 包](https://nodejs.org/dist/latest-v24.x/)。安装后先确认 `node --version`、`npm --version` 和 `docker compose version`；若 Docker Desktop 未建立 CLI 链接，将 `/Applications/Docker.app/Contents/Resources/bin` 加入 `PATH`。
-
-首次启动前创建本地配置：
-
-```bash
-cp .env.example .env
-chmod 600 .env
-```
-
-在 `.env` 中补充仅供本机使用的 `PKUBA_DB_PASSWORD`，替换 `DJANGO_SECRET_KEY`，并按需填写 `WECHAT_APP_ID` 与 `WECHAT_APP_SECRET`；`QWEN_API_KEY`、邮件账号和邮件密码默认保持为空，开发邮件统一进入 Mailpit。另创建被 Git 忽略的 `apps/miniapp/project.private.config.json`，只写入：
-
-```json
-{
-  "setting": {
-    "urlCheck": false
-  }
-}
-```
-
-在仓库根目录执行：
-
-```bash
-compose() {
-  docker compose --project-name pkuba-mac --project-directory . --env-file .env \
-    -f infra/compose.wsl.yml "$@"
-}
-
-npm ci
-compose build
-compose up -d db mailpit
-compose run --rm --no-deps api python manage.py migrate --noinput
-compose up -d
-compose exec -T api python manage.py seed_demo --if-empty
-compose exec api python manage.py create_local_admin local-admin
-```
-
-演示初始化只应在新建空库运行，管理员密码只在终端交互输入。小程序首次构建先生成共享包：
-
-```bash
-npm run build:packages
-PKUBA_API_BASE_URL=http://localhost:8088 \
-PKUBA_ADMIN_WEB_URL=http://localhost:8088 \
-PKUBA_ALLOW_INSECURE_MINIAPP_URL=1 \
-npm --workspace @pkuba/miniapp run build:weapp
-```
-
-入口与 WSL 相同：管理网站 `http://localhost:8088/`、API 文档 `http://localhost:8088/api/v1/docs`、Mailpit `http://localhost:8089/`，readiness 为 `http://localhost:8088/api/v1/health/ready`。微信 CLI 可尝试打开 `apps/miniapp`；若提示服务端口关闭，直接启动开发者工具并手动导入该目录，不擅自修改安全设置。查看日志使用 `compose logs -f`，停止环境使用 `compose down`。
-
-镜像拉取或 Dockerfile 内下载超时时，应在 Docker Desktop 中配置代理；仅设置终端代理不一定会传入 Docker 虚拟机或构建阶段。开发者工具可能自动补写已跟踪的 `project.config.json`，本地 URL 校验只放在上述私有配置中，不要把工具自动生成的无关差异混入提交。
-
-## 生产发布（当前禁用）
-
-项目仍处于测试阶段，独立复测结论为 NO-GO。当前标签工作流只允许执行 CI、构建不可变镜像和小程序 artifact；GitHub、服务器武装开关和版本兼容合同均保持关闭。不要运行 `scripts/release.ps1`，也不要连接服务器执行部署。
-
-最终方向是同机双栈蓝绿：稳定 Caddy gateway、独立 blue/green 应用 project 和稳定 data project；旧应用切流后保留 24 小时。普通应用故障只回切到发布时已验证、保留状态明确授权的 capability-compatible 应用，绝不恢复数据；只有确认数据损坏时才按同一 manifest 成对恢复数据库、媒体和归档。nullable schema 不等于旧业务语义可回切，当前脚手架仍需基线转换和完整失败演练，详见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
-
-赛程编排采用 V3.3（格式 `3.3.0`）三页工作簿；模板必须从当前赛季的“赛程编排”页面下载，仓库内 2026 北大杯示例只用于当前协议自动回归，完整约定见 `docs/SCHEDULE_IMPORT_V3.md`。“填写说明”和“签位定义”由服务器生成，第二页只提示字母含义；业务输入只来自一天一行的“赛程网格”。C 列起的时间、自由文本场地、顺序和“仅决赛”标记可在 Excel 或管理端直接编辑，16 个初始组合只是新草稿默认排版，不是系统标准。管理站“赛程编排”可进入占满视口的专注模式并收起待排/核对栏；网格支持鼠标拖选矩形区域，批量男女篮与领队调赛锁只在区域内至少含一场比赛时启用，并可用工具栏或表格内 `Ctrl/Cmd + 滚轮` 在 50%–150% 间独立缩放整张表，不改变页面其他区域。比赛移动使用格内独立抓手，继续保持只移动、不覆盖；直接输入、复制粘贴、撤回重做和服务器自动保存仍保留。XLSX 上传整表替换草稿且不携带可调状态；确认创建前必须显式通过完整性、数量、容量、列头、资源冲突和新增边界六项核对。
-
-管理网站已提供个人账号登录和“管理员账户”页面。超级管理员可以升级普通管理员、降级其他超级管理员、停用或恢复账号；系统禁止自降级，并保护最后一个有效超级管理员。所有操作使用二次确认、版本校验和审计。
-
-超级管理员可从左侧“赛季与组别”进入基础配置工作区：新建准备中赛季时可选系统标准配置，也可沿用历史赛季的组别、标准场地、签位族和容量。新赛季默认启用五四东一至东三，超级管理员可继续增删、改名、排序或停用；启用列表同时是普通调赛自动分配的候选池。8 个稳定时段、工作日/周末默认容量、特殊日期覆盖和签位方案在这里维护；赛程网格列不属于赛季基础配置，统一从在线草稿或 XLSX 第三页表头识别。所有配置经版本检查后一次保存并审计。
-
-新赛季建立后，超级管理员从“球队与名单”下载按当前实际组别动态生成的 XLSX 模板。模板含“填写说明”和每组一页，球队标准名称、球员姓名必填，球衣号码可空并以文本保存 `00`。上传只生成暂存批次、问题列表、标准名称处理和最终变更预览；近似名称从不自动合并。只有无小组、签位、抽签、比赛、领队绑定或调赛引用的 `SETUP` 赛季才能原子确认整季快照。首次确认会创建稳定球队/球员 UUID、增加赛季版本并写审计，随后永久关闭名单重新导入；纠错统一在网页主从编辑器中完成。已公开赛季的重命名、停用和既有球员修改需要维护预览与二次确认，归档赛季只读。记录表上传时会冻结双方稳定球员 ID 与显示名称，后续识别和人工核对不能引用名单外球员。
-
-赛程导入生成签位后，超级管理员统一在“签位结果录入”维护小组初始签位及任意多轮淘汰赛、半决赛、决赛和保级赛。小组初始签位仍按组别一次提交完整映射；淘汰赛按阶段与轮次列出正式比赛，双方完整后逐场预览、逐场保存。同轮已选球队会立即从其他下拉栏排除；后续轮次优先提示紧邻上一轮已确认胜队，选择其他启用球队会出现醒目警告并要求再次确认。服务器以版本、预览哈希和事务锁保证同轮不重复，保存时同步签位、比赛双方、版本和审计。已公开赛季仍可在危险修改保护内维护，归档赛季只读。
-
-“赛季与组别”中的生命周期面板只推进 `SETUP → PUBLISHED → ARCHIVED`。赛季公开后不再设置“组别开放”或“赛季开始”；每场比赛是否可调赛、上传资料、维护记录表或赛果，由双方是否已落位及相应业务条件实时判断。归档前必须清理活动流程，归档后不可恢复且默认只读；唯一例外是超级管理员在网页明确确认后纠正已有正式 publication 的记录表，并重新校验、发布和审计。
-
-独立“淘汰赛管理”已删除，也不存在胜者关系编辑或自动晋级。发布或纠正上一轮赛果不会填写、替换或清空任何后续签位、比分、记录表、资料或调赛数据；服务端只把受影响的后续人工签位动态标记为“待复核”。超级管理员可以在“签位结果录入”按原球队重新确认，或经警告确认后手工更换；已有赛果或业务数据的危险更换仍会被阻止。
-
-“高级数据”只供超级管理员排障审计，响应禁止缓存。页面可检查全部 PKUBA 核心模型及完整数据库字段，但业务工作流、身份凭据、发布与审计记录均不可直接写；只有准备中且无引用的小组和签位允许在校验、影响预览、二次确认与审计下有限修改。名称、状态、日期、比分等人类可读字段优先展示，UUID、publication/revision、ID、哈希、令牌和密码摘要统一靠后。
-
-“备份与归档”只供超级管理员使用。生产照片长期保存在 Ubuntu 私有 Docker volume，不接入腾讯 COS；页面可随时生成不含照片和身份秘密的赛季数据 ZIP、扁平赛季照片 ZIP，以及包含完整数据库和私有媒体的未加密原始 `tar.zst`。包最多暂存 24 小时，发起下载并确认已保存到服务器外后立即删除。只有不可逆归档赛季、且最终数据包和照片包均完整时，才能二次确认永久清理服务器照片；媒体行、哈希、publication 引用和审计永久保留。完整流程与隔离恢复命令见 [`docs/BACKUP_AND_ARCHIVE.md`](docs/BACKUP_AND_ARCHIVE.md)。
-
-比赛图片上传使用数据库持久化暂存：文件完成校验并原子晋升后才成为正式资料或替换旧图。进程中断可由后台续作/清理；未完成上传会阻止部署预检、全系统备份和赛季照片清理。
-
-调赛创建、记录表发布、赛程确认、抽签确认、赛季公开和比赛资料上传支持标准 `Idempotency-Key`。共享客户端会为新命令自动生成键；网络超时后若自行重试，必须复用原键，不能把同一业务当作新命令发送。通用公开赛程、领队调赛申请、管理端比赛资料和记录表队列采用 `{ items, total, page, page_size }` 分页契约，单页最多 100 条；小程序赛程另使用按比赛日双向游标窗口。完整规则和已覆盖端点见 `docs/API_RELIABILITY.md`。
-
-小程序“我的”页使用真实微信身份：首次使用先设置唯一昵称，随后可先选男甲/男乙/女甲/女乙，再认领该组别中尚未被认领的球队，或填写当前赛季邀请码并自行设置个人网页密码以注册普通管理员。系统不填写或保存姓名、邮箱、手机号；同一昵称也是管理员网站登录名，同一账号可以同时是领队和管理员。超级管理员可在“管理员账户”页轮换邀请码，数据库分别只保存邀请码与密码的安全摘要。
-
-领队工作台已把“普通调赛”和“跨周调赛”设为两个独立入口：普通入口只列同一自然周目标；跨周入口同时列出本周和跨周的全部合法目标，并提示参阅《参赛手册》。服务端独立记录日期关系与处理通道；跨周入口提交的同周目标也必须等待管理员审核，管理员认定未跨轮次时可直接按普通办法批准，无需领队重提。工作台同时提供本队比赛、申请列表、对手确认、指定球队确认、撤回和线下特殊调赛说明。普通管理员与超级管理员都可上传比赛资料；记录表首次发布前均可上传/重传、编辑、完整手工录入、在四次识别耗尽后重新识别、校验并首次发布。活动识别不能由用户停止或重复启动；调赛审核/取消、赛程纠错和已发布记录表纠错/重传/重新发布仍仅超级管理员可执行。比赛合照与其他照片不再审核或排序，两类管理员均可重新上传或软删除；记录表永远不可删除。旧小程序的裁判功能不在 V1。
-
-管理网站“调赛处理”只展示当前公开赛季。普通管理员和超级管理员都可筛选进行中或历史申请，分别核对日期关系、处理通道、审核认定、比赛活动锁、永久可调政策、匿名化目标资源预留和时段容量；尚未生效的具体场地只供服务端冲突检查，不会出现在领队或管理员接口、页面、任务箱、邮件、赛程导入冲突问题、高级数据页、维护后台或按场地资源统计中。按普通办法批准、跨轮次直批/拒绝、指定球队确认、终审及取消按钮仅超级管理员可见且由服务端再次校验。所有命令只提交申请 ID、版本、动作与审核认定，状态迁移、比赛移动和资源释放仍由 Django/PostgreSQL 事务决定；申请通过后，场地才随正式赛程公开。
-
-任务箱由调赛和记录表业务事务自动维护。升级既有数据库后可先只读预览，再显式核对写入；命令只重建任务，不发送邮件：
-
-```powershell
-docker compose exec api python manage.py reconcile_inbox_tasks
-docker compose exec api python manage.py reconcile_inbox_tasks --apply
-```
-
-所有邮件现在和未来都只允许发到协会公邮 `pkubaoutward@163.com`，不配置协会成员或领队邮箱。调赛每个权威状态、缺少领队等调赛异常及记录表识别最终失败会在业务事务内写入去重 `EmailOutbox`；正文沿用原比赛、目标日期/时段、申请时间、申请方、类型和组别等业务字段，但调赛生效前绝不包含内部预留场地。SMTP 发送由独立进程异步重试，失败不会回滚业务。开发环境 SMTP 指向 Mailpit；生产示例使用 `smtp.163.com:465` 和 SSL，实际 `outbox` 发送进程仍默认不启动。启用真实外发前必须在 163 邮箱轮换旧项目已经暴露的授权码，只把新授权码写入服务器 `.env.production` 的 `EMAIL_HOST_PASSWORD`，不得复制旧凭据或提交到 Git。`reconcile_inbox_tasks --apply` 只重建任务，不会补发历史邮件。
-
-登录入口只在小程序“我的”页。首次进入点击“微信登录”并设置昵称；之后使用仍有效的本地会话，令牌过期时会重新通过 `wx.login` 识别已有 OpenID。点击“退出当前账号”会同时撤销服务端会话。开发者工具中的成功登录必须使用刚生成的 code，不能复用旧 code。
-
-“我的”会在没有本地令牌时静默调用 `wx.login`：如果该 OpenID 已注册，会直接恢复账号、领队和管理员角色，不要求再次点击登录；只有从未注册的 OpenID 才显示昵称注册入口。
-
-拥有管理员身份时，“我的”的管理员区域会显示“扫码登录管理后台”。该入口只接受管理网站生成的 PKUBA 二维码；请核对登录确认提示。扫码只确认网页登录，不会退出小程序，也不会改变领队绑定或管理员角色，不需要输入短码。
-
-在首页、对阵、淘汰赛、数据单场、领队赛程或管理员工作台点击比赛，统一进入同一个“比赛详情”路由。详情页会静默复用本地会话或按微信 ID 恢复已注册身份，因此管理员从首页和管理员工作台进入看到的内容与操作完全相同。公众先看到比赛信息、完整宽度比赛合照和当前已发布单场数据；单场球员数据按两支球队分成两张表，首发只用独立标签表示，姓名样式与非首发一致。在线且未软删除的比赛合照上传或重传后立即公开。领队只能查看本队比赛当前已发布版本绑定的记录表原图；公众不能读取记录表和其他私有照片。页面最下方的“比赛资料管理”按记录表、比赛合照、其他照片单列展示，不设重复上传区、照片审核或排序。记录表和比赛合照各保留一张当前图片，其他照片可多张；普通管理员与超级管理员均可重新上传或软删除合照/其他照片，但记录表永远不可删除，已发布记录表仅超级管理员可重传。三类图片都接受可正常解码的 JPEG/PNG/WebP，以临时文件分块上传，不设置应用层字节或固定像素门槛；Pillow 解压安全保护、600 秒请求时限、客户端和磁盘仍是实际边界。记录表上传或重传在选择照片前弹窗确认已正确结表，替换保留旧来源与审计。
-
-记录表上传后由独立 PostgreSQL worker 调用 Qwen，首次失败后最多再自动重试三次，三段默认等待均为 30 秒；服务商更长 `Retry-After` 优先。活动周期不能手工停止或重复启动。未发布的失败记录可以在明确确认后重新识别：成功整稿覆盖人工内容，再次失败保留原稿；已发布记录（包括超管和失败后纯手工发布）不允许重试，已成功周期不提供任意再识别。网页和小程序共享唯一草稿、版本、核对状态、校验报告、publication 和 60 秒编辑租约，以两秒轮询同步；发布事务同时写正式比分、不可变球队/球员统计和审计。公开“数据”页只展示纸质记录表能够提供的已发布统计。完整协议、隐私边界、重试、编辑器、导出与备份见 `docs/SCORESHEETS.md`。
-
-超级管理员直接修改日期、时段、场地、参赛方、比分、比赛状态或调赛政策时，正式入口是管理网站“赛程编辑”。该页面执行版本、容量、球队时段、场地和活动申请检查，并要求二次确认；小程序只提供赛程/资料查看和调赛业务入口。
-
-记录表发布提示比赛信息变化时，先在编辑器重新校验。只有内部版本变动的记录可以直接按原权限发布；实际时间、球队、时段、场地或名单变化会展示差异，再由有权限的管理员“保留编辑并确认复核”，无需默认重传。具体步骤、10 分钟确认期限及旧来源保护见 [使用说明](docs/USER_GUIDE.md#136-校验和发布) 和 [记录表协议](docs/SCORESHEETS.md#比赛信息变化后的受控复核)。
-
-## 测试数据边界
-
-2026-08-27 按用户授权新建的赛季中段 QA 已接入 `http://localhost:8088`，使用全新数据库及配套媒体/归档存储；未备份或迁移旧 QA 的用户、会话和人工草稿。公开赛季包含 32 队、64 场（含一场作废）、384 名合成球员，并预留两张可校验的记录表草稿。还包含独立归档/准备赛季及待处理调赛，便于日常查看各状态。
-
-本机预置 `qa-superadmin`、`qa-admin` 网页账号；随机密码仅在 Git 忽略的 `.local/qa-20260827/credentials.json`，不得提交或转贴日志。微信仍走真实身份注册，不沿用验收用短期会话。本轮本地 Qwen 已禁用，未经新授权不重新启用外部模型调用。
-
-旧参考项目、Backup 目录、其他项目和既有历史备份不在清理范围。故障注入仍使用额外隔离资源，不能污染日常 QA；重建不替代旧失配样例的回归。旧小程序、旧 `ScoresheetReader` 和 Backup 目录继续只读；运行时不得读取这些目录，旧 OpenID、人员、申请、照片、密码或秘密不得迁移。
-
-legacy importer、demo/seed、旧协议和对应入口/夹具/测试在当前测试阶段保留，但不属于正常初始化或部署流程；上线门禁前必须彻底删除并完成零引用检查。空数据库必须通过迁移、受控首个超级管理员流程和正常后台页面建立赛季，不得依赖合成数据。
-
-小程序球队榜展示所选组别全部启用球队，包括 0 场球队；球员榜只使用当前 publication 的纸面统计，每页 20 人、最多 5 页，即前 100 名。合成数据仅限明确授权的本地测试环境（包括本轮新日常 QA），不得进入未来生产库。
-
-旧 `ScoresheetReader` 保持只读；本仓库只承接已冻结并经过审计的领域语义与界面，不修改旧项目目录。
-## 共用静态资源
-
-Logo 唯一源为 `packages/design-tokens/src/assets/pkuba-logo.png`；记录表模板定义唯一源为 `apps/api/core/assets/scoresheet/template_definition.json`。网页与小程序内的打包副本不单独编辑。修改源后执行 `npm run assets:sync`，再运行 `npm run assets:check`；后者只校验、不悄悄覆盖差异。`build:packages`（包括 CI 的 typecheck/build）会先核对，`npm test` 包含最小资源回归。API 对模板的运行时投影不要求与原 JSON 字节相同。
-
-## 检查
+提交前运行：
 
 ```powershell
 ./scripts/check.ps1
 ```
 
-使用 WSL 作为本地验收环境时，完整检查直接运行：
+涉及数据库、真实 API 或客户端交互的改动，还应按范围完成 PostgreSQL、浏览器和微信
+开发者工具验收；构建成功不能替代动态验证。
 
-```powershell
-./scripts/check-wsl.ps1
-```
+## License / 许可证
 
-该命令先在 WSL 中使用现有 PostgreSQL 服务创建隔离测试库，运行 Ruff、迁移漂移检查、OpenAPI 导出和全部 pytest，再在 Windows 生成 TypeScript 客户端并执行前端类型检查、测试及构建；不会以 SQLite 替代并发测试。
-
-需要单独复核 2026 V3.3 示例时，可在 WSL 仓库目录运行 `bash scripts/wsl/validate-schedule-sample-v3.sh`；脚本调用真实服务端解析器并在事务末回滚临时数据。
-
-官方记录表浏览器套件只在新建的隔离测试数据库及配套媒体目录运行，禁止对日常 QA 或生产执行。先在该环境创建测试超级管理员，再用 `core.tests.e2e_fixtures.seed_browser_targets(actor)` 准备三个独立目标：`edit` 供编辑/校验，`publication` 供真实发布/PDF，`private` 供双标签租约同步。它复用现有合成记录表生成能力，不是初始化/部署命令，不调用模型。将返回 ID 分别设为 `PKUBA_E2E_EDIT_SCORESHEET_ID`、`PKUBA_E2E_PUBLICATION_SCORESHEET_ID`、`PKUBA_E2E_PRIVATE_SCORESHEET_ID`，`game_pattern` 设为 `PKUBA_E2E_GAME_PATTERN`；同时指定隔离 `PKUBA_E2E_BASE_URL` 和测试登录凭据。设置 `RUN_PRIVATE_LIVE_UI=1`、`RUN_SCORESHEET_RECOGNITION_E2E=0` 后，运行 `npm --workspace @pkuba/admin-web run test:e2e -- --workers=1`。发布用例必须实际发布成功，不能用“无效草稿未发布”代替；双标签目标不依赖上一用例遗留的待办队列，单跑仍使用独立 `private` ID。
-
-复制 `.env.example` 为 `.env` 后只在本机填写秘密。旧项目中的密码、SMTP 凭据、OpenID 和云密钥不得迁入本仓库。
-
-许可证：GPL-3.0。
+PKUBA 以 [GNU General Public License v3.0](LICENSE) 发布，SPDX 标识为
+`GPL-3.0-only`。

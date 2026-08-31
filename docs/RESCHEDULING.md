@@ -52,7 +52,7 @@
 
 - 历史空值按可证明事实解释：同周默认为普通通道；跨周默认为手册审核；只有管理员审计、VOTER 确认或既有投票/终审状态能证明时才回填“跨轮次调整”，不能凭空伪造审核结论。
 - `SAME_WEEK + HANDBOOK_REVIEW` 是新语义。旧应用会在对手同意后尝试按普通流程自动批准；数据库约束会让整笔事务回滚，但旧端点可能表现为 5xx。因此旧应用不是安全共存栈，也不是功能激活后的普通回切点。
-- 首次启用必须采用能力分阶段：先部署理解 `process_route`、分类与新幂等指纹但尚未开放新入口的 bridge 版本。在同一个 writer fence 内停止旧 API/worker 写入，完成 0039 及历史证据审计，再运行 `python manage.py reschedule_route_activation_preflight --wait-seconds=86400 --json`，直到所有非终态调赛申请和仍在 24 小时有效期内、响应不含 `process_route` 的旧幂等记录均为 0；确认两个可回切 slot 都声明并通过对应 capability contract；之后才开放同周手册通道并切流。当前仓库尚未实现这条 baseline conversion 自动脚本，测试阶段只能在隔离环境演练，不能把独立 management command 写成已自动接线的发布门禁。
+- 首次启用必须采用能力分阶段：先部署理解 `process_route`、分类与新幂等指纹但尚未开放新入口的 bridge 版本。在同一个 writer fence 内停止旧 API/worker 写入，完成 0039 及历史证据审计，再运行 `python manage.py reschedule_route_activation_preflight --wait-seconds=86400 --json`，直到所有非终态调赛申请和仍在 24 小时有效期内、响应不含 `process_route` 的旧幂等记录均为 0；确认两个可回切 slot 都声明并通过对应 capability contract；之后才开放同周手册通道并切流。在 baseline conversion 自动脚本完成、评审并通过隔离演练前，该能力必须保持关闭，不能把独立 management command 写成已自动接线的发布门禁。
 - 处理通道激活后，只能回切到保留状态中明确记录“允许从当前 capability 回切”的应用。仅能读取 nullable 列、或只拥有旧 `request_type` 语义的版本不得接流量。
 - 旧幂等记录的 digest/响应正文不与新协议伪装成完全兼容。激活前必须等待其服务端 TTL 到期或通过受审计的一次性转换清空对应窗口；新协议内部的缺省/显式同义 payload 才使用归一后的业务指纹重放。
 - 确认没有空值、旧应用和旧幂等窗口后，再用独立 contract 迁移将字段设为非空并删除临时兼容分支。
