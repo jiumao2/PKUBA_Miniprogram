@@ -8,7 +8,7 @@ usage() {
 Usage: sudo bootstrap-server.sh \
   --deploy-public-key-file /root/pkuba-actions.pub \
   --github-read-key-file /root/pkuba-github-readonly \
-  --release-tag v1.0.0 \
+  --release-tag v1.0.2 \
   --release-commit 40_HEX_COMMIT \
   --api-image ghcr.io/jiumao2/pkuba-api@sha256:64_HEX_DIGEST \
   --web-image ghcr.io/jiumao2/pkuba-web@sha256:64_HEX_DIGEST
@@ -46,7 +46,7 @@ done
 
 [[ -f $deploy_public_key_file ]] || die "missing GitHub Actions public key"
 [[ -f $github_read_key_file ]] || die "missing GitHub repository read key"
-[[ $release_tag == v1.0.0 ]] || die "the fresh production baseline must be v1.0.0"
+[[ $release_tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "release tag must be a stable vMAJOR.MINOR.PATCH"
 [[ $release_commit =~ ^[0-9a-f]{40}$ ]] || die "invalid release commit"
 [[ $api_image =~ ^ghcr\.io/jiumao2/pkuba-api@sha256:[0-9a-f]{64}$ ]] \
   || die "API image must use the approved immutable digest"

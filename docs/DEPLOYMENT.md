@@ -40,25 +40,26 @@ PostgreSQL 17 和 Caddy 2.10 的官方多架构 index 先由 release workflow �
 - `/opt/pkuba/production/.env` 为 `root:root 0600`，包含数据库、Django、微信、邮件等
   运行配置；密钥不进入命令、日志、截图或仓库。Qwen 和邮件 worker 未获授权时保持关闭。
 
-## v1.0.0 空库启动
+## 稳定版本空库启动
 
-首先由已验证的 `main` 创建 `v1.0.0`，等待 release workflow 生成带 revision 标签的 API/Web
-digest，并在可信管理机准备 Actions 公钥和服务器只读仓库私钥。服务器 root 会话预先建立
-并核对 GitHub host key，然后运行：
+首先由已验证的 `main` 创建严格匹配 `vMAJOR.MINOR.PATCH` 的稳定版本标签，等待 release workflow
+生成带 revision 标签的 API/Web digest，并在可信管理机准备 Actions 公钥和服务器只读仓库私钥。
+服务器 root 会话预先建立并核对 GitHub host key，然后使用当前发布版本运行（以下以 `v1.0.2` 为例）：
 
 ```bash
 sudo /root/pkuba-prod-tools/bootstrap-server.sh \
   --deploy-public-key-file /root/pkuba-actions.pub \
   --github-read-key-file /root/pkuba-github-readonly \
-  --release-tag v1.0.0 \
+  --release-tag v1.0.2 \
   --release-commit 0123456789abcdef0123456789abcdef01234567 \
   --api-image ghcr.io/jiumao2/pkuba-api@sha256:API_DIGEST \
   --web-image ghcr.io/jiumao2/pkuba-web@sha256:WEB_DIGEST
 ```
 
-脚本在任何生产写入前拒绝既有 state 和数据卷，并核对 tag、commit、镜像 revision、固定
-基础镜像和磁盘空间。随后创建 root-owned namespace、卷、网络、受限部署账号和 systemd，
-在维护状态启动 PostgreSQL、执行迁移与 `check --deploy`。数据库必须没有赛季或合成数据。
+脚本在任何生产写入前拒绝预发布、构建后缀、分支名或缺少版本段的标签，也拒绝既有 state
+和数据卷，并核对 tag、commit、镜像 revision、固定基础镜像和磁盘空间。随后创建 root-owned
+namespace、卷、网络、受限部署账号和 systemd，在维护状态启动 PostgreSQL、执行迁移与
+`check --deploy`。数据库必须没有赛季或合成数据。
 
 脚本会在终端交互调用 `bootstrap_first_superadmin` 一次。操作人输入确认、用户名和两次密码；
 命令使用 Django 密码校验、事务和 PostgreSQL advisory lock，拒绝既有超级管理员、同名账号
