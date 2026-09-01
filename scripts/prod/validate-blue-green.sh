@@ -110,8 +110,21 @@ grep -Fq 'PKUBA_OLD_SLOT_RETENTION_SECONDS:-86400' \
   "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'PKUBA_PRODUCTION_AUTOMATION_ARMED=0' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
-grep -Fq 'release_tag == v1.0.0' \
+grep -Fxq '[[ $release_tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "release tag must be a stable vMAJOR.MINOR.PATCH"' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
+stable_release_tag_regex='^v[0-9]+\.[0-9]+\.[0-9]+$'
+for release_tag in v1.0.2; do
+  [[ $release_tag =~ $stable_release_tag_regex ]] || {
+    echo "stable release tag was unexpectedly rejected: $release_tag" >&2
+    exit 1
+  }
+done
+for release_tag in v1.0.2-rc.1 v1.0.2+build main v1.0; do
+  if [[ $release_tag =~ $stable_release_tag_regex ]]; then
+    echo "non-stable release tag was unexpectedly accepted: $release_tag" >&2
+    exit 1
+  fi
+done
 grep -Fq 'bootstrap_first_superadmin' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'pkuba-backup-daily.timer' \
