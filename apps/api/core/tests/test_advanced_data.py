@@ -4,6 +4,8 @@ import json
 from datetime import timedelta
 
 import pytest
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.test import Client
 from django.utils import timezone
 
@@ -334,3 +336,146 @@ def test_advanced_mutation_api_rejects_stale_impact_hash():
     )
     assert stale.status_code == 409
     assert stale.json()["code"] == "IMPACT_HASH_MISMATCH"
+
+
+@pytest.mark.parametrize(
+    (
+        "method",
+        "path",
+        "target",
+        "error_code",
+        "expected_status",
+        "expected_message",
+        "payload",
+    ),
+    [
+        (
+            "post",
+            "/api/v1/admin/advanced-data/competition-groups/mutations/preview",
+            "core.api_admin_advanced_data.preview_mutation",
+            "FIELD_INVALID",
+            400,
+            "字段值无效。",
+            {"operation": "CREATE", "values": {}},
+        ),
+        (
+            "post",
+            "/api/v1/admin/advanced-data/competition-groups/mutations/apply",
+            "core.api_admin_advanced_data.apply_mutation",
+            "VERSION_CONFLICT",
+            409,
+            "记录已变化，请刷新后重试。",
+            {
+                "operation": "CREATE",
+                "values": {},
+                "impact_hash": "0" * 64,
+                "confirmed": True,
+            },
+        ),
+        (
+            "get",
+            "/api/v1/admin/advanced-data/accounts",
+            "core.api_admin_advanced_data.list_records",
+            "MODEL_NOT_FOUND",
+            404,
+            "高级数据模型不存在。",
+            None,
+        ),
+        (
+            "get",
+            "/api/v1/admin/advanced-data/accounts/{actor_id}",
+            "core.api_admin_advanced_data.get_record",
+            "UNEXPECTED_INTERNAL_ERROR",
+            400,
+            "高级数据请求无效。",
+            None,
+        ),
+    ],
+)
+def test_advanced_data_api_never_exposes_exception_text(
+    monkeypatch,
+    method,
+    path,
+    target,
+    error_code,
+    expected_status,
+    expected_message,
+    payload,
+):
+    actor = _superadmin("advanced-error-superadmin")
+    client = Client()
+    client.force_login(actor)
+    canary = "password=do-not-expose database constraint secret"
+
+    def raise_error(*args, **kwargs):
+        del args, kwargs
+        raise AdvancedDataError(error_code, canary)
+
+    monkeypatch.setattr(target, raise_error)
+    target_path = path.format(actor_id=actor.id)
+    if method == "post":
+        response = client.post(
+            target_path,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+    else:
+        response = client.get(target_path)
+
+    assert response.status_code == expected_status
+    assert response.json() == {"code": error_code, "message": expected_message}
+    assert canary not in response.content.decode("utf-8")
+
+
+@pytest.mark.parametrize(
+    "underlying_error",
+    [
+        IntegrityError("database constraint secret"),
+        ValidationError("invalid field secret"),
+    ],
+    ids=["integrity-error", "validation-error"],
+)
+def test_advanced_data_validation_failure_hides_underlying_error(
+    monkeypatch,
+    underlying_error,
+):
+    _target_season, division = _setup_division()
+    actor = _superadmin("advanced-validation-superadmin")
+    values = {
+        "division": str(division.id),
+        "code": "secret-canary-group",
+        "name": "敏感异常测试",
+        "sort_order": 9,
+    }
+    preview = preview_mutation(
+        spec=get_spec("competition-groups"),
+        operation="CREATE",
+        object_id=None,
+        expected_version=None,
+        values=values,
+    )
+
+    def fail_validation(self):
+        del self
+        raise underlying_error
+
+    monkeypatch.setattr(CompetitionGroup, "full_clean", fail_validation)
+
+    with pytest.raises(AdvancedDataError) as caught:
+        apply_mutation(
+            actor=actor,
+            spec=get_spec("competition-groups"),
+            operation="CREATE",
+            object_id=None,
+            expected_version=None,
+            values=values,
+            impact_hash=preview["impact_hash"],
+            confirmed=True,
+        )
+
+    assert caught.value.code == "VALIDATION_FAILED"
+    assert str(caught.value) == "提交的数据未通过校验。"
+    assert str(underlying_error) not in str(caught.value)
+    assert caught.value.__cause__ is underlying_error
+    assert not CompetitionGroup.objects.filter(code="secret-canary-group").exists()
+    assert not AdminAuditLog.objects.filter(action="ADVANCED_DATA_CREATE").exists()

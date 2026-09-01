@@ -109,6 +109,28 @@ def _response(data: object, *, status: int = 200) -> JsonResponse:
     return response
 
 
+_PUBLIC_ERROR_MESSAGES = {
+    "MODEL_NOT_FOUND": "高级数据模型不存在。",
+    "RECORD_NOT_FOUND": "记录不存在。",
+    "SORT_DIRECTION_INVALID": "排序方向无效。",
+    "SORT_FIELD_INVALID": "排序字段不存在。",
+    "FIELD_NOT_EDITABLE": "提交包含不能直接修改的字段。",
+    "RELATED_RECORD_NOT_FOUND": "关联记录不存在。",
+    "FIELD_INVALID": "字段值无效。",
+    "DOMAIN_SERVICE_REQUIRED": "该模型只能通过对应业务页面和事务服务修改。",
+    "OPERATION_INVALID": "高级数据操作类型无效。",
+    "OBJECT_ID_REQUIRED": "修改或删除必须指定记录 ID。",
+    "VERSION_CONFLICT": "记录已变化，请刷新后重试。",
+    "SEASON_SCOPE_REQUIRED": "无法确定该记录所属赛季。",
+    "CONFIRMATION_REQUIRED": "高级数据修改必须二次确认。",
+    "IMPACT_HASH_MISMATCH": "记录影响已变化，请重新预览。",
+    "MUTATION_BLOCKED": "高级数据修改存在阻塞项。",
+    "SEASON_ARCHIVED": "已归档赛季只读。",
+    "VALIDATION_FAILED": "提交的数据未通过校验。",
+}
+_DEFAULT_PUBLIC_ERROR_MESSAGE = "高级数据请求无效。"
+
+
 def _error(error: AdvancedDataError) -> JsonResponse:
     if error.code in {"MODEL_NOT_FOUND", "RECORD_NOT_FOUND"}:
         status = 404
@@ -121,7 +143,16 @@ def _error(error: AdvancedDataError) -> JsonResponse:
         status = 409
     else:
         status = 400
-    return _response({"code": error.code, "message": str(error)}, status=status)
+    return _response(
+        {
+            "code": error.code,
+            "message": _PUBLIC_ERROR_MESSAGES.get(
+                error.code,
+                _DEFAULT_PUBLIC_ERROR_MESSAGE,
+            ),
+        },
+        status=status,
+    )
 
 
 @router.get(

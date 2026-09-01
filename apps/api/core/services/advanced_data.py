@@ -513,7 +513,10 @@ def apply_mutation(
             instance.save()
             result = serialize_instance(instance)
     except (IntegrityError, ValidationError) as error:
-        raise AdvancedDataError("VALIDATION_FAILED", str(error)) from error
+        raise AdvancedDataError(
+            "VALIDATION_FAILED",
+            "提交的数据未通过校验。",
+        ) from error
     core_models.AdminAuditLog.objects.create(
         actor=actor,
         action=f"ADVANCED_DATA_{operation}",
