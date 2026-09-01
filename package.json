@@ -17,16 +17,29 @@
     "generate:api": "npm --workspace @pkuba/api-client run generate",
     "build": "npm --workspace @pkuba/admin-web run build && npm --workspace @pkuba/miniapp run build:weapp",
     "build:packages": "npm run assets:check && npm --workspace @pkuba/design-tokens run build && npm --workspace @pkuba/scoresheet-domain run build && npm --workspace @pkuba/api-client run build",
-    "test": "node --test scripts/static-assets.test.mjs && npm --workspace @pkuba/scoresheet-domain run test && npm --workspace @pkuba/admin-web run test && npm --workspace @pkuba/miniapp run test",
+    "test": "node --test scripts/static-assets.test.mjs scripts/check-npm-audit.test.mjs scripts/check-npm-install-scripts.test.mjs && npm --workspace @pkuba/scoresheet-domain run test && npm --workspace @pkuba/admin-web run test && npm --workspace @pkuba/miniapp run test",
     "assets:check": "node scripts/static-assets.mjs --check",
     "assets:sync": "node scripts/static-assets.mjs --sync",
     "check:powershell": "node scripts/check-powershell-encoding.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "audit:production": "node scripts/check-npm-audit.mjs"
+    "audit:production": "node scripts/check-npm-install-scripts.mjs && node scripts/check-npm-audit.mjs"
   },
   "engines": {
     "node": ">=24 <25",
-    "npm": ">=11 <12"
+    "npm": ">=11.16.0 <12"
+  },
+  "allowScripts": {
+    "@parcel/watcher@2.6.0": false,
+    "@swc/core@1.3.96": false,
+    "@tarojs/binding@4.2.1": false,
+    "@tarojs/cli@4.2.1": false,
+    "core-js@3.50.0": false,
+    "core-js-pure@3.50.0": false,
+    "esbuild@0.18.20": true,
+    "esbuild@0.21.5": true,
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.2": false,
+    "fsevents@2.3.3": false
   },
   "overrides": {
     "swiper": "$swiper",
