@@ -72,6 +72,7 @@ docker run --rm \
   caddy validate --config /etc/caddy/Caddyfile
 
 bash -n "$repo_root"/scripts/prod/*.sh
+bash "$repo_root/scripts/prod/test-deploy-ssh-gate.sh"
 bash "$repo_root/scripts/prod/test-release-safety.sh"
 
 ! grep -Fq 'COPY core/management ./core/management' \
@@ -157,6 +158,40 @@ grep -Fq 'verify-paired-backup.py' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'pkuba-start-current-application' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
+! grep -Fq 'PasswordAuthentication no' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+! grep -Fq 'systemctl reload ssh' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'chown root:root "/home/$deploy_user/.ssh/authorized_keys"' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'record-deploy-ssh-verification.sh' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'finalize-deploy-ssh.sh' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'PKUBA_DEPLOY_GATEWAY_VERIFIED=' \
+  "$repo_root/scripts/prod/record-deploy-ssh-verification.sh"
+grep -Fq 'verification proof must originate from a root sshd session' \
+  "$repo_root/scripts/prod/record-deploy-ssh-verification.sh"
+grep -Fq 'AUTHORIZED_KEYS_SHA256=' \
+  "$repo_root/scripts/prod/record-deploy-ssh-verification.sh"
+grep -Fq 'tty_options+=( -tt )' \
+  "$repo_root/scripts/prod/verify-deploy-ssh.sh"
+grep -Fq 'ExitOnForwardFailure=yes' \
+  "$repo_root/scripts/prod/verify-deploy-ssh.sh"
+grep -Fq 'GlobalKnownHostsFile=/dev/null' \
+  "$repo_root/scripts/prod/verify-deploy-ssh.sh"
+grep -Fq -- '--confirm-console-recovery' \
+  "$repo_root/scripts/prod/verify-deploy-ssh.sh"
+grep -Fq -- '--root-key-fingerprint' \
+  "$repo_root/scripts/prod/verify-deploy-ssh.sh"
+grep -Fq 'PasswordAuthentication no' \
+  "$repo_root/scripts/prod/finalize-deploy-ssh.sh"
+grep -Fq 'PubkeyAuthentication yes' \
+  "$repo_root/scripts/prod/finalize-deploy-ssh.sh"
+grep -Fq 'ROOT_KEY_FINGERPRINT=' \
+  "$repo_root/scripts/prod/finalize-deploy-ssh.sh"
+grep -Fq 'The prior sshd configuration was restored' \
+  "$repo_root/scripts/prod/finalize-deploy-ssh.sh"
 [[ $(grep -c 'restart: "no"' "$repo_root/infra/compose.prod.slot.yml") -ge 5 ]]
 grep -Fq 'MANIFEST.env' \
   "$repo_root/scripts/prod/backup-current-server.sh"

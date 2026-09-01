@@ -65,10 +65,57 @@ sudo /root/pkuba-prod-tools/bootstrap-server.sh \
 和并发创建，并写不可变审计。密码不通过参数或标准输出传递。之后以管理站正式流程配置
 赛季和账号。
 
-初始 blue 栈、gateway、readiness、root key-only SSH、部署 forced command 和 UFW
-22/80/443 均验证成功后才解除 maintenance。保持
-`PKUBA_PRODUCTION_AUTOMATION_ARMED=0`，直到真实蓝绿、回切、掉电恢复和备份恢复演练通过，
-且本次生产授权完成。
+初始 blue 栈、gateway、readiness 和 UFW 22/80/443 验证成功后才解除 maintenance。
+bootstrap 会安装受限部署账号，但**不会关闭密码认证**；这避免尚未从可信管理机验证部署私钥时
+把唯一恢复通道提前切断。
+
+bootstrap 成功后，保持当前 root 恢复会话开启。先在可信管理机用将继续保留的 root maintenance
+私钥完成一次禁用密码回退的真实登录，并从同一私钥取得 SHA256 指纹：
+
+```bash
+root_key_fingerprint=$(
+  ssh-keygen -lf <(ssh-keygen -y -f /secure/pkuba-root-maintenance) -E sha256 \
+    | awk 'NR == 1 {print $2}'
+)
+ssh -F /dev/null -p 22 -i /secure/pkuba-root-maintenance \
+  -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none \
+  -o PreferredAuthentications=publickey -o PasswordAuthentication=no \
+  -o KbdInteractiveAuthentication=no -o StrictHostKeyChecking=yes \
+  -o UserKnownHostsFile=/secure/pkuba-known-hosts \
+  -o GlobalKnownHostsFile=/dev/null root@203.0.113.10 true
+```
+
+只有该 root key-only 登录成功后，才从同一可信管理机运行部署账号探针，并显式传入刚验证的
+root key 指纹：
+
+```bash
+bash scripts/prod/verify-deploy-ssh.sh \
+  --host 203.0.113.10 \
+  --port 22 \
+  --user pkuba-deploy \
+  --private-key-file /secure/pkuba-actions \
+  --known-hosts-file /secure/pkuba-known-hosts \
+  --root-key-fingerprint "$root_key_fingerprint"
+```
+
+探针强制使用 publickey、只读取指定 known-hosts、关闭密码、keyboard-interactive 和 agent 回退，
+并验证精确 nonce 回显、任意命令拒绝、PTY 不可获得和远程转发被拒绝。`verify` 只能通过实际
+root `sshd` 会话调用 root helper；证明同时绑定 nonce、服务器时间、唯一 `authorized_keys`
+整行哈希、公钥指纹和 forced-command 路径，未特权部署账号在本机直接调用 helper 不会生成证明。
+部署账号的 home、`.ssh` 和 `authorized_keys` 均由 root 管理，账号不能替换已验证公钥。
+
+全部探针通过后，脚本会打印带 64 位 nonce 的一次性命令；在 15 分钟内保持当前 root 会话，
+确认已验证指纹对应的 root maintenance key 和阿里云控制台恢复入口仍可用，再执行探针打印的、
+同时带 `--root-key-fingerprint` 与 `--confirm-console-recovery` 的精确命令。root-only finalizer
+会核对新鲜证明、该精确 root key 指纹和精确
+`restrict,command=...` 约束，以原子替换写入词法顺序最前的 sshd drop-in，依次执行
+`sshd -t`、reload 和 root 有效配置回读，并确认 `PubkeyAuthentication yes`；成功证据会记录
+已验证的 root key 指纹。任一步失败都会恢复、校验并重新加载旧配置，恢复写
+本身失败则明确返回 recovery-required 且保留 root-only 旧配置副本。成功后另开一个禁用密码
+回退的 root key-only 会话复核。
+
+保持 `PKUBA_PRODUCTION_AUTOMATION_ARMED=0`，直到 SSH finalizer、真实蓝绿、回切、掉电恢复和
+备份恢复演练均通过，且本次生产授权完成。
 
 ## GitHub 发布
 
@@ -87,8 +134,9 @@ sudo /root/pkuba-prod-tools/bootstrap-server.sh \
 - `PROD_SSH_PRIVATE_KEY`；
 - 经核对的 `PROD_SSH_KNOWN_HOSTS`。
 
-服务器 forced command 只接受 `deploy TAG COMMIT API_DIGEST WEB_DIGEST`，禁止 PTY、转发、
-密码登录和任意 shell。
+服务器 forced command 只接受无副作用的 `verify 64_HEX_NONCE`，或
+`deploy TAG COMMIT API_DIGEST WEB_DIGEST`；其 key 使用 `restrict`，禁止 PTY、转发和任意
+shell。密码登录只有在外部探针通过且 root-only finalizer 成功后才关闭。
 
 ## 发布事务
 

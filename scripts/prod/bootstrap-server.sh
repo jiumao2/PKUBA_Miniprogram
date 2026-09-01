@@ -16,7 +16,9 @@ Usage: sudo bootstrap-server.sh \
 This command initializes a fresh production database and the permanent
 /opt/pkuba/production namespace. It never imports QA, demo or legacy data.
 It interactively invokes bootstrap_first_superadmin exactly once while the
-public gateway remains in maintenance mode.
+public gateway remains in maintenance mode. It intentionally leaves password
+authentication unchanged until the external deployment-key probe and the
+separate root-only SSH finalizer have succeeded.
 EOF
 }
 
@@ -101,17 +103,21 @@ if ! id "$deploy_user" >/dev/null 2>&1; then
   useradd --create-home --shell /bin/bash "$deploy_user"
 fi
 passwd --lock "$deploy_user" >/dev/null
-install -d -m 700 -o "$deploy_user" -g "$deploy_user" "/home/$deploy_user/.ssh"
+install -d -m 755 -o root -g root "/home/$deploy_user"
+install -d -m 755 -o root -g root "/home/$deploy_user/.ssh"
 public_key=$(tr -d '\r\n' <"$deploy_public_key_file")
 [[ $public_key == ssh-ed25519\ * || $public_key == ecdsa-sha2-nistp256\ * ]] \
   || die "deployment key must be Ed25519 or ECDSA"
 printf 'restrict,command="/usr/local/sbin/pkuba-deploy-gateway" %s\n' "$public_key" \
   >"/home/$deploy_user/.ssh/authorized_keys"
-chown "$deploy_user:$deploy_user" "/home/$deploy_user/.ssh/authorized_keys"
-chmod 600 "/home/$deploy_user/.ssh/authorized_keys"
+chown root:root "/home/$deploy_user/.ssh/authorized_keys"
+chmod 644 "/home/$deploy_user/.ssh/authorized_keys"
+sync -f "/home/$deploy_user/.ssh/authorized_keys" "/home/$deploy_user/.ssh" "/home/$deploy_user"
 
 install -d -o root -g root -m 755 /usr/local/libexec/pkuba
 install -o root -g root -m 755 "$script_dir/deploy-gateway.sh" /usr/local/sbin/pkuba-deploy-gateway
+install -o root -g root -m 700 "$script_dir/record-deploy-ssh-verification.sh" /usr/local/sbin/pkuba-record-deploy-ssh-verification
+install -o root -g root -m 700 "$script_dir/finalize-deploy-ssh.sh" /usr/local/sbin/pkuba-finalize-deploy-ssh
 install -o root -g root -m 755 "$script_dir/deploy-blue-green.sh" /usr/local/sbin/pkuba-deploy-blue-green
 install -o root -g root -m 700 "$script_dir/rollback-retained-application.sh" /usr/local/sbin/pkuba-rollback-retained-application
 install -o root -g root -m 700 "$script_dir/recover-release-transaction.sh" /usr/local/sbin/pkuba-recover-release-transaction
@@ -127,6 +133,7 @@ for helper in parse-release-state.sh parse-release-contract.sh derive-release-ca
 done
 printf '%s\n' \
   "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-deploy-blue-green *" \
+  "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-record-deploy-ssh-verification *" \
   >/etc/sudoers.d/pkuba-deploy
 chmod 440 /etc/sudoers.d/pkuba-deploy
 visudo --check --file=/etc/sudoers.d/pkuba-deploy >/dev/null
@@ -139,6 +146,7 @@ ssh-keygen -F github.com -f /root/.ssh/known_hosts >/dev/null \
 install -d -o root -g root -m 700 "$production_root" "$runtime_dir" "$deploy_root" \
   "$release_root" "$state_dir" "$slot_state_dir" "$backup_root" \
   "$backup_root/daily" "$backup_root/weekly"
+install -d -o root -g root -m 700 /var/lib/pkuba/deploy-ssh
 if [[ ! -d $repository_dir/.git ]]; then
   GIT_SSH_COMMAND='ssh -i /root/.ssh/pkuba-github-readonly -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes' \
     git clone --filter=blob:none git@github.com:jiumao2/PKUBA_Miniprogram.git "$repository_dir"
@@ -272,14 +280,6 @@ compose_gateway=(env PKUBA_DEPLOY_STATE_DIR="$state_dir" PKUBA_CADDY_IMAGE="$cad
   -f "$release_dir/infra/compose.prod.gateway.yml")
 "${compose_gateway[@]}" up -d gateway
 
-install -d -m 755 /etc/ssh/sshd_config.d
-cat >/etc/ssh/sshd_config.d/60-pkuba-production.conf <<'EOF'
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PermitRootLogin prohibit-password
-EOF
-sshd -t
-systemctl reload ssh
 ufw default deny incoming >/dev/null
 ufw default allow outgoing >/dev/null
 ufw allow 22/tcp >/dev/null
@@ -383,8 +383,11 @@ trap - EXIT
 cat <<EOF
 Fresh PKUBA production baseline is ready under $production_root.
 Release: $release_tag ($release_commit), active slot: blue.
-Only ports 22, 80 and 443 are allowed. Root accepts keys only; the deployment
-account is restricted to its forced command. Daily/weekly backups keep 5/4
-consistent restore points. Keep PKUBA_PRODUCTION_AUTOMATION_ARMED=0 until the
-separate deployment authorization and blue/green rehearsal are complete.
+Only ports 22, 80 and 443 are allowed. The deployment account is restricted to
+its forced command, but password authentication is intentionally unchanged.
+From the trusted management machine, run verify-deploy-ssh.sh with the Actions
+private key, then run the exact root-only finalizer command that it prints while
+keeping this root recovery session open. Daily/weekly backups keep 5/4 consistent
+restore points. Keep PKUBA_PRODUCTION_AUTOMATION_ARMED=0 until SSH finalization,
+separate deployment authorization and the blue/green rehearsal are complete.
 EOF
