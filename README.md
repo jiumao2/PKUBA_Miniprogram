@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="packages/design-tokens/src/assets/pkuba-logo.png" width="180" alt="北大篮协 PKUBA Logo">
+  <img src="miniprogram_code.jpg" width="220" alt="微信扫码进入北大篮协小程序">
+  <br>
+  <sub>微信扫码进入小程序</sub>
 </p>
 
 <h1 align="center">PKUBA</h1>
@@ -18,12 +20,9 @@
 
 ## 一套系统，贯穿整场赛事
 
-PKUBA 是面向高校篮球赛事的开源管理平台。系统以 Django/PostgreSQL 为权威数据源，
-通过微信小程序连接公众、参赛者与领队，通过网页后台支持赛事管理员，将分散的赛务工作
-组织成一条清晰、可靠、可追溯的数据链路。
+PKUBA 是面向高校篮球赛事的开源管理平台。系统以 Django/PostgreSQL 为权威数据源，通过微信小程序连接公众、参赛者与领队，通过网页后台支持赛事管理员，将分散的赛务工作组织成一条清晰、可靠、可追溯的数据链路。
 
-系统以北大篮协赛事流程为核心，面向高校篮球协会、校内联赛及长期运营的业余赛事开放
-源代码与自部署能力。
+系统以北大篮协赛事流程为核心，面向高校篮球协会、校内联赛及长期运营的业余赛事开放源代码与自部署能力。
 
 <p align="center">
   <strong>赛季与名单 → 赛程与签位 → 调赛与资料 → 记录表复核 → 赛果与统计 → 备份与归档</strong>
@@ -31,38 +30,25 @@ PKUBA 是面向高校篮球赛事的开源管理平台。系统以 Django/Postgr
 
 ## 核心特性 / Highlights
 
-- **赛事全生命周期**：统一管理赛季、组别、球队名单、场地容量、在线排期、XLSX 导入、
-  签位结果、调赛、比赛资料、赛果和归档。
-- **一体化双端体验**：微信小程序提供赛程、淘汰赛、排名、数据、身份与领队工作台；
-  React 管理后台承载完整赛务操作。
-- **纸质记录表数字化**：支持图片上传、AI 辅助识别、网页与小程序人工复核、规则校验、
-  不可变 publication 和公开统计。
-- **服务端权威**：权限、状态迁移、版本、容量、比分、排名和派生数据均由服务端重新校验
-  与计算，客户端只呈现状态并提交意图。
-- **可靠且可审计**：关键命令使用事务、稳定 ID、版本检查和幂等键，失败不留下部分写入，
-  publication、revision 与审计记录持续保留。
-- **隐私与赛季隔离**：赛季专属数据在数据库层隔离；身份、记录表与私有媒体按角色授权，
-  公开接口只返回允许展示的内容。
-- **共享契约与设计系统**：OpenAPI 生成 TypeScript 客户端，双端复用记录表领域模型、
-  设计变量和品牌资源。
+- **赛事全生命周期**：统一管理赛季、组别、球队名单、场地容量、在线排期、XLSX 导入、签位结果、调赛、比赛资料、赛果和归档。
+- **一体化双端体验**：微信小程序提供赛程、淘汰赛、排名、数据、身份与领队工作台；React 管理后台承载完整赛务操作。
+- **纸质记录表数字化**：支持图片上传、AI 辅助识别、网页与小程序人工复核、规则校验、不可变 publication 和公开统计。
+- **服务端权威**：权限、状态迁移、版本、容量、比分、排名和派生数据均由服务端重新校验与计算，客户端只呈现状态并提交意图。
+- **可靠且可审计**：关键命令使用事务、稳定 ID、版本检查和幂等键，失败不留下部分写入，publication、revision 与审计记录持续保留。
+- **隐私与赛季隔离**：赛季专属数据在数据库层隔离；身份、记录表与私有媒体按角色授权，公开接口只返回允许展示的内容。
+- **共享契约与设计系统**：OpenAPI 生成 TypeScript 客户端，双端复用记录表领域模型、设计变量和品牌资源。
 - **可恢复运维**：提供一致性备份、私有媒体管理、赛季归档、发布回滚与隔离恢复流程。
 
 ## 系统如何协作
 
-```mermaid
-flowchart LR
-    Public["公众 / 参赛者 / 领队"] --> Mini["微信小程序"]
-    Admin["赛事管理员"] --> Web["管理后台"]
-    Mini --> API["Django API"]
-    Web --> API
-    API --> DB[(PostgreSQL)]
-    API --> Jobs["识别 / 邮件 / 归档任务"]
-    Jobs --> DB
-```
+| 使用者 | 入口 | 服务与数据 |
+| --- | --- | --- |
+| 公众 / 参赛者 / 领队 | 微信小程序 | Django API → PostgreSQL |
+| 赛事管理员 | 管理后台 | Django API → PostgreSQL |
 
-小程序使用 Taro、React 与 TypeScript；管理后台使用 React、Vite 与 TypeScript；
-服务端使用 Django、Django Ninja 与 Python；运行环境由 Docker Compose、Gunicorn、
-Caddy 和 GitHub Actions 组成。
+微信小程序与管理后台统一调用 Django API；识别、邮件和归档任务由服务端执行，结果写入 PostgreSQL。
+
+小程序使用 Taro、React 与 TypeScript；管理后台使用 React、Vite 与 TypeScript；服务端使用 Django、Django Ninja 与 Python；运行环境由 Docker Compose、Gunicorn、Caddy 和 GitHub Actions 组成。
 
 ## 仓库结构
 
@@ -82,8 +68,7 @@ scripts/              初始化、检查、发布与运维脚本
 
 ## 快速开始
 
-正式本地开发与验收环境为 Windows + Ubuntu 24.04 WSL2。准备 Node.js 24、npm 11、
-WSL2 和微信开发者工具后：
+正式本地开发与验收环境为 Windows + Ubuntu 24.04 WSL2。准备 Node.js 24、npm 11、WSL2 和微信开发者工具后：
 
 ```powershell
 git clone https://github.com/jiumao2/PKUBA_Miniprogram.git
@@ -92,8 +77,7 @@ Copy-Item .env.example .env
 ./scripts/deploy-wsl.ps1
 ```
 
-请先在本机 `.env` 中填写自己的配置，任何密钥都不得提交到 Git。Windows、macOS、
-微信开发者工具、测试与静态资源步骤见[本地开发与验证](docs/DEVELOPMENT.md)。
+请先在本机 `.env` 中填写自己的配置，任何密钥都不得提交到 Git。Windows、macOS、微信开发者工具、测试与静态资源步骤见[本地开发与验证](docs/DEVELOPMENT.md)。
 
 ## 文档导航
 
@@ -111,9 +95,7 @@ Copy-Item .env.example .env
 
 ## 参与贡献
 
-欢迎通过 Issue 或 Pull Request 提交问题、改进和适配。开始修改前请阅读
-[团队协作与发布工作流](WORKFLOW.md)，保持服务端权威、跨赛季隔离、隐私、审计和
-可恢复性等业务不变量，并同步更新实现、OpenAPI、生成客户端、测试与权威文档。
+欢迎通过 Issue 或 Pull Request 提交问题、改进和适配。开始修改前请阅读[团队协作与发布工作流](WORKFLOW.md)，保持服务端权威、跨赛季隔离、隐私、审计和可恢复性等业务不变量，并同步更新实现、OpenAPI、生成客户端、测试与权威文档。
 
 提交前运行：
 
@@ -121,10 +103,8 @@ Copy-Item .env.example .env
 ./scripts/check.ps1
 ```
 
-涉及数据库、真实 API 或客户端交互的改动，还应按范围完成 PostgreSQL、浏览器和微信
-开发者工具验收；构建成功不能替代动态验证。
+涉及数据库、真实 API 或客户端交互的改动，还应按范围完成 PostgreSQL、浏览器和微信开发者工具验收；构建成功不能替代动态验证。
 
 ## License / 许可证
 
-PKUBA 以 [GNU General Public License v3.0](LICENSE) 发布，SPDX 标识为
-`GPL-3.0-only`。
+PKUBA 以 [GNU General Public License v3.0](LICENSE) 发布，SPDX 标识为 `GPL-3.0-only`。
