@@ -130,6 +130,7 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
+      - run: npm run build:packages
       - name: Build for the production API domain
         env:
           PKUBA_API_BASE_URL: https://api.pkuba.cn
