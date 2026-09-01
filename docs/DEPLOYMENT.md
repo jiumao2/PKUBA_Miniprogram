@@ -168,6 +168,8 @@ reload、probe 或 cleanup 失败都保持零 writer 和可诊断事务。
 - `https://admin.pkuba.cn/_deployment/ready`：管理站镜像身份。
 - `production-probe.yml` 每 15 分钟只在仓库变量和 URL 均显式配置时执行公开探针；未配置
   时安全跳过，不构成生产健康证明。
+- 管理站登录页和登录后侧栏共用统一备案页脚；公开页面验收必须确认工信部备案链接与带
+  官方图标的公安备案查询链接均可见、指向 HTTPS 官方页面，并在窄屏和紧凑侧栏中完整换行。
 
 维护期间除健康和部署探针外均返回正式 503、`Retry-After: 120` 和
 `Cache-Control: no-store`。每次生产操作后还要核对 HTTPS/HSTS、公开 API、管理站、真实微信

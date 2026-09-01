@@ -64,6 +64,15 @@ describe("LoginScreen", () => {
       "href",
       "https://beian.miit.gov.cn/",
     );
+    const policeLink = screen.getByRole("link", { name: "京公网安备11010802050065号" });
+    expect(policeLink).toHaveAttribute(
+      "href",
+      "https://beian.mps.gov.cn/#/query/webSearch?code=11010802050065",
+    );
+    expect(policeLink).toHaveAttribute("target", "_blank");
+    expect(policeLink).toHaveAttribute("rel", "noreferrer");
+    expect(policeLink.querySelector("img")).toHaveAttribute("src", "/beian-police.png");
+    expect(policeLink.querySelector("img")).toHaveAttribute("alt", "");
   });
 
   it("consumes a confirmed challenge and restores the admin session", async () => {

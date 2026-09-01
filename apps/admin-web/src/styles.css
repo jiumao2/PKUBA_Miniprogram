@@ -114,6 +114,9 @@ button:not(:disabled) {
 
 .site-footer {
   display: grid;
+  min-width: 0;
+  flex: 0 0 auto;
+  justify-items: center;
   gap: 4px;
   margin-top: auto;
   padding-top: 22px;
@@ -133,7 +136,27 @@ button:not(:disabled) {
   text-decoration: underline;
 }
 
+.site-footer-police {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.site-footer-police img {
+  width: 16px;
+  height: auto;
+  flex: 0 0 auto;
+}
+
+.site-footer-police span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .site-footer-compact {
+  justify-items: start;
   margin-top: 12px;
   padding: 12px 6px 0;
   border-top: 1px solid var(--pkuba-line);
@@ -1338,6 +1361,15 @@ h2 {
   .sidebar-account button {
     padding: 8px;
     white-space: nowrap;
+  }
+
+  .sidebar > .site-footer-compact {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-items: center;
+    margin-top: 0;
+    padding: 8px 0 0;
+    text-align: center;
   }
 
   .workspace {
