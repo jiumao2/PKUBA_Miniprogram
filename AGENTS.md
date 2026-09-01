@@ -11,6 +11,9 @@
 - Django/PostgreSQL 是业务权威；客户端只呈现状态并提交意图。
 - 规则优先级：最新用户决定 > `docs/SYSTEM_SPEC.md` > 专题规范与 `docs/USER_GUIDE.md` > `Plan.md` > 当前代码和动态测试证据 > 旧项目 / 《参赛手册》。
 - 旧资料只用于理解历史；与新版决定冲突时不得覆盖新版规则。
+- 安全清理、依赖升级、扫描告警处置和行为“改进”前必须先核对 `docs/FINDING_DISPOSITIONS.md`。命中有效的 `KEEP_AS_DESIGNED`、`FALSE_POSITIVE`、`ACCEPTED_RISK` 或 `DEFERRED` 时，未经用户重新确认不得修改、关闭、驳回、升级绕过或声称已修复。
+- 未命中登记的新告警或新问题默认是 `REVIEW_REQUIRED`；发现只授权诊断和报告，不授权修改代码、配置、依赖、数据或外部告警状态，必须先向用户报告证据和修复选项并取得明确决定。
+- 只有登记的重新打开条件被真实证据触发时，才先报告证据并请求用户决定；无法访问登记引用的私密详情时不得猜测或通过公开文件补写敏感内容。
 
 ## 业务不变量
 - 权限、状态迁移、版本检查、容量、比分、排名和派生数据均由服务端重算。
@@ -41,7 +44,7 @@
 - 提交前检查敏感内容、迁移状态、生成文件、文档和未跟踪文件范围。
 
 ## Agent 接手与交付
-- 接手任务先完整阅读本文件、`docs/MAINTAINER_GUIDE.md`、`WORKFLOW.md` 及受影响领域的权威文档，再检查分支、`HEAD`、`origin/main`、工作区和运行制品；不得从任务标题或旧对话摘要猜测当前状态。
+- 接手任务先完整阅读本文件、`docs/MAINTAINER_GUIDE.md`、`WORKFLOW.md` 及受影响领域的权威文档；涉及安全清理、依赖升级、扫描告警或行为“改进”时还必须阅读 `docs/FINDING_DISPOSITIONS.md`。随后再检查分支、`HEAD`、`origin/main`、工作区和运行制品；不得从任务标题或旧对话摘要猜测当前状态。
 - 开始修改前冻结基线 SHA、任务范围、明确不做事项和文件 allowlist。若 `HEAD` 移动或出现他人产品改动，停止写入并重新核对，不得 reset、clean 或覆盖。
 - 实现者只修改批准范围并提供聚焦测试、相邻流程、完整门槛、已知边界和未验证事项。涉及 UI 必须使用真实浏览器或微信开发者工具；涉及数据库、并发、迁移和恢复必须使用隔离 PostgreSQL 或成套恢复副本。
 - 候选交接必须包含 base/HEAD、精确 allowlist、逐文件模式/大小/SHA-256、聚合指纹、实际测试输出、运行制品身份和剩余边界。任何候选变化都会使旧指纹和旧验收失效。
@@ -60,4 +63,5 @@
 - 赛程导入：`docs/SCHEDULE_IMPORT_V3.md`
 - 记录表：`docs/SCORESHEETS.md`
 - API 幂等、分页、超时与错误：`docs/API_RELIABILITY.md`
+- 已知问题、误报、按设计保留、接受风险与延期处置：`docs/FINDING_DISPOSITIONS.md`
 - 备份归档与恢复：`docs/BACKUP_AND_ARCHIVE.md`、`docs/DEPLOYMENT.md`

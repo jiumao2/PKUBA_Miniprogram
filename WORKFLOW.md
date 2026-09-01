@@ -6,7 +6,7 @@
 
 ## 1. 开始修改前
 
-1. 先完整阅读 `AGENTS.md` 与 `docs/MAINTAINER_GUIDE.md`，确认最新用户决定，并找到权威规则：稳定系统合同在 `docs/SYSTEM_SPEC.md`，路线图在 `Plan.md`，用户可见规则在 `docs/USER_GUIDE.md`，领域规则在对应专题规范。
+1. 先完整阅读 `AGENTS.md` 与 `docs/MAINTAINER_GUIDE.md`，确认最新用户决定，并找到权威规则：稳定系统合同在 `docs/SYSTEM_SPEC.md`，路线图在 `Plan.md`，用户可见规则在 `docs/USER_GUIDE.md`，领域规则在对应专题规范。安全清理、依赖升级、扫描告警处置或行为“改进”还必须先核对 `docs/FINDING_DISPOSITIONS.md`，记录命中的处置 ID 及是否触发重新打开条件；未命中的新发现先按 `REVIEW_REQUIRED` 诊断和报告，取得用户对是否修复及修复方式的明确决定前不得实施。
 2. 在任务说明中写清范围、不做什么、验收场景、数据影响、迁移风险、旧版本兼容和回滚边界；未确定的产品语义先确认，不能由实现者自行补写规则。
 3. 从最新 `origin/main` 建短生命周期分支：
 
@@ -78,6 +78,7 @@ PR 至少由一名非作者审核者批准，所有评论和会话必须解决�
 - 配置有效的 `CODEOWNERS`，并对数据库、权限、隐私和发布目录指定领域审核。
 - 启用 GitHub private vulnerability reporting、secret scanning、push protection、Dependabot、
   dependency graph、dependency review 与 CodeQL；工作流文件存在不等于平台功能已启用。
+- 关闭、驳回或修改 GitHub 安全告警是独立外部变更，必须取得当前用户对精确告警的明确授权；代码、测试或 allowlist 通过不自动授予该权限。
 - 为 `v*` 配置 tag ruleset：仅授权发布负责人可创建或删除，且 tag 必须指向受保护 `main` 上已经绑定独立验收结论的 SHA。tag ruleset 限制候选镜像和小程序 artifact 的产生；`production` Environment 是实际生产部署的独立硬门禁。
 
 ## 6. 合并、候选版本与上线
@@ -114,7 +115,7 @@ PR 至少由一名非作者审核者批准，所有评论和会话必须解决�
 
 ## 9. Agent 与任务交接闭环
 
-1. 实现任务冻结候选时，必须提供 base/HEAD、范围与非目标、精确文件 allowlist、逐文件模式/大小/SHA-256、聚合指纹、实际测试输出、运行制品身份、已知边界和未验证事项。
+1. 实现任务冻结候选时，必须提供 base/HEAD、范围与非目标、精确文件 allowlist、逐文件模式/大小/SHA-256、聚合指纹、实际测试输出、运行制品身份、已知边界和未验证事项；同时列出命中的 `docs/FINDING_DISPOSITIONS.md` 处置 ID、适用边界及是否触发重新打开条件。
 2. 独立测试任务在候选提交前审查全部差异与调用链，并在隔离环境重放聚焦、相邻和必要动态场景。失败反馈必须包含步骤、期望/实际、日志及页面/API/数据库证据；每次返修后重新冻结，旧哈希和旧验收失效。
 3. 对纳入独立验收的产品候选，测试任务只有在候选完整通过后才发送 `ACCEPTED_FOR_COMMIT`。实现者自己的测试不能替代这一结论；纯文档等由用户明确授权直接提交的任务仍须执行同等范围、链接、敏感信息、门槛和远端核对。
 4. 提交任务只暂存批准 allowlist，核对 `git diff --cached --name-only`、`--stat`、`--check`、文件模式、敏感内容、生成文件、迁移和未跟踪范围；独立测试报告与其他任务改动不得进入提交。
