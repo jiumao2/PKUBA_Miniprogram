@@ -13,22 +13,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  quality:
-    name: Release quality gate
-    uses: ./.github/workflows/ci.yml
-
-  publish:
-    name: Publish immutable images
-    needs: quality
+  verified-main:
+    name: Verify tag and completed main CI
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-    outputs:
-      api_digest: ${{ steps.api.outputs.digest }}
-      web_digest: ${{ steps.web.outputs.digest }}
-      postgres_digest: ${{ steps.base-images.outputs.postgres_digest }}
-      caddy_digest: ${{ steps.base-images.outputs.caddy_digest }}
+      actions: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +32,74 @@ jobs:
           [[ "$(git rev-parse "$VERSION_TAG^{commit}")" == "$GITHUB_SHA" ]]
           git fetch origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Require successful CI for the exact main commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          run_id=""
+          for attempt in 1 2 3 4 5 6; do
+            runs_json=$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f branch=main \
+              -f event=push \
+              -f status=completed \
+              -f head_sha="$GITHUB_SHA" \
+              -f per_page=100)
+            run_id=$(jq -r --arg sha "$GITHUB_SHA" \
+              '.workflow_runs
+                | map(select(
+                    .head_sha == $sha
+                    and .head_branch == "main"
+                    and .event == "push"
+                    and .status == "completed"
+                    and .conclusion == "success"
+                  ))
+                | first
+                | .id // empty' <<<"$runs_json")
+            [[ -n "$run_id" ]] && break
+            [[ $attempt -eq 6 ]] || sleep 10
+          done
+          [[ -n "$run_id" ]] || {
+            echo "No successful completed main push CI run exists for $GITHUB_SHA" >&2
+            exit 1
+          }
+
+          jobs_json=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100")
+          for required_job in backend frontend openapi; do
+            total=$(jq --arg name "$required_job" \
+              '[.jobs[] | select(.name == $name)] | length' <<<"$jobs_json")
+            successful=$(jq --arg name "$required_job" \
+              '[.jobs[] | select(
+                .name == $name
+                and .status == "completed"
+                and .conclusion == "success"
+              )] | length' <<<"$jobs_json")
+            [[ $total -eq 1 && $successful -eq 1 ]] || {
+              echo "Required CI job $required_job was not uniquely successful" >&2
+              exit 1
+            }
+          done
+          echo "Accepted CI run $run_id for exact main commit $GITHUB_SHA"
+
+  publish:
+    name: Publish immutable images
+    needs: verified-main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api_digest: ${{ steps.api.outputs.digest }}
+      web_digest: ${{ steps.web.outputs.digest }}
+      postgres_digest: ${{ steps.base-images.outputs.postgres_digest }}
+      caddy_digest: ${{ steps.base-images.outputs.caddy_digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v3
 
@@ -121,7 +179,7 @@ jobs:
 
   miniapp:
     name: Build production mini program artifact
-    needs: quality
+    needs: verified-main
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

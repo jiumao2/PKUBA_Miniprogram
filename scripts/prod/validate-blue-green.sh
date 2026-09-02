@@ -89,7 +89,7 @@ grep -Fq 'test ! -e /app/core/management' \
 
 contract=$(sed -n 's/^PKUBA_PREVIOUS_APP_COMPATIBLE=//p' \
   "$repo_root/infra/release-contract.env")
-[[ $contract == 0 ]]
+[[ $contract == 1 ]]
 grep -Fqx 'PKUBA_APP_CAPABILITY=reschedule-route-v1' \
   "$repo_root/infra/release-contract.env"
 grep -Fqx 'PKUBA_REQUIRED_PREVIOUS_APP_CAPABILITY=reschedule-route-v1' \
@@ -293,8 +293,14 @@ if bash "$repo_root/scripts/prod/check-app-capability.sh" \
   echo "an incompatible rollback application unexpectedly passed the capability gate" >&2
   exit 1
 fi
+
+cat >"$state_fixture/unarmed-contract.env" <<'EOF'
+PKUBA_PREVIOUS_APP_COMPATIBLE=0
+PKUBA_APP_CAPABILITY=reschedule-route-v1
+PKUBA_REQUIRED_PREVIOUS_APP_CAPABILITY=reschedule-route-v1
+EOF
 if bash "$repo_root/scripts/prod/check-app-capability.sh" \
-  reschedule-route-v1 "$repo_root/infra/release-contract.env" >/dev/null 2>&1; then
+  reschedule-route-v1 "$state_fixture/unarmed-contract.env" >/dev/null 2>&1; then
   echo "an unarmed release contract unexpectedly passed the capability gate" >&2
   exit 1
 fi
