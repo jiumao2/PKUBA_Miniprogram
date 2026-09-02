@@ -71,6 +71,9 @@ docker run --rm \
   caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d \
   caddy validate --config /etc/caddy/Caddyfile
 
+[[ $(grep -Fc 'header_up X-Forwarded-Proto https' "$repo_root/infra/Caddyfile.slot") -eq 2 ]]
+bash "$repo_root/scripts/prod/test-slot-forwarded-proto.sh"
+
 bash -n "$repo_root"/scripts/prod/*.sh
 bash "$repo_root/scripts/prod/test-deploy-ssh-gate.sh"
 bash "$repo_root/scripts/prod/test-release-safety.sh"
@@ -127,6 +130,12 @@ for release_tag in v1.0.2-rc.1 v1.0.2+build main v1.0; do
 done
 grep -Fq 'bootstrap_first_superadmin' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'bootstrap_admin_registration_policy' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'Usage: sudo /usr/bin/bash /root/pkuba-prod-tools/bootstrap-server.sh' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'sudo /usr/bin/bash /root/pkuba-prod-tools/bootstrap-server.sh' \
+  "$repo_root/docs/DEPLOYMENT.md"
 grep -Fq 'pkuba-backup-daily.timer' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'pkuba-backup-weekly.timer' \

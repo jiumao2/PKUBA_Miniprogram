@@ -5,7 +5,7 @@ umask 077
 
 usage() {
   cat <<'EOF'
-Usage: sudo bootstrap-server.sh \
+Usage: sudo /usr/bin/bash /root/pkuba-prod-tools/bootstrap-server.sh \
   --deploy-public-key-file /root/pkuba-actions.pub \
   --github-read-key-file /root/pkuba-github-readonly \
   --release-tag v1.0.2 \
@@ -15,10 +15,11 @@ Usage: sudo bootstrap-server.sh \
 
 This command initializes a fresh production database and the permanent
 /opt/pkuba/production namespace. It never imports QA, demo or legacy data.
-It interactively invokes bootstrap_first_superadmin exactly once while the
-public gateway remains in maintenance mode. It intentionally leaves password
-authentication unchanged until the external deployment-key probe and the
-separate root-only SSH finalizer have succeeded.
+It interactively invokes bootstrap_first_superadmin and then
+bootstrap_admin_registration_policy exactly once while the public gateway
+remains in maintenance mode. Secrets are read from this terminal without echo.
+It intentionally leaves password authentication unchanged until the external
+deployment-key probe and the separate root-only SSH finalizer have succeeded.
 EOF
 }
 
@@ -245,8 +246,10 @@ compose_slot=(env "${slot_env[@]}" docker compose --project-name pkuba-blue
 "${compose_slot[@]}" run --rm --no-deps api python manage.py check_no_synthetic_public_data
 echo "Create the one initial SUPERADMIN. Input is read from this terminal and is not logged."
 "${compose_slot[@]}" run --rm --no-deps api python manage.py bootstrap_first_superadmin
+echo "Initialize the global administrator registration invite. Input is not echoed or logged."
+"${compose_slot[@]}" run --rm --no-deps api python manage.py bootstrap_admin_registration_policy
 "${compose_slot[@]}" run --rm --no-deps api python manage.py shell -c \
-  'from core.models import Account,AdminAuditLog,Season; assert Season.objects.count()==0; assert Account.objects.filter(role="SUPERADMIN",is_active=True).count()==1; assert AdminAuditLog.objects.filter(action="FIRST_SUPERADMIN_BOOTSTRAPPED").count()==1'
+  'from core.models import Account,AdminAuditLog,AdminRegistrationPolicy,Season; assert Season.objects.count()==0; assert Account.objects.filter(role="SUPERADMIN",is_active=True).count()==1; assert AdminRegistrationPolicy.objects.filter(singleton_key=1).exclude(invite_code_hash="").count()==1; assert AdminAuditLog.objects.filter(action="FIRST_SUPERADMIN_BOOTSTRAPPED").count()==1; assert AdminAuditLog.objects.filter(action="ADMIN_REGISTRATION_POLICY_BOOTSTRAPPED").count()==1'
 
 app_capability=$(bash "$release_dir/scripts/prod/derive-release-capability.sh" "$release_dir")
 switched_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)

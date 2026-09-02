@@ -186,7 +186,7 @@ export default function MinePage() {
               </>
             ) : (
               <>
-                <Text className="section-detail">邀请码属于当前赛季；注册时需要自行设置个人网页登录密码。</Text>
+                <Text className="section-detail">使用全局管理员邀请码注册，并自行设置个人网页登录密码。</Text>
                 <Button
                   className="secondary-action"
                   onClick={() => void navigateToOnce("/pages/admin-register/index")}

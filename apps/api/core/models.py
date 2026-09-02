@@ -84,6 +84,31 @@ class AdminProfile(UUIDModel):
     )
 
 
+class AdminRegistrationPolicy(UUIDModel):
+    singleton_key = models.PositiveSmallIntegerField(default=1, unique=True, editable=False)
+    invite_code_hash = models.CharField(max_length=128)
+    version = models.PositiveIntegerField(default=1)
+    initialized_at = models.DateTimeField(default=timezone.now)
+    initialized_by = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="initialized_admin_registration_policies",
+    )
+    updated_by = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="updated_admin_registration_policies",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(singleton_key=1),
+                name="admin_registration_policy_singleton",
+            ),
+        ]
+
+
 class WeChatAuthTicket(UUIDModel):
     app_id = models.CharField(max_length=64)
     openid = models.CharField(max_length=128)
@@ -143,12 +168,6 @@ class Season(UUIDModel):
                 condition=Q(ends_on__gte=models.F("starts_on")), name="season_dates_ordered"
             ),
         ]
-
-    def save(self, *args, **kwargs):
-        if not self.admin_invite_code_hash:
-            self.admin_invite_code_hash = make_password("PKUBA1997")
-            self.admin_invite_updated_at = timezone.now()
-        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return self.name

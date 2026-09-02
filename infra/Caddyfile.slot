@@ -8,11 +8,15 @@
 	}
 
 	handle /api/* {
-		reverse_proxy {$PKUBA_SLOT_API_UPSTREAM}
+		reverse_proxy {$PKUBA_SLOT_API_UPSTREAM} {
+			header_up X-Forwarded-Proto https
+		}
 	}
 
 	handle /_maintenance/* {
-		reverse_proxy {$PKUBA_SLOT_API_UPSTREAM}
+		reverse_proxy {$PKUBA_SLOT_API_UPSTREAM} {
+			header_up X-Forwarded-Proto https
+		}
 	}
 
 	handle /static/* {

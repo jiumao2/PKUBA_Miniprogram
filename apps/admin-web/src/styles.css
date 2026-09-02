@@ -536,11 +536,15 @@ h2 {
   background: var(--pkuba-canvas);
 }
 
+body:has(.login-shell) {
+  min-width: 0;
+}
+
 .login-layout {
   display: grid;
-  width: min(100%, 900px);
+  width: min(100%, 1040px);
   min-height: 610px;
-  grid-template-columns: minmax(280px, .82fr) minmax(400px, 1.18fr);
+  grid-template-columns: minmax(380px, .92fr) minmax(430px, 1.08fr);
   overflow: hidden;
   background: var(--pkuba-warm-white);
   border: 1px solid var(--pkuba-line);
@@ -575,9 +579,10 @@ h2 {
 }
 
 .login-context h1 {
-  max-width: 7em;
+  max-width: none;
   font-size: clamp(32px, 4vw, 45px);
   line-height: 1.08;
+  white-space: nowrap;
 }
 
 .login-context p:not(.eyebrow) {
@@ -794,7 +799,7 @@ h2 {
   to { opacity: 1; }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .login-shell {
     place-items: start center;
     padding: 18px;
@@ -835,6 +840,30 @@ h2 {
 
   .login-panel {
     padding: 32px 28px 30px;
+  }
+}
+
+@media (max-width: 360px) {
+  .login-shell {
+    padding: 12px;
+  }
+
+  .login-context {
+    gap: 12px;
+    padding: 18px;
+  }
+
+  .login-context h1 {
+    font-size: 21px;
+  }
+
+  .login-brand {
+    width: 84px;
+    height: 56px;
+  }
+
+  .login-panel {
+    padding: 28px 20px 26px;
   }
 }
 

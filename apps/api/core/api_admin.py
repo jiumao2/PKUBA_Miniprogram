@@ -4,16 +4,21 @@ from datetime import date, datetime, time
 from urllib.parse import quote
 from uuid import UUID
 
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from ninja import File, Header, Router, Schema, Status
 from ninja.files import UploadedFile
 
 from core.api_security import admin_session_auth, superadmin_session_auth
-from core.models import Account, AdminAuditLog, ScheduleImportBatch, Season
+from core.models import (
+    Account,
+    AdminAuditLog,
+    AdminRegistrationPolicy,
+    ScheduleImportBatch,
+    Season,
+)
 from core.services.admin_accounts import (
     AdminAccountError,
     demote_superadmin,
@@ -46,6 +51,11 @@ from core.services.season_management import (
     preview_season_configuration,
     season_configuration,
     update_season_configuration,
+)
+from core.services.superadmin_command_lock import (
+    SuperadminActorStateError,
+    lock_current_superadmin_actor,
+    lock_superadmin_commands,
 )
 
 router = Router(tags=["admin"])
@@ -522,15 +532,14 @@ class SetAdminActiveIn(ExpectedVersionIn):
     active: bool
 
 
-class SeasonInviteOut(Schema):
-    season_id: UUID
+class AdminRegistrationPolicyOut(Schema):
     configured: bool
-    uses_default_invite: bool
+    initialized_at: datetime | None
     updated_at: datetime | None
     version: int
 
 
-class SetSeasonInviteIn(Schema):
+class SetAdminRegistrationPolicyIn(Schema):
     invite_code: str
     expected_version: int
 
@@ -867,112 +876,103 @@ def update_admin_season_configuration(
     return season_configuration(updated)
 
 
-@router.get(
-    "/seasons/{season_id}/admin-invite-code",
-    auth=superadmin_session_auth,
-    response={200: SeasonInviteOut, 404: AdminErrorOut, 409: AdminErrorOut},
-)
-def get_season_admin_invite(request: HttpRequest, season_id: UUID):
-    del request
-    season = Season.objects.filter(id=season_id).first()
-    if season is None:
-        return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
-    if season.status == Season.Status.ARCHIVED:
-        return Status(
-            409,
-            {"code": "SEASON_ARCHIVED", "message": "已归档赛季只读。"},
-        )
-    if season.status != Season.Status.PUBLISHED:
-        return Status(
-            409,
-            {
-                "code": "SEASON_NOT_PUBLIC",
-                "message": "管理员邀请码只属于当前已公开赛季。",
-            },
-        )
+def _serialize_admin_registration_policy(
+    policy: AdminRegistrationPolicy | None,
+) -> dict[str, object]:
+    if policy is None:
+        return {
+            "configured": False,
+            "initialized_at": None,
+            "updated_at": None,
+            "version": 0,
+        }
     return {
-        "season_id": season.id,
-        "configured": bool(season.admin_invite_code_hash),
-        "uses_default_invite": check_password("PKUBA1997", season.admin_invite_code_hash),
-        "updated_at": season.admin_invite_updated_at,
-        "version": season.version,
+        "configured": True,
+        "initialized_at": policy.initialized_at,
+        "updated_at": policy.updated_at,
+        "version": policy.version,
     }
+
+
+@router.get(
+    "/admin-registration-policy",
+    auth=superadmin_session_auth,
+    response=AdminRegistrationPolicyOut,
+)
+def get_admin_registration_policy(request: HttpRequest):
+    del request
+    return _serialize_admin_registration_policy(
+        AdminRegistrationPolicy.objects.filter(singleton_key=1).first()
+    )
 
 
 @router.put(
-    "/seasons/{season_id}/admin-invite-code",
+    "/admin-registration-policy",
     auth=superadmin_session_auth,
-    response={200: SeasonInviteOut, 400: AdminErrorOut, 404: AdminErrorOut, 409: AdminErrorOut},
+    response={200: AdminRegistrationPolicyOut, 400: AdminErrorOut, 409: AdminErrorOut},
 )
-def set_season_admin_invite(
+def set_admin_registration_policy(
     request: HttpRequest,
-    season_id: UUID,
-    payload: SetSeasonInviteIn,
+    payload: SetAdminRegistrationPolicyIn,
 ):
     invite_code = payload.invite_code.strip()
+    if len(invite_code) < 8:
+        return Status(
+            400,
+            {"code": "INVITE_CODE_TOO_SHORT", "message": "邀请码至少需要 8 个字符。"},
+        )
     with transaction.atomic():
-        season = Season.objects.select_for_update().filter(id=season_id).first()
-        if season is None:
-            return Status(404, {"code": "SEASON_NOT_FOUND", "message": "赛季不存在。"})
-        if season.status == Season.Status.ARCHIVED:
+        lock_superadmin_commands()
+        try:
+            actor = lock_current_superadmin_actor(request.auth)
+        except SuperadminActorStateError:
             return Status(
                 409,
-                {"code": "SEASON_ARCHIVED", "message": "已归档赛季只读。"},
+                {"code": "ACTOR_STATE_CHANGED", "message": "当前账号权限已变化，请重新登录。"},
             )
-        if season.status != Season.Status.PUBLISHED:
+        policy = (
+            AdminRegistrationPolicy.objects.select_for_update()
+            .filter(singleton_key=1)
+            .first()
+        )
+        if policy is None:
             return Status(
                 409,
                 {
-                    "code": "SEASON_NOT_PUBLIC",
-                    "message": "管理员邀请码只属于当前已公开赛季。",
+                    "code": "ADMIN_REGISTRATION_NOT_CONFIGURED",
+                    "message": "管理员注册策略尚未初始化，请由服务器运维执行一次性初始化命令。",
                 },
             )
-        if len(invite_code) < 8:
-            return Status(
-                400,
-                {"code": "INVITE_CODE_TOO_SHORT", "message": "邀请码至少需要 8 个字符。"},
-            )
-        if season.version != payload.expected_version:
+        if policy.version != payload.expected_version:
             return Status(
                 409,
-                {"code": "VERSION_CONFLICT", "message": "赛季信息已变化，请刷新后重试。"},
+                {"code": "VERSION_CONFLICT", "message": "管理员注册策略已变化，请刷新后重试。"},
             )
+
         before = {
-            "configured": bool(season.admin_invite_code_hash),
-            "updated_at": (
-                season.admin_invite_updated_at.isoformat()
-                if season.admin_invite_updated_at
-                else None
-            ),
+            "configured": True,
+            "version": policy.version,
+            "updated_at": policy.updated_at.isoformat(),
         }
-        season.admin_invite_code_hash = make_password(invite_code)
-        season.admin_invite_updated_at = timezone.now()
-        season.admin_invite_updated_by = request.auth
-        season.version += 1
-        season.save(
-            update_fields=[
-                "admin_invite_code_hash",
-                "admin_invite_updated_at",
-                "admin_invite_updated_by",
-                "version",
-                "updated_at",
-            ]
+        policy.invite_code_hash = make_password(invite_code)
+        policy.updated_by = actor
+        policy.version += 1
+        policy.save(
+            update_fields=["invite_code_hash", "updated_by", "version", "updated_at"]
         )
         AdminAuditLog.objects.create(
-            actor=request.auth,
-            action="SEASON_ADMIN_INVITE_UPDATED",
-            object_type="Season",
-            object_id=season.id,
+            actor=actor,
+            action="ADMIN_REGISTRATION_POLICY_UPDATED",
+            object_type="AdminRegistrationPolicy",
+            object_id=policy.id,
             before=before,
-            after={"configured": True, "updated_at": season.admin_invite_updated_at.isoformat()},
+            after={
+                "configured": True,
+                "version": policy.version,
+                "updated_at": policy.updated_at.isoformat(),
+            },
         )
-    return {
-        "season_id": season.id,
-        "configured": True,
-        "uses_default_invite": check_password("PKUBA1997", season.admin_invite_code_hash),
-        "updated_at": season.admin_invite_updated_at,
-        "version": season.version,
-    }
+    return _serialize_admin_registration_policy(policy)
 
 
 @router.get(

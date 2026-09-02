@@ -33,6 +33,7 @@ COPY core/assets ./core/assets
 COPY core/management/__init__.py ./core/management/__init__.py
 COPY core/management/commands/__init__.py \
     core/management/commands/audit_season_integrity.py \
+    core/management/commands/bootstrap_admin_registration_policy.py \
     core/management/commands/bootstrap_first_superadmin.py \
     core/management/commands/check_no_synthetic_public_data.py \
     core/management/commands/deployment_preflight.py \
@@ -57,6 +58,7 @@ RUN pip install --no-cache-dir --no-deps -e . \
       \( -name '*sample*' -o -name '*demo*' -o -name '*seed*' -o -name '*fixture*' \) \
       -print -quit | grep -q . \
     && python manage.py help export_openapi >/dev/null \
+    && python manage.py help bootstrap_admin_registration_policy >/dev/null \
     && python manage.py help bootstrap_first_superadmin >/dev/null \
     && python manage.py help process_scoresheets >/dev/null \
     && python manage.py help process_archives >/dev/null \
