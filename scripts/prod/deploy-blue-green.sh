@@ -412,11 +412,11 @@ EOF
 printf '%s\n' "$retain_until" >"$next_dir/retained.retain-until"
 cat >"$next_dir/upstreams.caddy" <<EOF
 (active_api) {
-\treverse_proxy pkuba-$candidate_slot-api:8000
+    reverse_proxy pkuba-$candidate_slot-api:8000
 }
 
 (active_web) {
-\treverse_proxy pkuba-$candidate_slot-web:8080
+    reverse_proxy pkuba-$candidate_slot-web:8080
 }
 EOF
 cat >"$next_dir/release.json" <<EOF

@@ -168,11 +168,11 @@ write_upstream_document() {
   local slot=$1 destination=$2
   cat >"$destination" <<EOF
 (active_api) {
-\treverse_proxy pkuba-$slot-api:8000
+    reverse_proxy pkuba-$slot-api:8000
 }
 
 (active_web) {
-\treverse_proxy pkuba-$slot-web:8080
+    reverse_proxy pkuba-$slot-web:8080
 }
 EOF
   chmod 644 "$destination"

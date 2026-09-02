@@ -628,11 +628,11 @@ EOF
       >>"$transaction_dir/next-current.env"
     cat >"$transaction_dir/next-upstreams.caddy" <<EOF
 (active_api) {
-\treverse_proxy pkuba-${journal[TARGET_SLOT]}-api:8000
+    reverse_proxy pkuba-${journal[TARGET_SLOT]}-api:8000
 }
 
 (active_web) {
-\treverse_proxy pkuba-${journal[TARGET_SLOT]}-web:8080
+    reverse_proxy pkuba-${journal[TARGET_SLOT]}-web:8080
 }
 EOF
     chmod 600 "$transaction_dir/next-current.env"
