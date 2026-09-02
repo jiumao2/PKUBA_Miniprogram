@@ -269,6 +269,10 @@ install_toolset_from_source() (
   ensure_toolset_directory "$toolset_root" 711
   ensure_toolset_directory "$toolset_release_root" 711
   ensure_toolset_directory "$toolset_legacy_root" 711
+  for entry in "${toolset_entries[@]}"; do
+    IFS='|' read -r source_rel git_mode target_rel mode kind <<<"$entry"
+    validate_source_entry "$source_root" "$release_commit" "$source_rel" "$git_mode" "$kind"
+  done
   target_dir=$toolset_release_root/$release_commit
   if [[ -e $target_dir || -L $target_dir ]]; then
     validate_installed_toolset "$target_dir" "$release_commit"
@@ -288,7 +292,6 @@ install_toolset_from_source() (
   chmod 700 "$staging/libexec"
   for entry in "${toolset_entries[@]}"; do
     IFS='|' read -r source_rel git_mode target_rel mode kind <<<"$entry"
-    validate_source_entry "$source_root" "$release_commit" "$source_rel" "$git_mode" "$kind"
     install -m "$mode" "$source_root/$source_rel" "$staging/$target_rel"
   done
   write_toolset_metadata "$staging" "$release_commit"
