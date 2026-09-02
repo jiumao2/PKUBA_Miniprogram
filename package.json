@@ -42,6 +42,8 @@
     "fsevents@2.3.3": false
   },
   "overrides": {
+    "fast-uri": "3.1.6",
+    "qs": "6.16.0",
     "swiper": "$swiper",
     "webpack": "5.104.1"
   },
