@@ -11,6 +11,14 @@ fi
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 fixture=$(mktemp -d)
 
+for upstream_writer in deploy-blue-green.sh rollback-retained-application.sh \
+  restore-paired-data.sh; do
+  if grep -Fq '\treverse_proxy' "$script_dir/$upstream_writer"; then
+    echo "$upstream_writer writes a literal backslash-t into Caddy configuration" >&2
+    exit 1
+  fi
+done
+
 run_root() {
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
     "$@"
@@ -548,11 +556,11 @@ reset_deploy_fixture() {
     "$release_root/v1.2.3" reschedule-route-v1
   cat >"$state_root/upstreams.caddy" <<'EOF'
 (active_api) {
-\treverse_proxy pkuba-blue-api:8000
+    reverse_proxy pkuba-blue-api:8000
 }
 
 (active_web) {
-\treverse_proxy pkuba-blue-web:8080
+    reverse_proxy pkuba-blue-web:8080
 }
 EOF
 }
@@ -695,11 +703,11 @@ reset_rollback_fixture() {
     "$fixture/deploy/logs/"*-release-recovery.env
   cat >"$state_root/upstreams.caddy" <<'EOF'
 (active_api) {
-\treverse_proxy pkuba-green-api:8000
+    reverse_proxy pkuba-green-api:8000
 }
 
 (active_web) {
-\treverse_proxy pkuba-green-web:8080
+    reverse_proxy pkuba-green-web:8080
 }
 EOF
 }
@@ -1057,11 +1065,26 @@ recover_durable_transaction() {
   run_deploy bash "$script_dir/recover-release-transaction.sh" >/dev/null
 }
 
+assert_upstreams_for_slot() {
+  local expected_slot=$1
+  cat >"$fixture/expected-upstreams.caddy" <<EOF
+(active_api) {
+    reverse_proxy pkuba-$expected_slot-api:8000
+}
+
+(active_web) {
+    reverse_proxy pkuba-$expected_slot-web:8080
+}
+EOF
+  cmp -s "$fixture/expected-upstreams.caddy" "$state_root/upstreams.caddy"
+}
+
 assert_current_release() {
   local expected_slot=$1 expected_tag=$2
   parsed=$(bash "$script_dir/parse-release-state.sh" "$state_root/current.env")
   IFS=$'\t' read -r actual_slot actual_tag _ <<<"$parsed"
   [[ $actual_slot == "$expected_slot" && $actual_tag == "$expected_tag" ]]
+  assert_upstreams_for_slot "$expected_slot"
   [[ ! -e $state_root/maintenance.enabled ]]
   [[ ! -e $state_root/release-transaction ]]
   [[ $before_hash == "$(sha256sum "$fixture"/data-sentinels/*)" ]]
@@ -1276,11 +1299,11 @@ reset_paired_fixture() {
     reschedule-route-v1
   cat >"$state_root/upstreams.caddy" <<'EOF'
 (active_api) {
-\treverse_proxy pkuba-green-api:8000
+    reverse_proxy pkuba-green-api:8000
 }
 
 (active_web) {
-\treverse_proxy pkuba-green-web:8080
+    reverse_proxy pkuba-green-web:8080
 }
 EOF
   : >"$docker_log"
@@ -1307,6 +1330,7 @@ assert_paired_completed() {
   parsed=$(bash "$script_dir/parse-release-state.sh" "$state_root/current.env")
   IFS=$'\t' read -r slot tag _ <<<"$parsed"
   [[ $slot == blue && $tag == v1.2.3 ]]
+  assert_upstreams_for_slot "$slot"
   [[ ! -e $state_root/maintenance.enabled \
     && ! -e $state_root/paired-restore-transaction \
     && ! -e $state_root/paired-restore-completed ]]
@@ -1558,11 +1582,11 @@ write_state "$state_root/current.env" blue v1.2.3 "$commit_one" \
   "$api_one" "$web_one" "$release_root/v1.2.3" reschedule-route-v1
 cat >"$state_root/upstreams.caddy" <<'EOF'
 (active_api) {
-\treverse_proxy pkuba-blue-api:8000
+    reverse_proxy pkuba-blue-api:8000
 }
 
 (active_web) {
-\treverse_proxy pkuba-blue-web:8080
+    reverse_proxy pkuba-blue-web:8080
 }
 EOF
 : >"$docker_log"
