@@ -17,7 +17,7 @@
     "@tarojs/runtime": "4.2.1",
     "@tarojs/shared": "4.2.1",
     "@tarojs/taro": "4.2.1",
-    "react": "18.3.1",
+    "react": "19.2.8",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
@@ -26,7 +26,7 @@
     "@tarojs/plugin-framework-react": "4.2.1",
     "@tarojs/plugin-platform-weapp": "4.2.1",
     "@tarojs/webpack5-runner": "4.2.1",
-    "@types/react": "^18.3.24",
+    "@types/react": "^19.2.18",
     "@vitejs/plugin-react": "4.7.0",
     "babel-preset-taro": "4.2.1",
     "typescript": "^5.9.2",
