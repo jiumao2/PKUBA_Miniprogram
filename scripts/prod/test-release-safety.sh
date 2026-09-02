@@ -106,6 +106,8 @@ write_tool_generation() {
   done
   cp "$script_dir/sync-release-tools.sh" \
     "$tool_sync_repository/scripts/prod/sync-release-tools.sh"
+  cp "$script_dir/deploy-gateway.sh" \
+    "$tool_sync_repository/scripts/prod/deploy-gateway.sh"
   cp "$script_dir/acquire-deploy-lock.py" \
     "$tool_sync_repository/scripts/prod/acquire-deploy-lock.py"
   write_tool_writer "$tool_sync_repository/scripts/prod/deploy-blue-green.sh" \
@@ -117,6 +119,7 @@ write_tool_generation() {
     PKUBA_TEST_TOOL_RESTORE_UPSTREAMS "$indent"
   git -C "$tool_sync_repository" add -A
   for source in "${tool_executable_sources[@]}"; do
+    chmod 755 "$tool_sync_repository/scripts/prod/$source"
     git -C "$tool_sync_repository" update-index --chmod=+x \
       "scripts/prod/$source"
   done
@@ -130,7 +133,7 @@ git -C "$tool_sync_repository" commit -qm legacy-tools
 legacy_tool_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
 git -C "$tool_sync_repository" tag v1.0.5
 write_tool_generation '    '
-git -C "$tool_sync_repository" commit -qam candidate-tools
+git -C "$tool_sync_repository" commit -qm candidate-tools
 candidate_tool_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
 git -C "$tool_sync_repository" tag v1.0.6
 
@@ -397,7 +400,8 @@ write_tool_writer "$migration_sbin/pkuba-restore-paired-data" \
   PKUBA_TEST_TOOL_RESTORE_UPSTREAMS '\t'
 for legacy_writer in pkuba-deploy-blue-green \
   pkuba-rollback-retained-application pkuba-restore-paired-data; do
-  grep -Fq '\treverse_proxy' "$migration_sbin/$legacy_writer"
+  grep -Fq "indent='\\t'" "$migration_sbin/$legacy_writer"
+  grep -Fq '${indent}reverse_proxy' "$migration_sbin/$legacy_writer"
 done
 cat >"$migration_systemd/pkuba-release-recovery.service" <<EOF
 [Service]

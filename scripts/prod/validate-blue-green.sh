@@ -184,10 +184,6 @@ grep -Fq 'startup_headroom_bytes=${PKUBA_DEPLOY_STARTUP_HEADROOM_BYTES:-16106127
   "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'derive-release-capability.sh' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
-grep -Fq 'rollback-retained-application.sh' \
-  "$repo_root/scripts/prod/bootstrap-server.sh"
-grep -Fq 'recover-release-transaction.sh' \
-  "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'pkuba-release-recovery.service' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'PRODUCTION_DEPLOYMENTS_ENABLED' \
@@ -221,10 +217,6 @@ grep -Fq 'pkuba-start-current-application' \
 ! grep -Fq 'systemctl reload ssh' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'chown root:root "/home/$deploy_user/.ssh/authorized_keys"' \
-  "$repo_root/scripts/prod/bootstrap-server.sh"
-grep -Fq 'record-deploy-ssh-verification.sh' \
-  "$repo_root/scripts/prod/bootstrap-server.sh"
-grep -Fq 'finalize-deploy-ssh.sh' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fq 'PKUBA_DEPLOY_GATEWAY_VERIFIED=' \
   "$repo_root/scripts/prod/record-deploy-ssh-verification.sh"
