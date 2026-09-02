@@ -30,17 +30,17 @@ cat >"$fixture/bin/sudo" <<'EOF'
 set -euo pipefail
 [[ ${1:-} == -n ]] && shift
 case ${1:-} in
-  /usr/local/sbin/pkuba-record-deploy-ssh-verification)
+  /usr/local/sbin/pkuba-sync-release-tools)
     shift
-    exec env PKUBA_TEST_ALLOW_NON_ROOT=1 \
-      PKUBA_TEST_ROOT="$PKUBA_TEST_ROOT" \
-      PKUBA_DEPLOY_SSH_STATE_DIR="$PKUBA_DEPLOY_SSH_STATE_DIR" \
-      PKUBA_DEPLOY_AUTHORIZED_KEYS_FILE="$PKUBA_DEPLOY_AUTHORIZED_KEYS_FILE" \
-      PKUBA_TEST_NOW_EPOCH="${PKUBA_TEST_NOW_EPOCH:-1000}" \
-      bash "$PKUBA_RECORDER_UNDER_TEST" "$@"
-    ;;
-  /usr/local/sbin/pkuba-deploy-blue-green)
-    shift
+    if [[ ${1:-} == verify ]]; then
+      shift
+      exec env PKUBA_TEST_ALLOW_NON_ROOT=1 \
+        PKUBA_TEST_ROOT="$PKUBA_TEST_ROOT" \
+        PKUBA_DEPLOY_SSH_STATE_DIR="$PKUBA_DEPLOY_SSH_STATE_DIR" \
+        PKUBA_DEPLOY_AUTHORIZED_KEYS_FILE="$PKUBA_DEPLOY_AUTHORIZED_KEYS_FILE" \
+        PKUBA_TEST_NOW_EPOCH="${PKUBA_TEST_NOW_EPOCH:-1000}" \
+        bash "$PKUBA_RECORDER_UNDER_TEST" "$@"
+    fi
     printf '%s\n' "$*" >"$PKUBA_DEPLOY_CAPTURE"
     ;;
   *) exit 99 ;;
@@ -88,7 +88,7 @@ api_image=ghcr.io/jiumao2/pkuba-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 web_image=ghcr.io/jiumao2/pkuba-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 env "${gateway_env[@]}" SSH_ORIGINAL_COMMAND="deploy v1.2.3 $release_commit $api_image $web_image" \
   bash "$script_dir/deploy-gateway.sh"
-[[ $(<"$fixture/deploy.args") == "v1.2.3 $release_commit $api_image $web_image" ]]
+[[ $(<"$fixture/deploy.args") == "deploy v1.2.3 $release_commit $api_image $web_image" ]]
 
 cat >"$fixture/bin/ssh" <<'EOF'
 #!/usr/bin/env bash

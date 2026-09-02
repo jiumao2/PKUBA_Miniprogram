@@ -78,7 +78,7 @@ postgres_image=ghcr.io/jiumao2/pkuba-postgres@$postgres_source_digest
 caddy_image=ghcr.io/jiumao2/pkuba-caddy@$caddy_source_digest
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-for command_name in awk curl df docker git grep id install passwd rm sed seq \
+for command_name in awk curl df docker git grep id install passwd python3 rm sed seq \
   sha256sum sleep sshd ssh-keygen stat sync systemctl tr ufw useradd visudo; do
   command -v "$command_name" >/dev/null 2>&1 || die "missing command: $command_name"
 done
@@ -115,30 +115,6 @@ chown root:root "/home/$deploy_user/.ssh/authorized_keys"
 chmod 644 "/home/$deploy_user/.ssh/authorized_keys"
 sync -f "/home/$deploy_user/.ssh/authorized_keys" "/home/$deploy_user/.ssh" "/home/$deploy_user"
 
-install -d -o root -g root -m 755 /usr/local/libexec/pkuba
-install -o root -g root -m 755 "$script_dir/deploy-gateway.sh" /usr/local/sbin/pkuba-deploy-gateway
-install -o root -g root -m 700 "$script_dir/record-deploy-ssh-verification.sh" /usr/local/sbin/pkuba-record-deploy-ssh-verification
-install -o root -g root -m 700 "$script_dir/finalize-deploy-ssh.sh" /usr/local/sbin/pkuba-finalize-deploy-ssh
-install -o root -g root -m 755 "$script_dir/deploy-blue-green.sh" /usr/local/sbin/pkuba-deploy-blue-green
-install -o root -g root -m 700 "$script_dir/rollback-retained-application.sh" /usr/local/sbin/pkuba-rollback-retained-application
-install -o root -g root -m 700 "$script_dir/recover-release-transaction.sh" /usr/local/sbin/pkuba-recover-release-transaction
-install -o root -g root -m 700 "$script_dir/restore-paired-data.sh" /usr/local/sbin/pkuba-restore-paired-data
-install -o root -g root -m 700 "$script_dir/start-current-application.sh" /usr/local/sbin/pkuba-start-current-application
-install -o root -g root -m 700 "$script_dir/backup-current-server.sh" /usr/local/sbin/pkuba-backup-current
-install -o root -g root -m 700 "$script_dir/acquire-deploy-lock.py" /usr/local/libexec/pkuba/acquire-deploy-lock.py
-install -o root -g root -m 700 "$script_dir/fence-deploy-writers.sh" /usr/local/libexec/pkuba/fence-deploy-writers.sh
-install -o root -g root -m 700 "$script_dir/verify-paired-backup.py" /usr/local/libexec/pkuba/verify-paired-backup.py
-for helper in parse-release-state.sh parse-release-contract.sh derive-release-capability.sh \
-  validate-release-identity.sh check-app-capability.sh; do
-  install -o root -g root -m 755 "$script_dir/$helper" "/usr/local/libexec/pkuba/$helper"
-done
-printf '%s\n' \
-  "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-deploy-blue-green *" \
-  "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-record-deploy-ssh-verification *" \
-  >/etc/sudoers.d/pkuba-deploy
-chmod 440 /etc/sudoers.d/pkuba-deploy
-visudo --check --file=/etc/sudoers.d/pkuba-deploy >/dev/null
-
 install -d -o root -g root -m 700 /root/.ssh
 install -o root -g root -m 600 "$github_read_key_file" /root/.ssh/pkuba-github-readonly
 ssh-keygen -F github.com -f /root/.ssh/known_hosts >/dev/null \
@@ -147,6 +123,7 @@ ssh-keygen -F github.com -f /root/.ssh/known_hosts >/dev/null \
 install -d -o root -g root -m 700 "$production_root" "$runtime_dir" "$deploy_root" \
   "$release_root" "$state_dir" "$slot_state_dir" "$backup_root" \
   "$backup_root/daily" "$backup_root/weekly"
+install -d -o root -g root -m 755 /usr/local/libexec/pkuba
 install -d -o root -g root -m 700 /var/lib/pkuba/deploy-ssh
 if [[ ! -d $repository_dir/.git ]]; then
   GIT_SSH_COMMAND='ssh -i /root/.ssh/pkuba-github-readonly -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes' \
@@ -161,6 +138,25 @@ release_dir=$release_root/$release_tag
 git -C "$repository_dir" worktree add --detach "$release_dir" "$release_commit"
 [[ $(git -C "$release_dir" rev-parse HEAD) == "$release_commit" ]] \
   || die "release worktree identity mismatch"
+
+# Install the complete verified toolset and expose every stable host path only
+# as a symlink through one atomic current pointer.
+env \
+  PKUBA_DEPLOY_ROOT="$deploy_root" \
+  PKUBA_REPOSITORY_DIR="$repository_dir" \
+  PKUBA_DEPLOY_STATE_DIR="$state_dir" \
+  PKUBA_RELEASE_TOOLSET_ROOT=/usr/local/libexec/pkuba/toolsets \
+  PKUBA_DEPLOY_LOCK_HELPER="$release_dir/scripts/prod/acquire-deploy-lock.py" \
+  python3 "$release_dir/scripts/prod/acquire-deploy-lock.py" \
+    --state-dir "$state_dir" --timeout 1800 -- \
+    bash "$release_dir/scripts/prod/sync-release-tools.sh" \
+      activate-source "$release_commit" "$release_dir"
+printf '%s\n' \
+  "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-sync-release-tools verify *" \
+  "$deploy_user ALL=(root) NOPASSWD: /usr/local/sbin/pkuba-sync-release-tools deploy *" \
+  >/etc/sudoers.d/pkuba-deploy
+chmod 440 /etc/sudoers.d/pkuba-deploy
+visudo --check --file=/etc/sudoers.d/pkuba-deploy >/dev/null
 
 for image in "$api_image" "$web_image" "$postgres_image" "$caddy_image"; do
   docker pull "$image"
@@ -180,6 +176,15 @@ cat >/etc/pkuba-deploy.conf <<EOF
 PKUBA_DEPLOY_ROOT=$deploy_root
 PKUBA_DEPLOY_STATE_DIR=$state_dir
 PKUBA_REPOSITORY_DIR=$repository_dir
+PKUBA_RELEASE_TOOLSET_ROOT=/usr/local/libexec/pkuba/toolsets
+PKUBA_PRODUCTION_TOOLSET_CURRENT=/usr/local/libexec/pkuba/toolsets/current
+PKUBA_DEPLOY_LOCK_HELPER=/usr/local/libexec/pkuba/toolsets/current/libexec/acquire-deploy-lock.py
+PKUBA_RELEASE_RECOVERY_COMMAND=/usr/local/libexec/pkuba/toolsets/current/sbin/pkuba-recover-release-transaction
+PKUBA_PAIRED_RESTORE_COMMAND=/usr/local/libexec/pkuba/toolsets/current/sbin/pkuba-restore-paired-data
+PKUBA_RELEASE_IDENTITY_VALIDATOR=/usr/local/libexec/pkuba/toolsets/current/libexec/validate-release-identity.sh
+PKUBA_PAIRED_BACKUP_VERIFIER=/usr/local/libexec/pkuba/toolsets/current/libexec/verify-paired-backup.py
+PKUBA_WRITER_FENCE_COMMAND=/usr/local/libexec/pkuba/toolsets/current/libexec/fence-deploy-writers.sh
+PKUBA_APPLICATION_START_COMMAND=/usr/local/libexec/pkuba/toolsets/current/sbin/pkuba-start-current-application
 PKUBA_RUNTIME_DIR=$runtime_dir
 PKUBA_ENV_FILE=$env_file
 PKUBA_RUNTIME_NETWORK=$runtime_network
@@ -210,7 +215,7 @@ on_exit() {
     touch "$maintenance_file" 2>/dev/null || true
     sync -f "$state_dir" 2>/dev/null || true
     PKUBA_TEST_ALLOW_NON_ROOT_STATE_DIR=0 \
-      bash /usr/local/libexec/pkuba/fence-deploy-writers.sh >/dev/null 2>&1 || true
+      bash /usr/local/libexec/pkuba/toolsets/current/libexec/fence-deploy-writers.sh >/dev/null 2>&1 || true
     echo "Fresh production bootstrap failed; maintenance remains enabled and application writers are fenced." >&2
     (( status != 0 )) || status=1
   fi
@@ -299,7 +304,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/pkuba-recover-release-transaction
+ExecStart=/usr/local/libexec/pkuba/toolsets/current/sbin/pkuba-recover-release-transaction
 
 [Install]
 WantedBy=multi-user.target
@@ -312,7 +317,7 @@ Requires=pkuba-release-recovery.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/pkuba-start-current-application
+ExecStart=/usr/local/libexec/pkuba/toolsets/current/sbin/pkuba-start-current-application
 RemainAfterExit=yes
 
 [Install]
@@ -326,7 +331,7 @@ Requires=pkuba-application-start.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/pkuba-backup-current %i
+ExecStart=/usr/local/libexec/pkuba/toolsets/current/sbin/pkuba-backup-current %i
 EOF
 cat >/etc/systemd/system/pkuba-backup-daily.timer <<'EOF'
 [Unit]
@@ -358,7 +363,7 @@ systemctl enable pkuba-release-recovery.service pkuba-application-start.service 
   pkuba-backup-daily.timer pkuba-backup-weekly.timer >/dev/null
 
 PKUBA_DEPLOY_LOCK_HELD=1 PKUBA_START_UNDER_MAINTENANCE=1 \
-  bash /usr/local/sbin/pkuba-start-current-application
+  bash /usr/local/libexec/pkuba/toolsets/current/sbin/pkuba-start-current-application
 curl --fail --silent --show-error -H 'Host: api' -H 'X-Forwarded-Proto: https' \
   http://127.0.0.1:18000/api/v1/health/ready >/dev/null
 curl --fail --silent --show-error http://127.0.0.1:18080/_deployment/ready >/dev/null

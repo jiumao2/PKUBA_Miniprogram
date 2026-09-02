@@ -124,6 +124,38 @@ root `sshd` 会话调用 root helper；证明同时绑定 nonce、服务器时�
 保持 `PKUBA_PRODUCTION_AUTOMATION_ARMED=0`，直到 SSH finalizer、真实蓝绿、回切、掉电恢复和
 备份恢复演练均通过，且本次生产授权完成。
 
+## 版本化生产工具集
+
+bootstrap 不再把运维脚本作为彼此独立的永久副本安装。固定的 10 个 sbin 工具和 8 个
+libexec helper 先从精确 commit 校验 Git blob、Git mode、普通文件属性、Bash/Python 语法与
+固定清单，再安装到 root-owned 的
+`/usr/local/libexec/pkuba/toolsets/releases/<commit>`。稳定的 `/usr/local/sbin/pkuba-*` 和
+`/usr/local/libexec/pkuba/*` 路径只作为指向 `toolsets/current` 的符号链接；forced command、
+systemd、手工回切和恢复因此始终解析到同一套工具。版本目录及 `sbin` 仅开放必要的 traverse，
+gateway 为 0755，其余 root-only 工具和整个 `libexec` 保持 0700。
+
+部署 gateway 只接受 `verify` 和 `deploy`。两者都经
+`/usr/local/sbin/pkuba-sync-release-tools`；部署在同一把全局锁内完成 tag/commit、完整清单和
+校验和验证，持久化不可变版本目录，原子切换唯一的 `current` 指针，然后直接执行该版本的
+blue/green deploy。同步失败不会建立发布事务、maintenance、writer fence 或接触业务数据。
+
+从旧的平铺 `/usr/local` 工具升级时，不能依赖新标签自举。须先把已通过 PR、required CI 和
+独立验收、且已进入 `origin/main` 的精确 commit 建成隔离 worktree；在**创建新标签之前**，
+经单独授权的 root maintenance 会话运行一次：
+
+```bash
+sudo /usr/bin/bash /verified/path/scripts/prod/sync-release-tools.sh \
+  migrate-source 0123456789abcdef0123456789abcdef01234567 /verified/path
+```
+
+迁移要求生产 state 无 maintenance、发布或恢复事务，并保持当前应用运行。它先把原 17 个
+平铺工具和 sudoers 复制到 root-only `deploy/toolset-migrations`，用这些原字节构建 legacy
+兼容工具集，再把全部稳定路径转换为经 `current` 解析的链接。过渡 sudoers 同时允许旧直连和
+新 sync；候选 `current`、全部链接及三个 systemd ExecStart 验证完成后，才收紧为仅允许 sync
+的 `verify`/`deploy`。任一步失败都会恢复原文件、原 sudoers 和原指针；不会执行部署或修改
+数据库、媒体、归档、容器和 worker。成功输出的 commit 与备份目录必须随维护记录保存，随后
+才可创建并推送对应稳定标签。
+
 ## GitHub 发布
 
 `.github/workflows/release.yml` 是正常发布入口：
@@ -149,14 +181,15 @@ shell。密码登录只有在外部探针通过且 root-only finalizer 成功后
 
 每次部署按以下顺序执行：
 
-1. 核对 tag、commit、镜像 revision、release contract、Compose、磁盘和业务空闲状态。
-2. 写 root-only 持久 transaction journal，持久化 maintenance。
-3. 停止并确认 blue/green 两套 API、expiry、scoresheet、archive、outbox 全部 writer 为零。
-4. 在同一 writer fence 内生成数据库、媒体、归档配对恢复点；校验语义、哈希和身份，
+1. 在全局部署锁内校验并原子切换完整版本化生产工具集；失败时不进入业务事务。
+2. 核对 tag、commit、镜像 revision、release contract、Compose、磁盘和业务空闲状态。
+3. 写 root-only 持久 transaction journal，持久化 maintenance。
+4. 停止并确认 blue/green 两套 API、expiry、scoresheet、archive、outbox 全部 writer 为零。
+5. 在同一 writer fence 内生成数据库、媒体、归档配对恢复点；校验语义、哈希和身份，
    `fsync` 每个 payload 与目录，最后写 `SUCCESS`。
-5. 对候选执行迁移、复合外键检查、`audit_season_integrity`、`check --deploy` 和 readiness。
-6. 直接端口和稳定 Caddy 入口均核对 API/Web tag、commit、worker 心跳和稳定窗口。
-7. 原子提交 current、retained、deadline、upstream、release audit；确认完成审计 durable 后才
+6. 对候选执行迁移、复合外键检查、`audit_season_integrity`、`check --deploy` 和 readiness。
+7. 直接端口和稳定 Caddy 入口均核对 API/Web tag、commit、worker 心跳和稳定窗口。
+8. 原子提交 current、retained、deadline、upstream、release audit；确认完成审计 durable 后才
    移除 maintenance。
 
 事务阶段：

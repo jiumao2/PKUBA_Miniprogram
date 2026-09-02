@@ -11,8 +11,8 @@ fi
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 fixture=$(mktemp -d)
 
-for upstream_writer in deploy-blue-green.sh rollback-retained-application.sh \
-  restore-paired-data.sh; do
+for upstream_writer in bootstrap-server.sh deploy-blue-green.sh \
+  rollback-retained-application.sh restore-paired-data.sh; do
   if grep -Fq '\treverse_proxy' "$script_dir/$upstream_writer"; then
     echo "$upstream_writer writes a literal backslash-t into Caddy configuration" >&2
     exit 1
@@ -28,6 +28,525 @@ run_root() {
 }
 
 trap 'run_root /usr/bin/rm -rf -- "$fixture"' EXIT
+
+# A release updates the complete operational toolset before it enters any
+# deployment state machine. Exercise the real launcher against a tiny Git
+# repository so a bootstrap-era script cannot silently survive a later tag.
+tool_sync_fixture=$fixture/tool-sync
+tool_sync_repository=$tool_sync_fixture/repository
+tool_sync_release_root=$tool_sync_fixture/deploy/releases
+tool_sync_state=$tool_sync_fixture/deploy/state
+tool_sync_toolsets=$tool_sync_fixture/toolsets
+tool_sync_sbin=$tool_sync_fixture/sbin
+tool_sync_libexec=$tool_sync_fixture/libexec
+mkdir -p "$tool_sync_repository/scripts/prod" "$tool_sync_release_root" \
+  "$tool_sync_state" "$tool_sync_sbin" "$tool_sync_libexec"
+chmod 700 "$tool_sync_state"
+chmod 711 "$fixture" "$tool_sync_fixture" "$tool_sync_sbin"
+git -C "$tool_sync_repository" init -q
+git -C "$tool_sync_repository" config user.name PKUBA-Tool-Test
+git -C "$tool_sync_repository" config user.email pkuba-tool-test@example.invalid
+git -C "$tool_sync_repository" config core.filemode true
+git -C "$tool_sync_repository" branch -M main
+
+tool_sources=(
+  deploy-gateway.sh record-deploy-ssh-verification.sh finalize-deploy-ssh.sh
+  deploy-blue-green.sh rollback-retained-application.sh
+  recover-release-transaction.sh restore-paired-data.sh
+  start-current-application.sh backup-current-server.sh sync-release-tools.sh
+  acquire-deploy-lock.py fence-deploy-writers.sh verify-paired-backup.py
+  parse-release-state.sh parse-release-contract.sh derive-release-capability.sh
+  validate-release-identity.sh check-app-capability.sh
+)
+tool_executable_sources=(
+  record-deploy-ssh-verification.sh finalize-deploy-ssh.sh
+  rollback-retained-application.sh recover-release-transaction.sh
+  start-current-application.sh fence-deploy-writers.sh parse-release-state.sh
+  parse-release-contract.sh derive-release-capability.sh
+  validate-release-identity.sh check-app-capability.sh
+)
+
+write_tool_writer() {
+  local destination=$1 output_variable=$2 indent=$3 marker=${4:-}
+  {
+    cat <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+EOF
+    [[ -z $marker ]] || cat <<'EOF'
+[[ ${PKUBA_DEPLOY_LOCK_HELD:-0} == 1 ]]
+[[ -n ${PKUBA_DEPLOY_LOCK_FD:-} ]]
+printf 'candidate\n' >"${PKUBA_TEST_TOOL_DEPLOY_CAPTURE:?}"
+EOF
+    printf 'output=${%s:?}\n' "$output_variable"
+    printf "indent='%s'\n" "$indent"
+    cat <<'EOF'
+cat >"$output" <<EOF_UPSTREAMS
+(active_api) {
+${indent}reverse_proxy pkuba-blue-api:8000
+}
+
+(active_web) {
+${indent}reverse_proxy pkuba-blue-web:8080
+}
+EOF_UPSTREAMS
+EOF
+  } >"$destination"
+}
+
+write_tool_generation() {
+  local indent=$1 source
+  for source in "${tool_sources[@]}"; do
+    case "$source" in
+      *.py) printf '%s\n' '#!/usr/bin/env python3' 'pass' \
+        >"$tool_sync_repository/scripts/prod/$source" ;;
+      *) printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' 'exit 0' \
+        >"$tool_sync_repository/scripts/prod/$source" ;;
+    esac
+  done
+  cp "$script_dir/sync-release-tools.sh" \
+    "$tool_sync_repository/scripts/prod/sync-release-tools.sh"
+  cp "$script_dir/acquire-deploy-lock.py" \
+    "$tool_sync_repository/scripts/prod/acquire-deploy-lock.py"
+  write_tool_writer "$tool_sync_repository/scripts/prod/deploy-blue-green.sh" \
+    PKUBA_TEST_TOOL_DEPLOY_UPSTREAMS "$indent" deploy
+  write_tool_writer \
+    "$tool_sync_repository/scripts/prod/rollback-retained-application.sh" \
+    PKUBA_TEST_TOOL_ROLLBACK_UPSTREAMS "$indent"
+  write_tool_writer "$tool_sync_repository/scripts/prod/restore-paired-data.sh" \
+    PKUBA_TEST_TOOL_RESTORE_UPSTREAMS "$indent"
+  git -C "$tool_sync_repository" add -A
+  for source in "${tool_executable_sources[@]}"; do
+    git -C "$tool_sync_repository" update-index --chmod=+x \
+      "scripts/prod/$source"
+  done
+}
+
+write_tool_generation '    '
+printf '\n# bootstrap-era generation\n' \
+  >>"$tool_sync_repository/scripts/prod/deploy-gateway.sh"
+git -C "$tool_sync_repository" add scripts/prod/deploy-gateway.sh
+git -C "$tool_sync_repository" commit -qm legacy-tools
+legacy_tool_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
+git -C "$tool_sync_repository" tag v1.0.5
+write_tool_generation '    '
+git -C "$tool_sync_repository" commit -qam candidate-tools
+candidate_tool_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
+git -C "$tool_sync_repository" tag v1.0.6
+
+tool_sync_env=(
+  PKUBA_TEST_ALLOW_NON_ROOT=1
+  PKUBA_TEST_SKIP_FETCH=1
+  PKUBA_DEPLOY_ROOT="$tool_sync_fixture/deploy"
+  PKUBA_REPOSITORY_DIR="$tool_sync_repository"
+  PKUBA_DEPLOY_STATE_DIR="$tool_sync_state"
+  PKUBA_RELEASE_TOOLSET_ROOT="$tool_sync_toolsets"
+  PKUBA_RELEASE_TOOLS_SBIN_ROOT="$tool_sync_sbin"
+  PKUBA_RELEASE_TOOLS_LIBEXEC_ROOT="$tool_sync_libexec"
+  PKUBA_TEST_ALLOW_NON_ROOT_STATE_DIR=1
+)
+mkdir -p "$tool_sync_fixture/unsafe-toolset-target"
+ln -s "$tool_sync_fixture/unsafe-toolset-target" \
+  "$tool_sync_fixture/unsafe-toolset-link"
+if env "${tool_sync_env[@]}" PKUBA_DEPLOY_LOCK_HELD=1 \
+  PKUBA_RELEASE_TOOLSET_ROOT="$tool_sync_fixture/unsafe-toolset-link" \
+  bash "$script_dir/sync-release-tools.sh" \
+    install v1.0.5 "$legacy_tool_commit" >/dev/null 2>&1; then
+  echo 'symlinked toolset root unexpectedly passed' >&2
+  exit 1
+fi
+[[ ! -e $tool_sync_sbin/pkuba-deploy-gateway ]]
+env "${tool_sync_env[@]}" PKUBA_DEPLOY_LOCK_HELD=1 \
+  bash "$script_dir/sync-release-tools.sh" \
+    install v1.0.5 "$legacy_tool_commit" >/dev/null
+[[ $(readlink "$tool_sync_toolsets/current") == "releases/$legacy_tool_commit" ]]
+tool_sbin_names=(
+  pkuba-deploy-gateway pkuba-record-deploy-ssh-verification
+  pkuba-finalize-deploy-ssh pkuba-deploy-blue-green
+  pkuba-rollback-retained-application pkuba-recover-release-transaction
+  pkuba-restore-paired-data pkuba-start-current-application
+  pkuba-backup-current pkuba-sync-release-tools
+)
+tool_libexec_names=(
+  acquire-deploy-lock.py fence-deploy-writers.sh verify-paired-backup.py
+  parse-release-state.sh parse-release-contract.sh derive-release-capability.sh
+  validate-release-identity.sh check-app-capability.sh
+)
+for stable_tool in "${tool_sbin_names[@]}"; do
+  [[ -L $tool_sync_sbin/$stable_tool ]]
+  [[ $(readlink -f "$tool_sync_sbin/$stable_tool") == \
+    "$tool_sync_toolsets/releases/$legacy_tool_commit/sbin/$stable_tool" ]]
+done
+for stable_tool in "${tool_libexec_names[@]}"; do
+  [[ -L $tool_sync_libexec/$stable_tool ]]
+  [[ $(readlink -f "$tool_sync_libexec/$stable_tool") == \
+    "$tool_sync_toolsets/releases/$legacy_tool_commit/libexec/$stable_tool" ]]
+done
+[[ $(stat -c '%a' "$tool_sync_toolsets") == 711 ]]
+[[ $(stat -c '%a' "$tool_sync_toolsets/releases/$legacy_tool_commit") == 711 ]]
+[[ $(stat -c '%a' "$tool_sync_toolsets/releases/$legacy_tool_commit/sbin") == 711 ]]
+[[ $(stat -c '%a' "$tool_sync_toolsets/releases/$legacy_tool_commit/libexec") == 700 ]]
+[[ $(stat -Lc '%a' "$tool_sync_sbin/pkuba-deploy-gateway") == 755 ]]
+set +e
+sudo -u nobody env SSH_ORIGINAL_COMMAND=invalid \
+  "$tool_sync_sbin/pkuba-deploy-gateway" >/dev/null 2>&1
+non_root_gateway_status=$?
+set -e
+[[ $non_root_gateway_status -eq 64 ]]
+
+tool_deploy_capture=$tool_sync_fixture/deploy-invoked
+tool_deploy_upstreams=$tool_sync_fixture/deploy-upstreams.caddy
+tool_rollback_upstreams=$tool_sync_fixture/rollback-upstreams.caddy
+tool_restore_upstreams=$tool_sync_fixture/restore-upstreams.caddy
+env "${tool_sync_env[@]}" \
+  PKUBA_TEST_TOOL_DEPLOY_CAPTURE="$tool_deploy_capture" \
+  PKUBA_TEST_TOOL_DEPLOY_UPSTREAMS="$tool_deploy_upstreams" \
+  "$tool_sync_sbin/pkuba-sync-release-tools" deploy \
+    v1.0.6 "$candidate_tool_commit" \
+    ghcr.io/jiumao2/pkuba-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    ghcr.io/jiumao2/pkuba-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+[[ $(readlink "$tool_sync_toolsets/current") == "releases/$candidate_tool_commit" ]]
+[[ $(<"$tool_deploy_capture") == candidate ]]
+env PKUBA_TEST_TOOL_ROLLBACK_UPSTREAMS="$tool_rollback_upstreams" \
+  bash "$tool_sync_sbin/pkuba-rollback-retained-application"
+env PKUBA_TEST_TOOL_RESTORE_UPSTREAMS="$tool_restore_upstreams" \
+  bash "$tool_sync_sbin/pkuba-restore-paired-data"
+
+assert_tool_upstreams() {
+  local candidate=$1
+  [[ $(grep -Fc 'reverse_proxy pkuba-' "$candidate") -eq 2 ]]
+  ! grep -Fq '\treverse_proxy' "$candidate"
+}
+assert_tool_upstreams "$tool_deploy_upstreams"
+assert_tool_upstreams "$tool_rollback_upstreams"
+assert_tool_upstreams "$tool_restore_upstreams"
+
+switch_tool_pointer() {
+  local commit=$1 temporary=$tool_sync_toolsets/.current-test.$$
+  rm -f "$temporary"
+  ln -s "releases/$commit" "$temporary"
+  mv -Tf "$temporary" "$tool_sync_toolsets/current"
+}
+
+assert_tool_sync_rejected() {
+  local tag=$1 commit=$2 label=$3
+  switch_tool_pointer "$legacy_tool_commit"
+  rm -f "$tool_deploy_capture"
+  printf 'unchanged\n' >"$tool_sync_fixture/data-sentinel"
+  local sentinel_hash
+  sentinel_hash=$(sha256sum "$tool_sync_fixture/data-sentinel")
+  if env "${tool_sync_env[@]}" PKUBA_DEPLOY_LOCK_HELD=1 \
+    bash "$script_dir/sync-release-tools.sh" install "$tag" "$commit" \
+      >"$tool_sync_fixture/$label.out" 2>"$tool_sync_fixture/$label.err"; then
+    echo "invalid release toolset unexpectedly passed: $label" >&2
+    exit 1
+  fi
+  [[ $(readlink "$tool_sync_toolsets/current") == "releases/$legacy_tool_commit" ]]
+  [[ ! -e $tool_deploy_capture ]]
+  [[ $sentinel_hash == "$(sha256sum "$tool_sync_fixture/data-sentinel")" ]]
+}
+
+candidate_release=$tool_sync_release_root/v1.0.6
+printf '\n# dirty\n' >>"$candidate_release/scripts/prod/deploy-gateway.sh"
+assert_tool_sync_rejected v1.0.6 "$candidate_tool_commit" dirty-blob
+git -C "$candidate_release" checkout -- scripts/prod/deploy-gateway.sh
+
+switch_tool_pointer "$legacy_tool_commit"
+if env "${tool_sync_env[@]}" PKUBA_DEPLOY_LOCK_HELD=1 \
+  PKUBA_TEST_FAIL_TOOLSET_SWITCH=1 \
+  bash "$script_dir/sync-release-tools.sh" \
+    install v1.0.6 "$candidate_tool_commit" >/dev/null 2>&1; then
+  echo 'injected toolset pointer failure unexpectedly passed' >&2
+  exit 1
+fi
+[[ $(readlink "$tool_sync_toolsets/current") == "releases/$legacy_tool_commit" ]]
+
+git -C "$tool_sync_repository" rm -q scripts/prod/check-app-capability.sh
+git -C "$tool_sync_repository" commit -qm missing-tool
+missing_tool_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
+git -C "$tool_sync_repository" tag v1.0.7
+assert_tool_sync_rejected v1.0.7 "$missing_tool_commit" missing-tool
+
+git -C "$tool_sync_repository" checkout v1.0.6 -- scripts/prod/check-app-capability.sh
+rm -f "$tool_sync_repository/scripts/prod/derive-release-capability.sh"
+ln -s check-app-capability.sh \
+  "$tool_sync_repository/scripts/prod/derive-release-capability.sh"
+git -C "$tool_sync_repository" add -A
+git -C "$tool_sync_repository" commit -qm symlink-tool
+symlink_tool_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
+git -C "$tool_sync_repository" tag v1.0.8
+assert_tool_sync_rejected v1.0.8 "$symlink_tool_commit" symlink-tool
+
+git -C "$tool_sync_repository" checkout v1.0.6 -- \
+  scripts/prod/derive-release-capability.sh
+git -C "$tool_sync_repository" add scripts/prod/derive-release-capability.sh
+git -C "$tool_sync_repository" update-index --chmod=-x \
+  scripts/prod/derive-release-capability.sh
+git -C "$tool_sync_repository" commit -qm wrong-mode-tool
+wrong_mode_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
+git -C "$tool_sync_repository" tag v1.0.9
+assert_tool_sync_rejected v1.0.9 "$wrong_mode_commit" wrong-mode
+
+git -C "$tool_sync_repository" checkout v1.0.6 -- \
+  scripts/prod/derive-release-capability.sh
+printf '%s\n' '#!/usr/bin/env bash' 'if then' \
+  >"$tool_sync_repository/scripts/prod/derive-release-capability.sh"
+git -C "$tool_sync_repository" add scripts/prod/derive-release-capability.sh
+git -C "$tool_sync_repository" update-index --chmod=+x \
+  scripts/prod/derive-release-capability.sh
+git -C "$tool_sync_repository" commit -qm invalid-syntax-tool
+invalid_syntax_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
+git -C "$tool_sync_repository" tag v1.0.10
+assert_tool_sync_rejected v1.0.10 "$invalid_syntax_commit" invalid-syntax
+
+assert_tool_sync_rejected main "$candidate_tool_commit" invalid-tag
+assert_tool_sync_rejected v1.0.6 \
+  0000000000000000000000000000000000000000 invalid-commit
+
+printf 'unexpected\n' \
+  >"$tool_sync_toolsets/releases/$candidate_tool_commit/UNMANIFESTED"
+assert_tool_sync_rejected v1.0.6 "$candidate_tool_commit" extra-installed-file
+rm -f "$tool_sync_toolsets/releases/$candidate_tool_commit/UNMANIFESTED"
+
+git -C "$tool_sync_repository" restore --source=v1.0.6 --staged --worktree \
+  scripts/prod
+printf '\n# next valid toolset\n' \
+  >>"$tool_sync_repository/scripts/prod/deploy-gateway.sh"
+git -C "$tool_sync_repository" add scripts/prod/deploy-gateway.sh
+git -C "$tool_sync_repository" commit -qm next-valid-toolset
+next_tool_commit=$(git -C "$tool_sync_repository" rev-parse HEAD)
+git -C "$tool_sync_repository" tag v1.0.11
+next_tool_release=$tool_sync_release_root/v1.0.11
+git -C "$tool_sync_repository" worktree add --detach \
+  "$next_tool_release" "$next_tool_commit" >/dev/null
+git -C "$next_tool_release" update-index --chmod=+x \
+  scripts/prod/deploy-gateway.sh
+switch_tool_pointer "$legacy_tool_commit"
+if env "${tool_sync_env[@]}" PKUBA_DEPLOY_LOCK_HELD=1 \
+  PKUBA_TEST_TOOLSET_FAIL_POINT=after-toolset-stage-sync \
+  bash "$script_dir/sync-release-tools.sh" install \
+    v1.0.11 "$next_tool_commit" >"$tool_sync_fixture/index-mode.out" \
+    2>"$tool_sync_fixture/index-mode.err"; then
+  echo 'worktree index-only mode change unexpectedly blocked the injected failure' >&2
+  exit 1
+fi
+grep -Fq 'injected toolset failure: after-toolset-stage-sync' \
+  "$tool_sync_fixture/index-mode.err"
+[[ $(readlink "$tool_sync_toolsets/current") == \
+  "releases/$legacy_tool_commit" ]]
+[[ ! -e $tool_sync_toolsets/releases/$next_tool_commit ]]
+[[ -z $(find "$tool_sync_toolsets/releases" -maxdepth 1 \
+  -name ".toolset-$next_tool_commit.*" -print -quit) ]]
+git -C "$next_tool_release" update-index --chmod=-x \
+  scripts/prod/deploy-gateway.sh
+
+for install_fail_point in after-toolset-release-rename; do
+  switch_tool_pointer "$legacy_tool_commit"
+  rm -f "$tool_deploy_capture"
+  if env "${tool_sync_env[@]}" PKUBA_DEPLOY_LOCK_HELD=1 \
+    PKUBA_TEST_TOOLSET_FAIL_POINT="$install_fail_point" \
+    bash "$script_dir/sync-release-tools.sh" install \
+      v1.0.11 "$next_tool_commit" >/dev/null 2>&1; then
+    echo "injected toolset install failure unexpectedly passed: $install_fail_point" >&2
+    exit 1
+  fi
+  [[ $(readlink "$tool_sync_toolsets/current") == \
+    "releases/$legacy_tool_commit" ]]
+  [[ ! -e $tool_deploy_capture ]]
+  [[ -d $tool_sync_toolsets/releases/$next_tool_commit ]]
+done
+
+# Existing production has the original 17 flat tools and no sync entrypoint.
+# The one-time root migration must bridge that exact layout without touching
+# application state, and every injected failure must restore the flat files,
+# sudoers and prior (absent) current pointer byte-for-byte.
+migration_root=$tool_sync_fixture/migration
+migration_deploy=$migration_root/deploy
+migration_state=$migration_deploy/state
+migration_toolsets=$migration_root/toolsets
+migration_sbin=$migration_root/sbin
+migration_libexec=$migration_root/libexec
+migration_systemd=$migration_root/systemd
+migration_config=$migration_root/pkuba-deploy.conf
+migration_sudoers=$migration_root/pkuba-deploy.sudoers
+migration_fake_bin=$migration_root/fake-bin
+mkdir -p "$migration_state" "$migration_sbin" "$migration_libexec" \
+  "$migration_systemd" "$migration_fake_bin"
+chmod 700 "$migration_state"
+printf 'ACTIVE_SLOT=blue\nCURRENT_TAG=v1.0.2\n' >"$migration_state/current.env"
+printf 'PKUBA_PRODUCTION_AUTOMATION_ARMED=1\n' >"$migration_config"
+printf '%s\n' \
+  'pkuba-deploy ALL=(root) NOPASSWD: /legacy/pkuba-deploy-blue-green *' \
+  >"$migration_sudoers"
+chmod 600 "$migration_config"
+chmod 440 "$migration_sudoers"
+for stable_tool in "${tool_sbin_names[@]}"; do
+  [[ $stable_tool == pkuba-sync-release-tools ]] && continue
+  cp -a "$tool_sync_toolsets/releases/$legacy_tool_commit/sbin/$stable_tool" \
+    "$migration_sbin/$stable_tool"
+done
+for stable_tool in "${tool_libexec_names[@]}"; do
+  cp -a "$tool_sync_toolsets/releases/$legacy_tool_commit/libexec/$stable_tool" \
+    "$migration_libexec/$stable_tool"
+done
+write_tool_writer "$migration_sbin/pkuba-deploy-blue-green" \
+  PKUBA_TEST_TOOL_DEPLOY_UPSTREAMS '\t' deploy
+write_tool_writer "$migration_sbin/pkuba-rollback-retained-application" \
+  PKUBA_TEST_TOOL_ROLLBACK_UPSTREAMS '\t'
+write_tool_writer "$migration_sbin/pkuba-restore-paired-data" \
+  PKUBA_TEST_TOOL_RESTORE_UPSTREAMS '\t'
+for legacy_writer in pkuba-deploy-blue-green \
+  pkuba-rollback-retained-application pkuba-restore-paired-data; do
+  grep -Fq '\treverse_proxy' "$migration_sbin/$legacy_writer"
+done
+cat >"$migration_systemd/pkuba-release-recovery.service" <<EOF
+[Service]
+ExecStart=$migration_sbin/pkuba-recover-release-transaction
+EOF
+cat >"$migration_systemd/pkuba-application-start.service" <<EOF
+[Service]
+ExecStart=$migration_sbin/pkuba-start-current-application
+EOF
+cat >"$migration_systemd/pkuba-backup@.service" <<EOF
+[Service]
+ExecStart=$migration_sbin/pkuba-backup-current %i
+EOF
+cat >"$migration_fake_bin/visudo" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ ${1:-} == --check && ${2:-} == --file=* ]]
+EOF
+chmod 700 "$migration_fake_bin/visudo"
+
+migration_env=(
+  PATH="$migration_fake_bin:$PATH"
+  PKUBA_TEST_ALLOW_NON_ROOT=1
+  PKUBA_TEST_SKIP_FETCH=1
+  PKUBA_DEPLOY_ROOT="$migration_deploy"
+  PKUBA_REPOSITORY_DIR="$tool_sync_repository"
+  PKUBA_DEPLOY_STATE_DIR="$migration_state"
+  PKUBA_RELEASE_TOOLSET_ROOT="$migration_toolsets"
+  PKUBA_RELEASE_TOOLS_SBIN_ROOT="$migration_sbin"
+  PKUBA_RELEASE_TOOLS_LIBEXEC_ROOT="$migration_libexec"
+  PKUBA_DEPLOY_CONFIG="$migration_config"
+  PKUBA_DEPLOY_SUDOERS_FILE="$migration_sudoers"
+  PKUBA_SYSTEMD_DIR="$migration_systemd"
+  PKUBA_DEPLOY_LOCK_HELPER="$migration_libexec/acquire-deploy-lock.py"
+  PKUBA_TEST_ALLOW_NON_ROOT_STATE_DIR=1
+)
+migration_files_before=$(find "$migration_sbin" "$migration_libexec" -type f \
+  -exec sha256sum {} + | sort)
+migration_modes_before=$(find "$migration_sbin" "$migration_libexec" -type f \
+  -printf '%p %m\n' | sort)
+migration_state_before=$(sha256sum "$migration_state/current.env")
+migration_sudoers_before=$(sha256sum "$migration_sudoers")
+migration_business_sentinel=$migration_root/business-data-sentinel
+migration_deploy_spy=$migration_root/deploy-spy
+printf 'business-data-unchanged\n' >"$migration_business_sentinel"
+migration_business_before=$(sha256sum "$migration_business_sentinel")
+for migration_fail_point in after-migration-stable-links \
+  after-migration-transition-sudoers \
+  after-migration-toolset-activation before-migration-commit; do
+  migration_fail_stdout=$migration_root/$migration_fail_point.out
+  migration_fail_stderr=$migration_root/$migration_fail_point.err
+  if env "${migration_env[@]}" \
+    PKUBA_TEST_TOOL_DEPLOY_CAPTURE="$migration_deploy_spy" \
+    PKUBA_TEST_TOOLSET_FAIL_POINT="$migration_fail_point" \
+    bash "$script_dir/sync-release-tools.sh" migrate-source \
+      "$candidate_tool_commit" "$candidate_release" \
+      >"$migration_fail_stdout" 2>"$migration_fail_stderr"; then
+    echo "injected production toolset migration failure unexpectedly passed: $migration_fail_point" >&2
+    exit 1
+  fi
+  grep -Fq "injected toolset failure: $migration_fail_point" \
+    "$migration_fail_stderr"
+  [[ ! -e $migration_toolsets/current && ! -L $migration_toolsets/current ]]
+  [[ ! -e $migration_sbin/pkuba-sync-release-tools ]]
+  [[ $migration_files_before == "$(find "$migration_sbin" "$migration_libexec" \
+    -type f -exec sha256sum {} + | sort)" ]]
+  [[ $migration_modes_before == "$(find "$migration_sbin" "$migration_libexec" \
+    -type f -printf '%p %m\n' | sort)" ]]
+  [[ $migration_sudoers_before == "$(sha256sum "$migration_sudoers")" ]]
+  [[ $migration_state_before == "$(sha256sum "$migration_state/current.env")" ]]
+  [[ $migration_business_before == "$(sha256sum "$migration_business_sentinel")" ]]
+  [[ ! -e $migration_deploy_spy ]]
+  [[ ! -e $migration_state/maintenance.enabled \
+    && ! -e $migration_state/release-transaction \
+    && ! -e $migration_state/paired-restore-transaction ]]
+done
+
+set +e
+env "${migration_env[@]}" \
+  PKUBA_TEST_TOOL_DEPLOY_CAPTURE="$migration_deploy_spy" \
+  PKUBA_TEST_TOOLSET_FAIL_POINT=before-migration-commit \
+  PKUBA_TEST_FAIL_MIGRATION_RESTORE_VERIFY=1 \
+  bash "$script_dir/sync-release-tools.sh" migrate-source \
+    "$candidate_tool_commit" "$candidate_release" \
+    >"$migration_root/recovery-required.out" \
+    2>"$migration_root/recovery-required.err"
+migration_recovery_status=$?
+set -e
+[[ $migration_recovery_status -eq 2 ]]
+grep -Fqx 'PKUBA_TOOLSET_MIGRATION_RECOVERY_REQUIRED=1' \
+  "$migration_root/recovery-required.err"
+[[ ! -e $migration_toolsets/current && ! -L $migration_toolsets/current ]]
+[[ ! -e $migration_sbin/pkuba-sync-release-tools ]]
+[[ $migration_files_before == "$(find "$migration_sbin" "$migration_libexec" \
+  -type f -exec sha256sum {} + | sort)" ]]
+[[ $migration_modes_before == "$(find "$migration_sbin" "$migration_libexec" \
+  -type f -printf '%p %m\n' | sort)" ]]
+[[ $migration_sudoers_before == "$(sha256sum "$migration_sudoers")" ]]
+[[ $migration_state_before == "$(sha256sum "$migration_state/current.env")" ]]
+[[ $migration_business_before == "$(sha256sum "$migration_business_sentinel")" ]]
+[[ ! -e $migration_deploy_spy ]]
+
+migration_output=$(env "${migration_env[@]}" \
+  PKUBA_TEST_TOOL_DEPLOY_CAPTURE="$migration_deploy_spy" \
+  bash "$script_dir/sync-release-tools.sh" migrate-source \
+    "$candidate_tool_commit" "$candidate_release")
+grep -Fqx 'PKUBA_TOOLSET_MIGRATION_RESULT=success' <<<"$migration_output"
+grep -Fqx "PKUBA_TOOLSET_COMMIT=$candidate_tool_commit" <<<"$migration_output"
+[[ $(readlink "$migration_toolsets/current") == \
+  "releases/$candidate_tool_commit" ]]
+for stable_tool in "${tool_sbin_names[@]}"; do
+  [[ -L $migration_sbin/$stable_tool ]]
+  [[ $(readlink -f "$migration_sbin/$stable_tool") == \
+    "$migration_toolsets/releases/$candidate_tool_commit/sbin/$stable_tool" ]]
+done
+for stable_tool in "${tool_libexec_names[@]}"; do
+  [[ -L $migration_libexec/$stable_tool ]]
+  [[ $(readlink -f "$migration_libexec/$stable_tool") == \
+    "$migration_toolsets/releases/$candidate_tool_commit/libexec/$stable_tool" ]]
+done
+for migrated_writer in pkuba-deploy-blue-green \
+  pkuba-rollback-retained-application pkuba-restore-paired-data; do
+  ! grep -Fq '\treverse_proxy' "$migration_sbin/$migrated_writer"
+done
+[[ $(wc -l <"$migration_sudoers") -eq 2 ]]
+grep -Fq 'pkuba-sync-release-tools verify *' "$migration_sudoers"
+grep -Fq 'pkuba-sync-release-tools deploy *' "$migration_sudoers"
+! grep -Fq 'pkuba-deploy-blue-green *' "$migration_sudoers"
+! grep -Fq 'pkuba-record-deploy-ssh-verification *' "$migration_sudoers"
+for unit in pkuba-release-recovery.service pkuba-application-start.service \
+  pkuba-backup@.service; do
+  unit_exec=$(awk -F= '/^ExecStart=/{print $2; exit}' "$migration_systemd/$unit")
+  unit_exec=${unit_exec%% *}
+  case "$unit" in
+    pkuba-release-recovery.service) unit_expected=sbin/pkuba-recover-release-transaction ;;
+    pkuba-application-start.service) unit_expected=sbin/pkuba-start-current-application ;;
+    pkuba-backup@.service) unit_expected=sbin/pkuba-backup-current ;;
+  esac
+  [[ $(readlink -f "$unit_exec") == \
+    "$migration_toolsets/releases/$candidate_tool_commit/$unit_expected" ]]
+done
+[[ $migration_state_before == "$(sha256sum "$migration_state/current.env")" ]]
+[[ $migration_business_before == "$(sha256sum "$migration_business_sentinel")" ]]
+[[ ! -e $migration_deploy_spy ]]
+[[ ! -e $migration_state/maintenance.enabled \
+  && ! -e $migration_state/release-transaction \
+  && ! -e $migration_state/paired-restore-transaction ]]
+
+echo 'Versioned release toolset synchronization checks passed.'
 
 repository=$fixture/repository
 release_root=$fixture/deploy/releases

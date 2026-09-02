@@ -78,6 +78,42 @@ bash -n "$repo_root"/scripts/prod/*.sh
 bash "$repo_root/scripts/prod/test-deploy-ssh-gate.sh"
 bash "$repo_root/scripts/prod/test-release-safety.sh"
 
+grep -Fq '/usr/local/sbin/pkuba-sync-release-tools deploy' \
+  "$repo_root/scripts/prod/deploy-gateway.sh"
+! grep -Fq '/usr/local/sbin/pkuba-deploy-blue-green' \
+  "$repo_root/scripts/prod/deploy-gateway.sh"
+grep -Fq 'sync-release-tools.sh" \' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'activate-source "$release_commit" "$release_dir"' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'toolset_release_root=$toolset_root/releases' \
+  "$repo_root/scripts/prod/sync-release-tools.sh"
+grep -Fq 'PKUBA_DEPLOY_LOCK_HELD=1' \
+  "$repo_root/scripts/prod/sync-release-tools.sh"
+grep -Fq 'mv -Tf "$link_tmp" "$toolset_current"' \
+  "$repo_root/scripts/prod/sync-release-tools.sh"
+for installed_tool in \
+  pkuba-deploy-gateway pkuba-record-deploy-ssh-verification \
+  pkuba-finalize-deploy-ssh pkuba-deploy-blue-green \
+  pkuba-rollback-retained-application pkuba-recover-release-transaction \
+  pkuba-restore-paired-data pkuba-start-current-application \
+  pkuba-backup-current acquire-deploy-lock.py fence-deploy-writers.sh \
+  verify-paired-backup.py parse-release-state.sh parse-release-contract.sh \
+  derive-release-capability.sh validate-release-identity.sh \
+  check-app-capability.sh pkuba-sync-release-tools; do
+  grep -Fq "$installed_tool" "$repo_root/scripts/prod/sync-release-tools.sh"
+done
+[[ $(grep -Fc "|sbin/" "$repo_root/scripts/prod/sync-release-tools.sh") -eq 10 ]]
+[[ $(grep -Fc "|libexec/" "$repo_root/scripts/prod/sync-release-tools.sh") -eq 8 ]]
+[[ $(grep -Fc 'ExecStart=/usr/local/libexec/pkuba/toolsets/current/sbin/' \
+  "$repo_root/scripts/prod/bootstrap-server.sh") -eq 3 ]]
+! grep -Eq '^ExecStart=/usr/local/sbin/pkuba-(recover-release-transaction|start-current-application|backup-current)' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'pkuba-sync-release-tools verify *' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+grep -Fq 'pkuba-sync-release-tools deploy *' \
+  "$repo_root/scripts/prod/bootstrap-server.sh"
+
 ! grep -Fq 'COPY core/management ./core/management' \
   "$repo_root/apps/api/Dockerfile"
 grep -Fq 'test ! -e /app/core/management/commands/sample_2026_schedule_v3.py' \

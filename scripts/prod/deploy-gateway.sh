@@ -12,7 +12,7 @@ if [[ $original_command =~ ^verify\ ([0-9a-f]{64})$ ]]; then
     echo "Deployment verification must not receive a PTY." >&2
     exit 65
   fi
-  exec sudo -n /usr/local/sbin/pkuba-record-deploy-ssh-verification \
+  exec sudo -n /usr/local/sbin/pkuba-sync-release-tools verify \
     "$verification_nonce"
 fi
 
@@ -33,5 +33,5 @@ web_image=${command_parts[4]}
 [[ $api_image =~ ^ghcr\.io/jiumao2/pkuba-api@sha256:[0-9a-f]{64}$ ]] || exit 64
 [[ $web_image =~ ^ghcr\.io/jiumao2/pkuba-web@sha256:[0-9a-f]{64}$ ]] || exit 64
 
-exec sudo -n /usr/local/sbin/pkuba-deploy-blue-green \
+exec sudo -n /usr/local/sbin/pkuba-sync-release-tools deploy \
   "$release_tag" "$release_commit" "$api_image" "$web_image"
