@@ -50,8 +50,20 @@ wsl -d Ubuntu-24.04 -- docker compose --project-name pkuba-wsl `
 ```
 
 该命令只适用于全新环境：要求明确确认、交互输入两次密码、通过 Django 密码校验，并在
-已有超级管理员或同名账号时拒绝执行。它不是账号升级、重置密码或生产自动化接口。赛季、
-球队、名单和赛程随后都通过正式管理站创建。
+已有超级管理员或同名账号时拒绝执行。随后用刚建立的超级管理员初始化一次全局管理员
+注册邀请码：
+
+```powershell
+wsl -d Ubuntu-24.04 -- docker compose --project-name pkuba-wsl `
+  --project-directory $repoWsl `
+  --env-file "$repoWsl/.env" `
+  -f "$repoWsl/infra/compose.wsl.yml" `
+  exec api python manage.py bootstrap_admin_registration_policy
+```
+
+两条命令都从终端读取敏感输入且不回显。注册策略命令只保存摘要并拒绝重复初始化；后续
+邀请码轮换在管理站完成。它们不是账号升级、重置密码或生产自动化接口。赛季、球队、名单
+和赛程随后都通过正式管理站创建。
 
 默认入口：
 
@@ -96,8 +108,9 @@ docker compose --project-name pkuba-mac --project-directory . --env-file .env \
 ```
 
 新空库如需首位超级管理员，使用同一 Compose 参数交互运行
-`python manage.py bootstrap_first_superadmin`。仓库不提供 demo seed、旧赛季导入器或
-命令行密码参数。
+`python manage.py bootstrap_first_superadmin`，再运行
+`python manage.py bootstrap_admin_registration_policy`。仓库不提供 demo seed、旧赛季导入器
+或命令行密码/邀请码参数。
 
 ## 检查
 

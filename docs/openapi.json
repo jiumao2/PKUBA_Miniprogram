@@ -1113,6 +1113,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthErrorOut"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2137,49 +2147,18 @@
         ]
       }
     },
-    "/api/v1/admin/seasons/{season_id}/admin-invite-code": {
+    "/api/v1/admin/admin-registration-policy": {
       "get": {
-        "operationId": "core_api_admin_get_season_admin_invite",
-        "summary": "Get Season Admin Invite",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "season_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Season Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
+        "operationId": "core_api_admin_get_admin_registration_policy",
+        "summary": "Get Admin Registration Policy",
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SeasonInviteOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminErrorOut"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminErrorOut"
+                  "$ref": "#/components/schemas/AdminRegistrationPolicyOut"
                 }
               }
             }
@@ -2195,43 +2174,22 @@
         ]
       },
       "put": {
-        "operationId": "core_api_admin_set_season_admin_invite",
-        "summary": "Set Season Admin Invite",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "season_id",
-            "schema": {
-              "format": "uuid",
-              "title": "Season Id",
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
+        "operationId": "core_api_admin_set_admin_registration_policy",
+        "summary": "Set Admin Registration Policy",
+        "parameters": [],
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SeasonInviteOut"
+                  "$ref": "#/components/schemas/AdminRegistrationPolicyOut"
                 }
               }
             }
           },
           "400": {
             "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminErrorOut"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2258,7 +2216,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SetSeasonInviteIn"
+                "$ref": "#/components/schemas/SetAdminRegistrationPolicyIn"
               }
             }
           },
@@ -12779,11 +12737,6 @@
       },
       "AdminRegisterIn": {
         "properties": {
-          "season_id": {
-            "format": "uuid",
-            "title": "Season Id",
-            "type": "string"
-          },
           "invite_code": {
             "title": "Invite Code",
             "type": "string"
@@ -12794,7 +12747,6 @@
           }
         },
         "required": [
-          "season_id",
           "invite_code",
           "password"
         ],
@@ -14134,20 +14086,23 @@
         "title": "CapacityLedgerRowOut",
         "type": "object"
       },
-      "SeasonInviteOut": {
+      "AdminRegistrationPolicyOut": {
         "properties": {
-          "season_id": {
-            "format": "uuid",
-            "title": "Season Id",
-            "type": "string"
-          },
           "configured": {
             "title": "Configured",
             "type": "boolean"
           },
-          "uses_default_invite": {
-            "title": "Uses Default Invite",
-            "type": "boolean"
+          "initialized_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initialized At"
           },
           "updated_at": {
             "anyOf": [
@@ -14167,16 +14122,15 @@
           }
         },
         "required": [
-          "season_id",
           "configured",
-          "uses_default_invite",
+          "initialized_at",
           "updated_at",
           "version"
         ],
-        "title": "SeasonInviteOut",
+        "title": "AdminRegistrationPolicyOut",
         "type": "object"
       },
-      "SetSeasonInviteIn": {
+      "SetAdminRegistrationPolicyIn": {
         "properties": {
           "invite_code": {
             "title": "Invite Code",
@@ -14191,7 +14145,7 @@
           "invite_code",
           "expected_version"
         ],
-        "title": "SetSeasonInviteIn",
+        "title": "SetAdminRegistrationPolicyIn",
         "type": "object"
       },
       "ScheduleDraftCellOut": {

@@ -1,7 +1,7 @@
 import { Button, Input, Text, View } from "@tarojs/components";
 import Taro, { useDidShow } from "@tarojs/taro";
 import { useState } from "react";
-import type { MiniAppMe, Season } from "@pkuba/api-client";
+import type { MiniAppMe } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
@@ -9,7 +9,6 @@ import "../../auth-pages.css";
 import { passwordCharacterCount, validateAdminRegistration } from "./validation";
 
 export default function AdminRegisterPage() {
-  const [season, setSeason] = useState<Season | null>(null);
   const [me, setMe] = useState<MiniAppMe | null>(null);
   const [inviteCode, setInviteCode] = useState("");
   const [password, setPassword] = useState("");
@@ -26,25 +25,21 @@ export default function AdminRegisterPage() {
       setLoading(false);
       return;
     }
-    Promise.all([api.getCurrentSeason(), api.getMiniAppMe(token)])
-      .then(([currentSeason, currentMe]) => {
-        setSeason(currentSeason);
-        setMe(currentMe);
-      })
+    api.getMiniAppMe(token)
+      .then(setMe)
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "读取账号失败"))
       .finally(() => setLoading(false));
   });
 
   const register = async () => {
     const token = getMiniAppSession();
-    if (!season || !token) return;
+    if (!token) return;
     const validationError = validateAdminRegistration(inviteCode, password, passwordConfirmation);
     if (validationError) return setError(validationError);
     setBusy(true);
     setError(null);
     try {
       const updated = await api.registerAdmin({
-        season_id: season.id,
         invite_code: inviteCode.trim(),
         password,
       }, token);
@@ -62,7 +57,7 @@ export default function AdminRegisterPage() {
   return (
     <View className="page auth-flow-page">
       <Text className="auth-title">注册管理员</Text>
-      <Text className="auth-intro">填写当前赛季邀请码，并设置个人网页登录密码。</Text>
+      <Text className="auth-intro">填写管理员邀请码，并设置个人网页登录密码。</Text>
 
       {loading && <View className="auth-panel"><Text className="auth-detail">正在读取账号…</Text></View>}
       {!loading && !getMiniAppSession() && (
@@ -86,7 +81,7 @@ export default function AdminRegisterPage() {
           <Input
             className="auth-field"
             password
-            placeholder="当前赛季邀请码"
+            placeholder="管理员邀请码"
             value={inviteCode}
             onInput={(event) => {
               setInviteCode(event.detail.value);

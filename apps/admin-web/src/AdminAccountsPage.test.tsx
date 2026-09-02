@@ -2,7 +2,6 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AdminAccount, AdminManagedAccount, createAdminClient } from "@pkuba/api-client";
-import type { AdminSeason } from "@pkuba/api-client";
 
 import { AdminAccountsPage } from "./AdminAccountsPage";
 
@@ -33,6 +32,12 @@ describe("AdminAccountsPage", () => {
     const user = userEvent.setup();
     const client = {
       listAdminAccounts: vi.fn().mockResolvedValue(accounts),
+      getAdminRegistrationPolicy: vi.fn().mockResolvedValue({
+        configured: false,
+        initialized_at: null,
+        updated_at: null,
+        version: 0,
+      }),
       demoteSuperadmin: vi.fn().mockResolvedValue({
         ...accounts[1],
         role: "ADMIN",
@@ -41,11 +46,7 @@ describe("AdminAccountsPage", () => {
     } as unknown as AdminClient;
 
     render(
-      <AdminAccountsPage
-        account={current}
-        client={client}
-        season={null}
-      />,
+      <AdminAccountsPage account={current} client={client} />,
     );
 
     const demote = await screen.findByRole("button", { name: "降级" });
@@ -59,46 +60,56 @@ describe("AdminAccountsPage", () => {
     });
   });
 
-  it("disables invite rotation when there is no published season", async () => {
+  it("reads the global invite policy when there is no season", async () => {
     const client = {
       listAdminAccounts: vi.fn().mockResolvedValue(accounts),
-      getSeasonInvite: vi.fn(),
-    } as unknown as AdminClient;
-
-    render(<AdminAccountsPage account={current} client={client} season={null} />);
-
-    expect(await screen.findByText("管理员邀请码暂不可用")).toBeVisible();
-    expect(screen.getByText(/当前没有已公开赛季/)).toBeVisible();
-    expect(screen.getByRole("button", { name: "更新邀请码" })).toBeDisabled();
-    expect(client.getSeasonInvite).not.toHaveBeenCalled();
-  });
-
-  it("shows the full published-season identity for invite rotation", async () => {
-    const published = {
-      id: "season-published",
-      year: 2026,
-      name: "北大杯",
-      status: "PUBLISHED",
-      competition_type: "PKU_CUP",
-      starts_on: "2026-03-01",
-      ends_on: "2026-05-31",
-      version: 3,
-      divisions: [],
-    } as AdminSeason;
-    const client = {
-      listAdminAccounts: vi.fn().mockResolvedValue(accounts),
-      getSeasonInvite: vi.fn().mockResolvedValue({
-        season_id: published.id,
-        configured: true,
-        uses_default_invite: false,
+      getAdminRegistrationPolicy: vi.fn().mockResolvedValue({
+        configured: false,
+        initialized_at: null,
         updated_at: null,
-        version: 3,
+        version: 0,
       }),
     } as unknown as AdminClient;
 
-    render(<AdminAccountsPage account={current} client={client} season={published} />);
+    render(<AdminAccountsPage account={current} client={client} />);
 
-    expect(await screen.findByText(/2026 · 北大杯 · 已公开/)).toBeVisible();
-    expect(client.getSeasonInvite).toHaveBeenCalledWith(published.id);
+    expect(await screen.findByText(/尚未初始化/)).toBeVisible();
+    expect(screen.getByText(/管理员注册不依赖赛季状态/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "更新邀请码" })).toBeDisabled();
+    expect(client.getAdminRegistrationPolicy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rotates the global invite without a season", async () => {
+    const user = userEvent.setup();
+    const client = {
+      listAdminAccounts: vi.fn().mockResolvedValue(accounts),
+      getAdminRegistrationPolicy: vi.fn().mockResolvedValue({
+        configured: true,
+        initialized_at: "2026-03-01T00:00:00Z",
+        updated_at: null,
+        version: 3,
+      }),
+      setAdminRegistrationPolicy: vi.fn().mockResolvedValue({
+        configured: true,
+        initialized_at: "2026-03-01T00:00:00Z",
+        updated_at: "2026-03-02T00:00:00Z",
+        version: 4,
+      }),
+    } as unknown as AdminClient;
+
+    render(<AdminAccountsPage account={current} client={client} />);
+
+    await screen.findByText(/管理员注册不依赖赛季状态/);
+    const fields = screen.getAllByLabelText(/新邀请码|再次输入/);
+    await user.type(fields[0], "GLOBAL-INVITE-2026");
+    await user.type(fields[1], "GLOBAL-INVITE-2026");
+    await user.click(screen.getByRole("button", { name: "更新邀请码" }));
+
+    await waitFor(() => {
+      expect(client.setAdminRegistrationPolicy).toHaveBeenCalledWith(
+        "GLOBAL-INVITE-2026",
+        3,
+      );
+    });
   });
 });

@@ -2,13 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AdminAccount,
   type AdminManagedAccount,
-  type AdminSeason,
-  type SeasonInvite,
+  type AdminRegistrationPolicy,
   type createAdminClient,
 } from "@pkuba/api-client";
 
 import { useAdminDirtySource } from "./dirtyGuard";
-import { formatAdminSeasonLabel } from "./seasonLabel";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type PendingAction =
@@ -19,14 +17,12 @@ type PendingAction =
 export function AdminAccountsPage({
   account,
   client,
-  season,
 }: {
   account: AdminAccount;
   client: AdminClient;
-  season: AdminSeason | null;
 }) {
   const [accounts, setAccounts] = useState<AdminManagedAccount[]>([]);
-  const [invite, setInvite] = useState<SeasonInvite | null>(null);
+  const [invite, setInvite] = useState<AdminRegistrationPolicy | null>(null);
   const [inviteCode, setInviteCode] = useState("");
   const [inviteAgain, setInviteAgain] = useState("");
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -48,7 +44,7 @@ export function AdminAccountsPage({
     try {
       const [nextAccounts, nextInvite] = await Promise.all([
         client.listAdminAccounts(),
-        season ? client.getSeasonInvite(season.id) : Promise.resolve(null),
+        client.getAdminRegistrationPolicy(),
       ]);
       if (generation !== loadGenerationRef.current) return;
       setAccounts(nextAccounts);
@@ -59,7 +55,7 @@ export function AdminAccountsPage({
     } finally {
       if (generation === loadGenerationRef.current) setLoading(false);
     }
-  }, [client, season]);
+  }, [client]);
 
   useEffect(() => {
     loadGenerationRef.current += 1;
@@ -105,7 +101,7 @@ export function AdminAccountsPage({
   };
 
   const rotateInvite = async () => {
-    if (!season || !invite || season.status !== "PUBLISHED") return;
+    if (!invite?.configured) return;
     if (inviteCode.length < 8) {
       setError("邀请码至少需要 8 个字符。");
       return;
@@ -118,11 +114,11 @@ export function AdminAccountsPage({
     setError(null);
     setMessage(null);
     try {
-      const next = await client.setSeasonInvite(season.id, inviteCode, invite.version);
+      const next = await client.setAdminRegistrationPolicy(inviteCode, invite.version);
       setInvite(next);
       setInviteCode("");
       setInviteAgain("");
-      setMessage(`${season.name} 的管理员邀请码已更新，旧邀请码立即失效。`);
+      setMessage("全局管理员邀请码已更新，旧邀请码立即失效。");
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "邀请码更新失败");
     } finally {
@@ -154,29 +150,18 @@ export function AdminAccountsPage({
         </button>
       </section>
 
-      {!season && (
+      {invite && (
         <section className="panel invite-panel">
           <div className="invite-copy">
-            <p className="eyebrow">当前公开赛季</p>
-            <h2>管理员邀请码暂不可用</h2>
-            <p>当前没有已公开赛季。邀请码只用于当前已公开赛季的管理员注册。</p>
-          </div>
-          <button className="primary-action" disabled type="button">更新邀请码</button>
-        </section>
-      )}
-
-      {season && invite && (
-        <section className="panel invite-panel">
-          <div className="invite-copy">
-            <p className="eyebrow">赛季元信息</p>
+            <p className="eyebrow">全局注册策略</p>
             <h2>管理员邀请码</h2>
             <p>
-              注册赛季：{formatAdminSeasonLabel(season)}。系统只保存邀请码摘要；更新后旧邀请码立即失效，已注册管理员不受影响。
+              管理员注册不依赖赛季状态。系统只保存邀请码摘要；更新后旧邀请码立即失效，已注册管理员不受影响。
             </p>
             <span className="subtle">
-              {invite.updated_at
+              {invite.configured && invite.updated_at
                 ? `最近更新：${new Date(invite.updated_at).toLocaleString("zh-CN")}`
-                : "尚未设置"}
+                : "尚未初始化；请先由服务器运维执行一次性初始化命令"}
             </span>
           </div>
           <div className="invite-form">
@@ -190,7 +175,7 @@ export function AdminAccountsPage({
             </label>
             <button
               className="primary-action"
-              disabled={busy || season.status !== "PUBLISHED"}
+              disabled={busy || !invite.configured}
               onClick={() => void rotateInvite()}
               type="button"
             >

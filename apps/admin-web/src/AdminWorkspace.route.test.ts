@@ -4,7 +4,6 @@ import {
   navigation,
   readInitialAdminRoute,
   selectAdminSeason,
-  selectRegistrationSeason,
 } from "./AdminWorkspace";
 
 afterEach(() => window.history.replaceState(null, "", "/"));
@@ -50,16 +49,5 @@ describe("admin workspace media navigation", () => {
         "missing",
       )?.id,
     ).toBe("setup");
-  });
-
-  it("binds administrator registration to the published season independently", () => {
-    const seasons = [
-      { id: "setup", status: "SETUP" },
-      { id: "published", status: "PUBLISHED" },
-      { id: "archived", status: "ARCHIVED" },
-    ];
-    expect(selectAdminSeason(seasons as never)?.id).toBe("setup");
-    expect(selectRegistrationSeason(seasons as never)?.id).toBe("published");
-    expect(selectRegistrationSeason(seasons.filter((item) => item.status !== "PUBLISHED") as never)).toBeNull();
   });
 });

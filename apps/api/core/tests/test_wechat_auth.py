@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import authenticate
-from django.contrib.auth.hashers import check_password
+from django.contrib.auth.hashers import check_password, make_password
 from django.test import Client, override_settings
 from django.utils import timezone
 
@@ -14,6 +14,7 @@ from core.models import (
     Account,
     AdminAuditLog,
     AdminProfile,
+    AdminRegistrationPolicy,
     CompetitionGroup,
     Division,
     DrawAssignment,
@@ -26,6 +27,7 @@ from core.models import (
 from core.services.wechat import WeChatAuthError, WeChatPrincipal, exchange_code
 
 pytestmark = pytest.mark.django_db
+ADMIN_INVITE = "test-global-admin-invite"
 
 
 def post_json(client: Client, path: str, payload: dict[str, object], token: str | None = None):
@@ -59,6 +61,21 @@ def active_season_with_team():
     team = Team.objects.create(season=season, division=division, name="测试女篮")
     DrawAssignment.objects.create(season=season, slot=slot, team=team)
     return season, team
+
+
+def configure_admin_registration_policy(
+    *, invite_code: str = ADMIN_INVITE,
+) -> AdminRegistrationPolicy:
+    actor = Account.objects.create_user(
+        username=f"policy-owner-{Account.objects.count()}",
+        password="StrongPass!2026",
+        role=Account.Role.SUPERADMIN,
+    )
+    return AdminRegistrationPolicy.objects.create(
+        invite_code_hash=make_password(invite_code),
+        initialized_by=actor,
+        updated_by=actor,
+    )
 
 
 def onboard(client: Client, *, openid: str, username: str):
@@ -144,6 +161,7 @@ def test_username_is_unique_ignoring_case():
 
 def test_same_account_can_claim_team_and_register_as_admin():
     season, team = active_season_with_team()
+    configure_admin_registration_policy()
     client = Client()
     token = onboard(client, openid="openid-dual", username="双重身份")
 
@@ -164,8 +182,7 @@ def test_same_account_can_claim_team_and_register_as_admin():
         client,
         "/api/v1/auth/admin/register",
         {
-            "season_id": str(season.id),
-            "invite_code": "PKUBA1997",
+            "invite_code": ADMIN_INVITE,
             "password": "1234",
         },
         token,
@@ -176,12 +193,12 @@ def test_same_account_can_claim_team_and_register_as_admin():
     assert payload["leader_binding"]["team_id"] == str(team.id)
     assert SeasonLeaderBinding.objects.filter(account__username="双重身份", team=team).exists()
     assert authenticate(username="双重身份", password="1234") is not None
-    assert authenticate(username="双重身份", password="PKUBA1997") is None
+    assert authenticate(username="双重身份", password=ADMIN_INVITE) is None
     registration_audit = AdminAuditLog.objects.get(action="ADMIN_REGISTERED_FROM_MINIAPP")
     assert registration_audit.after["password_set_at_registration"] is True
     serialized_audit = json.dumps(registration_audit.after, ensure_ascii=False)
     assert "1234" not in serialized_audit
-    assert "PKUBA1997" not in serialized_audit
+    assert ADMIN_INVITE not in serialized_audit
 
 
 def test_team_can_only_be_claimed_once():
@@ -201,9 +218,7 @@ def test_team_can_only_be_claimed_once():
     assert SeasonLeaderBinding.objects.filter(season=season, team=team).count() == 1
 
 
-def test_superadmin_can_rotate_season_invite_without_exposing_value():
-    season, _ = active_season_with_team()
-    initial_version = season.version
+def test_superadmin_can_read_and_rotate_global_invite_without_exposing_value():
     superadmin = Account.objects.create_user(
         username="root-admin",
         password="StrongPass!2026",
@@ -211,22 +226,42 @@ def test_superadmin_can_rotate_season_invite_without_exposing_value():
     )
     client = Client()
     client.force_login(superadmin)
-    current = client.get(f"/api/v1/admin/seasons/{season.id}/admin-invite-code")
+    current = client.get("/api/v1/admin/admin-registration-policy")
     assert current.status_code == 200
-    assert current.json()["uses_default_invite"] is True
-    response = client.put(
-        f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
-        data=json.dumps({"invite_code": "NEW-PKUBA-2026", "expected_version": season.version}),
+    assert current.json() == {
+        "configured": False,
+        "initialized_at": None,
+        "updated_at": None,
+        "version": 0,
+    }
+    unconfigured_rotation = client.put(
+        "/api/v1/admin/admin-registration-policy",
+        data=json.dumps({"invite_code": ADMIN_INVITE, "expected_version": 0}),
         content_type="application/json",
     )
-    assert response.status_code == 200
-    assert "invite_code" not in response.json()
-    assert response.json()["uses_default_invite"] is False
-    season.refresh_from_db()
-    assert season.version == initial_version + 1
-    assert check_password("NEW-PKUBA-2026", season.admin_invite_code_hash)
-    assert not check_password("PKUBA1997", season.admin_invite_code_hash)
-    assert AdminAuditLog.objects.filter(action="SEASON_ADMIN_INVITE_UPDATED").exists()
+    assert unconfigured_rotation.status_code == 409
+    assert unconfigured_rotation.json()["code"] == "ADMIN_REGISTRATION_NOT_CONFIGURED"
+    assert not AdminRegistrationPolicy.objects.exists()
+    assert not AdminAuditLog.objects.exists()
+
+    policy = AdminRegistrationPolicy.objects.create(
+        invite_code_hash=make_password(ADMIN_INVITE),
+        initialized_by=superadmin,
+        updated_by=superadmin,
+    )
+
+    rotated_invite = "rotated-global-admin-invite"
+    rotated = client.put(
+        "/api/v1/admin/admin-registration-policy",
+        data=json.dumps({"invite_code": rotated_invite, "expected_version": 1}),
+        content_type="application/json",
+    )
+    assert rotated.status_code == 200
+    assert rotated.json()["version"] == 2
+    policy.refresh_from_db()
+    assert check_password(rotated_invite, policy.invite_code_hash)
+    assert not check_password(ADMIN_INVITE, policy.invite_code_hash)
+    assert AdminAuditLog.objects.filter(action="ADMIN_REGISTRATION_POLICY_UPDATED").exists()
 
     registration_client = Client()
     token = onboard(
@@ -238,8 +273,7 @@ def test_superadmin_can_rotate_season_invite_without_exposing_value():
         registration_client,
         "/api/v1/auth/admin/register",
         {
-            "season_id": str(season.id),
-            "invite_code": "PKUBA1997",
+            "invite_code": ADMIN_INVITE,
             "password": "1234",
         },
         token,
@@ -249,8 +283,7 @@ def test_superadmin_can_rotate_season_invite_without_exposing_value():
         registration_client,
         "/api/v1/auth/admin/register",
         {
-            "season_id": str(season.id),
-            "invite_code": "NEW-PKUBA-2026",
+            "invite_code": rotated_invite,
             "password": "1234",
         },
         token,
@@ -259,115 +292,81 @@ def test_superadmin_can_rotate_season_invite_without_exposing_value():
     assert registered.json()["admin_role"] == Account.Role.ADMIN
 
 
-def test_archived_season_invite_cannot_be_rotated():
-    season, _ = active_season_with_team()
-    season.status = Season.Status.ARCHIVED
-    season.save(update_fields=["status", "updated_at"])
-    superadmin = Account.objects.create_user(
-        username="archived-invite-admin",
-        password="StrongPass!2026",
-        role=Account.Role.SUPERADMIN,
-    )
-    client = Client()
-    client.force_login(superadmin)
-
-    response = client.put(
-        f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
-        data=json.dumps({"invite_code": "NEW-PKUBA-2026", "expected_version": season.version}),
-        content_type="application/json",
-    )
-
-    assert response.status_code == 409
-    assert response.json()["code"] == "SEASON_ARCHIVED"
-
-
 @pytest.mark.parametrize(
-    ("status", "code"),
-    [
-        (Season.Status.SETUP, "SEASON_NOT_PUBLIC"),
-        (Season.Status.ARCHIVED, "SEASON_ARCHIVED"),
-    ],
+    "season_status",
+    [None, Season.Status.SETUP, Season.Status.PUBLISHED, Season.Status.ARCHIVED],
 )
-def test_non_public_season_invite_is_not_readable_or_mutable(status, code):
-    season, _ = active_season_with_team()
-    season.status = status
-    season.save(update_fields=["status", "updated_at"])
-    superadmin = Account.objects.create_user(
-        username=f"invite-guard-{status.lower()}",
-        password="StrongPass!2026",
-        role=Account.Role.SUPERADMIN,
-    )
-    client = Client()
-    client.force_login(superadmin)
-    before = {
-        "hash": season.admin_invite_code_hash,
-        "updated_at": season.admin_invite_updated_at,
-        "version": season.version,
-        "audit_count": AdminAuditLog.objects.count(),
-    }
-
-    read_response = client.get(
-        f"/api/v1/admin/seasons/{season.id}/admin-invite-code"
-    )
-    write_responses = [
-        client.put(
-            f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
-            data=json.dumps(
-                {"invite_code": invite_code, "expected_version": season.version}
-            ),
-            content_type="application/json",
+def test_admin_registration_is_independent_of_season_state(season_status):
+    if season_status is not None:
+        today = timezone.localdate()
+        Season.objects.create(
+            name=f"独立注册-{season_status}",
+            competition_type=Season.CompetitionType.PKU_CUP,
+            year=today.year,
+            status=season_status,
+            starts_on=today,
+            ends_on=today + timedelta(days=1),
         )
-        for invite_code in ("NEW-PKUBA-2026", "bad")
-    ]
+    configure_admin_registration_policy()
+    client = Client()
+    token = onboard(
+        client,
+        openid=f"openid-season-independent-{season_status}",
+        username=f"独立注册-{season_status}",
+    )
+    response = post_json(
+        client,
+        "/api/v1/auth/admin/register",
+        {"invite_code": ADMIN_INVITE, "password": "1234"},
+        token,
+    )
+    assert response.status_code == 200
+    assert response.json()["admin_role"] == Account.Role.ADMIN
 
-    assert read_response.status_code == 409
-    assert read_response.json()["code"] == code
-    assert [response.status_code for response in write_responses] == [409, 409]
-    assert [response.json()["code"] for response in write_responses] == [code, code]
-    season.refresh_from_db()
-    assert season.admin_invite_code_hash == before["hash"]
-    assert season.admin_invite_updated_at == before["updated_at"]
-    assert season.version == before["version"]
-    assert AdminAuditLog.objects.count() == before["audit_count"]
 
-
-def test_published_season_rejects_short_invite_without_writing():
-    season, _ = active_season_with_team()
+def test_global_policy_rejects_short_or_stale_rotation_without_writing():
+    policy = configure_admin_registration_policy()
     superadmin = Account.objects.create_user(
-        username="published-short-invite-admin",
+        username="global-policy-guard",
         password="StrongPass!2026",
         role=Account.Role.SUPERADMIN,
     )
     client = Client()
     client.force_login(superadmin)
     before = {
-        "hash": season.admin_invite_code_hash,
-        "updated_at": season.admin_invite_updated_at,
-        "version": season.version,
+        "hash": policy.invite_code_hash,
+        "updated_at": policy.updated_at,
+        "version": policy.version,
         "audit_count": AdminAuditLog.objects.count(),
     }
 
-    response = client.put(
-        f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
-        data=json.dumps({"invite_code": "bad", "expected_version": season.version}),
+    short = client.put(
+        "/api/v1/admin/admin-registration-policy",
+        data=json.dumps({"invite_code": "bad", "expected_version": policy.version}),
+        content_type="application/json",
+    )
+    stale = client.put(
+        "/api/v1/admin/admin-registration-policy",
+        data=json.dumps({"invite_code": "new-global-invite", "expected_version": 0}),
         content_type="application/json",
     )
 
-    assert response.status_code == 400
-    assert response.json()["code"] == "INVITE_CODE_TOO_SHORT"
-    season.refresh_from_db()
-    assert season.admin_invite_code_hash == before["hash"]
-    assert season.admin_invite_updated_at == before["updated_at"]
-    assert season.version == before["version"]
+    assert short.status_code == 400
+    assert short.json()["code"] == "INVITE_CODE_TOO_SHORT"
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "VERSION_CONFLICT"
+    policy.refresh_from_db()
+    assert policy.invite_code_hash == before["hash"]
+    assert policy.updated_at == before["updated_at"]
+    assert policy.version == before["version"]
     assert AdminAuditLog.objects.count() == before["audit_count"]
 
 
 def test_wrong_invite_code_never_locks_and_keeps_redacted_audit():
-    season, _ = active_season_with_team()
+    configure_admin_registration_policy()
     client = Client()
     token = onboard(client, openid="openid-rate", username="邀请码测试")
     payload = {
-        "season_id": str(season.id),
         "invite_code": "wrong-code",
         "password": "2468",
     }
@@ -380,8 +379,7 @@ def test_wrong_invite_code_never_locks_and_keeps_redacted_audit():
         client,
         "/api/v1/auth/admin/register",
         {
-            "season_id": str(season.id),
-            "invite_code": "PKUBA1997",
+            "invite_code": ADMIN_INVITE,
             "password": "2468",
         },
         token,
@@ -389,15 +387,15 @@ def test_wrong_invite_code_never_locks_and_keeps_redacted_audit():
     failures = AdminAuditLog.objects.filter(action="ADMIN_REGISTRATION_FAILED")
     assert success.status_code == 200
     assert failures.count() == 10
-    assert all(set(item.metadata) == {"client_key"} for item in failures)
+    assert all(set(item.metadata) == {"client_key", "policy_version"} for item in failures)
     serialized_metadata = json.dumps([item.metadata for item in failures])
     assert "wrong-code" not in serialized_metadata
-    assert "PKUBA1997" not in serialized_metadata
+    assert ADMIN_INVITE not in serialized_metadata
     assert "2468" not in serialized_metadata
 
 
 def test_admin_registration_requires_four_character_user_password():
-    season, _ = active_season_with_team()
+    configure_admin_registration_policy()
     client = Client()
     token = onboard(client, openid="openid-short-password", username="短密码测试")
 
@@ -405,8 +403,7 @@ def test_admin_registration_requires_four_character_user_password():
         client,
         "/api/v1/auth/admin/register",
         {
-            "season_id": str(season.id),
-            "invite_code": "PKUBA1997",
+            "invite_code": ADMIN_INVITE,
             "password": "123",
         },
         token,
@@ -418,3 +415,72 @@ def test_admin_registration_requires_four_character_user_password():
     assert account.role == Account.Role.USER
     assert not AdminProfile.objects.filter(account=account).exists()
     assert not AdminAuditLog.objects.filter(action="ADMIN_REGISTERED_FROM_MINIAPP").exists()
+
+
+def test_unconfigured_global_policy_rejects_registration_without_partial_writes():
+    client = Client()
+    token = onboard(client, openid="openid-unconfigured-policy", username="未开放注册")
+
+    response = post_json(
+        client,
+        "/api/v1/auth/admin/register",
+        {"invite_code": "unused-global-invite", "password": "1234"},
+        token,
+    )
+
+    account = Account.objects.get(username="未开放注册")
+    assert response.status_code == 409
+    assert response.json()["code"] == "ADMIN_REGISTRATION_NOT_CONFIGURED"
+    assert account.role == Account.Role.USER
+    assert not AdminProfile.objects.filter(account=account).exists()
+    assert not AdminAuditLog.objects.filter(
+        action__in=["ADMIN_REGISTRATION_FAILED", "ADMIN_REGISTERED_FROM_MINIAPP"]
+    ).exists()
+
+
+def test_repeated_registration_keeps_one_profile_and_does_not_reset_password():
+    configure_admin_registration_policy()
+    client = Client()
+    token = onboard(client, openid="openid-repeat-registration", username="重复注册")
+    first = post_json(
+        client,
+        "/api/v1/auth/admin/register",
+        {"invite_code": ADMIN_INVITE, "password": "1234"},
+        token,
+    )
+    repeated = post_json(
+        client,
+        "/api/v1/auth/admin/register",
+        {"invite_code": "now-wrong", "password": "different-password"},
+        token,
+    )
+
+    account = Account.objects.get(username="重复注册")
+    assert first.status_code == repeated.status_code == 200
+    assert account.check_password("1234")
+    assert not account.check_password("different-password")
+    assert AdminProfile.objects.filter(account=account).count() == 1
+    assert AdminAuditLog.objects.filter(action="ADMIN_REGISTERED_FROM_MINIAPP").count() == 1
+
+
+def test_legacy_season_invite_endpoints_are_unreachable():
+    season, _ = active_season_with_team()
+    superadmin = Account.objects.create_user(
+        username="legacy-endpoint-check",
+        password="StrongPass!2026",
+        role=Account.Role.SUPERADMIN,
+    )
+    client = Client()
+    client.force_login(superadmin)
+
+    read_response = client.get(
+        f"/api/v1/admin/seasons/{season.id}/admin-invite-code"
+    )
+    write_response = client.put(
+        f"/api/v1/admin/seasons/{season.id}/admin-invite-code",
+        data=json.dumps({"invite_code": ADMIN_INVITE, "expected_version": season.version}),
+        content_type="application/json",
+    )
+
+    assert read_response.status_code == 404
+    assert write_response.status_code == 404

@@ -686,17 +686,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/seasons/{season_id}/admin-invite-code": {
+    "/api/v1/admin/admin-registration-policy": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Season Admin Invite */
-        get: operations["core_api_admin_get_season_admin_invite"];
-        /** Set Season Admin Invite */
-        put: operations["core_api_admin_set_season_admin_invite"];
+        /** Get Admin Registration Policy */
+        get: operations["core_api_admin_get_admin_registration_policy"];
+        /** Set Admin Registration Policy */
+        put: operations["core_api_admin_set_admin_registration_policy"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3259,11 +3259,6 @@ export interface components {
         };
         /** AdminRegisterIn */
         AdminRegisterIn: {
-            /**
-             * Season Id
-             * Format: uuid
-             */
-            season_id: string;
             /** Invite Code */
             invite_code: string;
             /** Password */
@@ -3846,24 +3841,19 @@ export interface components {
             /** Over Capacity */
             over_capacity: boolean;
         };
-        /** SeasonInviteOut */
-        SeasonInviteOut: {
-            /**
-             * Season Id
-             * Format: uuid
-             */
-            season_id: string;
+        /** AdminRegistrationPolicyOut */
+        AdminRegistrationPolicyOut: {
             /** Configured */
             configured: boolean;
-            /** Uses Default Invite */
-            uses_default_invite: boolean;
+            /** Initialized At */
+            initialized_at: string | null;
             /** Updated At */
             updated_at: string | null;
             /** Version */
             version: number;
         };
-        /** SetSeasonInviteIn */
-        SetSeasonInviteIn: {
+        /** SetAdminRegistrationPolicyIn */
+        SetAdminRegistrationPolicyIn: {
             /** Invite Code */
             invite_code: string;
             /** Expected Version */
@@ -7919,6 +7909,15 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorOut"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorOut"];
+                };
+            };
         };
     };
     core_api_auth_admin_web_login_challenge: {
@@ -8628,13 +8627,11 @@ export interface operations {
             };
         };
     };
-    core_api_admin_get_season_admin_invite: {
+    core_api_admin_get_admin_registration_policy: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                season_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -8645,41 +8642,21 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SeasonInviteOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminErrorOut"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminErrorOut"];
+                    "application/json": components["schemas"]["AdminRegistrationPolicyOut"];
                 };
             };
         };
     };
-    core_api_admin_set_season_admin_invite: {
+    core_api_admin_set_admin_registration_policy: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                season_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SetSeasonInviteIn"];
+                "application/json": components["schemas"]["SetAdminRegistrationPolicyIn"];
             };
         };
         responses: {
@@ -8689,20 +8666,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SeasonInviteOut"];
+                    "application/json": components["schemas"]["AdminRegistrationPolicyOut"];
                 };
             };
             /** @description Bad Request */
             400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminErrorOut"];
-                };
-            };
-            /** @description Not Found */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };

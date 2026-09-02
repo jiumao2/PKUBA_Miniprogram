@@ -68,10 +68,6 @@ export function selectAdminSeason(seasons: AdminSeason[], preferredSeasonId = ""
     ?? seasons[0];
 }
 
-export function selectRegistrationSeason(seasons: AdminSeason[]) {
-  return seasons.find((item) => item.status === "PUBLISHED") ?? null;
-}
-
 const superadminPages: PageId[] = [
   "season",
   "teams",
@@ -247,7 +243,6 @@ export function AdminWorkspace() {
   const selectedAdminSeason = adminSeasons.find(
     (item) => item.id === selectedAdminSeasonId,
   );
-  const registrationSeason = selectRegistrationSeason(adminSeasons);
 
   if (account === undefined) {
     return <StatePanel title="正在检查登录状态" detail="请稍候。" />;
@@ -444,7 +439,6 @@ export function AdminWorkspace() {
           <AdminAccountsPage
             account={account}
             client={adminClient}
-            season={registrationSeason}
           />
         )}
         {!loading && !error && page === "archives" && account.role === "SUPERADMIN" && (
@@ -555,7 +549,7 @@ function PasswordChangeDialog({
           </div>
           <button className="dialog-close" type="button" onClick={onClose} aria-label="关闭">×</button>
         </div>
-        <p className="dialog-detail">网页密码由管理员在小程序注册时自行设置。新密码只需至少 4 个字符，可以与当前密码相同；修改密码不会改变赛季邀请码。</p>
+        <p className="dialog-detail">网页密码由管理员在小程序注册时自行设置。新密码只需至少 4 个字符，可以与当前密码相同；修改密码不会改变全局管理员邀请码。</p>
         <form className="password-form" onSubmit={(event) => void submit(event)}>
           <label>
             当前密码

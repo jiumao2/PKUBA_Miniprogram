@@ -96,7 +96,7 @@ export type ApplyGameDrawAssignments = components["schemas"]["DrawGameApplyIn"];
 export type WeChatExchange = components["schemas"]["WeChatExchangeOut"];
 export type MiniAppMe = components["schemas"]["MiniAppMeOut"];
 export type ClaimableTeam = components["schemas"]["ClaimableTeamOut"];
-export type SeasonInvite = components["schemas"]["SeasonInviteOut"];
+export type AdminRegistrationPolicy = components["schemas"]["AdminRegistrationPolicyOut"];
 export type Brackets = components["schemas"]["BracketsOut"];
 export type DivisionBracket = components["schemas"]["DivisionBracketOut"];
 export type BracketRound = components["schemas"]["BracketRoundOut"];
@@ -844,7 +844,7 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
       token: string,
     ) => send<MiniAppMe>("/api/v1/auth/leader/claims", json("POST", payload, token)),
     registerAdmin: (
-      payload: { season_id: string; invite_code: string; password: string },
+      payload: { invite_code: string; password: string },
       token: string,
     ) => send<MiniAppMe>("/api/v1/auth/admin/register", json("POST", payload, token)),
     confirmAdminWebLogin: (challengeToken: string, token: string) =>
@@ -1730,13 +1730,13 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           body: JSON.stringify({ expected_version: expectedVersion, active }),
         }),
       ),
-    getSeasonInvite: async (seasonId: string) =>
-      parseAdminResponse<SeasonInvite>(
-        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/admin-invite-code`),
+    getAdminRegistrationPolicy: async () =>
+      parseAdminResponse<AdminRegistrationPolicy>(
+        await fetchAdmin("/api/v1/admin/admin-registration-policy"),
       ),
-    setSeasonInvite: async (seasonId: string, inviteCode: string, expectedVersion: number) =>
-      parseAdminResponse<SeasonInvite>(
-        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/admin-invite-code`, {
+    setAdminRegistrationPolicy: async (inviteCode: string, expectedVersion: number) =>
+      parseAdminResponse<AdminRegistrationPolicy>(
+        await fetchAdmin("/api/v1/admin/admin-registration-policy", {
           method: "PUT",
           headers: { "Content-Type": "application/json", ...csrfHeaders() },
           body: JSON.stringify({ invite_code: inviteCode, expected_version: expectedVersion }),

@@ -47,7 +47,7 @@ PostgreSQL 17 和 Caddy 2.10 的官方多架构 index 先由 release workflow �
 服务器 root 会话预先建立并核对 GitHub host key，然后使用当前发布版本运行（以下以 `v1.0.2` 为例）：
 
 ```bash
-sudo /root/pkuba-prod-tools/bootstrap-server.sh \
+sudo /usr/bin/bash /root/pkuba-prod-tools/bootstrap-server.sh \
   --deploy-public-key-file /root/pkuba-actions.pub \
   --github-read-key-file /root/pkuba-github-readonly \
   --release-tag v1.0.2 \
@@ -61,10 +61,16 @@ sudo /root/pkuba-prod-tools/bootstrap-server.sh \
 namespace、卷、网络、受限部署账号和 systemd，在维护状态启动 PostgreSQL、执行迁移与
 `check --deploy`。数据库必须没有赛季或合成数据。
 
-脚本会在终端交互调用 `bootstrap_first_superadmin` 一次。操作人输入确认、用户名和两次密码；
-命令使用 Django 密码校验、事务和 PostgreSQL advisory lock，拒绝既有超级管理员、同名账号
-和并发创建，并写不可变审计。密码不通过参数或标准输出传递。之后以管理站正式流程配置
-赛季和账号。
+脚本会在终端依次交互调用 `bootstrap_first_superadmin` 和
+`bootstrap_admin_registration_policy` 一次。前者输入确认、用户名和两次密码；后者输入既有
+超级管理员用户名和两次全局管理员邀请码。两条命令都使用事务和 PostgreSQL advisory lock，
+拒绝重复或并发初始化并写不可变审计；密码和邀请码不通过参数、环境变量或标准输出传递，
+数据库只保存摘要。之后以管理站正式流程配置赛季和账号，管理员注册本身不依赖赛季状态。
+
+从仍使用旧赛季邀请码字段的既有数据库升级时，须在切换新入口前保持 maintenance，并以候选
+API 镜像交互运行同一个 `python manage.py bootstrap_admin_registration_policy`；操作人输入新的
+全局邀请码，确认策略存在且审计已写入后才能继续切流。旧赛季字段按 expand/contract 暂留但
+不再由 API 或页面读取；不得把明文邀请码放入 `.env`、命令参数、日志或导出文件。
 
 初始 blue 栈、gateway、readiness 和 UFW 22/80/443 验证成功后才解除 maintenance。
 bootstrap 会安装受限部署账号，但**不会关闭密码认证**；这避免尚未从可信管理机验证部署私钥时

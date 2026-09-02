@@ -23,6 +23,7 @@ from core.models import (
     Account,
     AdminAuditLog,
     AdminProfile,
+    AdminRegistrationPolicy,
     DrawAssignment,
     Game,
     Season,
@@ -141,7 +142,6 @@ class LeaderClaimIn(Schema):
 
 
 class AdminRegisterIn(Schema):
-    season_id: UUID
     invite_code: str
     password: str
 
@@ -490,33 +490,44 @@ def claim_leader_team(request: HttpRequest, payload: LeaderClaimIn):
 @router.post(
     "/admin/register",
     auth=miniapp_bearer_auth,
-    response={200: MiniAppMeOut, 400: AuthErrorOut, 401: AuthErrorOut},
+    response={200: MiniAppMeOut, 400: AuthErrorOut, 401: AuthErrorOut, 409: AuthErrorOut},
 )
 def register_admin(request: HttpRequest, payload: AdminRegisterIn):
-    account = request.auth
-    if account.is_pkuba_admin:
-        return _serialize_miniapp_me(account)
-    client_key = _client_key(request, f"admin-register:{account.id}")
-    try:
-        season = Season.objects.get(id=payload.season_id, status=Season.Status.PUBLISHED)
-    except Season.DoesNotExist:
-        return Status(400, {"code": "SEASON_NOT_PUBLIC", "message": "当前赛季不可注册管理员。"})
-    if not check_password(payload.invite_code, season.admin_invite_code_hash):
-        AdminAuditLog.objects.create(
-            actor=account,
-            action="ADMIN_REGISTRATION_FAILED",
-            object_type="Season",
-            object_id=season.id,
-            metadata={"client_key": client_key},
-        )
-        return Status(401, {"code": "INVITE_CODE_INVALID", "message": "赛季邀请码不正确。"})
-    if len(payload.password) < 4:
-        return Status(
-            400,
-            {"code": "PASSWORD_TOO_SHORT", "message": "网页密码至少需要 4 个字符。"},
-        )
     with transaction.atomic():
-        account = Account.objects.select_for_update().get(id=account.id)
+        policy = (
+            AdminRegistrationPolicy.objects.select_for_update()
+            .filter(singleton_key=1)
+            .first()
+        )
+        account = Account.objects.select_for_update().get(id=request.auth.id)
+        if account.is_pkuba_admin:
+            return _serialize_miniapp_me(account)
+        if len(payload.password) < 4:
+            return Status(
+                400,
+                {"code": "PASSWORD_TOO_SHORT", "message": "网页密码至少需要 4 个字符。"},
+            )
+        if policy is None:
+            return Status(
+                409,
+                {
+                    "code": "ADMIN_REGISTRATION_NOT_CONFIGURED",
+                    "message": "管理员注册尚未开放，请联系超级管理员。",
+                },
+            )
+        client_key = _client_key(request, f"admin-register:{account.id}")
+        if not check_password(payload.invite_code, policy.invite_code_hash):
+            AdminAuditLog.objects.create(
+                actor=account,
+                action="ADMIN_REGISTRATION_FAILED",
+                object_type="AdminRegistrationPolicy",
+                object_id=policy.id,
+                metadata={"client_key": client_key, "policy_version": policy.version},
+            )
+            return Status(
+                401,
+                {"code": "INVITE_CODE_INVALID", "message": "管理员邀请码不正确。"},
+            )
         account.role = Account.Role.ADMIN
         account.set_password(payload.password)
         account.version += 1
@@ -532,8 +543,8 @@ def register_admin(request: HttpRequest, payload: AdminRegisterIn):
             object_id=account.id,
             after={
                 "role": account.role,
-                "season_id": str(season.id),
                 "password_set_at_registration": True,
+                "policy_version": policy.version,
             },
         )
     return _serialize_miniapp_me(account)
