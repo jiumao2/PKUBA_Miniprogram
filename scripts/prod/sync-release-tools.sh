@@ -323,7 +323,8 @@ switch_current() {
 }
 
 activate_toolset() {
-  local release_commit=$1 target_dir=$toolset_release_root/$release_commit
+  local release_commit=$1 target_dir
+  target_dir=$toolset_release_root/$release_commit
   validate_installed_toolset "$target_dir" "$release_commit"
   switch_current "releases/$release_commit" "$target_dir"
   validate_installed_toolset "$(readlink -f "$toolset_current")" "$release_commit"
