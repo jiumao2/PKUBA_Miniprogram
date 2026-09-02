@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS runtime-dependencies
+FROM python:3.14-slim AS runtime-dependencies
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
