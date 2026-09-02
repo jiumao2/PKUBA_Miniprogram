@@ -131,3 +131,18 @@
 | 重新打开条件 | 用户明确要求；出现具体法律或隐私证据；发现该历史内容实际构成凭据泄漏。 |
 | 禁止动作 | 不得仅为该旧记录重写历史、filter-repo、强推或重写标签；不得宣称历史残余已清除。 |
 | 私密记录引用 | 不适用；若证据涉及未公开个人信息，使用私密 Security Advisory。 |
+
+### PROD-RECOVERY-001 — 首次上线接受未动态演练的恢复路径
+
+| 字段 | 内容 |
+| --- | --- |
+| 来源 / 公开引用 | [`DEPLOYMENT.md`](DEPLOYMENT.md)、[`deploy-blue-green.sh`](../scripts/prod/deploy-blue-green.sh)、[`rollback-retained-application.sh`](../scripts/prod/rollback-retained-application.sh)、[`restore-paired-data.sh`](../scripts/prod/restore-paired-data.sh)、[`recover-release-transaction.sh`](../scripts/prod/recover-release-transaction.sh) |
+| 公开安全摘要 | green switch、application rollback、paired restore 和 interruption recovery 四条恢复路径尚未在生产约束下完成动态演练；此前同机演练触发存储规格上限，用户选择不购买额外服务器，并在接受该残余风险后启用自动化。 |
+| 技术状态 | 当前 `v1.0.2`、备份目录与哈希、轻量健康检查及唯一 production probe 已验证；上述四项仍为 `NOT EXECUTED`，这些已验证项目不能推断四条恢复路径通过。 |
+| 产品处置 | `ACCEPTED_RISK` |
+| 适用边界 | 只覆盖 2026-09-02 当前 2 vCPU、约 1.6 GiB 内存、单系统盘实例上的 `v1.0.2` 首次上线，以及用户授权的自动化启用；未来版本或实例、云盘、数据库、网关、恢复脚本发生变化时不自动沿用本决定。 |
+| 用户决定日期 | 2026-09-02 |
+| 复核 / 到期日 | 无固定日期。 |
+| 重新打开条件 | 任一自动 deploy 或 probe 失败；残留 maintenance、journal 或 recovery marker；出现容器 restart/OOM、入口超时、数据或身份漂移；备份清单、SHA 或恢复点不一致；资源再次接近门槛；或上述基础设施、恢复实现发生变化。 |
+| 禁止动作 | 不得把四项写成 `PASS` 或已修复；不得在当前生产机并行重跑完整隔离演练、自动重试失败部署、删除 marker/prune，或执行部分恢复。触发重新打开条件时必须停止部署、保留现场，并转为 `REVIEW_REQUIRED`。 |
+| 私密记录引用 | 不适用；公开登记不包含密钥、账号或 IP。 |
