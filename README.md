@@ -95,15 +95,15 @@ Copy-Item .env.example .env
 
 ## 参与贡献
 
-欢迎通过 Issue 或 Pull Request 提交问题、改进和适配。开始修改前请阅读[团队协作与发布工作流](WORKFLOW.md)，保持服务端权威、跨赛季隔离、隐私、审计和可恢复性等业务不变量，并同步更新实现、OpenAPI、生成客户端、测试与权威文档。
+欢迎通过 Issue 或 Pull Request 提交问题、改进和适配。贡献流程见
+[团队协作与发布工作流](WORKFLOW.md)，本地环境与分项检查见
+[本地开发与验证](docs/DEVELOPMENT.md)。
 
 提交前运行：
 
 ```powershell
 ./scripts/check.ps1
 ```
-
-涉及数据库、真实 API 或客户端交互的改动，还应按范围完成 PostgreSQL、浏览器和微信开发者工具验收；构建成功不能替代动态验证。
 
 ## License / 许可证
 

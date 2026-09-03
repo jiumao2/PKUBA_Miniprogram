@@ -59,7 +59,7 @@ npm --workspace @pkuba/miniapp run build:weapp
 - OpenAPI、生成客户端、迁移和文档是否同步。
 - 敏感信息与真实数据检查结果。
 
-PR 至少由一名非作者审核者批准，所有评论和会话必须解决；新提交后旧批准失效。数据库、权限、发布、备份恢复和隐私改动还需要具备相应领域上下文的人明确审查。`CODEOWNERS` 只能引用已经确认并具备职责的 GitHub 账号；配置缺失或无效时必须作为仓库门禁问题报告，不能虚构账号或静默绕过。
+当前仓库没有可用的非作者审核人，GitHub ruleset 的 required approval 为 0，也不要求 CODEOWNER review；不得把不存在的审批写成门禁。所有 review conversation 仍必须解决。产品代码以绑定精确 PR head SHA 的独立测试结论 `ACCEPTED_FOR_MERGE` 作为人工门槛；未来有正式审核人后，再同步提高 ruleset 和本文要求。
 
 推荐使用 **squash merge**：受保护 `main` 保持线性、每个 PR 对应一个可回滚提交；必要的中间提交仍保留在 PR 历史中。合并前分支必须基于最新 `main`，required checks 以严格、最新提交为准全部通过。独立测试优先在 PR head SHA 上完成并把报告绑定该 SHA，给出“允许合并”后方可合并。用户明确批准的直接提交例外仍须执行精确 allowlist、完整门槛、远端 SHA 和 CI 闭环，并记录未经过 PR 的授权来源；该例外不自动构成发布 GO。
 
@@ -68,24 +68,24 @@ PR 至少由一名非作者审核者批准，所有评论和会话必须解决�
 生产发布来源仓库必须持续满足以下设置。每次候选发布前都要通过 GitHub API 或设置页核对实际状态；无法核对或任一项缺失时，停止发布并报告门禁缺口：
 
 - `main` 只允许 PR 合并，禁止直接推送。
-- 至少 1 个 approval，并启用 dismiss stale approvals。
+- required approval 当前为 0；以独立测试对精确 PR head SHA 的允许合并结论补足人工门槛。
 - 要求所有 review conversations resolved。
 - required checks 至少包含 `backend`、`frontend`、`openapi`。
 - required checks 使用 strict / up-to-date 模式，PR 必须包含最新 `main` 后重新通过检查；需要 merge queue 时同时要求 `merge_group` 上的同名检查。
 - 禁止 force-push 和删除 `main`。
 - 限制 bypass；紧急 break-glass 只能由授权负责人使用，并必须补 PR、事故记录和事后审计。
 - 启用线性历史，只允许 squash merge；合并后自动删除短期分支。
-- 配置有效的 `CODEOWNERS`，并对数据库、权限、隐私和发布目录指定领域审核。
+- 暂不要求 `CODEOWNERS`；有明确负责人后再配置，不能使用虚构账号。
 - 启用 GitHub private vulnerability reporting、secret scanning、push protection、Dependabot、
   dependency graph、dependency review 与 CodeQL；工作流文件存在不等于平台功能已启用。
 - 关闭、驳回或修改 GitHub 安全告警是独立外部变更，必须取得当前用户对精确告警的明确授权；代码、测试或 allowlist 通过不自动授予该权限。
-- 为 `v*` 配置 tag ruleset：仅授权发布负责人可创建或删除，且 tag 必须指向受保护 `main` 上已经绑定独立验收结论的 SHA。tag ruleset 限制候选镜像和小程序 artifact 的产生；`production` Environment 是实际生产部署的独立硬门禁。
+- 为 `v*` 配置 tag ruleset：仅授权发布负责人可创建或删除，且 tag 必须指向受保护 `main` 上已经绑定独立验收结论的 SHA。当前 `production` Environment 只有 `v*` 分支策略，没有 required reviewer；当 `PRODUCTION_DEPLOYMENTS_ENABLED=true` 时，推送 Tag 会立即自动部署，因此创建并推送 Tag 本身就是生产部署授权。
 
 ## 6. 合并、候选版本与上线
 
-1. 独立测试优先在 PR head SHA 上完成并明确给出“允许合并”；合并后核对 `main` SHA、required CI，并按风险执行最小烟测或重新测试。测试报告由测试任务维护，产品 PR 只链接结论，不复制整份报告。
-2. 独立测试确认所有本地可解决的阻断已关闭后，另行明确给出“允许进入候选发布”；这只表示可以开始生产侧验收，不等同最终 GO。任何经用户批准直接提交到 `main` 的改动，也必须完成这一步才能进入候选发布。
-3. 只有用户或授权发布负责人再次确认后，授权发布负责人才能创建候选 `vX.Y.Z` 标签。标签必须指向受保护 `main` 的已验证提交；普通开发者不得自行发布。生产 GitHub Environment 和发布动作也只允许授权负责人批准。
+1. 独立测试在 PR head SHA 上完成并给出 `ACCEPTED_FOR_MERGE <SHA>`；PR CI 对该 SHA 运行完整门槛。产品 PR 只链接结论，不复制整份报告。
+2. squash merge 后比较 `main` 与已验收 PR head 的 tree；相同则只等待 `main` CI 并按风险做最小烟测，不机械重复完整测试。tree 不同则重新验收差异。
+3. 用户或授权发布负责人确认版本号和 `main` SHA 后创建 annotated `vX.Y.Z` 标签。当前 Tag 推送会自动开始生产部署，没有后续 Environment 人工审批步骤。
 4. 发布工作流按同一 manifest 生成并校验数据库、媒体和归档清单的一致恢复点，再执行兼容迁移、readiness、隔离或蓝绿候选烟测。
 5. 候选验收通过后由 Caddy 切流；多文件状态提交必须由持久事务日志和启动恢复保护，不能只依赖进程内 trap。旧应用栈默认保留 2 小时，实际期限以权威 retained state 为准。普通应用故障只允许切回发布时已验证、且保留状态明确授权从当前 capability 回切的应用，不恢复数据；仅有 nullable schema、但不理解新业务语义的旧栈不得作为回切点。
 6. 仅在确认数据库、媒体或归档数据损坏时，才按同一 manifest 成对恢复三类数据；禁止只恢复其中一部分。
@@ -97,29 +97,13 @@ PR 至少由一名非作者审核者批准，所有评论和会话必须解决�
 ## 7. Hotfix、回滚与事故
 
 - 生产事故先记录影响、时间线和当前数据状态；未经判断不得同时修改应用和恢复数据。
-- `hotfix/<topic>` 从当前生产对应提交建立，只包含最小修复，仍需 PR、CI 和至少一名非作者审核；确需 break-glass 时先保服务，随后立即补齐 PR 和审计。
+- `hotfix/<topic>` 从当前生产对应提交建立，只包含最小修复，仍需 PR、CI 和绑定精确 SHA 的独立测试结论；确需 break-glass 时先保服务，随后立即补齐 PR 和审计。
 - 应用缺陷优先切回仍在保留窗内且 capability contract 明确兼容的旧栈；没有兼容回切点时保持维护并发布 bridge/hotfix。只有确证数据损坏时才执行 DB + media + archive 成套恢复。
 - 恢复后重新运行 readiness、业务计数、媒体哈希和关键流程烟测，并在发布说明/事故记录中写明原因、执行者、证据和后续预防项。
 - 事故修复必须再合并回 `main`，不能让生产形成永久旁支。
 
-## 8. 信息同步边界
+## 8. 接手与交接细则
 
-- `README.md` 只管公开项目定位、稳定能力、架构入口和许可证，不记录日期化 QA 或发布状态。
-- `docs/MAINTAINER_GUIDE.md` 管接手、影响矩阵、候选冻结、精确提交和远端闭环；`docs/DEVELOPMENT.md` 管本地环境与检查命令。
-- `WORKFLOW.md` 只管协作、评审、发布和事故过程。
-- `docs/SYSTEM_SPEC.md` 管稳定系统合同；`Plan.md` 只管架构方向、路线图和真实未完成事项。
-- 专题规范与 `docs/USER_GUIDE.md` 管业务规则和用户行为。
-- `docs/DEPLOYMENT.md` 管部署技术细节。
-- `docs/INDEPENDENT_TEST_PLAN_AND_RESULTS.md` 仅由独立测试任务维护。
-- 每个 PR 只链接并更新受影响的权威文档，不在多个文件复制同一可变实现细节。
-
-## 9. Agent 与任务交接闭环
-
-1. 实现任务冻结候选时，必须提供 base/HEAD、范围与非目标、精确文件 allowlist、逐文件模式/大小/SHA-256、聚合指纹、实际测试输出、运行制品身份、已知边界和未验证事项；同时列出命中的 `docs/FINDING_DISPOSITIONS.md` 处置 ID、适用边界及是否触发重新打开条件。
-2. 独立测试任务在候选提交前审查全部差异与调用链，并在隔离环境重放聚焦、相邻和必要动态场景。失败反馈必须包含步骤、期望/实际、日志及页面/API/数据库证据；每次返修后重新冻结，旧哈希和旧验收失效。
-3. 对纳入独立验收的产品候选，测试任务只有在候选完整通过后才发送 `ACCEPTED_FOR_COMMIT`。实现者自己的测试不能替代这一结论；纯文档等由用户明确授权直接提交的任务仍须执行同等范围、链接、敏感信息、门槛和远端核对。
-4. 提交任务只暂存批准 allowlist，核对 `git diff --cached --name-only`、`--stat`、`--check`、文件模式、敏感内容、生成文件、迁移和未跟踪范围；独立测试报告与其他任务改动不得进入提交。
-5. 推送前获取远端并确认目标引用未移动，禁止 force-push。推送后核对本地 `HEAD`、`origin/main`、GitHub `main`、最终 tree/哈希和该 SHA 的 required CI。
-6. 最终独立复验绑定推送后的 SHA。若最终 tree、运行制品或 CI 与候选不一致，重新退回实现流程；“已提交”“已推送”或 readiness 成功都不等于完成。
-
-精确命令、影响矩阵和交接模板见 [`docs/MAINTAINER_GUIDE.md`](docs/MAINTAINER_GUIDE.md)。
+本文只定义评审、批准、发布和事故责任。文档职责、工作区接手、影响矩阵、候选冻结、独立
+验收、精确暂存及远端核对统一见
+[`docs/MAINTAINER_GUIDE.md`](docs/MAINTAINER_GUIDE.md)，不在此重复。

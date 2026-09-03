@@ -13,9 +13,21 @@
 
 - GitHub secret scanning、push protection、Dependabot、dependency review 与 CodeQL
   必须在首次发布前真实启用；工作流文件存在不等于平台设置已生效。
-- `main`、`v*` ruleset、production Environment、required checks 与 CODEOWNERS 审批
-  按 `WORKFLOW.md` 配置；break-glass 只允许最小人员、限时并保留审计。
+- `main`、`v*` ruleset、production Environment 与 required checks 按 `WORKFLOW.md` 配置。
+  当前无非作者审核人，不要求 CODEOWNER review；以独立测试对精确 PR head 的结论作为人工门槛。
+  break-glass 只允许最小人员、限时并保留审计。
 - 生产凭据只存放在 GitHub Environment secrets 或服务器 root-owned `0600` 环境文件。
   `.env`、SSH 私钥、AppSecret、邮件授权码和模型密钥不得进入 Git。
 - 发现疑似泄漏时，先撤销/轮换凭据并保留审计，再清理历史；仅删除当前文件不足以
   解除已经暴露的凭据。
+
+## 管理员登录的残余风险
+
+管理员用户名可能公开可见，注册邀请码属于共享秘密；当前产品允许密码最短 4 个字符、
+允许密码与邀请码相同，并且登录或邀请码输错后只记录审计和告警，不自动锁定账号。系统也
+不强制首次修改密码、复杂度或定期轮换邀请码，因此这些机制不能单独承担互联网暴力尝试防护。
+
+生产环境必须使用 HTTPS，部署时一次性初始化邀请码，并持续监控匿名失败审计和异常峰值；
+失败次数告警只通知、不自动停用账号。超级管理员可在管理站修改邀请码。管理员应选择不易
+猜测且不同于邀请码的个人密码，在共享电脑使用后主动退出。若要改为自动阻断、强密码、
+首次改密或强制轮换，必须先作为新的产品规则确认。

@@ -6,11 +6,9 @@
 
 ## 工作区边界
 
-- 修改前核对分支、`HEAD`、`origin/main` 和 `git status --short`，冻结文件 allowlist。
-- 禁止在共享工作区使用 `reset --hard`、`clean` 或覆盖他人改动。
-- `docs/INDEPENDENT_TEST_PLAN_AND_RESULTS.md` 只由独立测试任务维护。
-- 测试数据库、媒体、归档、凭据和构建证据必须与生产隔离；密钥不进入 Git、日志或截图。
-- 本地操作不自动授权付费模型、真实邮件、微信发布、标签或生产数据操作。
+本地测试数据库、媒体、归档、凭据和构建证据必须与生产隔离，密钥不得进入 Git、日志或
+截图。共享工作区、候选冻结、独立测试报告和生产授权边界统一见
+[`MAINTAINER_GUIDE.md`](MAINTAINER_GUIDE.md)。
 
 ## 工具链
 
@@ -126,9 +124,8 @@ WSL 隔离 PostgreSQL 验收：
 ./scripts/check-wsl.ps1
 ```
 
-核心门槛包括 PostgreSQL 测试、Ruff、迁移漂移、OpenAPI/生成客户端一致性、前端类型、
-单测和两端生产构建。涉及页面时还要按范围完成真实浏览器或微信开发者工具检查；构建成功
-不能替代交互验收。
+核心门槛与动态验收要求见 [`MAINTAINER_GUIDE.md`](MAINTAINER_GUIDE.md)；本页只维护
+本地入口和实际检查命令。
 
 单独构建前端时：
 
