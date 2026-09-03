@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "PKUBA authoritative Django API"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-  "Django>=5.2,<5.3",
+  "Django>=5.2,<6.2",
   "django-ninja>=1.4,<2",
   "defusedxml>=0.7,<1",
   "gunicorn>=23,<24",
