@@ -8,6 +8,7 @@
 .schedule-day-title { color: #191715; font-size: 34rpx; font-weight: 850; }
 .schedule-day-count { color: #77716a; font-size: 26rpx; font-weight: 700; }
 .schedule-day-section .game-timeline { margin-top: 0; }
+.schedule-today-empty { margin-top: 18rpx; padding: 30rpx 22rpx; border-left: 6rpx solid #b8b1a8; background: #f1eee9; color: #6f6962; font-size: 28rpx; text-align: center; }
 .return-today { position: fixed; right: 28rpx; bottom: calc(132rpx + env(safe-area-inset-bottom)); z-index: 30; width: auto; height: 68rpx; margin: 0; padding: 0 24rpx; border: 1rpx solid #c91f26; border-radius: 34rpx; background: rgba(255, 255, 255, .96); color: #a92227; font-size: 27rpx; font-weight: 800; line-height: 66rpx; box-shadow: 0 8rpx 24rpx rgba(40, 29, 24, .15); }
 .schedule-window.is-admin .return-today { bottom: 34rpx; }
 .return-today::after, .direction-retry::after { border: 0; }

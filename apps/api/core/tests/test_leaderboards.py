@@ -64,7 +64,15 @@ def _setup():
     return season, division, teams, games
 
 
-def _publication(game, actor, roster, *, current=True, points=10):
+def _publication(
+    game,
+    actor,
+    roster,
+    *,
+    current=True,
+    points=10,
+    jersey_number: str | None = None,
+):
     scoresheet = GameScoresheet.objects.filter(game=game).first()
     if scoresheet is None:
         asset = GameMediaAsset.objects.create(
@@ -103,7 +111,7 @@ def _publication(game, actor, roster, *, current=True, points=10):
         team=roster.team,
         roster_player=roster,
         player_name=roster.name,
-        jersey_number=roster.jersey_number,
+        jersey_number=(roster.jersey_number if jersey_number is None else jersey_number),
         appeared=True,
         starter=True,
         points=points,
@@ -151,6 +159,21 @@ def test_team_leaderboard_includes_every_active_zero_game_team():
     assert row["points_for"] == 0
     assert row["points_per_game"] == 0.0
 
+    defense = Client().get(
+        "/api/v1/public/leaderboards/teams",
+        {
+            "division_id": division.id,
+            "sort": "points_against_per_game",
+            "order": "asc",
+        },
+    ).json()
+    assert defense["items"][-1]["team_id"] == str(zero_game_team.id)
+    assert [row["team_name"] for row in defense["items"][:-1]] == [
+        "丙队",
+        "甲队",
+        "乙队",
+    ]
+
 
 def test_player_leaderboard_counts_only_current_publication():
     _season, division, teams, games = _setup()
@@ -175,6 +198,49 @@ def test_player_leaderboard_counts_only_current_publication():
     )
     assert games_response.status_code == 200
     assert games_response.json()["items"][0]["publication_id"] == str(current.id)
+
+
+def test_player_leaderboard_uses_stable_identity_across_different_game_numbers():
+    _season, division, teams, games = _setup()
+    actor = Account.objects.create_user(
+        username="stable-player-root",
+        password="password",
+        role=Account.Role.SUPERADMIN,
+    )
+    player = RosterPlayer.objects.create(
+        team=teams[0],
+        name="跨场号码球员",
+        jersey_number="",
+    )
+    second_game = Game.objects.create(
+        season=games[0].season,
+        division=division,
+        code="G4",
+        date=games[0].date + timedelta(days=1),
+        period=games[0].period,
+        start_time=games[0].start_time,
+        venue_name="G4",
+        home_team=teams[0],
+        away_team=teams[1],
+        home_score=65,
+        away_score=60,
+        status=Game.Status.COMPLETED,
+    )
+    _publication(games[0], actor, player, points=8, jersey_number="4")
+    _publication(second_game, actor, player, points=12, jersey_number="12")
+
+    response = Client().get(
+        "/api/v1/public/leaderboards/players",
+        {"division_id": division.id, "sort": "total_points", "order": "desc"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["player_id"] == str(player.id)
+    assert body["items"][0]["games_played"] == 2
+    assert body["items"][0]["total_points"] == 20
+    assert body["items"][0]["jersey_number"] == ""
 
 
 def test_leaderboard_rejects_unknown_sort_and_bad_page_size():

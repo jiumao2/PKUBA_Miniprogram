@@ -2,8 +2,8 @@
 .detail-game-heading { margin-top: 24rpx; padding: 28rpx 24rpx; border-left: 7rpx solid #2b2926; background: #faf9f6; }
 .detail-game-heading.is-women { border-left-color: #c91f26; background: #fff5f5; }
 .detail-division, .detail-venue { display: block; color: #746f68; font-size: 27rpx; }
-.detail-matchup { display: grid; grid-template-columns: minmax(0, 1fr) 126rpx minmax(0, 1fr); align-items: center; gap: 18rpx; margin: 22rpx 0; font-size: 32rpx; font-weight: 850; text-align: center; }
-.detail-score { color: #c91f26; font-size: 38rpx; font-variant-numeric: tabular-nums; }
+.detail-matchup { display: grid; grid-template-columns: minmax(0, 1fr) 150rpx minmax(0, 1fr); align-items: center; gap: 18rpx; margin: 22rpx 0; font-size: 32rpx; font-weight: 850; text-align: center; }
+.detail-score { color: #c91f26; font-size: 38rpx; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .detail-section { padding: 36rpx 0; border-top: 1rpx solid #d8d3cb; }
 .detail-section-title { display: block; color: #242220; font-size: 34rpx; font-weight: 900; }
 .detail-copy, .detail-empty, .private-refreshing { display: block; margin-top: 12rpx; color: #6e6962; font-size: 27rpx; line-height: 1.65; }

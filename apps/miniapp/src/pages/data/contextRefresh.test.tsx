@@ -12,7 +12,12 @@ const state = vi.hoisted(() => ({
     getPlayerLeaderboard: vi.fn(), getPublishedGameSummaries: vi.fn(),
   },
 }));
-vi.mock('@tarojs/taro', () => ({ useDidShow: (callback: () => void) => { state.shown = callback; } }));
+vi.mock('@tarojs/taro', () => ({
+  default: { showShareMenu: vi.fn().mockResolvedValue({}) },
+  useDidShow: (callback: () => void) => { state.shown = callback; },
+  useShareAppMessage: vi.fn(),
+  useShareTimeline: vi.fn(),
+}));
 vi.mock('@tarojs/components', () => ({
   View: ({ children, className }: any) => <div className={className}>{children}</div>,
   Text: ({ children, className }: any) => <span className={className}>{children}</span>,

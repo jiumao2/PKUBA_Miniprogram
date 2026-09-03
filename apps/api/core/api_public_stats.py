@@ -5,6 +5,7 @@ from uuid import UUID
 
 from django.http import HttpRequest
 from ninja import Router, Schema, Status
+from pydantic import Field
 
 from core.services.leaderboards import (
     LeaderboardError,
@@ -44,7 +45,12 @@ class PlayerLeaderboardItemOut(Schema):
     rank: int
     player_id: UUID
     player_name: str
-    jersey_number: str
+    jersey_number: str = Field(
+        description=(
+            "当季名单中的可选球衣号码；不是跨场固定号码，客户端不应将其作为球员身份展示。"
+        ),
+        deprecated=True,
+    )
     team_id: UUID
     team_name: str
     division_id: UUID

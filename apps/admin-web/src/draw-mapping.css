@@ -390,6 +390,33 @@
   width: 100%;
 }
 
+.historical-source-pickers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 13px;
+  border-top: 1px solid var(--pkuba-line);
+  background: #fff9f0;
+}
+
+.historical-source-pickers label {
+  display: grid;
+  gap: 6px;
+  color: #71341e;
+  font-size: 11px;
+}
+
+.historical-source-pickers select {
+  width: 100%;
+}
+
+.historical-source-pickers p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #8b4e0e;
+  font-size: 10px;
+}
+
 .validation-badge {
   align-self: center;
   justify-self: end;
@@ -514,7 +541,8 @@
   margin-top: 12px;
 }
 
-.override-confirm {
+.override-confirm,
+.historical-confirm {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
@@ -622,8 +650,13 @@
   }
 
   .draw-slot-row,
-  .draw-game-sides {
+  .draw-game-sides,
+  .historical-source-pickers {
     grid-template-columns: 1fr;
+  }
+
+  .historical-source-pickers p {
+    grid-column: auto;
   }
 
   .draw-game-sides > label + label {

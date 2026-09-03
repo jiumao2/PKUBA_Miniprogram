@@ -12,6 +12,7 @@ import {
 import { api } from "../../api";
 import { navigateToOnce } from "../../navigation";
 import { gameDetailRoute } from "../../routes";
+import { usePublicPageShare } from "../../sharing";
 import { syncTabBar } from "../../tabbar";
 import {
   loadCompleteList,
@@ -32,7 +33,8 @@ export default function DataPage() {
   const selectedDivisionId = useRef("");
   const [teamSort, setTeamSort] = useState("points_per_game");
   const [playerSort, setPlayerSort] = useState("points_per_game");
-  const [order, setOrder] = useState<Order>("desc");
+  const [teamOrder, setTeamOrder] = useState<Order>("desc");
+  const [playerOrder, setPlayerOrder] = useState<Order>("desc");
   const [teams, setTeams] = useState<TeamLeaderboardItem[]>([]);
   const [players, setPlayers] = useState<PlayerLeaderboardItem[]>([]);
   const [playerPage, setPlayerPage] = useState(1);
@@ -43,6 +45,12 @@ export default function DataPage() {
   const requestVersion = useRef(0);
   const seasonRequestVersion = useRef(0);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const order = tab === "teams" ? teamOrder : playerOrder;
+
+  usePublicPageShare({
+    title: "PKUBA 球队与球员数据",
+    path: "/pages/data/index",
+  });
 
   useDidShow(() => {
     syncTabBar(3);
@@ -122,10 +130,22 @@ export default function DataPage() {
     setLoading(Boolean(divisionId));
     if (divisionId) setError("");
     setPlayerPage(1);
-    if (nextSort === current) setOrder((value) => value === "desc" ? "asc" : "desc");
+    if (nextSort === current) {
+      if (tab === "teams") {
+        setTeamOrder((value) => value === "desc" ? "asc" : "desc");
+      } else {
+        setPlayerOrder((value) => value === "desc" ? "asc" : "desc");
+      }
+    }
     else {
-      if (tab === "teams") setTeamSort(nextSort); else setPlayerSort(nextSort);
-      setOrder("desc");
+      const defaultOrder = sorts.find(([value]) => value === nextSort)?.[2] ?? "desc";
+      if (tab === "teams") {
+        setTeamSort(nextSort);
+        setTeamOrder(defaultOrder);
+      } else {
+        setPlayerSort(nextSort);
+        setPlayerOrder(defaultOrder);
+      }
     }
   }
   const hasContent = tab === "teams"
@@ -143,7 +163,7 @@ export default function DataPage() {
             if (value === tab) return;
             requestVersion.current += 1;
             setTeams([]); setPlayers([]); setGames([]);
-            setTab(value); setOrder("desc"); setPlayerPage(1);
+            setTab(value); setPlayerPage(1);
             setLoading(Boolean(divisionId));
             if (divisionId) setError("");
           }}
@@ -254,7 +274,7 @@ function PlayerTable({ rows, sort }: { rows: PlayerLeaderboardItem[]; sort: stri
     <View className="leader-row table-head"><Text>排名</Text><Text>球员</Text><Text>主要数据</Text><Text>出场</Text></View>
     {rows.map((row) => <View className={`leader-row ${row.division_gender === "WOMEN" ? "women" : ""}`} key={row.player_id}>
       <Text className="rank-number">{row.rank}</Text>
-      <View className="identity-cell"><Text>#{row.jersey_number || "–"} {row.player_name}</Text><Text>{row.team_name} · {row.division_name}</Text></View>
+      <View className="identity-cell"><Text>{row.player_name}</Text><Text>{row.team_name} · {row.division_name}</Text></View>
       <View className="metric-cell"><Text>{playerMetric(row, sort)}</Text><Text>{playerMetricLabel(sort)}</Text></View>
       <View className="record-cell"><Text>{row.games_played}</Text><Text>首发 {row.starts}</Text></View>
     </View>)}
@@ -292,7 +312,6 @@ function playerMetric(row: PlayerLeaderboardItem, sort: string) {
     points_per_game: row.points_per_game.toFixed(1), total_points: row.total_points,
     games_played: row.games_played, starts: row.starts, one_point_events: row.one_point_events,
     two_point_events: row.two_point_events, three_point_events: row.three_point_events,
-    fouls_per_game: row.fouls_per_game.toFixed(1),
   };
   return values[sort];
 }

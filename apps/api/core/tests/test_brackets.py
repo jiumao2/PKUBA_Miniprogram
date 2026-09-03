@@ -80,8 +80,8 @@ def test_public_bracket_uses_direct_game_teams_and_marks_stale_manual_slots():
     unresolved = Client().get("/api/v1/public/brackets")
     assert unresolved.status_code == 200
     final_out = unresolved.json()["divisions"][0]["rounds"][1]["games"][0]
-    assert final_out["home_name"] == "待抽签"
-    assert final_out["away_name"] == "待抽签"
+    assert final_out["home_name"] == "待定"
+    assert final_out["away_name"] == "待定"
 
     final.home_team = teams[0]
     final.away_team = teams[2]

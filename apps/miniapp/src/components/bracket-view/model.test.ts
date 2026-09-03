@@ -45,11 +45,18 @@ function division(overrides: Partial<DivisionBracket> = {}): DivisionBracket {
 }
 
 describe("bracket presentation", () => {
-  it("uses direct participants and shows an unresolved side as pending draw", () => {
-    expect(teamDisplayName("上一轮胜者", null)).toBe("待抽签");
+  it("uses direct participants and shows unresolved sides as pending", () => {
+    expect(teamDisplayName("上一轮胜者", null)).toBe("待定");
     expect(gameOutcomeLabel({ ...game, away_team_id: null, away_name: "上一轮胜者" })).toBe(
       "对阵待补全",
     );
+    expect(gameOutcomeLabel({
+      ...game,
+      home_team_id: null,
+      away_team_id: null,
+      home_name: "待定",
+      away_name: "待定",
+    })).toBe("双方待定");
   });
 
   it("uses stable round keys for multiple knockout rounds", () => {

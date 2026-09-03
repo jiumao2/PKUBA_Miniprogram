@@ -524,6 +524,16 @@ class Game(UUIDModel):
                 | ~Q(home_score=models.F("away_score")),
                 name="game_official_score_not_tied",
             ),
+            models.CheckConstraint(
+                condition=(
+                    Q(home_team__isnull=False, away_team__isnull=False)
+                    | (
+                        Q(home_score__isnull=True, away_score__isnull=True)
+                        & ~Q(status__in=["COMPLETED", "FORFEIT"])
+                    )
+                ),
+                name="game_result_requires_resolved_teams",
+            ),
         ]
 
     def clean(self):
@@ -548,6 +558,16 @@ class Game(UUIDModel):
             raise ValidationError("主客队比分必须同时填写或同时留空。")
         if self.home_score is not None and self.home_score == self.away_score:
             raise ValidationError("正式比分不允许平局。")
+        has_result = (
+            self.home_score is not None
+            or self.away_score is not None
+            or self.status in {self.Status.COMPLETED, self.Status.FORFEIT}
+        )
+        if has_result and (not self.home_team_id or not self.away_team_id):
+            raise ValidationError(
+                "已有赛果的比赛必须先确定双方参赛球队。",
+                code="RESULT_PARTICIPANTS_REQUIRED",
+            )
 
     @property
     def home_display(self) -> str:

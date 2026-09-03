@@ -13,8 +13,10 @@ const state = vi.hoisted(() => ({
 vi.mock("@tarojs/taro", async () => {
   const ReactModule = await import("react");
   return {
-    default: { switchTab: state.switchTab },
+    default: { switchTab: state.switchTab, showShareMenu: vi.fn().mockResolvedValue({}) },
     useDidShow: (callback: () => void) => ReactModule.useEffect(callback, []),
+    useShareAppMessage: vi.fn(),
+    useShareTimeline: vi.fn(),
   };
 });
 

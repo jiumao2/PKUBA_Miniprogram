@@ -340,6 +340,7 @@ export interface PlayerLeaderboardItem {
   rank: number;
   player_id: string;
   player_name: string;
+  /** @deprecated 名单中的球衣号码不是跨场固定号码，不应作为公开球员身份展示。 */
   jersey_number: string;
   team_id: string;
   team_name: string;

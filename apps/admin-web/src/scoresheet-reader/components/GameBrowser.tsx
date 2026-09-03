@@ -185,7 +185,7 @@ export function GameBrowser({
         ) : null}
         {allowUploads && games.some((game) => game.can_upload_source) ? <footer>
           <div>
-            {selectedGame ? <><strong>{selectedGame.team_a_name} — {selectedGame.team_b_name}</strong><span>名单不含球衣号码，号码仍由图片读取</span></> : <span>选择未上传比赛以导入照片；已有结果可直接点击打开</span>}
+            {selectedGame ? <><strong>{selectedGame.team_a_name} — {selectedGame.team_b_name}</strong><span>名单中的球衣号码仅用于初始预填，实际号码以本场记录表为准</span></> : <span>选择未上传比赛以导入照片；已有结果可直接点击打开</span>}
           </div>
           <input
             ref={fileInput}

@@ -23,10 +23,13 @@ vi.mock("@tarojs/taro", async () => {
     default: {
       uploadFile: f.upload, request: vi.fn(() => { throw new Error("LIVE_NETWORK_FORBIDDEN"); }),
       showModal: vi.fn(async () => ({ confirm: true })), showToast: vi.fn(), previewImage: vi.fn(),
+      showShareMenu: vi.fn().mockResolvedValue({}),
       chooseMedia: vi.fn(async () => ({ tempFiles: ["first", "second"].map(name => ({ tempFilePath: `/synthetic/${name}.png` })) })),
     },
     useRouter: () => ({ params: { id: "synthetic-game" } }),
     useDidShow: (callback: () => void) => react.useEffect(() => { callback(); }, []),
+    useShareAppMessage: vi.fn(),
+    useShareTimeline: vi.fn(),
   };
 });
 vi.mock("../../auth", () => ({
