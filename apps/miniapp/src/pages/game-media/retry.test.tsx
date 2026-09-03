@@ -7,7 +7,7 @@ const f = vi.hoisted(() => ({ upload: vi.fn(), filename: '/synthetic/first.png',
 vi.mock('@tarojs/components', () => ({ View: ({ children, className }: any) => <div className={className}>{children}</div>, Text: ({ children }: any) => <span>{children}</span>, Image: () => <span />, Button: ({ children, className, disabled, onClick }: any) => <button className={className} disabled={disabled} onClick={onClick}>{children}</button> }));
 vi.mock('@tarojs/taro', async () => {
   const react = await import('react');
-  return { default: { uploadFile: f.upload, request: vi.fn(() => { throw new Error('LIVE_NETWORK_FORBIDDEN'); }), showModal: vi.fn(async () => ({ confirm: true })), showToast: vi.fn(), chooseMedia: vi.fn(async () => ({ tempFiles: [{ tempFilePath: f.filename }] })), previewImage: vi.fn() }, useRouter: () => ({ params: { id: 'synthetic-game' } }), useDidShow: (cb: () => void) => react.useEffect(() => { cb(); }, []) };
+  return { default: { uploadFile: f.upload, request: vi.fn(() => { throw new Error('LIVE_NETWORK_FORBIDDEN'); }), showModal: vi.fn(async () => ({ confirm: true })), showToast: vi.fn(), chooseMedia: vi.fn(async () => ({ tempFiles: [{ tempFilePath: f.filename }] })), previewImage: vi.fn(), showShareMenu: vi.fn().mockResolvedValue({}) }, useRouter: () => ({ params: { id: 'synthetic-game' } }), useDidShow: (cb: () => void) => react.useEffect(() => { cb(); }, []), useShareAppMessage: vi.fn(), useShareTimeline: vi.fn() };
 });
 vi.mock('../../auth', () => ({ getMiniAppSession: () => 'synthetic-session', resolveMiniAppIdentity: async () => ({ token: 'synthetic-session', me: { admin_role: 'SUPERADMIN', leader_binding: null } }) }));
 vi.mock('../../api', async importOriginal => {

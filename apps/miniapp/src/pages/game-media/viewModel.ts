@@ -6,7 +6,7 @@ export function gameHeadingScore(
   homeScore: number | null,
   awayScore: number | null,
 ): string {
-  return formatOfficialScore(homeScore, awayScore, " : ") ?? "VS";
+  return formatOfficialScore(homeScore, awayScore) ?? "VS";
 }
 
 export function mediaGroupPresentation(

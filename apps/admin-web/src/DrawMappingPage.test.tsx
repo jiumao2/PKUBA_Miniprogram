@@ -167,6 +167,12 @@ const gamePreview: DrawGameAssignmentPreview = {
   away_team_name: "球队2",
   participant_changed: true,
   public_impact: true,
+  game_status: "SCHEDULED",
+  home_score: null,
+  away_score: null,
+  correction_mode: "NORMAL",
+  requires_historical_confirmation: false,
+  historical_sources: [],
   warnings: [
     {
       code: "TEAM_NOT_CONFIRMED_PREVIOUS_WINNER",
@@ -181,6 +187,40 @@ const gamePreview: DrawGameAssignmentPreview = {
   can_apply: true,
   references: {},
   impact_hash: "game-impact-hash",
+};
+
+const historicalPreview: DrawGameAssignmentPreview = {
+  ...gamePreview,
+  home_team_id: teamIds[0],
+  home_team_name: "球队1",
+  away_team_id: teamIds[1],
+  away_team_name: "球队2",
+  game_status: "COMPLETED",
+  home_score: 46,
+  away_score: 61,
+  correction_mode: "HISTORICAL_EMPTY_PARTICIPANT_BACKFILL",
+  requires_historical_confirmation: true,
+  historical_sources: [
+    {
+      side: "HOME",
+      team_id: teamIds[0],
+      team_name: "球队1",
+      source_game_id: "72000000-0000-0000-0000-000000000001",
+      source_game_code: "SF-1",
+      source_game_version: 2,
+    },
+    {
+      side: "AWAY",
+      team_id: teamIds[1],
+      team_name: "球队2",
+      source_game_id: "72000000-0000-0000-0000-000000000002",
+      source_game_code: "SF-2",
+      source_game_version: 2,
+    },
+  ],
+  warnings: [],
+  requires_override: false,
+  impact_hash: "historical-impact-hash",
 };
 
 const knockoutDataset: DrawAssignmentDataset = {
@@ -237,6 +277,7 @@ const knockoutDataset: DrawAssignmentDataset = {
               status: "SCHEDULED",
               home_score: null,
               away_score: null,
+              historical_source_options: [],
               version: 1,
             },
           ],
@@ -244,6 +285,64 @@ const knockoutDataset: DrawAssignmentDataset = {
       ],
     },
   ],
+};
+
+const relegationSourceIds = [
+  "72000000-0000-0000-0000-000000000001",
+  "72000000-0000-0000-0000-000000000002",
+];
+const relegationDataset: DrawAssignmentDataset = {
+  ...knockoutDataset,
+  divisions: knockoutDataset.divisions.map((division) => ({
+    ...division,
+    phases: division.phases.map((phase) => ({
+      ...phase,
+      key: "RELEGATION:1",
+      stage: "RELEGATION",
+      round_number: 1,
+      label: "保级赛",
+      previous_phase_key: null,
+      previous_winner_ids: [],
+      previous_results_complete: false,
+      games: phase.games.map((game) => ({
+        ...game,
+        code: "REL-1",
+        stage: "RELEGATION",
+        round_number: 1,
+        status: "COMPLETED",
+        home_score: 56,
+        away_score: 52,
+        historical_source_options: [
+          {
+            source_game_id: relegationSourceIds[0],
+            source_game_code: "KO1-1",
+            source_game_version: 2,
+            winner_team_id: teamIds[0],
+            winner_team_name: "球队1",
+          },
+          {
+            source_game_id: relegationSourceIds[1],
+            source_game_code: "KO1-2",
+            source_game_version: 2,
+            winner_team_id: teamIds[1],
+            winner_team_name: "球队2",
+          },
+        ],
+      })),
+    })),
+  })),
+};
+const relegationPreview: DrawGameAssignmentPreview = {
+  ...historicalPreview,
+  stage: "RELEGATION",
+  round_number: 1,
+  home_score: 56,
+  away_score: 52,
+  historical_sources: historicalPreview.historical_sources.map((source, index) => ({
+    ...source,
+    source_game_id: relegationSourceIds[index],
+    source_game_code: `KO1-${index + 1}`,
+  })),
 };
 
 function clientWith(
@@ -441,5 +540,113 @@ describe("DrawMappingPage", () => {
         }),
       ),
     );
+  });
+
+  it("uses a separate confirmation for historical empty-participant backfill", async () => {
+    const historicalDataset = {
+      ...knockoutDataset,
+      divisions: knockoutDataset.divisions.map((division) => ({
+        ...division,
+        phases: division.phases.map((phase) => ({
+          ...phase,
+          games: phase.games.map((game) => ({
+            ...game,
+            status: "COMPLETED",
+            home_score: 46,
+            away_score: 61,
+          })),
+        })),
+      })),
+    } as DrawAssignmentDataset;
+    const client = clientWith(historicalDataset, {
+      previewGameDrawAssignments: vi.fn().mockResolvedValue(historicalPreview),
+      updateGameDrawAssignments: vi.fn().mockResolvedValue(historicalDataset),
+    });
+    const user = userEvent.setup();
+    renderPage(client, historicalDataset);
+
+    await user.click(await screen.findByRole("button", { name: /淘汰赛第 2 轮/ }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "KO2-1 主方球队" }),
+      teamIds[0],
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "KO2-1 客方球队" }),
+      teamIds[1],
+    );
+    await user.click(screen.getByRole("button", { name: "逐场预览" }));
+
+    expect(await screen.findByText("历史赛果参赛方补齐")).toBeVisible();
+    expect(screen.getByText(/比分 46:61/)).toBeVisible();
+    const save = screen.getByRole("button", { name: "确认补齐历史参赛方" });
+    expect(save).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", {
+      name: "我确认补齐本场历史参赛方，并保留现有比分和赛果",
+    }));
+    await user.click(save);
+
+    await waitFor(() => expect(client.updateGameDrawAssignments).toHaveBeenCalledWith(
+      season.id,
+      historicalPreview.game_id,
+      expect.objectContaining({
+        override_warnings: false,
+        confirm_historical_backfill: true,
+        impact_hash: "historical-impact-hash",
+      }),
+    ));
+  });
+
+  it("requires explicit source games for a historical relegation backfill", async () => {
+    const client = clientWith(relegationDataset, {
+      previewGameDrawAssignments: vi.fn().mockResolvedValue(relegationPreview),
+      updateGameDrawAssignments: vi.fn().mockResolvedValue(relegationDataset),
+    });
+    const user = userEvent.setup();
+    renderPage(client, relegationDataset);
+
+    await user.click(await screen.findByRole("button", { name: /保级赛/ }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "REL-1 主方球队" }),
+      teamIds[0],
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "REL-1 客方球队" }),
+      teamIds[1],
+    );
+    const previewButton = screen.getByRole("button", { name: "逐场预览" });
+    expect(previewButton).toBeDisabled();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "REL-1 主方来源比赛" }),
+      relegationSourceIds[0],
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "REL-1 客方来源比赛" }),
+      relegationSourceIds[1],
+    );
+    expect(previewButton).toBeEnabled();
+    await user.click(previewButton);
+
+    await waitFor(() => expect(client.previewGameDrawAssignments).toHaveBeenCalledWith(
+      season.id,
+      relegationPreview.game_id,
+      expect.objectContaining({
+        home_source_game_id: relegationSourceIds[0],
+        away_source_game_id: relegationSourceIds[1],
+      }),
+    ));
+    await user.click(screen.getByRole("checkbox", {
+      name: "我确认补齐本场历史参赛方，并保留现有比分和赛果",
+    }));
+    await user.click(screen.getByRole("button", { name: "确认补齐历史参赛方" }));
+    await waitFor(() => expect(client.updateGameDrawAssignments).toHaveBeenCalledWith(
+      season.id,
+      relegationPreview.game_id,
+      expect.objectContaining({
+        home_source_game_id: relegationSourceIds[0],
+        away_source_game_id: relegationSourceIds[1],
+        confirm_historical_backfill: true,
+      }),
+    ));
   });
 });

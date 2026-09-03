@@ -17,17 +17,18 @@
 .data-refreshing { margin: 0 0 14rpx; color: #7b746d; font-size: 26rpx; text-align: right; }
 .data-inline-error { margin-bottom: 14rpx; padding: 14rpx 18rpx; border-left: 5rpx solid #a72b27; background: #fff1f1; color: #922427; font-size: 26rpx; }
 .leaderboard, .game-list, .game-detail { overflow: hidden; border: 1rpx solid #ded8d0; border-radius: 16rpx; background: #fff; }
-.leader-row { position: relative; display: grid; grid-template-columns: 66rpx minmax(0, 1fr) 116rpx 94rpx; align-items: center; min-height: 104rpx; padding: 12rpx 18rpx 12rpx 20rpx; border-bottom: 1rpx solid #ebe7e1; }
+.leader-row { position: relative; display: grid; grid-template-columns: 64rpx minmax(0, 1fr) 126rpx 108rpx; align-items: center; gap: 12rpx; min-height: 104rpx; padding: 12rpx 18rpx 12rpx 20rpx; border-bottom: 1rpx solid #ebe7e1; }
 .leader-row:last-child { border-bottom: 0; }
 .leader-row::before, .game-row::before { position: absolute; top: 18rpx; bottom: 18rpx; left: 0; width: 5rpx; border-radius: 0 5rpx 5rpx 0; background: #3e4144; content: ""; }
 .leader-row.women::before, .game-row.women::before { background: #a72b27; }
 .leader-row.table-head { min-height: 58rpx; background: #efebe5; color: #746e66; font-size: 26rpx; font-weight: 700; }
 .leader-row.table-head::before { display: none; }
+.leader-row.table-head > text:nth-child(3), .leader-row.table-head > text:nth-child(4) { text-align: right; }
 .rank-number { font-size: 30rpx; font-weight: 800; font-variant-numeric: tabular-nums; }
 .identity-cell, .metric-cell, .record-cell { min-width: 0; }
 .identity-cell text, .metric-cell text, .record-cell text { display: block; }
 .identity-cell text:first-child { overflow: hidden; font-size: 28rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.identity-cell text:last-child, .metric-cell text:last-child, .record-cell text:last-child { margin-top: 3rpx; color: #817a72; font-size: 26rpx; }
+.identity-cell text:last-child, .metric-cell text:last-child, .record-cell text:last-child { margin-top: 8rpx; color: #817a72; font-size: 26rpx; }
 .metric-cell, .record-cell { text-align: right; }
 .metric-cell text:first-child { color: #a72b27; font-size: 31rpx; font-weight: 800; font-variant-numeric: tabular-nums; }
 .record-cell text:first-child { font-size: 26rpx; font-weight: 700; }
@@ -35,12 +36,12 @@
 .game-row:last-child { border-bottom: 0; }
 .game-row > view:first-child text { display: block; color: #756f68; font-size: 26rpx; }
 .game-row > view:first-child text:first-child { margin-bottom: 6rpx; color: #332f2b; font-size: 26rpx; font-weight: 700; }
-.game-matchup { display: grid; grid-template-columns: minmax(0, 1fr) 76rpx minmax(0, 1fr); align-items: center; gap: 8rpx; font-size: 26rpx; font-weight: 700; text-align: center; }
+.game-matchup { display: grid; grid-template-columns: minmax(0, 1fr) 116rpx minmax(0, 1fr); align-items: center; gap: 8rpx; font-size: 26rpx; font-weight: 700; text-align: center; }
 .game-matchup text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.game-score { color: #a72b27; font-size: 30rpx; font-variant-numeric: tabular-nums; }
+.game-score { overflow: visible !important; color: #a72b27; font-size: 30rpx; font-variant-numeric: tabular-nums; text-overflow: clip !important; white-space: nowrap; }
 .chevron { color: #aaa39a; font-size: 40rpx; }
 .back-button { width: auto; height: 64rpx; margin: 0; padding: 0 20rpx; border-radius: 0; background: transparent; color: #a72b27; font-size: 26rpx; line-height: 64rpx; text-align: left; }
-.detail-score { display: grid; grid-template-columns: minmax(0, 1fr) 130rpx minmax(0, 1fr); align-items: center; gap: 12rpx; padding: 28rpx 22rpx 12rpx; font-size: 27rpx; font-weight: 700; text-align: center; }
+.detail-score { display: grid; grid-template-columns: minmax(0, 1fr) 150rpx minmax(0, 1fr); align-items: center; gap: 12rpx; padding: 28rpx 22rpx 12rpx; font-size: 27rpx; font-weight: 700; text-align: center; }
 .detail-score text:nth-child(2) { color: #a72b27; font-size: 48rpx; font-weight: 850; }
 .detail-meta { display: block; padding-bottom: 24rpx; color: #7c756e; font-size: 26rpx; text-align: center; }
 .player-detail-head, .player-detail-row { display: grid; grid-template-columns: minmax(0, 1fr) 64rpx 100rpx 64rpx; align-items: center; gap: 7rpx; padding: 12rpx 18rpx; border-top: 1rpx solid #ebe7e1; font-size: 26rpx; text-align: center; }

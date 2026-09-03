@@ -12090,6 +12090,8 @@
             "type": "string"
           },
           "jersey_number": {
+            "deprecated": true,
+            "description": "当季名单中的可选球衣号码；不是跨场固定号码，客户端不应将其作为球员身份展示。",
             "title": "Jersey Number",
             "type": "string"
           },
@@ -16269,6 +16271,41 @@
         "title": "DrawGroupOut",
         "type": "object"
       },
+      "DrawHistoricalSourceOptionOut": {
+        "properties": {
+          "source_game_id": {
+            "format": "uuid",
+            "title": "Source Game Id",
+            "type": "string"
+          },
+          "source_game_code": {
+            "title": "Source Game Code",
+            "type": "string"
+          },
+          "source_game_version": {
+            "title": "Source Game Version",
+            "type": "integer"
+          },
+          "winner_team_id": {
+            "format": "uuid",
+            "title": "Winner Team Id",
+            "type": "string"
+          },
+          "winner_team_name": {
+            "title": "Winner Team Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_game_id",
+          "source_game_code",
+          "source_game_version",
+          "winner_team_id",
+          "winner_team_name"
+        ],
+        "title": "DrawHistoricalSourceOptionOut",
+        "type": "object"
+      },
       "DrawPhaseGameOut": {
         "properties": {
           "id": {
@@ -16423,6 +16460,13 @@
             ],
             "title": "Away Score"
           },
+          "historical_source_options": {
+            "items": {
+              "$ref": "#/components/schemas/DrawHistoricalSourceOptionOut"
+            },
+            "title": "Historical Source Options",
+            "type": "array"
+          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -16444,6 +16488,7 @@
           "away_validation",
           "review_required",
           "status",
+          "historical_source_options",
           "version"
         ],
         "title": "DrawPhaseGameOut",
@@ -17030,6 +17075,47 @@
             "title": "Public Impact",
             "type": "boolean"
           },
+          "game_status": {
+            "title": "Game Status",
+            "type": "string"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "correction_mode": {
+            "title": "Correction Mode",
+            "type": "string"
+          },
+          "requires_historical_confirmation": {
+            "title": "Requires Historical Confirmation",
+            "type": "boolean"
+          },
+          "historical_sources": {
+            "items": {
+              "$ref": "#/components/schemas/DrawHistoricalSourceOut"
+            },
+            "title": "Historical Sources",
+            "type": "array"
+          },
           "warnings": {
             "items": {
               "$ref": "#/components/schemas/DrawWarningOut"
@@ -17078,6 +17164,12 @@
           "away_team_name",
           "participant_changed",
           "public_impact",
+          "game_status",
+          "home_score",
+          "away_score",
+          "correction_mode",
+          "requires_historical_confirmation",
+          "historical_sources",
           "warnings",
           "blockers",
           "requires_override",
@@ -17086,6 +17178,46 @@
           "impact_hash"
         ],
         "title": "DrawGamePreviewOut",
+        "type": "object"
+      },
+      "DrawHistoricalSourceOut": {
+        "properties": {
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "source_game_id": {
+            "format": "uuid",
+            "title": "Source Game Id",
+            "type": "string"
+          },
+          "source_game_code": {
+            "title": "Source Game Code",
+            "type": "string"
+          },
+          "source_game_version": {
+            "title": "Source Game Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "side",
+          "team_id",
+          "team_name",
+          "source_game_id",
+          "source_game_code",
+          "source_game_version"
+        ],
+        "title": "DrawHistoricalSourceOut",
         "type": "object"
       },
       "DrawWarningOut": {
@@ -17141,6 +17273,30 @@
             "format": "uuid",
             "title": "Away Team Id",
             "type": "string"
+          },
+          "home_source_game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Source Game Id"
+          },
+          "away_source_game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Source Game Id"
           }
         },
         "required": [
@@ -17172,9 +17328,38 @@
             "title": "Away Team Id",
             "type": "string"
           },
+          "home_source_game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Source Game Id"
+          },
+          "away_source_game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Source Game Id"
+          },
           "override_warnings": {
             "default": false,
             "title": "Override Warnings",
+            "type": "boolean"
+          },
+          "confirm_historical_backfill": {
+            "default": false,
+            "title": "Confirm Historical Backfill",
             "type": "boolean"
           },
           "impact_hash": {

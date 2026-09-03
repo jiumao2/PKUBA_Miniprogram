@@ -8,6 +8,7 @@ import { BracketView } from "../../components/bracket-view";
 import { ScheduleDayScroller } from "../../components/schedule-day-scroller";
 import { navigateToOnce } from "../../navigation";
 import { gameDetailRoute } from "../../routes";
+import { usePublicPageShare } from "../../sharing";
 import { syncTabBar } from "../../tabbar";
 import "./index.css";
 
@@ -19,6 +20,11 @@ export default function SchedulePage() {
   const [bracketMessage, setBracketMessage] = useState("");
   const bracketLoadIdRef = useRef(0);
   const bracketBusyRef = useRef(false);
+
+  usePublicPageShare({
+    title: "PKUBA 赛程与淘汰赛",
+    path: "/pages/schedule/index",
+  });
 
   const loadBrackets = async () => {
     if (bracketBusyRef.current) return;

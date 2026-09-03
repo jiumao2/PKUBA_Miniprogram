@@ -8,6 +8,7 @@ import { api } from "../../api";
 import { GameTimeline } from "../../components/game-timeline";
 import { navigateToOnce } from "../../navigation";
 import { gameDetailRoute } from "../../routes";
+import { usePublicPageShare } from "../../sharing";
 import { formatDate } from "../../format";
 import { syncTabBar } from "../../tabbar";
 import {
@@ -45,6 +46,11 @@ export default function HomePage() {
   const [dashboard, setDashboard] = useState<HomeDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<HomeLoadNotice | null>(null);
+
+  usePublicPageShare({
+    title: season?.name ? `${season.name} · PKUBA` : "PKUBA 北大篮球赛事",
+    path: "/pages/home/index",
+  });
 
   useDidShow(() => {
     syncTabBar(0);

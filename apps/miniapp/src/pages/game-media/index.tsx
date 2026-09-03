@@ -19,6 +19,7 @@ import {
 } from "../../api";
 import { getMiniAppSession, resolveMiniAppIdentity } from "../../auth";
 import { formatDate } from "../../format";
+import { gameShareOptions, usePublicPageShare } from "../../sharing";
 import { gameHeadingScore, mediaAssetActions, mediaGroupPresentation } from "./viewModel";
 import "./index.css";
 
@@ -44,6 +45,15 @@ export default function GameDetailPage() {
   } | null>(null);
   const [privateError, setPrivateError] = useState("");
   const requestVersionRef = useRef(0);
+  const shareScore = detail
+    ? gameHeadingScore(detail.game.home_score, detail.game.away_score)
+    : "";
+  usePublicPageShare(gameShareOptions(
+    gameId,
+    detail
+      ? `${detail.game.home_name} ${shareScore} ${detail.game.away_name}`
+      : "PKUBA 比赛详情",
+  ));
 
   const privateErrorMessage = (reason: unknown) => {
     if (reason instanceof ApiError) {

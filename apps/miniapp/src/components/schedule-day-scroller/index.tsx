@@ -73,10 +73,10 @@ export function ScheduleDayScroller({
     try {
       const result = await api.getScheduleDays(queryFor("initial"));
       if (requestVersion !== requestVersionRef.current) return;
+      const anchor = result.focus_date ? scheduleDayAnchor(result.focus_date) : "";
+      setScrollTarget(anchor);
       commitDays(result.days);
       applyMetadata(result);
-      const anchor = result.focus_date ? scheduleDayAnchor(result.focus_date) : "";
-      if (anchor) setTimeout(() => setScrollTarget(anchor), 0);
     } catch (reason: unknown) {
       if (requestVersion === requestVersionRef.current) setInitialError(messageOf(reason));
     } finally {
@@ -127,10 +127,9 @@ export function ScheduleDayScroller({
     try {
       const result = await api.getScheduleDays(queryFor("before", `cursor=${anchor}`));
       if (requestVersion !== requestVersionRef.current) return;
+      setScrollTarget(scheduleDayAnchor(anchor));
       commitDays(mergeScheduleDays(daysRef.current, result.days));
       setHasPrevious(result.has_previous);
-      setScrollTarget("");
-      setTimeout(() => setScrollTarget(scheduleDayAnchor(anchor)), 0);
     } catch (reason: unknown) {
       if (requestVersion === requestVersionRef.current) setBeforeError(messageOf(reason));
     } finally {
@@ -209,6 +208,9 @@ export function ScheduleDayScroller({
       upperThreshold={100}
       lowerThreshold={160}
       scrollIntoView={scrollTarget}
+      onScroll={() => {
+        if (scrollTarget) setScrollTarget("");
+      }}
       onScrollToUpper={() => void loadBefore()}
       onScrollToLower={() => void loadAfter()}
     >
@@ -228,7 +230,11 @@ export function ScheduleDayScroller({
               <Text className="schedule-day-title">{formatDate(day.date)}</Text>
               <Text className="schedule-day-count">{day.games.length} 场</Text>
             </View>
-            <GameTimeline games={day.games} showDates={false} onGameClick={onGameClick} />
+            {day.games.length ? (
+              <GameTimeline games={day.games} showDates={false} onGameClick={onGameClick} />
+            ) : (
+              <View className="schedule-today-empty"><Text>今日无比赛</Text></View>
+            )}
           </View>
         ))}
         <DirectionalState
@@ -240,10 +246,7 @@ export function ScheduleDayScroller({
     </ScrollView>
     {focusDate && <Button
       className="return-today"
-      onClick={() => {
-        setScrollTarget("");
-        setTimeout(() => setScrollTarget(scheduleDayAnchor(focusDate)), 0);
-      }}
+      onClick={() => setScrollTarget(scheduleDayAnchor(focusDate))}
     >回到今天</Button>}
   </View>;
 }

@@ -198,6 +198,7 @@ def build_team_leaderboard(
 
     rows.sort(
         key=lambda row: (
+            row["games_played"] == 0,
             _metric(exact_metrics[row["team_id"]][sort], order),
             -row["games_played"],
             -row["points_for"],

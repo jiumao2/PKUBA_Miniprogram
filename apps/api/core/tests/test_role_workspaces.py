@@ -6,7 +6,14 @@ from datetime import timedelta
 import pytest
 from django.test import Client
 
-from core.models import Account, AdminAuditLog, Game, MiniAppSession, RescheduleRequest
+from core.models import (
+    Account,
+    AdminAuditLog,
+    Game,
+    MiniAppSession,
+    ParticipantSlot,
+    RescheduleRequest,
+)
 from core.services.wechat import issue_session
 from core.tests.factories import reschedule_setup
 
@@ -236,6 +243,65 @@ def test_mobile_game_update_is_superadmin_only_and_audited():
         object_id=game.id,
         actor=superadmin,
     ).exists()
+
+
+def test_mobile_game_update_requires_participants_before_saving_a_result():
+    setup = reschedule_setup()
+    template = setup["games"][0]
+    slots = [
+        ParticipantSlot.objects.create(
+            division=setup["division"],
+            code=f"RESULT-GUARD-{side}",
+            label=f"赛果保护{side}方签位",
+        )
+        for side in ("H", "A")
+    ]
+    game = Game.objects.create(
+        season=setup["season"],
+        division=setup["division"],
+        code="RESULT-GUARD",
+        stage=Game.Stage.FINAL,
+        date=template.date,
+        period=template.period,
+        start_time=template.start_time,
+        venue_name="赛果保护测试场地",
+        home_slot=slots[0],
+        away_slot=slots[1],
+    )
+    superadmin = Account.objects.create_user(
+        username="result-guard-superadmin",
+        password="test-password",
+        role=Account.Role.SUPERADMIN,
+    )
+
+    response = put_json(
+        Client(),
+        f"/api/v1/admin/mobile/games/{game.id}",
+        {
+            "expected_version": game.version,
+            "date": game.date.isoformat(),
+            "period_id": str(game.period_id),
+            "start_time": game.start_time.strftime("%H:%M"),
+            "standard_venue_id": None,
+            "venue_name": game.venue_name,
+            "home_team_id": None,
+            "away_team_id": None,
+            "home_score": 46,
+            "away_score": 61,
+            "status": Game.Status.COMPLETED,
+            "leader_adjustable": game.leader_adjustable,
+            "override_rules": True,
+            "confirmed": True,
+        },
+        issue_session(superadmin),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "RESULT_PARTICIPANTS_REQUIRED"
+    game.refresh_from_db()
+    assert game.status == Game.Status.SCHEDULED
+    assert game.home_score is None
+    assert game.away_score is None
 
 
 def test_web_schedule_editor_is_visible_to_admin_but_writable_only_by_superadmin():

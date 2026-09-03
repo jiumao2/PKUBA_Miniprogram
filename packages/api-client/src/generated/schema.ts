@@ -2986,7 +2986,11 @@ export interface components {
             player_id: string;
             /** Player Name */
             player_name: string;
-            /** Jersey Number */
+            /**
+             * Jersey Number
+             * @deprecated
+             * @description 当季名单中的可选球衣号码；不是跨场固定号码，客户端不应将其作为球员身份展示。
+             */
             jersey_number: string;
             /**
              * Team Id
@@ -4671,6 +4675,25 @@ export interface components {
             /** Slots */
             slots: components["schemas"]["DrawSlotOut"][];
         };
+        /** DrawHistoricalSourceOptionOut */
+        DrawHistoricalSourceOptionOut: {
+            /**
+             * Source Game Id
+             * Format: uuid
+             */
+            source_game_id: string;
+            /** Source Game Code */
+            source_game_code: string;
+            /** Source Game Version */
+            source_game_version: number;
+            /**
+             * Winner Team Id
+             * Format: uuid
+             */
+            winner_team_id: string;
+            /** Winner Team Name */
+            winner_team_name: string;
+        };
         /** DrawPhaseGameOut */
         DrawPhaseGameOut: {
             /**
@@ -4723,6 +4746,8 @@ export interface components {
             home_score?: number | null;
             /** Away Score */
             away_score?: number | null;
+            /** Historical Source Options */
+            historical_source_options: components["schemas"]["DrawHistoricalSourceOptionOut"][];
             /** Version */
             version: number;
         };
@@ -4975,6 +5000,18 @@ export interface components {
             participant_changed: boolean;
             /** Public Impact */
             public_impact: boolean;
+            /** Game Status */
+            game_status: string;
+            /** Home Score */
+            home_score: number | null;
+            /** Away Score */
+            away_score: number | null;
+            /** Correction Mode */
+            correction_mode: string;
+            /** Requires Historical Confirmation */
+            requires_historical_confirmation: boolean;
+            /** Historical Sources */
+            historical_sources: components["schemas"]["DrawHistoricalSourceOut"][];
             /** Warnings */
             warnings: components["schemas"]["DrawWarningOut"][];
             /** Blockers */
@@ -4989,6 +5026,27 @@ export interface components {
             };
             /** Impact Hash */
             impact_hash: string;
+        };
+        /** DrawHistoricalSourceOut */
+        DrawHistoricalSourceOut: {
+            /** Side */
+            side: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /**
+             * Source Game Id
+             * Format: uuid
+             */
+            source_game_id: string;
+            /** Source Game Code */
+            source_game_code: string;
+            /** Source Game Version */
+            source_game_version: number;
         };
         /** DrawWarningOut */
         DrawWarningOut: {
@@ -5022,6 +5080,10 @@ export interface components {
              * Format: uuid
              */
             away_team_id: string;
+            /** Home Source Game Id */
+            home_source_game_id?: string | null;
+            /** Away Source Game Id */
+            away_source_game_id?: string | null;
         };
         /** DrawGameApplyIn */
         DrawGameApplyIn: {
@@ -5039,11 +5101,20 @@ export interface components {
              * Format: uuid
              */
             away_team_id: string;
+            /** Home Source Game Id */
+            home_source_game_id?: string | null;
+            /** Away Source Game Id */
+            away_source_game_id?: string | null;
             /**
              * Override Warnings
              * @default false
              */
             override_warnings: boolean;
+            /**
+             * Confirm Historical Backfill
+             * @default false
+             */
+            confirm_historical_backfill: boolean;
             /** Impact Hash */
             impact_hash: string;
         };

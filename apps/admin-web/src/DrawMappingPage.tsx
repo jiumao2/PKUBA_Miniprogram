@@ -30,12 +30,20 @@ interface DrawMappingPageProps {
 interface GameDraft {
   homeTeamId: string;
   awayTeamId: string;
+  homeSourceGameId: string;
+  awaySourceGameId: string;
 }
 
 const statusLabels: Record<string, string> = {
   SETUP: "准备中",
   PUBLISHED: "已公开",
   ARCHIVED: "已归档",
+};
+const gameStatusLabels: Record<string, string> = {
+  SCHEDULED: "未赛",
+  COMPLETED: "已完成",
+  FORFEIT: "弃权",
+  VOID: "已作废",
 };
 
 function initialGroupDraft(division: DrawDivision): Record<string, string> {
@@ -54,6 +62,8 @@ function initialGameDrafts(division: DrawDivision): Record<string, GameDraft> {
         {
           homeTeamId: game.home_team_id ?? "",
           awayTeamId: game.away_team_id ?? "",
+          homeSourceGameId: "",
+          awaySourceGameId: "",
         },
       ]),
     ),
@@ -78,6 +88,7 @@ export function DrawMappingPage({
   const [gamePreview, setGamePreview] = useState<DrawGameAssignmentPreview | null>(null);
   const [focusedGameId, setFocusedGameId] = useState("");
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  const [historicalConfirmed, setHistoricalConfirmed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +109,7 @@ export function DrawMappingPage({
     setGroupPreview(null);
     setGamePreview(null);
     setOverrideConfirmed(false);
+    setHistoricalConfirmed(false);
     if (nextDivision) {
       const hasCurrentPhase =
         selectedPhaseKey === "GROUP" ||
@@ -161,6 +173,8 @@ export function DrawMappingPage({
     && (
       draft.homeTeamId !== (game.home_team_id ?? "")
       || draft.awayTeamId !== (game.away_team_id ?? "")
+      || Boolean(draft.homeSourceGameId)
+      || Boolean(draft.awaySourceGameId)
     )
   );
   const anyDirty = groupDirty || Boolean(
@@ -188,6 +202,7 @@ export function DrawMappingPage({
     setGameDrafts(initialGameDrafts(next));
     setGroupPreview(null);
     setGamePreview(null);
+    setHistoricalConfirmed(false);
     setFocusedGameId("");
     setError(null);
     setNotice(null);
@@ -207,6 +222,7 @@ export function DrawMappingPage({
     setSelectedPhaseKey(key);
     setGamePreview(null);
     setOverrideConfirmed(false);
+    setHistoricalConfirmed(false);
     setFocusedGameId("");
     setError(null);
   };
@@ -262,19 +278,22 @@ export function DrawMappingPage({
 
   const updateGameDraft = (
     gameId: string,
-    side: "homeTeamId" | "awayTeamId",
-    teamId: string,
+    field: keyof GameDraft,
+    value: string,
   ) => {
     setGameDrafts((current) => ({
       ...current,
       [gameId]: {
         ...current[gameId],
-        [side]: teamId,
+        [field]: value,
+        ...(field === "homeTeamId" ? { homeSourceGameId: "" } : {}),
+        ...(field === "awayTeamId" ? { awaySourceGameId: "" } : {}),
       },
     }));
     setFocusedGameId(gameId);
     setGamePreview(null);
     setOverrideConfirmed(false);
+    setHistoricalConfirmed(false);
     setError(null);
     setNotice(null);
   };
@@ -287,6 +306,7 @@ export function DrawMappingPage({
     setFocusedGameId(game.id);
     setError(null);
     setOverrideConfirmed(false);
+    setHistoricalConfirmed(false);
     try {
       setGamePreview(
         await client.previewGameDrawAssignments(dataset.season_id, game.id, {
@@ -294,6 +314,8 @@ export function DrawMappingPage({
           expected_game_version: game.version,
           home_team_id: draft.homeTeamId,
           away_team_id: draft.awayTeamId,
+          home_source_game_id: draft.homeSourceGameId || null,
+          away_source_game_id: draft.awaySourceGameId || null,
         }),
       );
     } catch (caught) {
@@ -320,7 +342,12 @@ export function DrawMappingPage({
           expected_game_version: game.version,
           home_team_id: draft.homeTeamId,
           away_team_id: draft.awayTeamId,
-          override_warnings: gamePreview.requires_override,
+          home_source_game_id: draft.homeSourceGameId || null,
+          away_source_game_id: draft.awaySourceGameId || null,
+          override_warnings: gamePreview.requires_override && overrideConfirmed,
+          confirm_historical_backfill: (
+            gamePreview.requires_historical_confirmation && historicalConfirmed
+          ),
           impact_hash: gamePreview.impact_hash,
         },
       );
@@ -561,8 +588,10 @@ export function DrawMappingPage({
                 unassignedTeams={phaseUnassignedTeams}
                 preview={gamePreview}
                 overrideConfirmed={overrideConfirmed}
+                historicalConfirmed={historicalConfirmed}
                 busy={Boolean(focusedGame && busyKey === focusedGame.id)}
                 onOverrideChange={setOverrideConfirmed}
+                onHistoricalChange={setHistoricalConfirmed}
                 onSave={() => focusedGame && void saveGame(focusedGame)}
               />
             )}
@@ -738,7 +767,7 @@ function GameEditor({
   busy: boolean;
   focused: boolean;
   onFocus: () => void;
-  onChange: (side: "homeTeamId" | "awayTeamId", teamId: string) => void;
+  onChange: (field: keyof GameDraft, value: string) => void;
   onPreview: () => void;
 }) {
   const optionsFor = (currentId: string, otherId: string) =>
@@ -748,6 +777,17 @@ function GameEditor({
         team.id !== otherId &&
         (!phaseUsedTeams.has(team.id) || team.id === currentId),
     );
+  const historicalRelegationCandidate = (
+    game.stage === "RELEGATION"
+    && !game.home_team_id
+    && !game.away_team_id
+    && ["COMPLETED", "FORFEIT"].includes(game.status)
+    && game.home_score !== null
+    && game.away_score !== null
+  );
+  const sourceOptionsFor = (teamId: string) => game.historical_source_options.filter(
+    (option) => option.winner_team_id === teamId,
+  );
   return (
     <article
       className={`draw-game ${focused ? "focused" : ""} ${
@@ -813,6 +853,43 @@ function GameEditor({
           <ValidationBadge validation={game.away_validation} />
         </label>
       </div>
+      {historicalRelegationCandidate && (
+        <div className="historical-source-pickers">
+          <label>
+            <span>主方来源比赛</span>
+            <select
+              aria-label={`${game.code} 主方来源比赛`}
+              value={draft.homeSourceGameId}
+              disabled={readOnly || busy || !draft.homeTeamId}
+              onChange={(event) => onChange("homeSourceGameId", event.target.value)}
+            >
+              <option value="">请选择真实获胜来源</option>
+              {sourceOptionsFor(draft.homeTeamId).map((option) => (
+                <option key={option.source_game_id} value={option.source_game_id}>
+                  {option.source_game_code} · {option.winner_team_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>客方来源比赛</span>
+            <select
+              aria-label={`${game.code} 客方来源比赛`}
+              value={draft.awaySourceGameId}
+              disabled={readOnly || busy || !draft.awayTeamId}
+              onChange={(event) => onChange("awaySourceGameId", event.target.value)}
+            >
+              <option value="">请选择真实获胜来源</option>
+              {sourceOptionsFor(draft.awayTeamId).map((option) => (
+                <option key={option.source_game_id} value={option.source_game_id}>
+                  {option.source_game_code} · {option.winner_team_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p>保级赛没有可自动推导的相邻晋级轮次，必须显式绑定双方真实获胜的来源比赛。</p>
+        </div>
+      )}
       <footer className="draw-game-save">
         <span>{dirty ? "本场有未保存修改" : "本场已保存"}</span>
         <button
@@ -823,7 +900,10 @@ function GameEditor({
             busy ||
             !dirty ||
             !draft.homeTeamId ||
-            !draft.awayTeamId
+            !draft.awayTeamId ||
+            (historicalRelegationCandidate && (
+              !draft.homeSourceGameId || !draft.awaySourceGameId
+            ))
           }
           onClick={(event) => {
             event.stopPropagation();
@@ -922,8 +1002,10 @@ function GameInspector({
   unassignedTeams,
   preview,
   overrideConfirmed,
+  historicalConfirmed,
   busy,
   onOverrideChange,
+  onHistoricalChange,
   onSave,
 }: {
   phase: DrawPhase | undefined;
@@ -932,8 +1014,10 @@ function GameInspector({
   unassignedTeams: DrawDivision["teams"];
   preview: DrawGameAssignmentPreview | null;
   overrideConfirmed: boolean;
+  historicalConfirmed: boolean;
   busy: boolean;
   onOverrideChange: (value: boolean) => void;
+  onHistoricalChange: (value: boolean) => void;
   onSave: () => void;
 }) {
   return (
@@ -976,10 +1060,16 @@ function GameInspector({
       {preview && (
         <section
           className={
-            preview.warnings.length ? "inspector-alert" : "inspector-success"
+            preview.warnings.length || preview.requires_historical_confirmation
+              ? "inspector-alert"
+              : "inspector-success"
           }
         >
-          <strong>{preview.can_apply ? "预览完成" : "当前不能保存"}</strong>
+          <strong>{preview.can_apply
+            ? preview.requires_historical_confirmation
+              ? "历史赛果参赛方补齐"
+              : "预览完成"
+            : "当前不能保存"}</strong>
           <p>
             {preview.public_impact
               ? "保存后会立即影响当前公开对阵。"
@@ -991,6 +1081,29 @@ function GameInspector({
           {preview.warnings.map((warning) => (
             <p key={`${warning.side}-${warning.code}`}>{warning.message}</p>
           ))}
+          {preview.requires_historical_confirmation && (
+            <>
+              <p>
+                本场状态：{gameStatusLabels[preview.game_status] ?? preview.game_status}；
+                比分 {preview.home_score}:{preview.away_score}。保存只补齐双方球队和签位，
+                不修改比分、状态、日期或场地。
+              </p>
+              {preview.historical_sources.map((source) => (
+                <p key={source.side}>
+                  {source.side === "HOME" ? "主方" : "客方"} {source.team_name}
+                  {` · 来源 ${source.source_game_code} 的真实胜队`}
+                </p>
+              ))}
+              <label className="historical-confirm">
+                <input
+                  type="checkbox"
+                  checked={historicalConfirmed}
+                  onChange={(event) => onHistoricalChange(event.target.checked)}
+                />
+                <span>我确认补齐本场历史参赛方，并保留现有比分和赛果</span>
+              </label>
+            </>
+          )}
           {preview.requires_override && (
             <label className="override-confirm">
               <input
@@ -1003,13 +1116,16 @@ function GameInspector({
           )}
           <button
             className={
-              preview.requires_override ? "danger-action" : "primary-action"
+              preview.requires_override || preview.requires_historical_confirmation
+                ? "danger-action"
+                : "primary-action"
             }
             type="button"
             disabled={
               busy ||
               !preview.can_apply ||
-              (preview.requires_override && !overrideConfirmed)
+              (preview.requires_override && !overrideConfirmed) ||
+              (preview.requires_historical_confirmation && !historicalConfirmed)
             }
             onClick={onSave}
           >
@@ -1017,7 +1133,9 @@ function GameInspector({
               ? "保存中…"
               : preview.requires_override
                 ? "确认越级并保存"
-                : "确认保存本场"}
+                : preview.requires_historical_confirmation
+                  ? "确认补齐历史参赛方"
+                  : "确认保存本场"}
           </button>
         </section>
       )}

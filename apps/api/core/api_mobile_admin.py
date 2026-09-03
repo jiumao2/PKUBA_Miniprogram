@@ -559,6 +559,19 @@ def update_admin_game(
                 payload.home_score is None or payload.away_score is None
             ):
                 return _error("RESULT_SCORE_REQUIRED", "已完成或弃权比赛必须填写比分。")
+            has_result = (
+                payload.home_score is not None
+                or payload.away_score is not None
+                or payload.status in {Game.Status.COMPLETED, Game.Status.FORFEIT}
+            )
+            if has_result and not (
+                payload.home_team_id is not None and payload.away_team_id is not None
+            ):
+                return _error(
+                    "RESULT_PARTICIPANTS_REQUIRED",
+                    "已有赛果的比赛必须先确定双方参赛球队。",
+                    409,
+                )
             if payload.status == Game.Status.FORFEIT and (
                 payload.home_score,
                 payload.away_score,

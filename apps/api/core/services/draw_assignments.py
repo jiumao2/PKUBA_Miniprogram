@@ -43,6 +43,10 @@ STAGE_LABELS = {
     Game.Stage.FINAL: "决赛",
     Game.Stage.RELEGATION: "保级赛",
 }
+NORMAL_CORRECTION_MODE = "NORMAL"
+HISTORICAL_EMPTY_PARTICIPANT_BACKFILL = (
+    "HISTORICAL_EMPTY_PARTICIPANT_BACKFILL"
+)
 
 
 class DrawAssignmentError(Exception):
@@ -67,6 +71,28 @@ def _assignment_snapshot(
         }
         for slot in slots
     ]
+
+
+def _game_assignment_evidence(
+    assignment: DrawAssignment | None,
+) -> dict[str, object] | None:
+    if assignment is None:
+        return None
+    source = assignment.source_game
+    return {
+        "assignment_id": str(assignment.id),
+        "slot_id": str(assignment.slot_id),
+        "team_id": str(assignment.team_id),
+        "team_name": assignment.team.name,
+        "assigned_by_id": (
+            str(assignment.assigned_by_id) if assignment.assigned_by_id else None
+        ),
+        "source_game_id": str(source.id) if source else None,
+        "source_game_code": source.code if source else None,
+        "source_game_version": assignment.source_game_version,
+        "source_game_current_version": source.version if source else None,
+        "validation_mode": assignment.validation_mode,
+    }
 
 
 def _winner_id(game: Game) -> UUID | None:
@@ -185,10 +211,11 @@ def serialize_draw_dataset(season: Season) -> dict[str, object]:
         .order_by("slot__division__sort_order", "slot__group__sort_order", "slot__seed")
     )
     assignments = {row.slot_id: row for row in assignment_rows}
-    elimination_games = list(
-        Game.objects.filter(season=season, stage__in=ELIMINATION_STAGES)
+    season_games = list(
+        Game.objects.filter(season=season)
         .exclude(status=Game.Status.VOID)
         .select_related(
+            "season",
             "division",
             "home_team",
             "away_team",
@@ -198,16 +225,22 @@ def serialize_draw_dataset(season: Season) -> dict[str, object]:
         )
         .order_by("division__sort_order", "date", "start_time", "venue_name", "code")
     )
+    elimination_games = [
+        game for game in season_games if game.stage in ELIMINATION_STAGES
+    ]
 
     slots_by_division: dict[UUID, list[ParticipantSlot]] = {}
     teams_by_division: dict[UUID, list[Team]] = {}
     games_by_division: dict[UUID, list[Game]] = {}
+    season_games_by_division: dict[UUID, list[Game]] = {}
     for slot in slots:
         slots_by_division.setdefault(slot.division_id, []).append(slot)
     for team in teams:
         teams_by_division.setdefault(team.division_id, []).append(team)
     for game in elimination_games:
         games_by_division.setdefault(game.division_id, []).append(game)
+    for game in season_games:
+        season_games_by_division.setdefault(game.division_id, []).append(game)
 
     division_rows: list[dict[str, object]] = []
     for division in divisions:
@@ -310,6 +343,16 @@ def serialize_draw_dataset(season: Season) -> dict[str, object]:
                         "status": game.status,
                         "home_score": game.home_score,
                         "away_score": game.away_score,
+                        "historical_source_options": (
+                            _historical_source_options(
+                                game=game,
+                                division_games=season_games_by_division.get(
+                                    division.id, []
+                                ),
+                            )
+                            if game.stage == Game.Stage.RELEGATION
+                            else []
+                        ),
                         "version": game.version,
                     }
                 )
@@ -451,6 +494,91 @@ def _game_start(game: Game) -> datetime:
         game.start_time,
         tzinfo=ZoneInfo(game.season.timezone),
     )
+
+
+def _historical_source_options(
+    *,
+    game: Game,
+    division_games: list[Game],
+) -> list[dict[str, object]]:
+    target_start = _game_start(game)
+    options: list[dict[str, object]] = []
+    for source in division_games:
+        if (
+            source.id == game.id
+            or (source.stage, source.round_number) == (game.stage, game.round_number)
+            or source.status not in {Game.Status.COMPLETED, Game.Status.FORFEIT}
+            or _game_start(source) >= target_start
+        ):
+            continue
+        winner_id = _winner_id(source)
+        if winner_id is None:
+            continue
+        winner = source.home_team if winner_id == source.home_team_id else source.away_team
+        options.append(
+            {
+                "source_game_id": source.id,
+                "source_game_code": source.code,
+                "source_game_version": source.version,
+                "winner_team_id": winner_id,
+                "winner_team_name": winner.name,
+            }
+        )
+    return options
+
+
+def _explicit_relegation_sources(
+    *,
+    game: Game,
+    home_team_id: UUID,
+    away_team_id: UUID,
+    home_source_game_id: UUID | None,
+    away_source_game_id: UUID | None,
+    lock: bool,
+) -> tuple[dict[UUID, Game], dict[str, object] | None]:
+    if home_source_game_id is None or away_source_game_id is None:
+        return {}, {
+            "code": "HISTORICAL_SOURCE_GAMES_REQUIRED",
+            "message": "保级赛历史补齐必须分别选择可证明主客队身份的来源比赛。",
+            "count": 1,
+        }
+    if home_source_game_id == away_source_game_id:
+        return {}, {
+            "code": "HISTORICAL_SOURCE_GAME_INVALID",
+            "message": "主客队必须分别关联各自真实获胜的来源比赛。",
+            "count": 1,
+        }
+    source_query = Game.objects.filter(
+        id__in=[home_source_game_id, away_source_game_id],
+        season_id=game.season_id,
+        division_id=game.division_id,
+    ).select_related("season")
+    if lock:
+        source_query = source_query.select_for_update(of=("self",))
+    sources_by_id = {source.id: source for source in source_query}
+    requested = (
+        (home_team_id, home_source_game_id),
+        (away_team_id, away_source_game_id),
+    )
+    target_start = _game_start(game)
+    sources: dict[UUID, Game] = {}
+    for team_id, source_id in requested:
+        source = sources_by_id.get(source_id)
+        if (
+            source is None
+            or source.status not in {Game.Status.COMPLETED, Game.Status.FORFEIT}
+            or source.id == game.id
+            or (source.stage, source.round_number) == (game.stage, game.round_number)
+            or _game_start(source) >= target_start
+            or _winner_id(source) != team_id
+        ):
+            return {}, {
+                "code": "HISTORICAL_SOURCE_GAME_INVALID",
+                "message": "来源比赛必须属于同赛季同组别、早于本场，且所选球队必须是真实胜队。",
+                "count": 1,
+            }
+        sources[team_id] = source
+    return sources, None
 
 
 def _analyze(
@@ -763,6 +891,8 @@ def _analyze_game_assignment(
     expected_game_version: int,
     home_team_id: UUID,
     away_team_id: UUID,
+    home_source_game_id: UUID | None,
+    away_source_game_id: UUID | None,
     now: datetime,
     lock: bool,
 ) -> tuple[dict[str, object], dict[str, object]]:
@@ -851,6 +981,8 @@ def _analyze_game_assignment(
     if lock:
         assignment_query = assignment_query.select_for_update(of=("self",))
     phase_assignments = {row.slot_id: row for row in assignment_query}
+    existing_home = phase_assignments.get(game.home_slot_id)
+    existing_away = phase_assignments.get(game.away_slot_id)
     used_by_other_games: dict[UUID, Game] = {}
     for other in phase_games:
         if other.id == game.id:
@@ -896,7 +1028,59 @@ def _analyze_game_assignment(
         or game.away_score is not None
         or game.status != Game.Status.SCHEDULED
     )
-    if participant_changed and (unsafe_started or unsafe_result or sum(references.values())):
+    historical_base = bool(
+        participant_changed
+        and season.status == Season.Status.PUBLISHED
+        and game.home_team_id is None
+        and game.away_team_id is None
+        and existing_home is None
+        and existing_away is None
+        and game.status in {Game.Status.COMPLETED, Game.Status.FORFEIT}
+        and game.home_score is not None
+        and game.away_score is not None
+        and not duplicate_team_ids
+        and not sum(references.values())
+    )
+    explicit_sources_provided = bool(home_source_game_id or away_source_game_id)
+    if explicit_sources_provided and game.stage != Game.Stage.RELEGATION:
+        raise DrawAssignmentError(
+            "显式来源比赛只用于历史保级赛空参赛方补齐。",
+            "HISTORICAL_SOURCE_GAME_NOT_ALLOWED",
+        )
+    if explicit_sources_provided and not historical_base:
+        raise DrawAssignmentError(
+            "当前比赛不满足历史空参赛方补齐条件，不能指定来源比赛。",
+            "HISTORICAL_SOURCE_GAME_NOT_ALLOWED",
+        )
+    historical_winner_games = previous_winner_games
+    source_blocker = None
+    if historical_base and game.stage == Game.Stage.RELEGATION:
+        historical_winner_games, source_blocker = _explicit_relegation_sources(
+            game=game,
+            home_team_id=home_team_id,
+            away_team_id=away_team_id,
+            home_source_game_id=home_source_game_id,
+            away_source_game_id=away_source_game_id,
+            lock=lock,
+        )
+        if source_blocker:
+            blockers.append(source_blocker)
+    historical_backfill = bool(
+        historical_base
+        and home_team_id in historical_winner_games
+        and away_team_id in historical_winner_games
+    )
+    correction_mode = (
+        HISTORICAL_EMPTY_PARTICIPANT_BACKFILL
+        if historical_backfill
+        else NORMAL_CORRECTION_MODE
+    )
+    if (
+        participant_changed
+        and not historical_backfill
+        and source_blocker is None
+        and (unsafe_started or unsafe_result or sum(references.values()))
+    ):
         blockers.append(
             {
                 "code": "DANGEROUS_GAME_PARTICIPANT_CHANGE",
@@ -922,8 +1106,20 @@ def _analyze_game_assignment(
                     }
                 )
 
-    existing_home = phase_assignments.get(game.home_slot_id)
-    existing_away = phase_assignments.get(game.away_slot_id)
+    historical_sources = []
+    if historical_backfill:
+        for side, team_id in (("HOME", home_team_id), ("AWAY", away_team_id)):
+            source = historical_winner_games[team_id]
+            historical_sources.append(
+                {
+                    "side": side,
+                    "team_id": team_id,
+                    "team_name": teams[team_id].name,
+                    "source_game_id": source.id,
+                    "source_game_code": source.code,
+                    "source_game_version": source.version,
+                }
+            )
     canonical = {
         "season_id": str(season.id),
         "season_version": season.version,
@@ -934,12 +1130,8 @@ def _analyze_game_assignment(
         "before": {
             "home_team_id": str(game.home_team_id) if game.home_team_id else None,
             "away_team_id": str(game.away_team_id) if game.away_team_id else None,
-            "home_assignment_team_id": (
-                str(existing_home.team_id) if existing_home else None
-            ),
-            "away_assignment_team_id": (
-                str(existing_away.team_id) if existing_away else None
-            ),
+            "home_assignment": _game_assignment_evidence(existing_home),
+            "away_assignment": _game_assignment_evidence(existing_away),
         },
         "phase_versions": [
             {"id": str(item.id), "version": item.version} for item in phase_games
@@ -955,6 +1147,8 @@ def _analyze_game_assignment(
         "warnings": warnings,
         "blockers": blockers,
         "references": references,
+        "correction_mode": correction_mode,
+        "historical_sources": historical_sources,
     }
     impact_hash = hashlib.sha256(
         json.dumps(canonical, cls=DjangoJSONEncoder, sort_keys=True).encode("utf-8")
@@ -973,6 +1167,12 @@ def _analyze_game_assignment(
         "away_team_name": teams[away_team_id].name,
         "participant_changed": participant_changed,
         "public_impact": season.status == Season.Status.PUBLISHED,
+        "game_status": game.status,
+        "home_score": game.home_score,
+        "away_score": game.away_score,
+        "correction_mode": correction_mode,
+        "requires_historical_confirmation": historical_backfill,
+        "historical_sources": historical_sources,
         "warnings": warnings,
         "blockers": blockers,
         "requires_override": bool(warnings),
@@ -984,6 +1184,7 @@ def _analyze_game_assignment(
         "game": game,
         "teams": teams,
         "previous_winner_games": previous_winner_games,
+        "historical_winner_games": historical_winner_games,
         "previous_key": previous_key,
         "existing_home": existing_home,
         "existing_away": existing_away,
@@ -998,6 +1199,8 @@ def preview_game_draw_assignments(
     expected_game_version: int,
     home_team_id: UUID,
     away_team_id: UUID,
+    home_source_game_id: UUID | None = None,
+    away_source_game_id: UUID | None = None,
     now: datetime | None = None,
 ) -> dict[str, object]:
     preview, _ = _analyze_game_assignment(
@@ -1007,6 +1210,8 @@ def preview_game_draw_assignments(
         expected_game_version=expected_game_version,
         home_team_id=home_team_id,
         away_team_id=away_team_id,
+        home_source_game_id=home_source_game_id,
+        away_source_game_id=away_source_game_id,
         now=now or timezone.now(),
         lock=False,
     )
@@ -1024,6 +1229,9 @@ def apply_game_draw_assignments(
     away_team_id: UUID,
     override_warnings: bool,
     impact_hash: str,
+    confirm_historical_backfill: bool = False,
+    home_source_game_id: UUID | None = None,
+    away_source_game_id: UUID | None = None,
     now: datetime | None = None,
 ) -> dict[str, object]:
     try:
@@ -1038,6 +1246,8 @@ def apply_game_draw_assignments(
                 expected_game_version=expected_game_version,
                 home_team_id=home_team_id,
                 away_team_id=away_team_id,
+                home_source_game_id=home_source_game_id,
+                away_source_game_id=away_source_game_id,
                 now=now or timezone.now(),
                 lock=True,
             )
@@ -1051,6 +1261,14 @@ def apply_game_draw_assignments(
                     "当前比赛存在阻塞项，不能保存签位。",
                     "DRAW_CORRECTION_BLOCKED",
                 )
+            if (
+                preview["requires_historical_confirmation"]
+                and not confirm_historical_backfill
+            ):
+                raise DrawAssignmentError(
+                    "历史赛果的空参赛方补齐必须完成独立确认。",
+                    "HISTORICAL_BACKFILL_CONFIRMATION_REQUIRED",
+                )
             if preview["warnings"] and not override_warnings:
                 raise DrawAssignmentError(
                     "所选球队不是上一轮已确认胜队，请完成二次确认。",
@@ -1061,35 +1279,48 @@ def apply_game_draw_assignments(
             teams: dict[UUID, Team] = context["teams"]
             previous_winner_games: dict[UUID, Game] = context["previous_winner_games"]
             previous_key = context["previous_key"]
+            existing_home: DrawAssignment | None = context["existing_home"]
+            existing_away: DrawAssignment | None = context["existing_away"]
+            if (
+                not preview["participant_changed"]
+                and existing_home is not None
+                and existing_home.team_id == home_team_id
+                and existing_away is not None
+                and existing_away.team_id == away_team_id
+            ):
+                return serialize_draw_dataset(season)
+
             before = {
                 "season_version": season.version,
                 "game_version": game.version,
                 "home_team_id": str(game.home_team_id) if game.home_team_id else None,
                 "away_team_id": str(game.away_team_id) if game.away_team_id else None,
-                "home_assignment": (
-                    _assignment_snapshot(
-                        [game.home_slot],
-                        {game.home_slot_id: context["existing_home"]},
-                    )[0]
-                    if context["existing_home"]
-                    else None
-                ),
-                "away_assignment": (
-                    _assignment_snapshot(
-                        [game.away_slot],
-                        {game.away_slot_id: context["existing_away"]},
-                    )[0]
-                    if context["existing_away"]
-                    else None
-                ),
+                "home_assignment": _game_assignment_evidence(existing_home),
+                "away_assignment": _game_assignment_evidence(existing_away),
             }
 
+            historical_winner_games = context["historical_winner_games"]
+            existing_by_slot = {
+                game.home_slot_id: existing_home,
+                game.away_slot_id: existing_away,
+            }
+            saved_assignments: dict[UUID, DrawAssignment] = {}
             for slot_id, team_id in (
                 (game.home_slot_id, home_team_id),
                 (game.away_slot_id, away_team_id),
             ):
+                existing_assignment = existing_by_slot[slot_id]
+                if (
+                    existing_assignment is not None
+                    and existing_assignment.team_id == team_id
+                ):
+                    saved_assignments[slot_id] = existing_assignment
+                    continue
                 source = previous_winner_games.get(team_id)
-                if previous_key is None or game.stage == Game.Stage.RELEGATION:
+                if preview["correction_mode"] == HISTORICAL_EMPTY_PARTICIPANT_BACKFILL:
+                    source = historical_winner_games[team_id]
+                    validation_mode = DrawAssignment.ValidationMode.WINNER_CONFIRMED
+                elif previous_key is None or game.stage == Game.Stage.RELEGATION:
                     validation_mode = DrawAssignment.ValidationMode.NOT_APPLICABLE
                     source = None
                 elif source is not None:
@@ -1108,6 +1339,7 @@ def apply_game_draw_assignments(
                     },
                 )
                 assignment.full_clean()
+                saved_assignments[slot_id] = assignment
 
             game.home_team = teams[home_team_id]
             game.away_team = teams[away_team_id]
@@ -1122,10 +1354,28 @@ def apply_game_draw_assignments(
                 "game_version": game.version,
                 "home_team_id": str(game.home_team_id),
                 "away_team_id": str(game.away_team_id),
+                "home_assignment": _game_assignment_evidence(
+                    saved_assignments[game.home_slot_id]
+                ),
+                "away_assignment": _game_assignment_evidence(
+                    saved_assignments[game.away_slot_id]
+                ),
             }
+            historical_sources = (
+                [
+                    after["home_assignment"],
+                    after["away_assignment"],
+                ]
+                if preview["requires_historical_confirmation"]
+                else []
+            )
             AdminAuditLog.objects.create(
                 actor=actor,
-                action="DRAW_GAME_ASSIGNMENTS_UPDATED",
+                action=(
+                    "HISTORICAL_DRAW_PARTICIPANTS_BACKFILLED"
+                    if preview["requires_historical_confirmation"]
+                    else "DRAW_GAME_ASSIGNMENTS_UPDATED"
+                ),
                 object_type="Game",
                 object_id=game.id,
                 before=before,
@@ -1136,6 +1386,9 @@ def apply_game_draw_assignments(
                         json.dumps(preview["warnings"], cls=DjangoJSONEncoder)
                     ),
                     "override_warnings": override_warnings,
+                    "correction_mode": preview["correction_mode"],
+                    "confirm_historical_backfill": confirm_historical_backfill,
+                    "historical_sources": historical_sources,
                     "stage": game.stage,
                     "round_number": game.round_number,
                     "public_impact": preview["public_impact"],

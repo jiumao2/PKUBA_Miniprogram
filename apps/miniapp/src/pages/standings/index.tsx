@@ -10,6 +10,7 @@ import type {
 } from "@pkuba/api-client";
 
 import { api } from "../../api";
+import { usePublicPageShare } from "../../sharing";
 import { syncTabBar } from "../../tabbar";
 import "./index.css";
 
@@ -18,6 +19,11 @@ export default function StandingsPage() {
   const [divisionId, setDivisionId] = useState("");
   const [groupId, setGroupId] = useState("");
   const [message, setMessage] = useState("正在计算排名…");
+
+  usePublicPageShare({
+    title: "PKUBA 赛事排名",
+    path: "/pages/standings/index",
+  });
 
   useDidShow(() => {
     syncTabBar(2);

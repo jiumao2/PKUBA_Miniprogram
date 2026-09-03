@@ -4,7 +4,7 @@ import pytest
 from django.test import Client
 from django.utils import timezone
 
-from core.models import Division, Game, Season
+from core.models import Division, Game, Season, Team
 from core.tests.factories import placeholder_game, season
 
 pytestmark = pytest.mark.django_db
@@ -124,8 +124,18 @@ def test_public_schedule_is_paginated_without_losing_filters():
 def test_home_dashboard_reports_finished_when_no_current_or_future_games():
     target_season = season()
     game = placeholder_game(target_season)
+    teams = [
+        Team.objects.create(
+            season=target_season,
+            division=game.division,
+            name=f"完赛球队 {index}",
+        )
+        for index in range(1, 3)
+    ]
     Game.objects.filter(id=game.id).update(
         date=timezone.localdate() - timedelta(days=1),
+        home_team_id=teams[0].id,
+        away_team_id=teams[1].id,
         status=Game.Status.COMPLETED,
         home_score=72,
         away_score=68,
@@ -257,7 +267,7 @@ def test_schedule_days_centres_today_and_loads_both_directions_without_overlap()
     assert initial["total_games"] == 21
 
 
-def test_schedule_days_focuses_previous_matchday_when_today_is_empty():
+def test_schedule_days_keeps_today_as_an_empty_focus_between_matchdays():
     target_season = season()
     game = placeholder_game(target_season)
     today = timezone.localdate()
@@ -270,14 +280,16 @@ def test_schedule_days_focuses_previous_matchday_when_today_is_empty():
 
     payload = Client().get("/api/v1/public/schedule-days").json()
 
-    assert payload["focus_date"] == (today - timedelta(days=2)).isoformat()
+    assert payload["focus_date"] == today.isoformat()
     assert [row["date"] for row in payload["days"]] == [
         (today - timedelta(days=2)).isoformat(),
+        today.isoformat(),
         (today + timedelta(days=2)).isoformat(),
     ]
+    assert payload["days"][1]["games"] == []
 
 
-def test_schedule_days_focuses_first_future_game_and_handles_empty_schedule():
+def test_schedule_days_keeps_today_before_future_games_and_handles_empty_schedule():
     target_season = season()
     game = placeholder_game(target_season)
     today = timezone.localdate()
@@ -289,7 +301,8 @@ def test_schedule_days_focuses_first_future_game_and_handles_empty_schedule():
     )
 
     payload = Client().get("/api/v1/public/schedule-days").json()
-    assert payload["focus_date"] == (today + timedelta(days=3)).isoformat()
+    assert payload["focus_date"] == today.isoformat()
+    assert payload["days"][0] == {"date": today.isoformat(), "games": []}
 
     Game.objects.all().update(status=Game.Status.VOID)
     empty = Client().get("/api/v1/public/schedule-days").json()

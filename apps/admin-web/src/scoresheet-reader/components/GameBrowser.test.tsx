@@ -52,6 +52,7 @@ describe('game browser', () => {
     );
 
     expect(await screen.findByText('数学 — 外院')).toBeVisible();
+    expect(screen.getByText('名单中的球衣号码仅用于初始预填，实际号码以本场记录表为准')).toBeVisible();
     expect(screen.getByRole('button', { name: /上传并识别/ })).toBeEnabled();
   });
 

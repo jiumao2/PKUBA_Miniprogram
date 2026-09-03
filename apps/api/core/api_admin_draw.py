@@ -75,6 +75,14 @@ class DrawValidationOut(Schema):
     status: str
 
 
+class DrawHistoricalSourceOptionOut(Schema):
+    source_game_id: UUID
+    source_game_code: str
+    source_game_version: int
+    winner_team_id: UUID
+    winner_team_name: str
+
+
 class DrawPhaseGameOut(Schema):
     id: UUID
     code: str
@@ -99,6 +107,7 @@ class DrawPhaseGameOut(Schema):
     status: str
     home_score: int | None = None
     away_score: int | None = None
+    historical_source_options: list[DrawHistoricalSourceOptionOut]
     version: int
 
 
@@ -195,11 +204,23 @@ class DrawGamePreviewIn(Schema):
     expected_game_version: int
     home_team_id: UUID
     away_team_id: UUID
+    home_source_game_id: UUID | None = None
+    away_source_game_id: UUID | None = None
 
 
 class DrawGameApplyIn(DrawGamePreviewIn):
     override_warnings: bool = False
+    confirm_historical_backfill: bool = False
     impact_hash: str
+
+
+class DrawHistoricalSourceOut(Schema):
+    side: str
+    team_id: UUID
+    team_name: str
+    source_game_id: UUID
+    source_game_code: str
+    source_game_version: int
 
 
 class DrawGamePreviewOut(Schema):
@@ -216,6 +237,12 @@ class DrawGamePreviewOut(Schema):
     away_team_name: str
     participant_changed: bool
     public_impact: bool
+    game_status: str
+    home_score: int | None
+    away_score: int | None
+    correction_mode: str
+    requires_historical_confirmation: bool
+    historical_sources: list[DrawHistoricalSourceOut]
     warnings: list[DrawWarningOut]
     blockers: list[DrawBlockerOut]
     requires_override: bool
@@ -233,6 +260,7 @@ def _error_response(error: DrawAssignmentError):
         "DRAW_CORRECTION_BLOCKED",
         "DRAW_INTEGRITY_CONFLICT",
         "OVERRIDE_CONFIRMATION_REQUIRED",
+        "HISTORICAL_BACKFILL_CONFIRMATION_REQUIRED",
     }:
         status_code = 409
     else:
@@ -352,6 +380,8 @@ def preview_game_draw_assignment_update(
             expected_game_version=payload.expected_game_version,
             home_team_id=payload.home_team_id,
             away_team_id=payload.away_team_id,
+            home_source_game_id=payload.home_source_game_id,
+            away_source_game_id=payload.away_source_game_id,
         )
     except DrawAssignmentError as error:
         return _error_response(error)
@@ -394,8 +424,13 @@ def update_game_draw_assignments(
                     expected_game_version=payload.expected_game_version,
                     home_team_id=payload.home_team_id,
                     away_team_id=payload.away_team_id,
+                    home_source_game_id=payload.home_source_game_id,
+                    away_source_game_id=payload.away_source_game_id,
                     override_warnings=payload.override_warnings,
                     impact_hash=payload.impact_hash,
+                    confirm_historical_backfill=(
+                        payload.confirm_historical_backfill
+                    ),
                 ),
             ),
         )

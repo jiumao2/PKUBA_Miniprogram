@@ -323,23 +323,19 @@ def serialize_game(game: Game) -> dict[str, object]:
 
 
 def _schedule_focus_date(match_dates: list[date], today: date) -> date | None:
-    if not match_dates:
-        return None
-    if today in match_dates:
-        return today
-    previous = [match_date for match_date in match_dates if match_date < today]
-    return previous[-1] if previous else match_dates[0]
+    return today if match_dates else None
 
 
 def _initial_schedule_dates(
-    match_dates: list[date], focus_date: date, day_count: int
+    match_dates: list[date], today: date, day_count: int
 ) -> list[date]:
-    focus_index = match_dates.index(focus_date)
-    before = min(2, focus_index)
-    start = focus_index - before
-    end = min(len(match_dates), start + day_count)
-    start = max(0, end - day_count)
-    return match_dates[start:end]
+    before = [value for value in match_dates if value < today][-2:]
+    after = [value for value in match_dates if value > today][:2]
+    neighbours = sorted(
+        [*before, *after],
+        key=lambda value: (abs((value - today).days), value < today, value),
+    )[: max(day_count - 1, 0)]
+    return sorted([today, *neighbours])
 
 
 def _serialize_public_group_photo(asset: GameMediaAsset) -> dict[str, object]:
@@ -657,7 +653,7 @@ def schedule_days(
 
     if direction == "initial":
         selected_dates = (
-            _initial_schedule_dates(match_dates, focus_date, day_count)
+            _initial_schedule_dates(match_dates, today, day_count)
             if focus_date is not None
             else []
         )
@@ -677,6 +673,9 @@ def schedule_days(
         selected_dates = [
             value for value in match_dates if date_from <= value <= date_to
         ]
+        if match_dates and date_from <= today <= date_to and today not in selected_dates:
+            selected_dates.append(today)
+            selected_dates.sort()
     else:
         return Status(
             400,
@@ -690,8 +689,10 @@ def schedule_days(
     games_by_date: dict[date, list[Game]] = {value: [] for value in selected_dates}
     for game in selected_games:
         games_by_date[game.date].append(game)
-    first_date = selected_dates[0] if selected_dates else None
-    last_date = selected_dates[-1] if selected_dates else None
+    match_date_set = set(match_dates)
+    selected_match_dates = [value for value in selected_dates if value in match_date_set]
+    first_date = selected_match_dates[0] if selected_match_dates else None
+    last_date = selected_match_dates[-1] if selected_match_dates else None
     return {
         "today": today,
         "focus_date": focus_date,
