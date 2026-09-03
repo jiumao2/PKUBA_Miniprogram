@@ -23,6 +23,7 @@ from core.models import (
     Team,
     Venue,
 )
+from core.services.game_results import append_game_result_revision
 from core.services.rescheduling import (
     RescheduleError,
     _lock_schedule_slot,
@@ -553,8 +554,13 @@ def update_admin_game(
                 return _error("SCORE_PAIR_REQUIRED", "主客队比分必须同时填写或同时留空。")
             if payload.home_score is not None and payload.home_score == payload.away_score:
                 return _error("TIED_SCORE_INVALID", "正式比分不允许平局。")
-            if payload.status == Game.Status.SCHEDULED and payload.home_score is not None:
-                return _error("SCHEDULED_SCORE_INVALID", "未赛比赛不能保存正式比分。")
+            if payload.status in {Game.Status.SCHEDULED, Game.Status.VOID} and (
+                payload.home_score is not None
+            ):
+                return _error(
+                    "RESULT_MUST_BE_CLEARED",
+                    "未赛或作废比赛必须清空比分。",
+                )
             if payload.status in {Game.Status.COMPLETED, Game.Status.FORFEIT} and (
                 payload.home_score is None or payload.away_score is None
             ):
@@ -594,6 +600,21 @@ def update_admin_game(
             game.version += 1
             game.full_clean()
             game.save()
+            if any(
+                before[key] != _snapshot(game)[key]
+                for key in (
+                    "home_team_id",
+                    "away_team_id",
+                    "home_score",
+                    "away_score",
+                    "status",
+                )
+            ):
+                append_game_result_revision(
+                    game=game,
+                    actor=request.auth,
+                    reason="MANUAL_CORRECTION",
+                )
             allocations = list(
                 SlotReservation.objects.select_for_update().filter(
                     converted_game=game,

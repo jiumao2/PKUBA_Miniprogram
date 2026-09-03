@@ -3,7 +3,6 @@ import type {
   AdminSeason,
   MobileAdminGame,
   MobileScheduleOptions,
-  UpdateMobileAdminGame,
 } from "@pkuba/api-client";
 
 import { confirmAdminNavigation, useAdminDirtySource } from "./dirtyGuard";
@@ -25,14 +24,15 @@ export function ScheduleEditorPage({
   seasons,
   season,
   onSeasonChange,
-  onUpdated,
+  onOpenCorrection = () => undefined,
 }: {
   client: AdminClient;
   games: MobileAdminGame[];
   seasons: AdminSeason[];
   season: AdminSeason;
   onSeasonChange: (seasonId: string) => void;
-  onUpdated: () => Promise<void>;
+  onUpdated?: () => Promise<void>;
+  onOpenCorrection?: (game: MobileAdminGame) => void;
 }) {
   const [options, setOptions] = useState<MobileScheduleOptions | null>(null);
   const [selected, setSelected] = useState<MobileAdminGame | null>(null);
@@ -40,14 +40,10 @@ export function ScheduleEditorPage({
   const [divisionId, setDivisionId] = useState("all");
   const [adjustability, setAdjustability] = useState("all");
   const [query, setQuery] = useState("");
-  const [cancelRequest, setCancelRequest] = useState(false);
-  const [overrideRules, setOverrideRules] = useState(false);
-  const [acknowledged, setAcknowledged] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const optionsGeneration = useRef(0);
   const gameGeneration = useRef(0);
-  const readOnly = season.status === "ARCHIVED";
+  const archived = season.status === "ARCHIVED";
 
   const selectedDirty = Boolean(
     selected
@@ -56,7 +52,7 @@ export function ScheduleEditorPage({
   );
   useAdminDirtySource(
     "schedule-editor-game",
-    selectedDirty || cancelRequest || overrideRules,
+    selectedDirty,
   );
 
   useEffect(() => {
@@ -103,9 +99,6 @@ export function ScheduleEditorPage({
       if (generation !== gameGeneration.current) return;
       setSelected(next);
       setSelectedBaseline(next);
-      setCancelRequest(false);
-      setOverrideRules(false);
-      setAcknowledged(false);
     } catch (reason: unknown) {
       if (generation !== gameGeneration.current) return;
       setMessage(reason instanceof Error ? reason.message : "无法读取比赛");
@@ -114,41 +107,8 @@ export function ScheduleEditorPage({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (readOnly || !selected || !acknowledged) return;
-    if (!window.confirm("确认直接修改这场比赛？保存后会立即影响公开赛程并写入审计日志。")) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const payload: UpdateMobileAdminGame = {
-        expected_version: selected.version,
-        date: selected.date,
-        period_id: selected.period_id,
-        start_time: selected.start_time,
-        standard_venue_id: selected.standard_venue_id,
-        venue_name: selected.venue_name,
-        home_team_id: selected.home_team_id ?? null,
-        away_team_id: selected.away_team_id ?? null,
-        home_score: selected.home_score,
-        away_score: selected.away_score,
-        status: selected.status,
-        leader_adjustable: selected.leader_adjustable,
-        cancel_active_request: cancelRequest,
-        override_rules: overrideRules,
-        confirmed: true,
-      };
-      const updated = await client.updateAdminScheduleGame(selected.id, payload);
-      setSelected(updated);
-      setSelectedBaseline(updated);
-      setCancelRequest(false);
-      setOverrideRules(false);
-      setAcknowledged(false);
-      setMessage("比赛已更新，公开赛程已刷新。");
-      await onUpdated();
-    } catch (reason: unknown) {
-      setMessage(reason instanceof Error ? reason.message : "比赛修改失败");
-    } finally {
-      setBusy(false);
-    }
+    if (!selected || !selectedDirty) return;
+    onOpenCorrection(selected);
   };
 
   const teams = options?.teams.filter((team) => team.division_id === selected?.division_id) ?? [];
@@ -213,8 +173,8 @@ export function ScheduleEditorPage({
             <div className="operation-heading">
               <div><p>{selected.division_name}</p><h2>{selected.home_name}　—　{selected.away_name}</h2></div>
             </div>
-            {readOnly && <div className="operation-warning">归档赛季只读；可以查看比赛，但不能修改正式赛程。</div>}
-            <fieldset className="schedule-editor-readonly-fields" disabled={readOnly}>
+            {archived && <div className="operation-warning">归档赛季保持归档；本页可准备逐场修改，最终只能通过“纠错中心”的版本化流程应用。</div>}
+            <fieldset className="schedule-editor-readonly-fields">
             {selected.active_reschedule_request_id && (
               <div className="operation-warning">本场存在活动调赛申请。修改前必须明确取消，并释放其预留。</div>
             )}
@@ -246,11 +206,8 @@ export function ScheduleEditorPage({
             </div>
             <div className="schedule-checks">
               <label><input type="checkbox" checked={selected.leader_adjustable} onChange={(event) => setSelected({ ...selected, leader_adjustable: event.target.checked })} />允许领队申请调赛（关闭后显示为“领队不可调”）</label>
-              {selected.active_reschedule_request_id && <label><input type="checkbox" checked={cancelRequest} onChange={(event) => setCancelRequest(event.target.checked)} />取消活动申请并释放预留</label>}
-              <label><input type="checkbox" checked={overrideRules} onChange={(event) => setOverrideRules(event.target.checked)} />使用超级管理员例外（日期、容量或明确保留场地冲突）</label>
-              <label className="critical-check"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />我已核对日期、时段、场地、双方、比分及关联申请</label>
             </div>
-            <button className="primary-action" disabled={!acknowledged || busy} type="submit">{busy ? "正在保存…" : "二次确认并保存"}</button>
+            <button className="primary-action" disabled={!selectedDirty} type="submit">在纠错中心预览影响</button>
             </fieldset>
           </form>
         )}

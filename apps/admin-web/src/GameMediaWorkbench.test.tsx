@@ -194,7 +194,7 @@ describe("GameMediaWorkbench", () => {
     expect(screen.queryByRole("button", { name: "删除照片" })).not.toBeInTheDocument();
   });
 
-  it("keeps archived media readable while hiding every mutation control", async () => {
+  it("offers versioned archived media controls to a superadmin", async () => {
     const archivedSeasons = [{ ...seasons[0], status: "ARCHIVED" }] as unknown as AdminSeason[];
     const archivedGame = [{ ...games[0], status: "PUBLISHED", publication_number: 3 }];
     const archivedPhoto = { ...photo, storage_status: "PURGED", content_url: "" } as GameMediaAsset;
@@ -222,7 +222,7 @@ describe("GameMediaWorkbench", () => {
     expect(await screen.findByText("原图已离线归档")).toBeVisible();
     expect(screen.getByRole("button", { name: /查看记录表/ })).toBeVisible();
     expect(screen.getByRole("button", { name: /受控纠错/ })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "删除照片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除照片" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "上传替换" })).not.toBeInTheDocument();
   });
 

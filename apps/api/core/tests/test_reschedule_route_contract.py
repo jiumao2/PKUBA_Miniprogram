@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from django.db import IntegrityError, connections, transaction
 from django.test import Client
+from django.utils import timezone
 
 from core.models import (
     Account,
@@ -457,7 +458,11 @@ def test_superadmin_demotion_vs_vote_with_missing_leaders_is_linearized():
     SeasonLeaderBinding.objects.filter(
         season=setup["season"],
         team__in=[setup["teams"][2], setup["teams"][3]],
-    ).update(active=False)
+    ).update(
+        active=False,
+        released_at=timezone.now(),
+        release_reason="并发测试准备",
+    )
     barrier = Barrier(2)
     before = _state_snapshot(request)
 

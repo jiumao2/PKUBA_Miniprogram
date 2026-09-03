@@ -6,7 +6,10 @@ from django.db.migrations.executor import MigrationExecutor
 
 from core.models import Account, AdminRegistrationPolicy
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.usefixtures("restore_migration_leaf_nodes"),
+]
 
 MIGRATE_FROM = ("core", "0042_normalize_draw_assignment_validation")
 MIGRATE_TO = ("core", "0043_admin_registration_policy")

@@ -17,7 +17,9 @@ from ninja import NinjaAPI, Router, Schema, Status
 from .api_admin import router as admin_router
 from .api_admin_advanced_data import router as admin_advanced_data_router
 from .api_admin_archives import router as admin_archives_router
+from .api_admin_corrections import router as admin_corrections_router
 from .api_admin_draw import router as admin_draw_router
+from .api_admin_leaders import router as admin_leaders_router
 from .api_admin_lifecycle import router as admin_lifecycle_router
 from .api_admin_reschedule import router as admin_reschedule_router
 from .api_admin_roster import router as admin_roster_router
@@ -794,8 +796,10 @@ api.add_router("/public", public_stats_router)
 api.add_router("/auth", auth_router)
 api.add_router("/admin", admin_router)
 api.add_router("/admin", admin_archives_router)
+api.add_router("/admin", admin_corrections_router)
 api.add_router("/admin", admin_draw_router)
 api.add_router("/admin", admin_lifecycle_router)
+api.add_router("/admin", admin_leaders_router)
 api.add_router("/admin", admin_advanced_data_router)
 api.add_router("/admin", admin_reschedule_router)
 api.add_router("/admin/schedule", admin_schedule_router)

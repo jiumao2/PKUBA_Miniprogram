@@ -23,6 +23,8 @@ from core.services.admin_accounts import (
     AdminAccountError,
     demote_superadmin,
     promote_admin,
+    rename_account,
+    reset_admin_password,
     set_admin_active,
 )
 from core.services.idempotency import IdempotencyError, execute_idempotent
@@ -532,6 +534,14 @@ class SetAdminActiveIn(ExpectedVersionIn):
     active: bool
 
 
+class RenameAccountIn(ExpectedVersionIn):
+    username: str
+
+
+class ResetAdminPasswordIn(ExpectedVersionIn):
+    new_password: str
+
+
 class AdminRegistrationPolicyOut(Schema):
     configured: bool
     initialized_at: datetime | None
@@ -614,6 +624,7 @@ def _admin_account_error(error: AdminAccountError):
         "VERSION_CONFLICT",
         "LAST_SUPERADMIN_PROTECTED",
         "ACTOR_STATE_CHANGED",
+        "USERNAME_TAKEN",
     }:
         status = 409
     else:
@@ -663,9 +674,7 @@ def admin_health(request: HttpRequest):
 )
 def list_admin_accounts(request: HttpRequest):
     del request
-    accounts = Account.objects.filter(
-        role__in=[Account.Role.ADMIN, Account.Role.SUPERADMIN]
-    ).order_by("-is_active", "role", "username")
+    accounts = Account.objects.order_by("-is_active", "role", "username")
     return [_serialize_admin_account(account) for account in accounts]
 
 
@@ -724,19 +733,121 @@ def change_admin_active(
     request: HttpRequest,
     account_id: UUID,
     payload: SetAdminActiveIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
+    del idempotency_key
     try:
-        account = set_admin_active(
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            target_id=account_id,
-            expected_version=payload.expected_version,
-            active=payload.active,
+            operation="account.active",
+            fingerprint={
+                "account_id": account_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=lambda: (
+                200,
+                _serialize_admin_account(
+                    set_admin_active(
+                        actor=request.auth,
+                        target_id=account_id,
+                        expected_version=payload.expected_version,
+                        active=payload.active,
+                    )
+                ),
+            ),
         )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except Account.DoesNotExist:
         return Status(400, {"code": "ACCOUNT_NOT_FOUND", "message": "管理员账号不存在。"})
     except AdminAccountError as error:
         return _admin_account_error(error)
-    return _serialize_admin_account(account)
+    return Status(status, body)
+
+
+@router.post(
+    "/accounts/{account_id}/rename",
+    auth=superadmin_session_auth,
+    response={200: AdminAccountOut, 400: AdminErrorOut, 409: AdminErrorOut},
+)
+def rename_managed_account(
+    request: HttpRequest,
+    account_id: UUID,
+    payload: RenameAccountIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
+    try:
+        status, body, _ = execute_idempotent(
+            request=request,
+            actor=request.auth,
+            operation="account.rename",
+            fingerprint={
+                "account_id": account_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=lambda: (
+                200,
+                _serialize_admin_account(
+                    rename_account(
+                        actor=request.auth,
+                        target_id=account_id,
+                        expected_version=payload.expected_version,
+                        username=payload.username,
+                    )
+                ),
+            ),
+        )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
+    except Account.DoesNotExist:
+        return Status(400, {"code": "ACCOUNT_NOT_FOUND", "message": "账号不存在。"})
+    except AdminAccountError as error:
+        return _admin_account_error(error)
+    return Status(status, body)
+
+
+@router.post(
+    "/accounts/{account_id}/reset-password",
+    auth=superadmin_session_auth,
+    response={200: AdminAccountOut, 400: AdminErrorOut, 409: AdminErrorOut},
+)
+def reset_managed_admin_password(
+    request: HttpRequest,
+    account_id: UUID,
+    payload: ResetAdminPasswordIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
+    try:
+        status, body, _ = execute_idempotent(
+            request=request,
+            actor=request.auth,
+            operation="account.reset-password",
+            fingerprint={
+                "account_id": account_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=lambda: (
+                200,
+                _serialize_admin_account(
+                    reset_admin_password(
+                        actor=request.auth,
+                        target_id=account_id,
+                        expected_version=payload.expected_version,
+                        new_password=payload.new_password,
+                    )
+                ),
+            ),
+        )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
+    except Account.DoesNotExist:
+        return Status(400, {"code": "ACCOUNT_NOT_FOUND", "message": "账号不存在。"})
+    except AdminAccountError as error:
+        return _admin_account_error(error)
+    return Status(status, body)
 
 
 @router.get(

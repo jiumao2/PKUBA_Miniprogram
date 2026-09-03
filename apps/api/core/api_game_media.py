@@ -17,11 +17,13 @@ from core.models import Game, GameMediaAsset, GameScoresheet, Season
 from core.services.game_media import (
     GameMediaError,
     asset_from_ticket,
+    can_restore_game_media,
     delete_game_media,
     issue_media_ticket,
     media_asset_permissions,
     media_permissions,
     replace_game_media,
+    restore_archived_game_media,
     upload_game_media,
 )
 from core.services.idempotency import (
@@ -59,6 +61,7 @@ class GameMediaAssetOut(Schema):
     version: int
     can_replace: bool
     can_delete: bool
+    can_restore: bool
 
 
 class GameMediaCollectionOut(Schema):
@@ -130,6 +133,7 @@ def _serialize_asset(
     *,
     actor=None,
     has_scoresheet_publication: bool | None = None,
+    allow_archived_correction: bool = False,
 ) -> dict[str, object]:
     content_url = ""
     if asset.storage_status == GameMediaAsset.StorageStatus.ONLINE:
@@ -140,6 +144,7 @@ def _serialize_asset(
             actor,
             asset,
             has_scoresheet_publication=has_scoresheet_publication,
+            allow_archived_correction=allow_archived_correction,
         )
         if actor is not None
         else (False, False)
@@ -166,10 +171,16 @@ def _serialize_asset(
         "version": asset.version,
         "can_replace": can_replace,
         "can_delete": can_delete,
+        "can_restore": can_restore_game_media(actor, asset) if actor is not None else False,
     }
 
 
-def _serialize_assets(assets, *, actor) -> list[dict[str, object]]:
+def _serialize_assets(
+    assets,
+    *,
+    actor,
+    allow_archived_correction: bool = False,
+) -> list[dict[str, object]]:
     rows = list(assets)
     published_game_ids = set(
         GameScoresheet.objects.filter(game_id__in=[asset.game_id for asset in rows])
@@ -181,6 +192,7 @@ def _serialize_assets(assets, *, actor) -> list[dict[str, object]]:
             asset,
             actor=actor,
             has_scoresheet_publication=asset.game_id in published_game_ids,
+            allow_archived_correction=allow_archived_correction,
         )
         for asset in rows
     ]
@@ -475,16 +487,17 @@ def create_admin_game_media(
                 kind=kind,
                 scoresheet_complete_confirmed=scoresheet_complete_confirmed,
                 uploaded_file=image,
-                idempotency_operation="game-media.upload",
+                idempotency_operation="admin-game-media.upload",
                 idempotency_key_digest=identity.key_digest or "",
                 request_digest=identity.request_digest,
+                allow_archived_correction=True,
             )
             return 201, {"asset_id": asset.id}
 
         status, body, _ = execute_idempotent(
             request=request,
             actor=request.auth,
-            operation="game-media.upload",
+            operation="admin-game-media.upload",
             fingerprint=fingerprint,
             command=command,
             transactional_command=False,
@@ -494,7 +507,10 @@ def create_admin_game_media(
     except GameMediaError as error:
         return _error_response(error)
     asset = _asset_queryset().get(id=UUID(str(body["asset_id"])))
-    return Status(status, _serialize_asset(asset, actor=request.auth))
+    return Status(
+        status,
+        _serialize_asset(asset, actor=request.auth, allow_archived_correction=True),
+    )
 
 
 @admin_router.get("/", response=GameMediaPageOut)
@@ -524,6 +540,7 @@ def list_admin_game_media(
         "items": _serialize_assets(
             assets[start : start + page_size],
             actor=request.auth,
+            allow_archived_correction=True,
         ),
         "total": total,
         "page": page,
@@ -567,16 +584,17 @@ def replace_admin_game_media(
                 expected_version=expected_version,
                 scoresheet_complete_confirmed=scoresheet_complete_confirmed,
                 uploaded_file=image,
-                idempotency_operation="game-media.replace",
+                idempotency_operation="admin-game-media.replace",
                 idempotency_key_digest=identity.key_digest or "",
                 request_digest=identity.request_digest,
+                allow_archived_correction=True,
             )
             return 201, {"asset_id": asset.id}
 
         status, body, _ = execute_idempotent(
             request=request,
             actor=request.auth,
-            operation="game-media.replace",
+            operation="admin-game-media.replace",
             fingerprint=fingerprint,
             command=command,
             transactional_command=False,
@@ -591,7 +609,62 @@ def replace_admin_game_media(
         _serialize_asset(
             asset,
             actor=request.auth,
+            allow_archived_correction=True,
         ),
+    )
+
+
+@admin_router.post(
+    "/{asset_id}/restore",
+    response={
+        200: GameMediaAssetOut,
+        400: GameMediaErrorOut,
+        403: GameMediaErrorOut,
+        404: GameMediaErrorOut,
+        409: GameMediaErrorOut,
+        413: GameMediaErrorOut,
+    },
+)
+def restore_admin_game_media(
+    request: HttpRequest,
+    asset_id: UUID,
+    expected_version: Form[int],
+    image: File[UploadedFile],
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
+    try:
+        fingerprint = {
+            "asset_id": asset_id,
+            "expected_version": expected_version,
+            "image": _upload_fingerprint(image),
+        }
+
+        def command():
+            asset = restore_archived_game_media(
+                actor=request.auth,
+                asset_id=asset_id,
+                expected_version=expected_version,
+                uploaded_file=image,
+            )
+            return 200, {"asset_id": asset.id}
+
+        status, body, _ = execute_idempotent(
+            request=request,
+            actor=request.auth,
+            operation="game-media.restore",
+            fingerprint=fingerprint,
+            command=command,
+            transactional_command=False,
+        )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
+    except GameMediaError as error:
+        return _error_response(error)
+    asset = _asset_queryset().get(id=UUID(str(body["asset_id"])))
+    return Status(
+        status,
+        _serialize_asset(asset, actor=request.auth, allow_archived_correction=True),
     )
 
 
@@ -611,6 +684,7 @@ def delete_admin_game_media(request: HttpRequest, asset_id: UUID, payload: Delet
             actor=request.auth,
             asset_id=asset_id,
             expected_version=payload.expected_version,
+            allow_archived_correction=True,
         )
     except GameMediaError as error:
         return _error_response(error)

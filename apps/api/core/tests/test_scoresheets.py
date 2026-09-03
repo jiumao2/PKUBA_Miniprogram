@@ -21,6 +21,7 @@ from core.models import (
     Account,
     AdminAuditLog,
     ApiIdempotencyRecord,
+    ArchiveJob,
     Game,
     GameMediaAsset,
     GamePlayerStat,
@@ -43,7 +44,7 @@ from core.scoresheet_v2.recognition import (
 from core.scoresheet_v2.renderer import build_scene
 from core.scoresheet_v2.scoring import derive_score_events
 from core.scoresheet_v2.validation import validate_document as validate_v2_document
-from core.services.game_media import replace_game_media, upload_game_media
+from core.services.game_media import GameMediaError, replace_game_media, upload_game_media
 from core.services.scoresheet_recognition import (
     RecognitionAttemptError,
     _renew_worker_lease,
@@ -70,7 +71,7 @@ from core.services.scoresheets import (
 from core.services.wechat import issue_session
 from core.tests.factories import reschedule_setup
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture(autouse=True)
@@ -1479,33 +1480,25 @@ def test_apply_recognition_accepts_only_current_successful_provider_result(tmp_p
     assert saved.change_logs.count() == event_count
 
 
-def test_reupload_supersedes_old_claim_and_resets_attempt_budget(tmp_path, monkeypatch):
-    from core.services import scoresheet_recognition as recognition
-
+def test_reupload_is_blocked_while_recognition_claim_is_active(tmp_path):
     with override_settings(MEDIA_ROOT=tmp_path, QWEN_API_KEY="test-key"):
         setup, _, _, old_asset, scoresheet = create_scoresheet()
         old_claim = claim_next_run("old-worker")
         assert old_claim is not None
-        replacement = replace_game_media(
-            actor=setup["admin"],
-            asset_id=old_asset.id,
-            expected_version=old_asset.version,
-            scoresheet_complete_confirmed=True,
-            uploaded_file=image_file("replacement.jpg"),
-        )
-        monkeypatch.setattr(
-            recognition,
-            "call_qwen",
-            lambda _run: ({"game": {"venue": "迟到结果"}}, {}),
-        )
-        assert execute_claim(old_claim) == "superseded"
+        with pytest.raises(GameMediaError) as blocked:
+            replace_game_media(
+                actor=setup["admin"],
+                asset_id=old_asset.id,
+                expected_version=old_asset.version,
+                scoresheet_complete_confirmed=True,
+                uploaded_file=image_file("replacement.jpg"),
+            )
+        assert blocked.value.code == "RECOGNITION_ACTIVE"
     scoresheet.refresh_from_db()
-    runs = list(scoresheet.recognition_runs.order_by("source_version"))
-    assert replacement.id == scoresheet.source_asset_id
-    assert runs[0].status == ScoresheetRecognitionRun.Status.SUPERSEDED
-    assert runs[1].status == ScoresheetRecognitionRun.Status.QUEUED
-    assert runs[1].attempt_count == 0
-    assert scoresheet.draft["header"]["venue"] != "迟到结果"
+    run = scoresheet.recognition_runs.get()
+    assert scoresheet.source_asset_id == old_asset.id
+    assert run.status == ScoresheetRecognitionRun.Status.RUNNING
+    assert run.worker_lease_token == old_claim.worker_token
 
 
 def test_publish_is_atomic_generates_stats_and_limits_leader_view(tmp_path, monkeypatch):
@@ -1727,6 +1720,18 @@ def test_archived_published_scoresheet_requires_explicit_web_correction_and_repu
         prearchive_token = obtain_lease(scoresheet, setup["admin"], "archive-correction")
         game.season.status = game.season.Status.ARCHIVED
         game.season.save(update_fields=["status", "updated_at"])
+        archived_version = game.season.version
+        stale_archives = [
+            ArchiveJob.objects.create(
+                kind=kind,
+                season=game.season,
+                season_version=archived_version,
+                status=ArchiveJob.Status.READY,
+                requested_by=setup["admin"],
+                artifact_key=f"stale-{kind.lower()}.zip",
+            )
+            for kind in (ArchiveJob.Kind.SEASON_DATA, ArchiveJob.Kind.SEASON_PHOTOS)
+        ]
 
         with pytest.raises(ScoresheetError) as stale_lease:
             save_draft_changes(
@@ -1839,6 +1844,15 @@ def test_archived_published_scoresheet_requires_explicit_web_correction_and_repu
         assert ScoresheetPublication.objects.filter(scoresheet=scoresheet).count() == 2
         game.season.refresh_from_db()
         assert game.season.status == game.season.Status.ARCHIVED
+        assert game.season.version == archived_version + 1
+        for archive in stale_archives:
+            archive.refresh_from_db()
+            assert archive.status == ArchiveJob.Status.EXPIRED
+            assert archive.error_code == "ARCHIVED_SEASON_CORRECTED"
+        assert AdminAuditLog.objects.filter(
+            action="SEASON_ARCHIVES_INVALIDATED_BY_CORRECTION",
+            object_id=game.season_id,
+        ).count() == 1
 
 
 def test_publish_rejects_tampered_validation_and_stale_game_prior(tmp_path):

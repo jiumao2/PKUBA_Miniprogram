@@ -92,6 +92,12 @@ type RawDetail = {
   recognition: RawRecognition | null;
   lease: RawLease['holder'];
   publication?: { draft_version: number; source_asset_id: string } | null;
+  pending_correction?: null | {
+    id: string;
+    status: string;
+    reason: string;
+    impact_hash: string;
+  };
 };
 
 type RawIssue = {
@@ -390,6 +396,9 @@ async function loadGameSummary(gameId: string): Promise<GameSummary> {
 }
 
 export const api = {
+  pendingCorrection(documentId: string) {
+    return detailCache.get(documentId)?.pending_correction ?? null;
+  },
   sourceUploadAllowed(documentId: string): boolean {
     return detailCache.get(documentId)?.can_upload_source === true;
   },

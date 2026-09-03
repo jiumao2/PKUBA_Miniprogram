@@ -98,6 +98,7 @@ function syncPayload(): ScoresheetSync {
     lease: clone(fixture.holder) as ScoresheetSync["lease"], can_upload_source: fixture.server!.can_upload_source,
     reviewed_regions: clone(fixture.server!.reviewed_regions), validation_report: clone(fixture.server!.validation_report),
     status: fixture.server!.status, recognition: clone(fixture.server!.recognition), publication: clone(fixture.server!.publication),
+    pending_correction: null,
   };
 }
 function expectReadOnlyRefresh(before: ScoresheetDetail) {
@@ -134,7 +135,7 @@ beforeEach(() => {
       next_attempt_at: null, model: "fixture", prompt_version: "fixture", image_sha256: "fixture",
       auto_apply_allowed: false, last_error_code: "FIXTURE_FAILED", last_error: "模拟失败",
     },
-    lease: null, publication: null, can_upload_source: true,
+    lease: null, publication: null, pending_correction: null, can_upload_source: true,
   };
   fixture.api.getScoresheet.mockImplementation(async () => clone(fixture.server));
   fixture.api.acquireScoresheetLease.mockImplementation(async () => {

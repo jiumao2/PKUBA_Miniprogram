@@ -136,6 +136,8 @@ export function TeamRosterPage({
   const [resolutionDrafts, setResolutionDrafts] = useState<Record<string, string>>({});
   const [maintenancePreview, setMaintenancePreview] =
     useState<TeamMaintenancePreview | null>(null);
+  const [archivedConfirmed, setArchivedConfirmed] = useState(false);
+  const [archivedReason, setArchivedReason] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
   const loadGeneration = useRef(0);
 
@@ -165,6 +167,8 @@ export function TeamRosterPage({
     setBatch(null);
     setAuditVisible(false);
     setMaintenancePreview(null);
+    setArchivedConfirmed(false);
+    setArchivedReason("");
     void loadDataset();
     return () => {
       loadGeneration.current += 1;
@@ -178,6 +182,8 @@ export function TeamRosterPage({
       setDraft(teamDraft(team));
       setDirty(false);
       setMaintenancePreview(null);
+      setArchivedConfirmed(false);
+      setArchivedReason("");
     }
   }, [dataset, selectedTeamId]);
 
@@ -336,7 +342,9 @@ export function TeamRosterPage({
       active: draft.active,
       players: cleanPlayers(draft.players),
       maintenance_token: token,
-    };
+      archived_correction_confirmed: archivedConfirmed,
+      reason: archivedReason,
+    } as SaveTeamRoster;
   };
 
   const saveExisting = async (token = "") => {
@@ -394,6 +402,11 @@ export function TeamRosterPage({
   if (!dataset) {
     return <section className="roster-state roster-state-error">{error ?? "暂无数据"}</section>;
   }
+
+  const archivedCorrection = Boolean(
+    dataset.read_only && dataset.archived_correction_allowed && draft?.id,
+  );
+  const editorReadOnly = Boolean(dataset.read_only && !archivedCorrection);
 
   if (auditVisible && batch && summary) {
     return (
@@ -593,25 +606,25 @@ export function TeamRosterPage({
             <>
               <div className="roster-editor-heading">
                 <div><p className="roster-kicker">{draft.id ? "稳定球队 ID" : "新增球队"}</p><h2>{draft.id ? draft.id.slice(0, 8) : "尚未保存"}</h2></div>
-                <label className="roster-active-toggle"><input type="checkbox" checked={draft.active} disabled={dataset.read_only} onChange={(event) => markDraft({ ...draft, active: event.target.checked })} /><span>球队启用</span></label>
+                <label className="roster-active-toggle"><input type="checkbox" checked={draft.active} disabled={editorReadOnly} onChange={(event) => markDraft({ ...draft, active: event.target.checked })} /><span>球队启用</span></label>
               </div>
               <div className="roster-team-fields">
-                <label><span>标准球队名称 *</span><input value={draft.name} maxLength={120} disabled={dataset.read_only} onChange={(event) => markDraft({ ...draft, name: event.target.value })} /></label>
-                <label><span>组别 *</span><select value={draft.divisionId} disabled={Boolean(draft.id) || dataset.read_only} onChange={(event) => markDraft({ ...draft, divisionId: event.target.value })}>{dataset.divisions.map((division) => <option key={division.id} value={division.id}>{division.name}</option>)}</select></label>
+                <label><span>标准球队名称 *</span><input value={draft.name} maxLength={120} disabled={editorReadOnly} onChange={(event) => markDraft({ ...draft, name: event.target.value })} /></label>
+                <label><span>组别 *</span><select value={draft.divisionId} disabled={Boolean(draft.id) || editorReadOnly} onChange={(event) => markDraft({ ...draft, divisionId: event.target.value })}>{dataset.divisions.map((division) => <option key={division.id} value={division.id}>{division.name}</option>)}</select></label>
               </div>
               <div className="roster-table-heading">
                 <div><h3>球员名单</h3><p>姓名必填；号码可留空。同队启用球员的号码不能重复。</p></div>
-                <button type="button" disabled={dataset.read_only} onClick={() => markDraft({ ...draft, players: [...draft.players, playerDraft()] })}>＋ 增加球员</button>
+                <button type="button" disabled={editorReadOnly} onClick={() => markDraft({ ...draft, players: [...draft.players, playerDraft()] })}>＋ 增加球员</button>
               </div>
               <div className="roster-player-table" role="table" aria-label="球员在线编辑表">
                 <div className="roster-player-row header" role="row"><span>#</span><span>球员姓名 *</span><span>球衣号码</span><span>状态</span><span></span></div>
                 {draft.players.map((player, index) => (
                   <div className={`roster-player-row ${!player.active ? "inactive" : ""}`} role="row" key={player.localKey}>
                     <span>{String(index + 1).padStart(2, "0")}</span>
-                    <input aria-label={`第 ${index + 1} 名球员姓名`} value={player.name} maxLength={80} disabled={dataset.read_only} onChange={(event) => markDraft({ ...draft, players: draft.players.map((item) => item.localKey === player.localKey ? { ...item, name: event.target.value } : item) })} />
-                    <label className={duplicateJerseys.has(player.jersey_number ?? "") ? "jersey-warning" : ""}><input aria-label={`第 ${index + 1} 名球员号码`} value={player.jersey_number ?? ""} inputMode="numeric" maxLength={2} disabled={dataset.read_only} onChange={(event) => markDraft({ ...draft, players: draft.players.map((item) => item.localKey === player.localKey ? { ...item, jersey_number: event.target.value } : item) })} />{duplicateJerseys.has(player.jersey_number ?? "") && <small>同队重号</small>}</label>
-                    <label className="roster-player-status"><input type="checkbox" checked={player.active} disabled={dataset.read_only} onChange={(event) => markDraft({ ...draft, players: draft.players.map((item) => item.localKey === player.localKey ? { ...item, active: event.target.checked } : item) })} /><span>{player.active ? "启用" : "停用"}</span></label>
-                    <button type="button" disabled={dataset.read_only} onClick={() => markDraft({ ...draft, players: draft.players.filter((item) => item.localKey !== player.localKey) })}>{player.id ? "停用" : "移除"}</button>
+                    <input aria-label={`第 ${index + 1} 名球员姓名`} value={player.name} maxLength={80} disabled={editorReadOnly} onChange={(event) => markDraft({ ...draft, players: draft.players.map((item) => item.localKey === player.localKey ? { ...item, name: event.target.value } : item) })} />
+                    <label className={duplicateJerseys.has(player.jersey_number ?? "") ? "jersey-warning" : ""}><input aria-label={`第 ${index + 1} 名球员号码`} value={player.jersey_number ?? ""} inputMode="numeric" maxLength={2} disabled={editorReadOnly} onChange={(event) => markDraft({ ...draft, players: draft.players.map((item) => item.localKey === player.localKey ? { ...item, jersey_number: event.target.value } : item) })} />{duplicateJerseys.has(player.jersey_number ?? "") && <small>同队重号</small>}</label>
+                    <label className="roster-player-status"><input type="checkbox" checked={player.active} disabled={editorReadOnly} onChange={(event) => markDraft({ ...draft, players: draft.players.map((item) => item.localKey === player.localKey ? { ...item, active: event.target.checked } : item) })} /><span>{player.active ? "启用" : "停用"}</span></label>
+                    <button type="button" disabled={editorReadOnly} onClick={() => markDraft({ ...draft, players: draft.players.filter((item) => item.localKey !== player.localKey) })}>{player.id ? "停用" : "移除"}</button>
                   </div>
                 ))}
                 {!draft.players.length && <p className="roster-empty">尚未添加球员，可以先创建球队后再补录。</p>}
@@ -623,9 +636,17 @@ export function TeamRosterPage({
                   <div><button className="secondary-action" type="button" onClick={() => setMaintenancePreview(null)}>取消</button><button className="danger-action" type="button" disabled={busy} onClick={() => void saveExisting(maintenancePreview.maintenance_token)}>确认维护修改</button></div>
                 </div>
               )}
+              {archivedCorrection && (
+                <div className="roster-archived-correction">
+                  <strong>归档赛季逐队纠错</strong>
+                  <p>赛季状态不会重新开放；保存会生成审计并使旧导出失效，稳定球队和球员 ID 保持不变。</p>
+                  <label>理由（选填）<input maxLength={500} value={archivedReason} onChange={(event) => { setArchivedReason(event.target.value); setMaintenancePreview(null); }} /></label>
+                  <label><input type="checkbox" checked={archivedConfirmed} onChange={(event) => setArchivedConfirmed(event.target.checked)} />我确认这是归档赛季的专用纠错</label>
+                </div>
+              )}
               <div className="roster-save-bar">
-                <span>{dataset.read_only ? "归档赛季只读" : dirty ? "有未保存修改" : "已与服务器同步"}</span>
-                <button className="primary-action" type="button" disabled={dataset.read_only || busy || !dirty || !draft.name.trim() || !draft.divisionId || draft.players.some((player) => !player.name.trim())} onClick={() => void (draft.id ? saveExisting() : createTeam())}>{busy ? "保存中…" : draft.id ? "保存完整名单" : "创建球队"}</button>
+                <span>{archivedCorrection ? "归档专用纠错" : dataset.read_only ? "归档赛季只读" : dirty ? "有未保存修改" : "已与服务器同步"}</span>
+                <button className="primary-action" type="button" disabled={editorReadOnly || busy || !dirty || (archivedCorrection && !archivedConfirmed) || !draft.name.trim() || !draft.divisionId || draft.players.some((player) => !player.name.trim())} onClick={() => void (draft.id ? saveExisting() : createTeam())}>{busy ? "保存中…" : archivedCorrection ? "预览并保存归档纠错" : draft.id ? "保存完整名单" : "创建球队"}</button>
               </div>
             </>
           )}

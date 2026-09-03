@@ -311,6 +311,10 @@ export default function App() {
     );
   }
 
+  const pendingCorrection = state.document
+    ? api.pendingCorrection(state.document.id)
+    : null;
+
   return (
     <div className="app-shell">
       <TopBar
@@ -341,6 +345,16 @@ export default function App() {
         leaseHolder={state.leaseHolder}
         onReturn={() => void returnToMedia()}
       />
+      {pendingCorrection && (
+        <div className="pending-correction-banner" role="status">
+          <AlertTriangle size={17} />
+          <div>
+            <strong>正在复核一笔比赛纠错</strong>
+            <span>本次发布会在同一事务中切换参赛方、比分、赛果版本和当前公开记录表；旧发布与旧赛果版本不会删除。</span>
+            {pendingCorrection.reason && <small>理由：{pendingCorrection.reason}</small>}
+          </div>
+        </div>
+      )}
       <main
         ref={workspaceRef}
         className={`workspace${sourceOpen ? '' : ' source-collapsed'}${inspectorOpen ? '' : ' inspector-collapsed'}`}

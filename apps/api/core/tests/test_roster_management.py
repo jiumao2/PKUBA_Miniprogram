@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 from core.models import (
     Account,
     AdminAuditLog,
+    ArchiveJob,
     Division,
     RosterImportBatch,
     RosterImportIssue,
@@ -332,6 +333,70 @@ def test_online_add_and_published_maintenance_use_stable_ids_versions_and_previe
     assert updated.version == team.version + 1
     assert updated.roster.filter(name="李四", jersey_number="8").exists()
     assert AdminAuditLog.objects.filter(action="roster.team.save", object_id=team.id).exists()
+
+
+def test_archived_roster_correction_requires_confirmation_and_expires_old_export():
+    setup = _setup()
+    team = create_team_with_roster(
+        actor=setup["actor"],
+        season=setup["season"],
+        division_id=setup["divisions"][0].id,
+        name="归档球队",
+        players=[{"name": "张三", "jersey_number": "7"}],
+        expected_season_version=setup["season"].version,
+    )
+    player = team.roster.get()
+    setup["season"].status = Season.Status.ARCHIVED
+    setup["season"].save(update_fields=["status", "updated_at"])
+    archive = ArchiveJob.objects.create(
+        kind=ArchiveJob.Kind.SEASON_DATA,
+        season=setup["season"],
+        season_version=setup["season"].version,
+        status=ArchiveJob.Status.READY,
+        requested_by=setup["actor"],
+        artifact_key="stale-roster.zip",
+    )
+    payload = {
+        "expected_team_version": team.version,
+        "name": team.name,
+        "active": True,
+        "players": [
+            {
+                "id": str(player.id),
+                "expected_version": player.version,
+                "name": "张三更正",
+                "jersey_number": "7",
+                "eligible": True,
+                "active": True,
+            }
+        ],
+        "reason": "更正归档名单姓名",
+    }
+    preview = preview_team_change(actor=setup["actor"], team=team, payload=payload)
+    with pytest.raises(RosterManagementError) as unconfirmed:
+        save_team_roster(
+            actor=setup["actor"],
+            team_id=team.id,
+            payload=payload,
+            maintenance_token=preview["maintenance_token"],
+        )
+    assert unconfirmed.value.code == "ARCHIVED_CORRECTION_CONFIRMATION_REQUIRED"
+
+    updated = save_team_roster(
+        actor=setup["actor"],
+        team_id=team.id,
+        payload={**payload, "archived_correction_confirmed": True},
+        maintenance_token=preview["maintenance_token"],
+    )
+
+    assert updated.id == team.id
+    assert updated.roster.get().id == player.id
+    assert updated.roster.get().name == "张三更正"
+    setup["season"].refresh_from_db()
+    assert setup["season"].status == Season.Status.ARCHIVED
+    archive.refresh_from_db()
+    assert archive.status == ArchiveJob.Status.EXPIRED
+    assert archive.error_code == "ARCHIVED_SEASON_CORRECTED"
 
 
 def test_active_jersey_numbers_are_unique_in_service_and_database():

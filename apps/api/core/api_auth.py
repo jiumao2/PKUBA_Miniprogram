@@ -460,12 +460,20 @@ def claim_leader_team(request: HttpRequest, payload: LeaderClaimIn):
                     409,
                     {"code": "VERSION_CONFLICT", "message": "球队状态已变化，请刷新。"},
                 )
-            if SeasonLeaderBinding.objects.filter(season=season, account=account).exists():
+            if SeasonLeaderBinding.objects.filter(
+                season=season,
+                account=account,
+                active=True,
+            ).exists():
                 return Status(
                     409,
                     {"code": "LEADER_ALREADY_BOUND", "message": "您已认领本赛季球队。"},
                 )
-            if SeasonLeaderBinding.objects.filter(season=season, team=team).exists():
+            if SeasonLeaderBinding.objects.filter(
+                season=season,
+                team=team,
+                active=True,
+            ).exists():
                 return Status(
                     409,
                     {"code": "TEAM_ALREADY_CLAIMED", "message": "该球队已被其他领队认领。"},

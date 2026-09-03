@@ -19,6 +19,7 @@ from core.models import (
     Account,
     AdminAuditLog,
     ApiIdempotencyRecord,
+    ArchiveJob,
     Game,
     GameMediaAsset,
     GameMediaUploadStaging,
@@ -33,7 +34,7 @@ from core.services.game_media import (
 from core.services.wechat import issue_session
 from core.tests.factories import placeholder_game, reschedule_setup, season
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def image_file(name: str, size: tuple[int, int]) -> SimpleUploadedFile:
@@ -164,6 +165,64 @@ def test_admin_media_filters_by_season_and_game_without_changing_default_scope()
         str(archived.id)
     ]
     assert crossed.json()["items"] == []
+
+
+def test_archived_media_correction_is_web_only_and_invalidates_ready_export(tmp_path):
+    setup = reschedule_setup()
+    game = setup["games"][0]
+    token = issue_session(setup["superadmin"])
+    client = Client()
+    with override_settings(MEDIA_ROOT=tmp_path):
+        created = upload(
+            client,
+            game.id,
+            token,
+            kind=GameMediaAsset.Kind.GAME_PHOTO,
+            confirmed=False,
+            file=image_file("before-archive.jpg", (900, 700)),
+        )
+        asset = GameMediaAsset.objects.get(id=created.json()["id"])
+        game.season.status = Season.Status.ARCHIVED
+        game.season.save(update_fields=["status", "updated_at"])
+        archive = ArchiveJob.objects.create(
+            kind=ArchiveJob.Kind.SEASON_DATA,
+            season=game.season,
+            season_version=game.season.version,
+            status=ArchiveJob.Status.READY,
+            requested_by=setup["superadmin"],
+            artifact_key="stale-data.zip",
+        )
+
+        miniapp_blocked = replace(
+            client,
+            asset.id,
+            asset.version,
+            token,
+            confirmed=False,
+            file=image_file("miniapp-blocked.jpg", (900, 700)),
+        )
+        assert miniapp_blocked.status_code == 400
+        assert miniapp_blocked.json()["code"] == "SEASON_MEDIA_READ_ONLY"
+
+        client.force_login(setup["superadmin"])
+        web_replaced = client.post(
+            f"/api/v1/admin/game-media/{asset.id}/replace",
+            data={
+                "expected_version": asset.version,
+                "scoresheet_complete_confirmed": "false",
+                "image": image_file("web-correction.jpg", (900, 700)),
+            },
+            HTTP_IDEMPOTENCY_KEY="archived-web-replace",
+        )
+
+    assert web_replaced.status_code == 201, web_replaced.content
+    staging = GameMediaUploadStaging.objects.get(operation="admin-game-media.replace")
+    assert staging.archived_correction_allowed is True
+    archive.refresh_from_db()
+    assert archive.status == ArchiveJob.Status.EXPIRED
+    assert archive.error_code == "ARCHIVED_SEASON_CORRECTED"
+    game.season.refresh_from_db()
+    assert game.season.status == Season.Status.ARCHIVED
 
 
 def test_media_upload_replays_same_key_and_rejects_different_file(tmp_path):
@@ -1068,6 +1127,7 @@ def test_group_photo_is_single_and_non_scoresheet_media_can_be_deleted(tmp_path)
     ).count() == 1
 
 
+@pytest.mark.django_db(transaction=True)
 def test_concurrent_group_photo_uploads_create_only_one_current_asset(tmp_path):
     setup = reschedule_setup()
     game_id = setup["games"][0].id

@@ -347,6 +347,14 @@ def _season_querysets(season: Season) -> list[tuple[str, models.QuerySet]]:
         ("period_capacities", m.PeriodCapacity.objects.filter(season=season)),
         ("capacity_overrides", m.DatePeriodCapacityOverride.objects.filter(season=season)),
         ("games", m.Game.objects.filter(season=season)),
+        (
+            "competition_corrections",
+            m.CompetitionCorrection.objects.filter(season=season),
+        ),
+        (
+            "game_result_revisions",
+            m.GameResultRevision.objects.filter(game__season=season),
+        ),
         ("slot_families", m.ScheduleSlotFamily.objects.filter(division__season=season)),
         ("grid_drafts", m.ScheduleGridDraft.objects.filter(season=season)),
         ("grid_draft_columns", m.ScheduleGridDraftColumn.objects.filter(draft__season=season)),

@@ -34,7 +34,7 @@ from core.services.wechat import issue_session
 from core.tests.test_scoresheet_game_context import snapshot
 from core.tests.test_scoresheets import create_scoresheet, make_ready, obtain_lease
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
@@ -306,6 +306,7 @@ def test_retry_uses_neutral_input_including_manual_table_personnel(fixture):
     assert document_digest(sheet.draft) != document_digest(neutral)
 
 
+@pytest.mark.django_db(transaction=True)
 def test_duplicate_retry_race_has_one_run_and_one_before_image(fixture):
     sheet = fixture[4]
     _, actor, context = client_context(fixture)

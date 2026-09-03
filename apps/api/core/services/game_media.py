@@ -26,8 +26,10 @@ from core.models import (
     GameMediaAsset,
     GameMediaUploadStaging,
     GameScoresheet,
+    Season,
     SeasonLeaderBinding,
 )
+from core.services.archive_invalidation import invalidate_ready_season_archives
 
 UPLOAD_CHUNK_BYTES = 1024 * 1024
 MEDIA_TICKET_MAX_AGE_SECONDS = 10 * 60
@@ -65,11 +67,19 @@ class ValidatedImage:
     height: int
 
 
-def _assert_media_mutable(game: Game) -> None:
-    if game.season.status != game.season.Status.PUBLISHED:
+def _assert_media_mutable(
+    game: Game,
+    actor: Account,
+    *,
+    allow_archived_correction: bool = False,
+) -> None:
+    allowed_statuses = {game.season.Status.PUBLISHED}
+    if actor.is_pkuba_superadmin and allow_archived_correction:
+        allowed_statuses.add(game.season.Status.ARCHIVED)
+    if game.season.status not in allowed_statuses:
         raise GameMediaError(
-            "SEASON_NOT_PUBLISHED",
-            "只有已公开赛季可以维护比赛图片。",
+            "SEASON_MEDIA_READ_ONLY",
+            "当前赛季状态不允许维护比赛图片；归档纠错仅限超级管理员。",
         )
     if not game.home_team_id or not game.away_team_id:
         raise GameMediaError(
@@ -92,11 +102,20 @@ def _register_scoresheet_source(*, actor: Account, game: Game, asset: GameMediaA
         ) from error
 
 
-def media_permissions(account: Account, game: Game) -> MediaPermissions:
+def media_permissions(
+    account: Account,
+    game: Game,
+    *,
+    allow_archived_correction: bool = False,
+) -> MediaPermissions:
     if account.is_pkuba_superadmin:
-        mutable = game.season.status == game.season.Status.PUBLISHED and bool(
-            game.home_team_id and game.away_team_id
-        )
+        mutable = (
+            game.season.status == game.season.Status.PUBLISHED
+            or (
+                allow_archived_correction
+                and game.season.status == game.season.Status.ARCHIVED
+            )
+        ) and bool(game.home_team_id and game.away_team_id)
         return MediaPermissions(can_view=True, can_upload=mutable)
     if account.is_pkuba_admin:
         mutable = game.season.status == game.season.Status.PUBLISHED and bool(
@@ -128,10 +147,26 @@ def scoresheet_has_publication(game_id) -> bool:
 
 
 def can_upload_scoresheet_source(
-    account: Account, game: Game, *, has_publication: bool | None = None
+    account: Account,
+    game: Game,
+    *,
+    has_publication: bool | None = None,
+    allow_archived_correction: bool = False,
 ) -> bool:
-    if not media_permissions(account, game).can_upload:
+    if not media_permissions(
+        account,
+        game,
+        allow_archived_correction=allow_archived_correction,
+    ).can_upload:
         return False
+    if game.season.status == Season.Status.ARCHIVED:
+        return bool(
+            account.is_pkuba_superadmin
+            and GameScoresheet.objects.filter(
+                game=game,
+                current_publication__isnull=False,
+            ).exists()
+        )
     if account.is_pkuba_superadmin:
         return True
     published = scoresheet_has_publication(game.id) if has_publication is None else has_publication
@@ -143,15 +178,54 @@ def media_asset_permissions(
     asset: GameMediaAsset,
     *,
     has_scoresheet_publication: bool | None = None,
+    allow_archived_correction: bool = False,
 ) -> tuple[bool, bool]:
-    permissions = media_permissions(account, asset.game)
+    permissions = media_permissions(
+        account,
+        asset.game,
+        allow_archived_correction=allow_archived_correction,
+    )
     if not permissions.can_upload:
         return False, False
     if asset.kind != GameMediaAsset.Kind.SCORESHEET:
         return True, True
     return can_upload_scoresheet_source(
-        account, asset.game, has_publication=has_scoresheet_publication
+        account,
+        asset.game,
+        has_publication=has_scoresheet_publication,
+        allow_archived_correction=allow_archived_correction,
     ), False
+
+
+def can_restore_game_media(account: Account, asset: GameMediaAsset) -> bool:
+    return bool(
+        account.is_pkuba_superadmin
+        and asset.game.season.status == Season.Status.ARCHIVED
+        and asset.deleted_at is None
+        and asset.storage_status
+        in {GameMediaAsset.StorageStatus.PURGED, GameMediaAsset.StorageStatus.MISSING}
+    )
+
+
+def _bump_archived_season_version(
+    game: Game,
+    *,
+    actor: Account,
+    reason: str,
+) -> tuple[int | None, int]:
+    if game.season.status != Season.Status.ARCHIVED:
+        return None, 0
+    season = Season.objects.select_for_update().get(id=game.season_id)
+    if season.status != Season.Status.ARCHIVED:
+        return None, 0
+    season.version += 1
+    season.save(update_fields=["version", "updated_at"])
+    invalidated = invalidate_ready_season_archives(
+        season=season,
+        actor=actor,
+        reason=reason,
+    )
+    return season.version, invalidated
 
 
 @contextmanager
@@ -429,15 +503,33 @@ def _create_upload_staging(
     operation: str,
     idempotency_key_digest: str,
     request_digest: str,
+    allow_archived_correction: bool,
 ) -> GameMediaUploadStaging:
     intended_asset_id = uuid.uuid4()
     file_key = f"game-media/{game.season_id}/{game.id}/{intended_asset_id}{image.extension}"
     try:
         with transaction.atomic():
             locked_game = Game.objects.select_for_update().select_related("season").get(id=game.id)
-            _assert_media_mutable(locked_game)
-            if not media_permissions(actor, locked_game).can_upload:
+            _assert_media_mutable(
+                locked_game,
+                actor,
+                allow_archived_correction=allow_archived_correction,
+            )
+            if not media_permissions(
+                actor,
+                locked_game,
+                allow_archived_correction=allow_archived_correction,
+            ).can_upload:
                 raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。")
+            if kind == GameMediaAsset.Kind.SCORESHEET and not can_upload_scoresheet_source(
+                actor,
+                locked_game,
+                allow_archived_correction=allow_archived_correction,
+            ):
+                raise GameMediaError(
+                    "SCORESHEET_SOURCE_FORBIDDEN",
+                    "归档赛季只允许为已有当前 publication 的记录表上传纠错版本。",
+                )
             if (
                 kind
                 in {
@@ -474,6 +566,7 @@ def _create_upload_staging(
                     if kind == GameMediaAsset.Kind.SCORESHEET
                     else False
                 ),
+                archived_correction_allowed=allow_archived_correction,
                 uploaded_by=actor,
                 operation=operation,
                 idempotency_key_digest=idempotency_key_digest,
@@ -494,6 +587,7 @@ def _create_replacement_staging(
     operation: str,
     idempotency_key_digest: str,
     request_digest: str,
+    allow_archived_correction: bool,
 ) -> GameMediaUploadStaging:
     intended_asset_id = uuid.uuid4()
     file_key = (
@@ -507,9 +601,29 @@ def _create_replacement_staging(
                 .select_related("game", "game__season")
                 .get(id=current.id, deleted_at__isnull=True)
             )
-            _assert_media_mutable(replaced.game)
-            if not media_permissions(actor, replaced.game).can_upload:
+            _assert_media_mutable(
+                replaced.game,
+                actor,
+                allow_archived_correction=allow_archived_correction,
+            )
+            if not media_permissions(
+                actor,
+                replaced.game,
+                allow_archived_correction=allow_archived_correction,
+            ).can_upload:
                 raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料替换仅限管理员。")
+            if (
+                replaced.kind == GameMediaAsset.Kind.SCORESHEET
+                and not can_upload_scoresheet_source(
+                    actor,
+                    replaced.game,
+                    allow_archived_correction=allow_archived_correction,
+                )
+            ):
+                raise GameMediaError(
+                    "SCORESHEET_SOURCE_FORBIDDEN",
+                    "当前记录表状态不允许重传来源。",
+                )
             if replaced.version != expected_version:
                 raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
             if (
@@ -539,6 +653,7 @@ def _create_replacement_staging(
                     if replaced.kind == GameMediaAsset.Kind.SCORESHEET
                     else False
                 ),
+                archived_correction_allowed=allow_archived_correction,
                 uploaded_by=actor,
                 operation=operation,
                 idempotency_key_digest=idempotency_key_digest,
@@ -574,9 +689,29 @@ def promote_game_media_staging(staging_id) -> GameMediaAsset:
             locked_game = (
                 Game.objects.select_for_update().select_related("season").get(id=staging.game_id)
             )
-            _assert_media_mutable(locked_game)
-            if not media_permissions(staging.uploaded_by, locked_game).can_upload:
+            _assert_media_mutable(
+                locked_game,
+                staging.uploaded_by,
+                allow_archived_correction=staging.archived_correction_allowed,
+            )
+            if not media_permissions(
+                staging.uploaded_by,
+                locked_game,
+                allow_archived_correction=staging.archived_correction_allowed,
+            ).can_upload:
                 raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。")
+            if (
+                staging.kind == GameMediaAsset.Kind.SCORESHEET
+                and not can_upload_scoresheet_source(
+                    staging.uploaded_by,
+                    locked_game,
+                    allow_archived_correction=staging.archived_correction_allowed,
+                )
+            ):
+                raise GameMediaError(
+                    "SCORESHEET_SOURCE_FORBIDDEN",
+                    "当前记录表状态不允许上传或重传来源。",
+                )
 
             replaced = None
             if staging.replacement_asset_id:
@@ -664,6 +799,12 @@ def promote_game_media_staging(staging_id) -> GameMediaAsset:
                     asset=asset,
                 )
 
+            archived_season_version, invalidated_archives = _bump_archived_season_version(
+                locked_game,
+                actor=staging.uploaded_by,
+                reason="GAME_MEDIA_CHANGED",
+            )
+
             action = "GAME_MEDIA_REPLACED" if replaced else "GAME_MEDIA_UPLOADED"
             AdminAuditLog.objects.create(
                 actor=staging.uploaded_by,
@@ -694,6 +835,9 @@ def promote_game_media_staging(staging_id) -> GameMediaAsset:
                 metadata={
                     "staging_id": str(staging.id),
                     "replaced_asset_id": str(replaced.id) if replaced else "",
+                    "archived_correction": archived_season_version is not None,
+                    "season_version": archived_season_version,
+                    "invalidated_archive_count": invalidated_archives,
                 },
             )
             staging.status = GameMediaUploadStaging.Status.PROMOTED
@@ -743,11 +887,20 @@ def upload_game_media(
     idempotency_operation: str = "",
     idempotency_key_digest: str = "",
     request_digest: str = "",
+    allow_archived_correction: bool = False,
 ) -> GameMediaAsset:
-    _assert_media_mutable(game)
+    _assert_media_mutable(
+        game,
+        actor,
+        allow_archived_correction=allow_archived_correction,
+    )
     if kind not in GameMediaAsset.Kind.values:
         raise GameMediaError("MEDIA_KIND_INVALID", "图片类型不合法。")
-    permissions = media_permissions(actor, game)
+    permissions = media_permissions(
+        actor,
+        game,
+        allow_archived_correction=allow_archived_correction,
+    )
     if not permissions.can_upload:
         raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料上传仅限管理员。")
     if kind == GameMediaAsset.Kind.SCORESHEET and not scoresheet_complete_confirmed:
@@ -777,6 +930,7 @@ def upload_game_media(
             operation=idempotency_operation,
             idempotency_key_digest=idempotency_key_digest,
             request_digest=request_digest,
+            allow_archived_correction=allow_archived_correction,
         )
         try:
             staging = _store_or_resume_staging(staging, image)
@@ -803,6 +957,7 @@ def replace_game_media(
     idempotency_operation: str = "",
     idempotency_key_digest: str = "",
     request_digest: str = "",
+    allow_archived_correction: bool = False,
 ) -> GameMediaAsset:
     existing = _find_idempotent_staging(
         actor=actor,
@@ -821,8 +976,16 @@ def replace_game_media(
     )
     if current is None:
         raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。")
-    _assert_media_mutable(current.game)
-    if not media_permissions(actor, current.game).can_upload:
+    _assert_media_mutable(
+        current.game,
+        actor,
+        allow_archived_correction=allow_archived_correction,
+    )
+    if not media_permissions(
+        actor,
+        current.game,
+        allow_archived_correction=allow_archived_correction,
+    ).can_upload:
         raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料替换仅限管理员。")
     if (
         current.kind == GameMediaAsset.Kind.SCORESHEET
@@ -854,6 +1017,7 @@ def replace_game_media(
             operation=idempotency_operation,
             idempotency_key_digest=idempotency_key_digest,
             request_digest=request_digest,
+            allow_archived_correction=allow_archived_correction,
         )
         try:
             staging = _store_or_resume_staging(staging, image)
@@ -945,7 +1109,13 @@ def reconcile_staged_game_media(
     return summary
 
 
-def delete_game_media(*, actor: Account, asset_id, expected_version: int) -> GameMediaAsset:
+def delete_game_media(
+    *,
+    actor: Account,
+    asset_id,
+    expected_version: int,
+    allow_archived_correction: bool = False,
+) -> GameMediaAsset:
     with transaction.atomic():
         try:
             asset = (
@@ -955,8 +1125,16 @@ def delete_game_media(*, actor: Account, asset_id, expected_version: int) -> Gam
             )
         except GameMediaAsset.DoesNotExist as error:
             raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。") from error
-        _assert_media_mutable(asset.game)
-        if not media_permissions(actor, asset.game).can_upload:
+        _assert_media_mutable(
+            asset.game,
+            actor,
+            allow_archived_correction=allow_archived_correction,
+        )
+        if not media_permissions(
+            actor,
+            asset.game,
+            allow_archived_correction=allow_archived_correction,
+        ).can_upload:
             raise GameMediaError("MEDIA_UPLOAD_FORBIDDEN", "比赛资料删除仅限管理员。")
         if asset.version != expected_version:
             raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
@@ -976,6 +1154,11 @@ def delete_game_media(*, actor: Account, asset_id, expected_version: int) -> Gam
         asset.deleted_at = timezone.now()
         asset.version += 1
         asset.save(update_fields=["deleted_by", "deleted_at", "version", "updated_at"])
+        archived_season_version, invalidated_archives = _bump_archived_season_version(
+            asset.game,
+            actor=actor,
+            reason="GAME_MEDIA_DELETED",
+        )
         AdminAuditLog.objects.create(
             actor=actor,
             action="GAME_MEDIA_DELETED",
@@ -983,8 +1166,127 @@ def delete_game_media(*, actor: Account, asset_id, expected_version: int) -> Gam
             object_id=asset.id,
             before=before,
             after={"deleted_at": asset.deleted_at.isoformat(), "version": asset.version},
+            metadata={
+                "archived_correction": archived_season_version is not None,
+                "season_version": archived_season_version,
+                "invalidated_archive_count": invalidated_archives,
+            },
         )
     return asset
+
+
+def _stored_asset_matches(asset: GameMediaAsset) -> bool:
+    if not default_storage.exists(asset.file_key):
+        return False
+    digest = hashlib.sha256()
+    byte_size = 0
+    with default_storage.open(asset.file_key, "rb") as stored:
+        while True:
+            chunk = stored.read(UPLOAD_CHUNK_BYTES)
+            if not chunk:
+                break
+            digest.update(chunk)
+            byte_size += len(chunk)
+    return byte_size == asset.byte_size and digest.hexdigest() == asset.file_sha256
+
+
+def restore_archived_game_media(
+    *,
+    actor: Account,
+    asset_id,
+    expected_version: int,
+    uploaded_file,
+) -> GameMediaAsset:
+    if not actor.is_pkuba_superadmin:
+        raise GameMediaError("SUPERADMIN_REQUIRED", "归档图片恢复仅限超级管理员。")
+    stored_by_this_call = False
+    stored_key = ""
+    with validate_image(uploaded_file, kind=GameMediaAsset.Kind.GAME_PHOTO) as image:
+        try:
+            with transaction.atomic():
+                asset = (
+                    GameMediaAsset.objects.select_for_update()
+                    .select_related("game", "game__season")
+                    .filter(id=asset_id, deleted_at__isnull=True)
+                    .first()
+                )
+                if asset is None:
+                    raise GameMediaError("MEDIA_NOT_FOUND", "图片不存在或已删除。")
+                if asset.version != expected_version:
+                    raise GameMediaError("VERSION_CONFLICT", "图片状态已变化，请刷新。")
+                if not can_restore_game_media(actor, asset):
+                    raise GameMediaError(
+                        "MEDIA_RESTORE_NOT_ALLOWED",
+                        "只有归档赛季中已离线或缺失的有效图片可以恢复。",
+                    )
+                if (
+                    image.sha256 != asset.file_sha256
+                    or image.byte_size != asset.byte_size
+                    or image.mime_type != asset.mime_type
+                    or image.width != asset.width
+                    or image.height != asset.height
+                ):
+                    raise GameMediaError(
+                        "MEDIA_RESTORE_HASH_MISMATCH",
+                        "所选文件与归档清单中的哈希、大小或图像信息不一致。",
+                    )
+                if default_storage.exists(asset.file_key):
+                    if not _stored_asset_matches(asset):
+                        raise GameMediaError(
+                            "MEDIA_STORAGE_CONFLICT",
+                            "目标存储键已被不一致文件占用，未执行恢复。",
+                        )
+                else:
+                    with image.path.open("rb") as source:
+                        stored_key = default_storage.save(asset.file_key, File(source))
+                    if stored_key != asset.file_key:
+                        default_storage.delete(stored_key)
+                        stored_key = ""
+                        raise GameMediaError(
+                            "MEDIA_STORAGE_CONFLICT",
+                            "存储后端未能使用原归档键，未执行恢复。",
+                        )
+                    stored_by_this_call = True
+                if not _stored_asset_matches(asset):
+                    raise GameMediaError(
+                        "MEDIA_RESTORE_VERIFY_FAILED",
+                        "恢复文件未通过服务器端哈希复核。",
+                    )
+                before = {
+                    "storage_status": asset.storage_status,
+                    "file_sha256": asset.file_sha256,
+                    "version": asset.version,
+                }
+                asset.storage_status = GameMediaAsset.StorageStatus.ONLINE
+                asset.version += 1
+                asset.save(update_fields=["storage_status", "version", "updated_at"])
+                season_version, invalidated_archives = _bump_archived_season_version(
+                    asset.game,
+                    actor=actor,
+                    reason="GAME_MEDIA_RESTORED",
+                )
+                AdminAuditLog.objects.create(
+                    actor=actor,
+                    action="ARCHIVED_GAME_MEDIA_RESTORED",
+                    object_type="GameMediaAsset",
+                    object_id=asset.id,
+                    before=before,
+                    after={
+                        "storage_status": asset.storage_status,
+                        "file_sha256": asset.file_sha256,
+                        "version": asset.version,
+                    },
+                    metadata={
+                        "season_version": season_version,
+                        "storage_key_reused": True,
+                        "invalidated_archive_count": invalidated_archives,
+                    },
+                )
+                return asset
+        except Exception:
+            if stored_by_this_call and stored_key and default_storage.exists(stored_key):
+                default_storage.delete(stored_key)
+            raise
 
 
 def issue_media_ticket(asset: GameMediaAsset) -> str:

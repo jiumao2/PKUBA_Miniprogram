@@ -25,6 +25,7 @@ interface DrawMappingPageProps {
   onDataChanged: () => Promise<void>;
   onOpenTeams: () => void;
   onOpenConfiguration: () => void;
+  onOpenCorrection?: (gameId: string) => void;
 }
 
 interface GameDraft {
@@ -78,6 +79,7 @@ export function DrawMappingPage({
   onDataChanged,
   onOpenTeams,
   onOpenConfiguration,
+  onOpenCorrection,
 }: DrawMappingPageProps) {
   const [dataset, setDataset] = useState<DrawAssignmentDataset | null>(null);
   const [selectedDivisionId, setSelectedDivisionId] = useState("");
@@ -593,6 +595,7 @@ export function DrawMappingPage({
                 onOverrideChange={setOverrideConfirmed}
                 onHistoricalChange={setHistoricalConfirmed}
                 onSave={() => focusedGame && void saveGame(focusedGame)}
+                onOpenCorrection={() => focusedGame && onOpenCorrection?.(focusedGame.id)}
               />
             )}
           </aside>
@@ -1007,6 +1010,7 @@ function GameInspector({
   onOverrideChange,
   onHistoricalChange,
   onSave,
+  onOpenCorrection,
 }: {
   phase: DrawPhase | undefined;
   game: DrawPhaseGame | undefined;
@@ -1019,6 +1023,7 @@ function GameInspector({
   onOverrideChange: (value: boolean) => void;
   onHistoricalChange: (value: boolean) => void;
   onSave: () => void;
+  onOpenCorrection: () => void;
 }) {
   return (
     <>
@@ -1137,6 +1142,11 @@ function GameInspector({
                   ? "确认补齐历史参赛方"
                   : "确认保存本场"}
           </button>
+          {!preview.can_apply && (
+            <button className="secondary-action" type="button" onClick={onOpenCorrection}>
+              转到纠错中心处理比分、赛果与关联数据
+            </button>
+          )}
         </section>
       )}
     </>

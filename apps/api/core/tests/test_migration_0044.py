@@ -4,7 +4,10 @@ import pytest
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.usefixtures("restore_migration_leaf_nodes"),
+]
 
 MIGRATE_FROM = ("core", "0043_admin_registration_policy")
 MIGRATE_TO = ("core", "0044_game_result_participants_guard")
@@ -117,4 +120,5 @@ def test_guard_keeps_legacy_invalid_rows_but_blocks_new_result_without_teams():
             away_team_id=teams[1].id,
         ).exists()
     finally:
-        MigrationExecutor(connection).migrate([MIGRATE_TO])
+        # The shared migration fixture restores the current graph after this test.
+        pass

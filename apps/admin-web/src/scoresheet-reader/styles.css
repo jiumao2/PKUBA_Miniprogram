@@ -587,3 +587,6 @@ body.is-resizing-panes, body.is-resizing-panes * { cursor: col-resize !important
 .game-context-player select { width: 100%; min-width: 0; padding: 9px; }
 .game-context-consent { display: flex; align-items: start; gap: 7px; margin: 15px 0; line-height: 1.5; }
 .game-context-consent input { flex: 0 0 auto; }
+.pending-correction-banner { display: flex; gap: 10px; align-items: flex-start; padding: 9px 16px; border-bottom: 1px solid #e3b8b8; background: #fff4f2; color: #722126; }
+.pending-correction-banner > div { display: grid; gap: 2px; }
+.pending-correction-banner span, .pending-correction-banner small { color: #765b5b; font-size: 12px; }

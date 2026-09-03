@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from django.db import transaction
+from django.contrib.auth.validators import UnicodeUsernameValidator
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from core.models import Account, AdminAuditLog, AdminProfile
@@ -125,7 +127,7 @@ def demote_superadmin(
 
 
 @transaction.atomic
-def set_admin_active(
+def set_account_active(
     *,
     actor: Account,
     target_id: object,
@@ -137,8 +139,6 @@ def set_admin_active(
     target = Account.objects.select_for_update().get(id=target_id)
     if target.version != expected_version:
         raise AdminAccountError("账号已被其他操作修改，请刷新。", "VERSION_CONFLICT")
-    if target.role not in {Account.Role.ADMIN, Account.Role.SUPERADMIN}:
-        raise AdminAccountError("目标不是管理员账号。", "TARGET_NOT_ADMIN")
     if target.is_active == active:
         return target
     if not active and target.role == Account.Role.SUPERADMIN:
@@ -164,5 +164,101 @@ def set_admin_active(
         object_id=target.id,
         before=before,
         after=_snapshot(target),
+    )
+    return target
+
+
+set_admin_active = set_account_active
+
+
+def _validated_username(username: str) -> str:
+    normalized = Account.normalize_username(username.strip())
+    if not 2 <= len(normalized) <= 32:
+        raise AdminAccountError("昵称长度应为 2 至 32 个字符。", "USERNAME_INVALID")
+    try:
+        UnicodeUsernameValidator()(normalized)
+    except ValidationError as error:
+        raise AdminAccountError(
+            "昵称只能包含文字、数字和 @/./+/-/_。",
+            "USERNAME_INVALID",
+        ) from error
+    return normalized
+
+
+@transaction.atomic
+def rename_account(
+    *,
+    actor: Account,
+    target_id: object,
+    expected_version: int,
+    username: str,
+) -> Account:
+    lock_superadmin_commands()
+    actor = _lock_actor(actor)
+    target = Account.objects.select_for_update().get(id=target_id)
+    if target.version != expected_version:
+        raise AdminAccountError("账号已被其他操作修改，请刷新。", "VERSION_CONFLICT")
+    normalized = _validated_username(username)
+    if target.username == normalized:
+        return target
+    if Account.objects.filter(username__iexact=normalized).exclude(id=target.id).exists():
+        raise AdminAccountError("该昵称已被使用。", "USERNAME_TAKEN")
+    before = _snapshot(target)
+    target.username = normalized
+    target.version += 1
+    try:
+        target.save(update_fields=["username", "version"])
+    except IntegrityError as error:
+        raise AdminAccountError("该昵称已被使用。", "USERNAME_TAKEN") from error
+    AdminAuditLog.objects.create(
+        actor=actor,
+        action="ACCOUNT_USERNAME_CORRECTED",
+        object_type="Account",
+        object_id=target.id,
+        before=before,
+        after=_snapshot(target),
+    )
+    return target
+
+
+@transaction.atomic
+def reset_admin_password(
+    *,
+    actor: Account,
+    target_id: object,
+    expected_version: int,
+    new_password: str,
+) -> Account:
+    lock_superadmin_commands()
+    actor = _lock_actor(actor)
+    target = Account.objects.select_for_update().get(id=target_id)
+    if target.version != expected_version:
+        raise AdminAccountError("账号已被其他操作修改，请刷新。", "VERSION_CONFLICT")
+    if target.id == actor.id:
+        raise AdminAccountError(
+            "请使用右上角“修改密码”更改当前账号密码。",
+            "SELF_PASSWORD_RESET_FORBIDDEN",
+        )
+    if target.role not in {Account.Role.ADMIN, Account.Role.SUPERADMIN}:
+        raise AdminAccountError(
+            "只能重置其他管理员的网页密码。",
+            "TARGET_NOT_ADMIN",
+        )
+    if len(new_password) < 4:
+        raise AdminAccountError("网页密码至少需要 4 个字符。", "PASSWORD_TOO_SHORT")
+    before_version = target.version
+    target.set_password(new_password)
+    target.version += 1
+    target.save(update_fields=["password", "version"])
+    AdminAuditLog.objects.create(
+        actor=actor,
+        action="ADMIN_PASSWORD_RESET",
+        object_type="Account",
+        object_id=target.id,
+        before={"version": before_version},
+        after={
+            "version": target.version,
+            "web_sessions_revoked_by_auth_hash": True,
+        },
     )
     return target

@@ -93,7 +93,9 @@ def test_advanced_data_can_inspect_full_identity_fields_without_environment_secr
         f"/api/v1/admin/advanced-data/wechat-identities/{identity.id}"
     )
     assert account.status_code == 200
-    assert account.json()["values"]["password"].startswith("pbkdf2_")
+    stored_password = account.json()["values"]["password"]
+    assert stored_password == actor.password
+    assert stored_password != "test-password"
     assert identity_response.status_code == 200
     assert identity_response.json()["values"]["openid"] == "openid-for-audit"
     assert all(

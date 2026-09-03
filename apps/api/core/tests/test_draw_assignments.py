@@ -307,7 +307,7 @@ def test_duplicate_missing_inactive_and_cross_division_teams_are_rejected():
     assert inactive_error.value.code == "DRAW_COUNT_MISMATCH"
 
 
-def test_published_season_allows_only_safe_future_corrections():
+def test_published_season_allows_safe_past_unplayed_corrections():
     setup = _setup_draw()
     _apply(setup)
     setup["season"].refresh_from_db()
@@ -330,15 +330,15 @@ def test_published_season_allows_only_safe_future_corrections():
 
     setup["games"][0].date = timezone.localdate() - timedelta(days=1)
     setup["games"][0].save(update_fields=["date", "updated_at"])
-    blocked = preview_draw_assignments(
+    past = preview_draw_assignments(
         season=setup["season"],
         expected_version=setup["season"].version,
         division_id=setup["division"].id,
         assignment_rows=swapped,
     )
-    assert blocked["can_apply"] is False
-    assert "GAME_ALREADY_STARTED_OR_SCORED" in {
-        item["code"] for item in blocked["blockers"]
+    assert past["can_apply"] is True
+    assert "GAME_ALREADY_STARTED_OR_SCORED" not in {
+        item["code"] for item in past["blockers"]
     }
 
 

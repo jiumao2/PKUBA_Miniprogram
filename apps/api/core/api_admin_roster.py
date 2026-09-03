@@ -6,11 +6,12 @@ from uuid import UUID
 
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
-from ninja import File, Router, Schema, Status
+from ninja import File, Header, Router, Schema, Status
 from ninja.files import UploadedFile
 
 from core.api_security import superadmin_session_auth
 from core.models import RosterImportBatch, Season, Team
+from core.services.idempotency import IdempotencyError, execute_idempotent
 from core.services.roster_management import (
     RosterManagementError,
     confirm_roster_import,
@@ -86,6 +87,7 @@ class RosterDatasetOut(Schema):
     season_status: str
     season_version: int
     read_only: bool
+    archived_correction_allowed: bool
     team_count: int
     active_team_count: int
     player_count: int
@@ -147,6 +149,8 @@ class SaveTeamRosterIn(Schema):
     active: bool = True
     players: list[RosterPlayerIn]
     maintenance_token: str = ""
+    archived_correction_confirmed: bool = False
+    reason: str = ""
 
 
 class TeamMaintenancePreviewOut(Schema):
@@ -357,15 +361,37 @@ def preview_team_roster(request: HttpRequest, team_id: UUID, payload: SaveTeamRo
     "/teams/{team_id}/roster",
     response={200: TeamRosterOut, 400: RosterErrorOut, 409: RosterErrorOut},
 )
-def update_team_roster(request: HttpRequest, team_id: UUID, payload: SaveTeamRosterIn):
+def update_team_roster(
+    request: HttpRequest,
+    team_id: UUID,
+    payload: SaveTeamRosterIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    del idempotency_key
     values = payload.dict()
     try:
-        team = save_team_roster(
+        status, body, _ = execute_idempotent(
+            request=request,
             actor=request.auth,
-            team_id=team_id,
-            payload=values,
-            maintenance_token=payload.maintenance_token,
+            operation="roster.team.update",
+            fingerprint={
+                "team_id": team_id,
+                "payload": payload.model_dump(mode="json"),
+            },
+            command=lambda: (
+                200,
+                _serialize_team(
+                    save_team_roster(
+                        actor=request.auth,
+                        team_id=team_id,
+                        payload=values,
+                        maintenance_token=payload.maintenance_token,
+                    )
+                ),
+            ),
         )
+    except IdempotencyError as error:
+        return Status(error.status, {"code": error.code, "message": str(error)})
     except RosterManagementError as error:
         return _error_response(error)
-    return _serialize_team(team)
+    return Status(status, body)

@@ -67,6 +67,7 @@ export function GameMediaWorkbench({
   const [selectedGameId, setSelectedGameId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [retryBatch, setRetryBatch] = useState<{
@@ -205,6 +206,7 @@ export function GameMediaWorkbench({
 
   useEffect(() => {
     setReplacementFile(null);
+    setRestoreFile(null);
   }, [selectedAsset?.id]);
 
   useEffect(() => setMessage(""), [selectedGameId]);
@@ -220,7 +222,9 @@ export function GameMediaWorkbench({
       setMessage("请先选择新的图片文件。");
       return;
     }
-    if (!window.confirm("确认替换当前照片？旧文件会保留审计记录。")) return;
+    if (!window.confirm(archived
+      ? "确认在已归档赛季上传照片新版本？旧文件和操作者会保留在审计中，旧导出应视为过期。"
+      : "确认替换当前照片？旧文件会保留审计记录。")) return;
     setBusy(true);
     setMessage("");
     try {
@@ -250,6 +254,9 @@ export function GameMediaWorkbench({
     files: File[],
   ) => {
     if (!selectedGame || files.length === 0) return;
+    if (archived && !window.confirm(
+      `确认向已归档赛季添加 ${files.length} 张照片？新版本会保留操作者审计，旧导出应视为过期。`,
+    )) return;
     setBusy(true);
     setMessage("");
     const remaining: File[] = [];
@@ -289,7 +296,9 @@ export function GameMediaWorkbench({
   };
 
   const remove = async () => {
-    if (!selectedAsset || !window.confirm("确认从在线资料中删除这张照片？操作会写入审计日志。")) return;
+    if (!selectedAsset || !window.confirm(archived
+      ? "确认在已归档赛季软删除这张照片？历史版本仍保留，旧导出应视为过期。"
+      : "确认从在线资料中删除这张照片？操作会写入审计日志。")) return;
     setBusy(true);
     setMessage("");
     try {
@@ -298,6 +307,32 @@ export function GameMediaWorkbench({
       await loadAssets();
     } catch (reason: unknown) {
       setMessage(reason instanceof Error ? reason.message : "删除失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restore = async () => {
+    if (!selectedAsset || !restoreFile) return;
+    if (!window.confirm("确认用所选文件恢复归档原图？系统会逐项核对原哈希、大小、格式和像素尺寸。")) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const operation = `restore:${selectedAsset.id}:${selectedAsset.version}:${restoreFile.name}:${restoreFile.size}:${restoreFile.lastModified}`;
+      const idempotencyKey = mediaOperationKeys.current.get(operation) ?? createIdempotencyKey();
+      mediaOperationKeys.current.set(operation, idempotencyKey);
+      await client.restoreAdminGameMedia(
+        selectedAsset.id,
+        selectedAsset.version,
+        restoreFile,
+        idempotencyKey,
+      );
+      mediaOperationKeys.current.delete(operation);
+      setRestoreFile(null);
+      setMessage("归档原图已按原哈希恢复上线，旧归档元数据仍保留在审计中。");
+      await loadAssets();
+    } catch (reason: unknown) {
+      setMessage(reason instanceof Error ? reason.message : "归档原图恢复失败");
     } finally {
       setBusy(false);
     }
@@ -348,7 +383,7 @@ export function GameMediaWorkbench({
       {archived && (
         <div className="media-archive-notice" role="status">
           <Archive size={17} />
-          <span><strong>已归档赛季</strong>　照片保持只读；超级管理员可对已有正式版本的记录表发起受控纠错。</span>
+          <span><strong>已归档赛季</strong>　普通管理员只读；超级管理员可版本化上传、替换或软删除普通照片，并按原哈希恢复离线文件。</span>
         </div>
       )}
 
@@ -468,7 +503,7 @@ export function GameMediaWorkbench({
                       assets={selectedPhotos.filter((asset) => asset.kind === "GROUP_PHOTO")}
                       selectedId={selectedAssetId}
                       onSelect={setSelectedAssetId}
-                      action={!archived && !selectedPhotos.some((asset) => asset.kind === "GROUP_PHOTO") ? (
+                      action={(!archived || isSuperadmin) && !selectedPhotos.some((asset) => asset.kind === "GROUP_PHOTO") ? (
                         <PhotoUploadButton disabled={busy} label="上传比赛合照" onFiles={(files) => void uploadPhotos("GROUP_PHOTO", files.slice(0, 1))} />
                       ) : null}
                     />
@@ -478,7 +513,7 @@ export function GameMediaWorkbench({
                       assets={selectedPhotos.filter((asset) => asset.kind === "GAME_PHOTO")}
                       selectedId={selectedAssetId}
                       onSelect={setSelectedAssetId}
-                      action={!archived ? (
+                      action={!archived || isSuperadmin ? (
                         <PhotoUploadButton multiple disabled={busy} label="添加其他照片" onFiles={(files) => void uploadPhotos("GAME_PHOTO", files)} />
                       ) : null}
                     />
@@ -501,13 +536,20 @@ export function GameMediaWorkbench({
                         <div><dt>上传者</dt><dd>{selectedAsset.uploaded_by}</dd></div>
                         <div><dt>存储</dt><dd>{selectedAssetOnline ? "在线原图" : "离线归档"}</dd></div>
                       </dl>
-                      {!archived && selectedAssetOnline && selectedAsset.can_replace && (
+                      {selectedAssetOnline && selectedAsset.can_replace && (
                         <div className="photo-replacement-control">
                           <label>替换照片<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => setReplacementFile(event.target.files?.[0] ?? null)} /></label>
                           <button type="button" disabled={busy || !replacementFile} onClick={() => void replace()}>上传替换</button>
                         </div>
                       )}
-                      {!archived && selectedAsset.can_delete && <div className="photo-delete-actions">
+                      {selectedAsset.can_restore && (
+                        <div className="photo-replacement-control archived-restore">
+                          <label>选择归档原文件<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} /></label>
+                          <small>仅哈希、大小、格式和像素尺寸全部匹配时恢复。</small>
+                          <button type="button" disabled={busy || !restoreFile} onClick={() => void restore()}>核对并恢复</button>
+                        </div>
+                      )}
+                      {selectedAsset.can_delete && <div className="photo-delete-actions">
                         <button type="button" className="delete" disabled={busy} onClick={() => void remove()}>删除照片</button>
                       </div>}
                     </div>
