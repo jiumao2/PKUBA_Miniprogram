@@ -64,7 +64,7 @@ blue_web_port=${PKUBA_BLUE_WEB_PORT:-18080}
 green_api_port=${PKUBA_GREEN_API_PORT:-18001}
 green_web_port=${PKUBA_GREEN_WEB_PORT:-18081}
 preflight_wait_seconds=${PKUBA_DEPLOY_PREFLIGHT_WAIT_SECONDS:-900}
-retention_seconds=${PKUBA_OLD_SLOT_RETENTION_SECONDS:-86400}
+retention_seconds=${PKUBA_OLD_SLOT_RETENTION_SECONDS:-7200}
 stability_seconds=${PKUBA_SERVICE_STABILITY_SECONDS:-10}
 gateway_probe_attempts=${PKUBA_GATEWAY_PROBE_ATTEMPTS:-30}
 gateway_probe_delay_seconds=${PKUBA_GATEWAY_PROBE_DELAY_SECONDS:-2}
@@ -278,7 +278,7 @@ if [[ -f $candidate_state ]]; then
   [[ $RETAIN_UNTIL_EPOCH =~ ^[0-9]+$ ]] \
     || die "retained slot deadline is invalid"
   if (( $(date +%s) < RETAIN_UNTIL_EPOCH )); then
-    die "$candidate_slot still contains the 24-hour rollback stack"
+    die "$candidate_slot still contains the configured application rollback stack"
   fi
 fi
 
@@ -790,7 +790,7 @@ echo "PKUBA_ACTIVE_SLOT=$candidate_slot"
 echo "PKUBA_PREVIOUS_SLOT=$ACTIVE_SLOT"
 echo "PKUBA_PREVIOUS_SLOT_RETAIN_UNTIL=$retain_until"
 echo "PKUBA_BACKUP_DIR=$backup_dir"
-echo "The previous application stack is retained for 24 hours; its workers remain stopped."
+echo "The previous application stack is retained until epoch $retain_until; its workers remain stopped."
 echo "A normal rollback switches applications only. Paired data restoration requires a separate confirmed incident procedure."
 
 # Keep the newest three *verified* paired rollback points. Both the FROM and TO

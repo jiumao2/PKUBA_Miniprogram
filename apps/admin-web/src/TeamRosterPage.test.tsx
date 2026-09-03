@@ -39,6 +39,7 @@ const dataset: RosterDataset = {
   season_status: "SETUP",
   season_version: 4,
   read_only: false,
+  archived_correction_allowed: false,
   team_count: 1,
   active_team_count: 1,
   player_count: 1,

@@ -17,6 +17,7 @@ import { AdvancedDataPage } from "./AdvancedDataPage";
 import { ArchiveManagementPage } from "./ArchiveManagementPage";
 import { AdminAccountsPage } from "./AdminAccountsPage";
 import { CapacityCalendar } from "./CapacityCalendar";
+import { CorrectionCenterPage } from "./CorrectionCenterPage";
 import { DrawMappingPage } from "./DrawMappingPage";
 import { LoginScreen } from "./LoginScreen";
 import { GameMediaWorkbench } from "./GameMediaWorkbench";
@@ -40,6 +41,7 @@ export const navigation = [
   { id: "schedule-import", label: "赛程编排", available: true },
   { id: "schedule-edit", label: "赛程编辑", available: true },
   { id: "draw", label: "签位结果录入", available: true },
+  { id: "corrections", label: "纠错中心", available: true },
   { id: "reschedule", label: "调赛处理", available: true },
   { id: "media", label: "比赛资料", available: true },
   { id: "admins", label: "管理员账户", available: true },
@@ -74,6 +76,7 @@ const superadminPages: PageId[] = [
   "schedule-import",
   "schedule-edit",
   "draw",
+  "corrections",
   "reschedule",
   "admins",
   "archives",
@@ -90,6 +93,14 @@ export function AdminWorkspace() {
   const [adminGames, setAdminGames] = useState<MobileAdminGame[]>([]);
   const [capacityLedger, setCapacityLedger] = useState<CapacityLedgerRow[]>([]);
   const [page, setPage] = useState<PageId>(initialRoute.page);
+  const [correctionInitialGameId, setCorrectionInitialGameId] = useState(
+    initialRoute.page === "corrections" ? initialRoute.gameId : "",
+  );
+  const [correctionInitialDraft, setCorrectionInitialDraft] =
+    useState<MobileAdminGame | null>(null);
+  const [mediaInitialGameId, setMediaInitialGameId] = useState(
+    initialRoute.page === "media" ? initialRoute.gameId : "",
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -267,6 +278,10 @@ export function AdminWorkspace() {
   const openPage = async (nextPage: PageId) => {
     if (nextPage === page || !(await confirmAdminNavigation())) return;
     setPage(nextPage);
+    if (nextPage === "corrections") {
+      setCorrectionInitialGameId("");
+      setCorrectionInitialDraft(null);
+    }
     const params = new URLSearchParams();
     if (nextPage !== "overview") params.set("page", nextPage);
     if (nextPage === "media" && selectedAdminSeasonId) {
@@ -274,6 +289,30 @@ export function AdminWorkspace() {
     }
     const query = params.toString();
     window.history.replaceState(null, "", query ? `/?${query}` : "/");
+  };
+
+  const openCorrection = async (game: MobileAdminGame) => {
+    if (!(await confirmAdminNavigation())) return;
+    setCorrectionInitialGameId(game.id);
+    setCorrectionInitialDraft(game);
+    setPage("corrections");
+    const params = new URLSearchParams({
+      page: "corrections",
+      season_id: selectedAdminSeasonId,
+      game_id: game.id,
+    });
+    window.history.replaceState(null, "", `/?${params.toString()}`);
+  };
+
+  const openScoresheetFromCorrection = (gameId: string) => {
+    setMediaInitialGameId(gameId);
+    setPage("media");
+    const params = new URLSearchParams({
+      page: "media",
+      season_id: selectedAdminSeasonId,
+      game_id: gameId,
+    });
+    window.history.replaceState(null, "", `/?${params.toString()}`);
   };
 
   return (
@@ -323,6 +362,8 @@ export function AdminWorkspace() {
                   ? "赛程编辑"
                 : page === "draw"
                   ? "签位结果录入"
+                : page === "corrections"
+                  ? "纠错中心"
                 : page === "media"
                     ? "比赛资料"
                 : page === "reschedule"
@@ -408,7 +449,7 @@ export function AdminWorkspace() {
             seasons={adminSeasons}
             season={selectedAdminSeason}
             onSeasonChange={setSelectedAdminSeasonId}
-            onUpdated={refreshWorkspaceData}
+            onOpenCorrection={(game) => void openCorrection(game)}
           />
         )}
         {!loading && !error && selectedAdminSeason && page === "draw" && account.role === "SUPERADMIN" && (
@@ -420,6 +461,23 @@ export function AdminWorkspace() {
             onDataChanged={() => refreshWorkspaceData(selectedAdminSeason.id)}
             onOpenTeams={() => void openPage("teams")}
             onOpenConfiguration={() => void openPage("season")}
+            onOpenCorrection={(gameId) => {
+              const game = adminGames.find((item) => item.id === gameId);
+              if (game) void openCorrection(game);
+            }}
+          />
+        )}
+        {!loading && !error && selectedAdminSeason && page === "corrections" && account.role === "SUPERADMIN" && (
+          <CorrectionCenterPage
+            client={adminClient}
+            seasons={adminSeasons}
+            season={selectedAdminSeason}
+            games={adminGames}
+            initialGameId={correctionInitialGameId}
+            initialDraft={correctionInitialDraft}
+            onSeasonChange={setSelectedAdminSeasonId}
+            onUpdated={refreshWorkspaceData}
+            onOpenScoresheet={openScoresheetFromCorrection}
           />
         )}
         {!loading && !error && page === "media" && (
@@ -427,7 +485,7 @@ export function AdminWorkspace() {
             client={adminClient}
             seasons={adminSeasons}
             seasonId={selectedAdminSeasonId || season?.id || ""}
-            initialGameId={initialRoute.gameId}
+            initialGameId={mediaInitialGameId}
             isSuperadmin={account.role === "SUPERADMIN"}
             onSeasonChange={setSelectedAdminSeasonId}
           />
@@ -439,6 +497,10 @@ export function AdminWorkspace() {
           <AdminAccountsPage
             account={account}
             client={adminClient}
+            seasons={adminSeasons}
+            seasonId={selectedAdminSeasonId}
+            onSeasonChange={setSelectedAdminSeasonId}
+            onDataChanged={refreshWorkspaceData}
           />
         )}
         {!loading && !error && page === "archives" && account.role === "SUPERADMIN" && (

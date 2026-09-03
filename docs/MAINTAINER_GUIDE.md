@@ -22,7 +22,7 @@ git log -1 --format='%H%n%P%n%s'
 1. 将任务中的最新用户决定写成范围、非目标、验收标准和授权边界。
 2. 识别工作区中哪些改动属于本任务、哪些属于用户或其他任务；无关改动一律保留。
 3. 找到受影响领域的权威文档和真实调用链，不能只依据任务标题、旧总结或构建结果。
-4. 冻结 base SHA、当前 `HEAD`、预期文件 allowlist 和运行环境身份。
+4. 记录 base SHA、功能分支、任务范围、非目标和运行环境身份；候选文件范围由 Git diff 生成。
 
 `docs/INDEPENDENT_TEST_PLAN_AND_RESULTS.md` 只由独立测试任务维护。普通开发、文档和
 提交任务不得为了“了解现状”读取后顺手修改、暂存或提交它；需要独立结论时应由测试
@@ -112,55 +112,55 @@ TypeScript、领域及前端测试、管理后台生产构建和完整微信构�
 
 ## 5. 候选冻结与独立验收
 
-实现者完成后冻结候选，交接包至少包含：
+实现者在功能分支正常创建候选 commit 并推送 PR。只有工作区干净且 PR head 已固定时才交给
+独立测试；Git commit/tree 本身就是内容寻址身份，不再手工计算逐文件大小、SHA-256 或
+聚合指纹。交接包至少包含：
 
 ```text
 base: <40 位 SHA>
-head: <40 位 SHA 或 dirty candidate 标识>
+pr_head: <40 位候选 commit SHA>
+tree: <git rev-parse <pr_head>^{tree}>
 scope: <本批解决的问题>
 non-goals: <明确未改内容>
-allowlist:
-  - <path> | <mode> | <bytes> | <sha256>
-aggregate_fingerprint: <按固定路径顺序计算的聚合 SHA-256>
+changed_paths: <git diff --name-status <base>...<pr_head>>
 tests:
   - <命令> | <退出码> | <关键数量/结果>
 runtime_identity: <容器、Web、小程序制品的 tag/commit>
 known_boundaries: <未验证事项与原因>
 ```
 
-独立测试任务必须审查全部差异和调用链，在隔离环境重放聚焦、相邻与必要动态场景。发现
-问题时返回精确复现包：步骤、期望/实际、日志、API/页面/数据库证据和建议边界。实现者
-修正后重新冻结；旧哈希、旧截图和旧接受结论全部失效。
+开发者先运行受影响的聚焦和相邻测试；完整静态门槛与全量套件由 PR CI 对同一 SHA 运行
+一次。独立测试必须审查全部差异和调用链，并按风险重放聚焦、迁移、并发或必要动态场景；
+CI 已对同一 SHA 成功时，不再机械复制整套全量测试。发现问题时返回精确复现包。实现者
+修正并新增 commit 后，旧接受结论失效，但只重跑受影响范围和该新 SHA 的 CI。
 
-对产品代码、业务规则、数据合同和纳入独立验收的候选，只有冻结候选通过后，独立测试
-任务才发送精确文本 `ACCEPTED_FOR_COMMIT`。实现者自己的全绿结果不能替代该结论。
-纯文档等由用户明确授权直接提交的任务可以不经过独立候选流，但仍须执行同等的范围、
-链接、敏感信息、完整门槛、staged diff、远端 SHA 和 CI 核对。
+候选通过后，独立测试发送 `ACCEPTED_FOR_MERGE <PR_HEAD_SHA>`。这批准的是精确 PR head，
+不是后续提交。纯文档等经用户明确授权的低风险任务可以不经过独立验收，但仍须核对差异、
+链接、敏感信息和 CI。
 
 ## 6. 精确暂存、提交与推送
 
-提交和推送只在用户明确要求时执行。需要独立验收的候选收到 `ACCEPTED_FOR_COMMIT`
-后，或纯文档任务完成用户要求的直接核对后，仅暂存批准的 allowlist：
+提交和推送只在用户明确要求时执行。功能分支可在独立验收前正常提交；每次提交仍只暂存
+当前任务范围：
 
 ```powershell
-git add -- <approved-path-1> <approved-path-2>
+git add -- <task-path-1> <task-path-2>
 git diff --cached --name-only
 git diff --cached --stat
 git diff --cached --check
 ```
 
-提交前还要核对：
+提交前核对：
 
-- staged 路径与 allowlist 完全相等；
-- 文件模式、大小和 SHA-256 与冻结候选一致；
+- staged 路径与任务范围一致；
 - 没有 `.env`、凭据、OpenID、真实名单、私有媒体、备份、临时证据或调试输出；
 - 没有生成文件漂移、未登记迁移、意外删除或未跟踪文件夹；
 - 独立测试报告和其他任务改动不在 staged diff 中。
 
-提交应只表达一个可回滚意图。推送前再次获取远端并确认目标分支未移动；远端变化时停止
-并重新验证，不得强推。
+提交应表达一个可回滚意图。推送 PR 后，以 PR head commit/tree 冻结候选；合并前 required
+checks 和 `ACCEPTED_FOR_MERGE` 必须绑定同一 SHA。推荐 squash merge。
 
-推送后完成四重核对：
+合并后核对：
 
 ```powershell
 git rev-parse HEAD
@@ -168,9 +168,9 @@ git rev-parse origin/main
 git ls-remote origin refs/heads/main
 ```
 
-同时使用 GitHub API/CLI 核对 `main` SHA，并等待该 SHA 的 `backend`、`frontend`、
-`openapi` 等 required checks 全部成功。最终独立复验必须绑定推送后的 SHA，确认 tree、
-文件哈希和候选一致；“已提交”或“已推送”本身不代表完成。
+同时使用 GitHub API/CLI 核对 `main` SHA 和 tree。若 squash merge 后的 tree 与已验收 PR
+head tree 完全相同，只等待 `main` SHA 的 `backend`、`frontend`、`openapi` required checks，
+不重复完整独立验收；tree 不同则重新审查和测试差异。
 
 ## 7. 生产操作授权边界
 
@@ -193,8 +193,8 @@ git ls-remote origin refs/heads/main
 - [ ] 无关改动与独立测试报告已保留并排除。
 - [ ] 代码、数据库、OpenAPI、客户端、测试和权威文档已按影响矩阵同步。
 - [ ] 聚焦、相邻、完整门槛和必要动态验收均有实际证据。
-- [ ] 候选 allowlist、逐文件哈希和聚合指纹已冻结。
-- [ ] 需要独立验收时，测试任务已对该候选给出 `ACCEPTED_FOR_COMMIT`。
+- [ ] 候选 PR head commit/tree、base 和 Git diff 路径已记录。
+- [ ] 需要独立验收时，测试任务已对同一 PR head 给出 `ACCEPTED_FOR_MERGE`。
 - [ ] staged diff、敏感信息、生成文件、迁移和未跟踪范围已复核。
 - [ ] 推送后本地、远端、GitHub SHA、最终 tree 和 CI 已闭环。
 - [ ] 未执行任何超出当前授权的生产、付费、删除或发布动作。

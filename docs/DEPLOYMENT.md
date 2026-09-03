@@ -28,10 +28,11 @@ PostgreSQL 17 和 Caddy 2.10 的官方多架构 index 先由 release workflow �
 
 ## 首次启动前门槛
 
-- `main` 受保护并启用 PR-only、至少一名非作者审批、dismiss stale、会话解决、strict
-  `backend`/`frontend`/`openapi`、禁止 force-push/delete。
-- 有效 CODEOWNERS、`v*` tag ruleset、`production` Environment 审批和最小可审计
-  break-glass 已在 GitHub 实际启用。
+- `main` 受保护并启用 PR-only、会话解决、strict `backend`/`frontend`/`openapi`、线性历史、
+  禁止 force-push/delete。当前没有非作者审核人，required approval 为 0，人工门槛是独立测试
+  对精确 PR head SHA 的 `ACCEPTED_FOR_MERGE`；不得虚构 CODEOWNER 审批。
+- `v*` tag ruleset 和最小可审计 break-glass 已在 GitHub 实际启用。当前 `production`
+  Environment 只限制 `v*` 标签来源，没有 required reviewer；推送标签会自动部署。
 - CodeQL、dependency review、Dependabot 和 required CI 全绿；候选已完成独立验收。
 - 服务器为全新生产命名空间，数据卷不存在；可用空间至少 15 GiB。任何发布过程中低于
   10 GiB 都硬阻断。
@@ -163,8 +164,9 @@ sudo /usr/bin/bash /verified/path/scripts/prod/sync-release-tools.sh \
 1. `vX.Y.Z` 必须指向 `main` 上的已验证提交。
 2. 可复用 CI 运行后，复制审核过的 PostgreSQL/Caddy index，并构建 API/Web 不可变镜像。
 3. 以正式 HTTPS URL 构建小程序 artifact，保留 30 天。
-4. 仅当仓库变量 `PRODUCTION_DEPLOYMENTS_ENABLED=true` 时进入 `production` Environment。
-5. Environment 审批后，经受限 SSH forced command 部署；成功才创建 GitHub Release。
+4. 仅当仓库变量 `PRODUCTION_DEPLOYMENTS_ENABLED=true` 时，经 `production` Environment 读取凭据。
+5. 当前 Environment 没有人工审批；推送 Tag 即授权工作流经受限 SSH forced command 自动部署，
+   成功后才创建 GitHub Release。
 
 手工 `.github/workflows/deploy.yml` 只可重新部署已存在的不可变 tag，要求输入 `DEPLOY`，
 不会重建镜像。GitHub 和服务器均串行化部署。Environment secrets 只包括：
@@ -216,7 +218,7 @@ writer fence 内完成，payload、清单和目录 durable 后最后写 `SUCCESS
 
 ## 应用回切与数据恢复
 
-普通应用故障只允许回切保留窗内、release contract 明确兼容的旧应用：
+普通应用故障只允许回切保留窗内、release contract 明确兼容的旧应用。保留窗默认 2 小时，实际期限以权威 retained state 中的 deadline 为准：
 
 ```bash
 sudo /usr/local/sbin/pkuba-rollback-retained-application blue ROLLBACK_APPLICATION_ONLY

@@ -370,6 +370,12 @@ export interface ScoresheetDetail {
     draft_version?: number;
     source_asset_id?: string;
   };
+  pending_correction: null | {
+    id: string;
+    status: string;
+    reason: string;
+    impact_hash: string;
+  };
 }
 
 export interface ScoresheetQueueItem {

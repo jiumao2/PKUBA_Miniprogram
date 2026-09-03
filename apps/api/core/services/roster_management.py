@@ -43,6 +43,7 @@ from core.models import (
     Team,
     TeamConfirmation,
 )
+from core.services.archive_invalidation import invalidate_ready_season_archives
 
 TEMPLATE_VERSION = "1.0.0"
 HEADERS = ["球队标准名称*", "球员姓名*", "球衣号码（选填）"]
@@ -946,6 +947,7 @@ def serialize_roster_dataset(season: Season) -> dict[str, object]:
         "season_status": season.status,
         "season_version": season.version,
         "read_only": season.status == Season.Status.ARCHIVED,
+        "archived_correction_allowed": season.status == Season.Status.ARCHIVED,
         "team_count": len(teams),
         "active_team_count": sum(item.active for item in teams),
         "player_count": sum(item.roster.count() for item in teams),
@@ -1155,8 +1157,6 @@ def preview_team_change(*, actor: Account, team: Team, payload: dict) -> dict[st
     team = (
         Team.objects.select_related("season", "division").prefetch_related("roster").get(id=team.id)
     )
-    if team.season.status == Season.Status.ARCHIVED:
-        raise RosterManagementError("已归档赛季只读。", "SEASON_ARCHIVED")
     return _change_preview(team, payload)
 
 
@@ -1164,15 +1164,25 @@ def save_team_roster(
     *, actor: Account, team_id: object, payload: dict, maintenance_token: str = ""
 ) -> Team:
     _require_superadmin(actor)
+    season_id = Team.objects.filter(id=team_id).values_list("season_id", flat=True).first()
+    if season_id is None:
+        raise RosterManagementError("球队不存在。", "TEAM_NOT_FOUND")
     try:
         with transaction.atomic():
+            season = Season.objects.select_for_update().get(id=season_id)
             team = (
                 Team.objects.select_for_update()
                 .select_related("season", "division")
-                .get(id=team_id)
+                .get(id=team_id, season=season)
             )
-            if team.season.status == Season.Status.ARCHIVED:
-                raise RosterManagementError("已归档赛季只读。", "SEASON_ARCHIVED")
+            if (
+                team.season.status == Season.Status.ARCHIVED
+                and not bool(payload.get("archived_correction_confirmed"))
+            ):
+                raise RosterManagementError(
+                    "归档赛季名单纠错必须在预览后完成独立确认。",
+                    "ARCHIVED_CORRECTION_CONFIRMATION_REQUIRED",
+                )
             if team.version != int(payload.get("expected_team_version", 0)):
                 raise RosterManagementError("球队已被其他操作修改，请刷新。", "VERSION_CONFLICT")
             list(RosterPlayer.objects.select_for_update().filter(team=team))
@@ -1273,6 +1283,13 @@ def save_team_roster(
             team.active = new_active
             team.version += 1
             team.save(update_fields=["name", "active", "version", "updated_at"])
+            season.version += 1
+            season.save(update_fields=["version", "updated_at"])
+            invalidated_archives = invalidate_ready_season_archives(
+                season=season,
+                actor=actor,
+                reason="ROSTER_CORRECTION",
+            )
             after = _team_snapshot(team)
             AdminAuditLog.objects.create(
                 actor=actor,
@@ -1284,6 +1301,10 @@ def save_team_roster(
                 metadata={
                     "maintenance_confirmed": bool(preview["requires_confirmation"]),
                     "maintenance_token": preview["maintenance_token"],
+                    "archived_correction": team.season.status == Season.Status.ARCHIVED,
+                    "reason": str(payload.get("reason") or "").strip()[:500],
+                    "season_version": season.version,
+                    "invalidated_archive_count": invalidated_archives,
                 },
             )
             return team

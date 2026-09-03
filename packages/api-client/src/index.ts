@@ -122,6 +122,101 @@ export interface AdminGameMediaFilters {
   gameId?: string;
 }
 
+export interface CompetitionGameChange {
+  game_id: string;
+  expected_version: number;
+  date: string;
+  period_id: string;
+  start_time: string;
+  standard_venue_id: string | null;
+  venue_name: string;
+  home_team_id: string | null;
+  away_team_id: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  status: string;
+  leader_adjustable: boolean;
+  cancel_active_request: boolean;
+  override_rules: boolean;
+}
+
+export interface DownstreamResolution {
+  slot_id: string;
+  action: "KEEP_OVERRIDE" | "SYNC_WINNER" | "CLEAR" | "SET_TEAM";
+  team_id?: string | null;
+}
+
+export interface CompetitionCorrectionPreview {
+  season_id: string;
+  season_name: string;
+  season_status: string;
+  season_version: number;
+  changed: boolean;
+  change_count: number;
+  public_impact: boolean;
+  archived_impact: boolean;
+  requires_scoresheet_republication: boolean;
+  can_create: boolean;
+  impact_hash: string;
+  before: Record<string, unknown>[];
+  after: Record<string, unknown>[];
+  warnings: Array<Record<string, unknown> & { code: string; message: string }>;
+  blockers: Array<Record<string, unknown> & { code: string; message: string }>;
+  publication_impacts: Record<string, unknown>[];
+  downstream_impacts: Array<Record<string, unknown> & {
+    slot_id: string;
+    slot_label: string;
+    current_team_name: string;
+    new_winner_team_id: string | null;
+  }>;
+}
+
+export interface CompetitionCorrection {
+  id: string;
+  season_id: string;
+  season_name: string;
+  status: "DRAFT" | "READY" | "AWAITING_SCORESHEET" | "APPLIED" | "CANCELLED";
+  reason: string;
+  before_snapshot: Record<string, unknown>;
+  proposed_changes: Record<string, unknown>;
+  impact_snapshot: Record<string, unknown>;
+  impact_hash: string;
+  created_by: string;
+  created_at: string;
+  applied_by: string | null;
+  applied_at: string | null;
+  cancelled_by: string | null;
+  cancelled_at: string | null;
+  version: number;
+}
+
+export interface LeaderBinding {
+  id: string;
+  season_id: string;
+  account_id: string;
+  username: string;
+  team_id: string;
+  team_name: string;
+  active: boolean;
+  released_at: string | null;
+  released_by: string | null;
+  release_reason: string;
+  version: number;
+  created_at: string;
+}
+
+export interface LeaderTransferPreview {
+  season_id: string;
+  season_version: number;
+  changed: boolean;
+  account_id: string;
+  username: string;
+  team_id: string;
+  team_name: string;
+  release_bindings: LeaderBinding[];
+  impact_hash: string;
+}
+
 export type ArchiveKind = "SEASON_DATA" | "SEASON_PHOTOS" | "SYSTEM_RAW";
 export type ArchiveStatus = "QUEUED" | "BUILDING" | "READY" | "FAILED" | "EXPIRED" | "DISCARDED";
 
@@ -284,6 +379,12 @@ export interface ScoresheetSync {
   recognition: ScoresheetDetail["recognition"];
   lease: ScoresheetDetail["lease"];
   publication: ScoresheetDetail["publication"];
+  pending_correction: null | {
+    id: string;
+    status: string;
+    reason: string;
+    impact_hash: string;
+  };
 }
 
 export interface PublicScoresheetStat {
@@ -1341,11 +1442,19 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           body: JSON.stringify(payload),
         }),
       ),
-    saveTeamRoster: async (teamId: string, payload: SaveTeamRoster) =>
+    saveTeamRoster: async (
+      teamId: string,
+      payload: SaveTeamRoster,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
       parseAdminResponse<TeamRoster>(
         await fetchAdmin(`/api/v1/admin/roster/teams/${teamId}/roster`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
           body: JSON.stringify(payload),
         }),
       ),
@@ -1723,12 +1832,51 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       accountId: string,
       expectedVersion: number,
       active: boolean,
+      idempotencyKey = createIdempotencyKey(),
     ) =>
       parseAdminResponse<AdminManagedAccount>(
         await fetchAdmin(`/api/v1/admin/accounts/${accountId}/active`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
           body: JSON.stringify({ expected_version: expectedVersion, active }),
+        }),
+      ),
+    renameAccount: async (
+      accountId: string,
+      expectedVersion: number,
+      username: string,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<AdminManagedAccount>(
+        await fetchAdmin(`/api/v1/admin/accounts/${accountId}/rename`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({ expected_version: expectedVersion, username }),
+        }),
+      ),
+    resetAdminPassword: async (
+      accountId: string,
+      expectedVersion: number,
+      newPassword: string,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<AdminManagedAccount>(
+        await fetchAdmin(`/api/v1/admin/accounts/${accountId}/reset-password`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({ expected_version: expectedVersion, new_password: newPassword }),
         }),
       ),
     getAdminRegistrationPolicy: async () =>
@@ -1768,6 +1916,145 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
           method: "PUT",
           headers: { "Content-Type": "application/json", ...csrfHeaders() },
           body: JSON.stringify(payload),
+        }),
+      ),
+    previewCompetitionCorrection: async (payload: {
+      season_id: string;
+      expected_season_version: number;
+      changes: CompetitionGameChange[];
+      downstream_resolutions?: DownstreamResolution[];
+      reason?: string;
+    }) =>
+      parseAdminResponse<CompetitionCorrectionPreview>(
+        await fetchAdmin("/api/v1/admin/corrections/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    createCompetitionCorrection: async (payload: {
+      season_id: string;
+      expected_season_version: number;
+      changes: CompetitionGameChange[];
+      downstream_resolutions?: DownstreamResolution[];
+      reason?: string;
+      impact_hash: string;
+      confirmed: boolean;
+    }, idempotencyKey = createIdempotencyKey()) =>
+      parseAdminResponse<CompetitionCorrection>(
+        await fetchAdmin("/api/v1/admin/corrections", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    listCompetitionCorrections: async (seasonId?: string) => {
+      const query = seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : "";
+      return parseAdminResponse<CompetitionCorrection[]>(
+        await fetchAdmin(`/api/v1/admin/corrections${query}`),
+      );
+    },
+    applyCompetitionCorrection: async (
+      correctionId: string,
+      expectedVersion: number,
+      impactHash: string,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<CompetitionCorrection>(
+        await fetchAdmin(`/api/v1/admin/corrections/${correctionId}/apply`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({
+            expected_version: expectedVersion,
+            impact_hash: impactHash,
+            confirmed: true,
+          }),
+        }),
+      ),
+    cancelCompetitionCorrection: async (
+      correctionId: string,
+      expectedVersion: number,
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<CompetitionCorrection>(
+        await fetchAdmin(`/api/v1/admin/corrections/${correctionId}/cancel`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({ expected_version: expectedVersion, confirmed: true }),
+        }),
+      ),
+    listLeaderBindings: async (seasonId: string, includeHistory = true) =>
+      parseAdminResponse<LeaderBinding[]>(
+        await fetchAdmin(
+          `/api/v1/admin/leader-bindings?season_id=${encodeURIComponent(seasonId)}&include_history=${includeHistory ? "true" : "false"}`,
+        ),
+      ),
+    previewLeaderTransfer: async (
+      seasonId: string,
+      payload: {
+        expected_season_version: number;
+        account_id: string;
+        team_id: string;
+        reason?: string;
+      },
+    ) =>
+      parseAdminResponse<LeaderTransferPreview>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/leader-bindings/transfer-preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    transferLeaderBinding: async (
+      seasonId: string,
+      payload: {
+        expected_season_version: number;
+        account_id: string;
+        team_id: string;
+        reason?: string;
+        impact_hash: string;
+        confirmed: boolean;
+      },
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<LeaderBinding>(
+        await fetchAdmin(`/api/v1/admin/seasons/${seasonId}/leader-bindings/transfer`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    releaseLeaderBinding: async (
+      bindingId: string,
+      expectedVersion: number,
+      reason = "",
+      idempotencyKey = createIdempotencyKey(),
+    ) =>
+      parseAdminResponse<LeaderBinding>(
+        await fetchAdmin(`/api/v1/admin/leader-bindings/${bindingId}/release`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": idempotencyKey,
+            ...csrfHeaders(),
+          },
+          body: JSON.stringify({ expected_version: expectedVersion, reason, confirmed: true }),
         }),
       ),
     listAdminRescheduleRequests: async (filters: {
@@ -1861,6 +2148,23 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       form.append("image", file);
       return parseAdminResponse<GameMediaAsset>(
         await fetchAdmin(`/api/v1/admin/game-media/${assetId}/replace`, {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey, ...csrfHeaders() },
+          body: form,
+        }),
+      );
+    },
+    restoreAdminGameMedia: async (
+      assetId: string,
+      expectedVersion: number,
+      file: File,
+      idempotencyKey = createIdempotencyKey(),
+    ) => {
+      const form = new FormData();
+      form.append("expected_version", String(expectedVersion));
+      form.append("image", file);
+      return parseAdminResponse<GameMediaAsset>(
+        await fetchAdmin(`/api/v1/admin/game-media/${assetId}/restore`, {
           method: "POST",
           headers: { "Idempotency-Key": idempotencyKey, ...csrfHeaders() },
           body: form,

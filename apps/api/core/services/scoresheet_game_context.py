@@ -59,6 +59,15 @@ def current_context(game: Game) -> dict[str, Any]:
     }
 
 
+def current_context_for_scoresheet(sheet: GameScoresheet) -> dict[str, Any]:
+    """Return the reviewed correction context without changing the public Game."""
+
+    from core.services.competition_corrections import proposed_game_for_correction
+
+    game = proposed_game_for_correction(sheet.game, sheet.pending_correction)
+    return current_context(game)
+
+
 def review_binding(sheet: GameScoresheet, context: dict[str, Any]) -> dict[str, Any]:
     return {
         "scoresheet_id": str(sheet.id),

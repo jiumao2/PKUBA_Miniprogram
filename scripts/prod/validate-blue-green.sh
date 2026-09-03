@@ -145,8 +145,14 @@ grep -Fq 'previous-release.env MANIFEST.env' \
   "$repo_root/scripts/prod/deploy-blue-green.sh"
 grep -Fq 'audit_season_integrity --json' \
   "$repo_root/scripts/prod/deploy-blue-green.sh"
-grep -Fq 'PKUBA_OLD_SLOT_RETENTION_SECONDS:-86400' \
+grep -Fq 'PKUBA_OLD_SLOT_RETENTION_SECONDS:-7200' \
   "$repo_root/scripts/prod/deploy-blue-green.sh"
+grep -Fq 'PKUBA_OLD_SLOT_RETENTION_SECONDS:-7200' \
+  "$repo_root/scripts/prod/rollback-retained-application.sh"
+grep -Fq 'retain_until=$(<"$target_deadline_file")' \
+  "$repo_root/scripts/prod/rollback-retained-application.sh"
+grep -Fq '(( $(date +%s) < retain_until )) || die "the configured application rollback window expired"' \
+  "$repo_root/scripts/prod/rollback-retained-application.sh"
 grep -Fq 'PKUBA_PRODUCTION_AUTOMATION_ARMED=0' \
   "$repo_root/scripts/prod/bootstrap-server.sh"
 grep -Fxq '[[ $release_tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "release tag must be a stable vMAJOR.MINOR.PATCH"' \

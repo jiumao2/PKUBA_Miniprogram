@@ -4,7 +4,10 @@ import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.usefixtures("restore_migration_leaf_nodes"),
+]
 
 MIGRATE_FROM = ("core", "0039_reschedule_process_route")
 MIGRATE_TO = ("core", "0042_normalize_draw_assignment_validation")
@@ -96,8 +99,9 @@ def test_retired_schedule_and_legacy_markers_are_migrated_without_touching_expli
 
 def test_current_migration_graph_has_no_retired_model_or_fields():
     executor = MigrationExecutor(connection)
-    executor.migrate([MIGRATE_TO])
-    apps = executor.loader.project_state([MIGRATE_TO]).apps
+    leaf_nodes = executor.loader.graph.leaf_nodes()
+    executor.migrate(leaf_nodes)
+    apps = executor.loader.project_state(leaf_nodes).apps
 
     with pytest.raises(LookupError):
         apps.get_model("core", "ScheduleGridColumn")

@@ -31,6 +31,7 @@ from core.models import (
     DrawAssignment,
     Game,
     GameMediaAsset,
+    GameResultRevision,
     ImportIssue,
     ParticipantSlot,
     Period,
@@ -44,6 +45,7 @@ from core.models import (
     Team,
     Venue,
 )
+from core.services.game_results import append_game_result_revision
 from core.services.schedule_capacity import effective_capacity_map
 
 TEMPLATE_VERSION = "3.3.0"
@@ -2053,6 +2055,11 @@ def _confirm_schedule_import(
             )
             game.full_clean()
             game.save()
+            append_game_result_revision(
+                game=game,
+                actor=actor,
+                reason="GAME_CREATED",
+            )
             created_games.append(game)
 
         before = {
@@ -2192,6 +2199,23 @@ def _reset_preview(season: Season, *, now: datetime) -> dict[str, object]:
     if media_count:
         blockers.append(_blocker("GAME_MEDIA_EXIST", "导入比赛已关联媒体文件。", media_count))
 
+    result_revisions = GameResultRevision.objects.filter(game_id__in=game_ids)
+    protected_revision_count = result_revisions.exclude(
+        reason__in=[
+            GameResultRevision.Reason.GAME_CREATED,
+            GameResultRevision.Reason.MIGRATION_BACKFILL,
+        ]
+    ).count()
+    extra_revision_count = max(0, result_revisions.count() - games.count())
+    if protected_revision_count or extra_revision_count:
+        blockers.append(
+            _blocker(
+                "FORMAL_RESULT_REVISIONS_EXIST",
+                "导入比赛已有正式赛果版本，不能再重置导入。",
+                max(protected_revision_count, extra_revision_count),
+            )
+        )
+
     external_game_slot_count = (
         Game.objects.filter(Q(home_slot_id__in=slot_ids) | Q(away_slot_id__in=slot_ids))
         .exclude(id__in=game_ids)
@@ -2289,6 +2313,15 @@ def _reset_schedule_imports(
             "group_count": groups.count(),
             "batch_count": len(batches),
         }
+        game_ids = list(games.values_list("id", flat=True))
+        initial_revision_count = GameResultRevision.objects.filter(
+            game_id__in=game_ids
+        ).count()
+        # SETUP reset is the only sanctioned deletion of result revisions: the
+        # preview above proves these are single, unpublished creation/backfill
+        # snapshots without results, draws, requests, media, or reservations.
+        Game.objects.filter(id__in=game_ids).update(current_result_revision=None)
+        GameResultRevision.objects.filter(game_id__in=game_ids).delete()
         games.delete()
         slots.delete()
         groups.delete()
@@ -2311,7 +2344,10 @@ def _reset_schedule_imports(
             object_id=season.id,
             before={"season_version": before_version, **deleted},
             after={"season_version": season.version, "remaining_imported_game_count": 0},
-            metadata={"batch_ids": [str(batch.id) for batch in batches]},
+            metadata={
+                "batch_ids": [str(batch.id) for batch in batches],
+                "discarded_unpublished_initial_result_revisions": initial_revision_count,
+            },
         )
         return {
             "season_id": str(season.id),

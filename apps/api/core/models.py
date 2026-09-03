@@ -345,13 +345,36 @@ class SeasonLeaderBinding(UUIDModel):
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="leader_bindings")
     team = models.ForeignKey(Team, on_delete=models.PROTECT, related_name="leader_bindings")
     active = models.BooleanField(default=True)
+    version = models.PositiveIntegerField(default=1)
+    released_at = models.DateTimeField(null=True, blank=True)
+    released_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="released_leader_bindings",
+    )
+    release_reason = models.CharField(max_length=300, blank=True)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["season", "account"], name="uniq_leader_account_per_season"
+                fields=["season", "account"],
+                condition=Q(active=True),
+                name="uniq_active_leader_account_per_season",
             ),
-            models.UniqueConstraint(fields=["season", "team"], name="uniq_leader_team_per_season"),
+            models.UniqueConstraint(
+                fields=["season", "team"],
+                condition=Q(active=True),
+                name="uniq_active_leader_team_per_season",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(active=True, released_at__isnull=True, released_by__isnull=True)
+                    | Q(active=False, released_at__isnull=False)
+                ),
+                name="leader_binding_release_state_valid",
+            ),
         ]
 
     def clean(self):
@@ -501,6 +524,13 @@ class Game(UUIDModel):
     away_score = models.PositiveSmallIntegerField(null=True, blank=True)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.SCHEDULED)
     version = models.PositiveIntegerField(default=1)
+    current_result_revision = models.ForeignKey(
+        "GameResultRevision",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="current_for_games",
+    )
 
     class Meta:
         ordering = ["date", "start_time", "venue_name", "code"]
@@ -534,6 +564,25 @@ class Game(UUIDModel):
                 ),
                 name="game_result_requires_resolved_teams",
             ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        status__in=["SCHEDULED", "VOID"],
+                        home_score__isnull=True,
+                        away_score__isnull=True,
+                    )
+                    | Q(
+                        status="COMPLETED",
+                        home_score__isnull=False,
+                        away_score__isnull=False,
+                    )
+                    | (
+                        Q(status="FORFEIT")
+                        & (Q(home_score=20, away_score=0) | Q(home_score=0, away_score=20))
+                    )
+                ),
+                name="game_status_score_consistent",
+            ),
         ]
 
     def clean(self):
@@ -558,6 +607,19 @@ class Game(UUIDModel):
             raise ValidationError("主客队比分必须同时填写或同时留空。")
         if self.home_score is not None and self.home_score == self.away_score:
             raise ValidationError("正式比分不允许平局。")
+        if self.status in {self.Status.SCHEDULED, self.Status.VOID} and (
+            self.home_score is not None
+        ):
+            raise ValidationError("未赛或作废比赛必须清空比分。")
+        if self.status in {self.Status.COMPLETED, self.Status.FORFEIT} and (
+            self.home_score is None or self.away_score is None
+        ):
+            raise ValidationError("已完成或弃权比赛必须填写比分。")
+        if self.status == self.Status.FORFEIT and (
+            self.home_score,
+            self.away_score,
+        ) not in {(20, 0), (0, 20)}:
+            raise ValidationError("弃权比分必须是 20:0 或 0:20。")
         has_result = (
             self.home_score is not None
             or self.away_score is not None
@@ -576,6 +638,191 @@ class Game(UUIDModel):
     @property
     def away_display(self) -> str:
         return self.away_team.name if self.away_team_id else self.away_slot.label
+
+
+class CompetitionCorrection(UUIDModel):
+    """Versioned superadmin correction draft and its frozen impact evidence."""
+
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "草稿"
+        READY = "READY", "可以应用"
+        AWAITING_SCORESHEET = "AWAITING_SCORESHEET", "等待记录表复核"
+        APPLIED = "APPLIED", "已应用"
+        CANCELLED = "CANCELLED", "已取消"
+
+    season = models.ForeignKey(
+        Season,
+        on_delete=models.PROTECT,
+        related_name="competition_corrections",
+    )
+    status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT)
+    reason = models.CharField(max_length=500, blank=True)
+    before_snapshot = models.JSONField(default=dict)
+    proposed_changes = models.JSONField(default=dict)
+    impact_snapshot = models.JSONField(default=dict)
+    expected_versions = models.JSONField(default=dict)
+    impact_hash = models.CharField(max_length=64)
+    created_by = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="created_competition_corrections",
+    )
+    applied_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="applied_competition_corrections",
+    )
+    applied_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="cancelled_competition_corrections",
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(status="APPLIED", applied_at__isnull=False, applied_by__isnull=False)
+                    | ~Q(status="APPLIED")
+                ),
+                name="competition_correction_applied_state",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(status="CANCELLED", cancelled_at__isnull=False, cancelled_by__isnull=False)
+                    | ~Q(status="CANCELLED")
+                ),
+                name="competition_correction_cancelled_state",
+            ),
+        ]
+
+
+class GameResultRevision(UUIDModel):
+    """Append-only formal result authority for one game."""
+
+    class Reason(models.TextChoices):
+        GAME_CREATED = "GAME_CREATED", "比赛创建"
+        MIGRATION_BACKFILL = "MIGRATION_BACKFILL", "迁移回填"
+        MANUAL_CORRECTION = "MANUAL_CORRECTION", "人工纠错"
+        SCORESHEET_PUBLICATION = "SCORESHEET_PUBLICATION", "记录表发布"
+        DRAW_CORRECTION = "DRAW_CORRECTION", "签位纠错"
+
+    game = models.ForeignKey(
+        Game,
+        on_delete=models.PROTECT,
+        related_name="result_revisions",
+    )
+    revision_number = models.PositiveIntegerField()
+    status = models.CharField(max_length=16, choices=Game.Status.choices)
+    home_team = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="home_result_revisions",
+    )
+    away_team = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="away_result_revisions",
+    )
+    home_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    away_score = models.PositiveSmallIntegerField(null=True, blank=True)
+    publication = models.ForeignKey(
+        "ScoresheetPublication",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="result_revisions",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="superseded_by",
+    )
+    correction = models.ForeignKey(
+        CompetitionCorrection,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="result_revisions",
+    )
+    reason = models.CharField(max_length=32, choices=Reason.choices)
+    created_by = models.ForeignKey(
+        Account,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="game_result_revisions",
+    )
+
+    class Meta:
+        ordering = ["game", "revision_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "revision_number"],
+                name="uniq_game_result_revision_number",
+            ),
+            models.CheckConstraint(
+                condition=~Q(home_team=models.F("away_team")),
+                name="game_result_revision_distinct_teams",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        status__in=["SCHEDULED", "VOID"],
+                        home_score__isnull=True,
+                        away_score__isnull=True,
+                    )
+                    | Q(
+                        status="COMPLETED",
+                        home_team__isnull=False,
+                        away_team__isnull=False,
+                        home_score__isnull=False,
+                        away_score__isnull=False,
+                    )
+                    | (
+                        Q(status="FORFEIT", home_team__isnull=False, away_team__isnull=False)
+                        & (Q(home_score=20, away_score=0) | Q(home_score=0, away_score=20))
+                    )
+                ),
+                name="game_result_revision_state_valid",
+            ),
+            models.CheckConstraint(
+                condition=Q(home_score__isnull=True)
+                | ~Q(home_score=models.F("away_score")),
+                name="game_result_revision_not_tied",
+            ),
+        ]
+
+    def clean(self):
+        for team in (self.home_team, self.away_team):
+            if team and team.division_id != self.game.division_id:
+                raise ValidationError("赛果版本中的球队必须属于比赛组别。")
+        if self.publication_id and self.publication.scoresheet.game_id != self.game_id:
+            raise ValidationError("赛果版本关联的记录表发布必须属于同一比赛。")
+        if self.supersedes_id and self.supersedes.game_id != self.game_id:
+            raise ValidationError("赛果版本只能替代同一比赛的历史版本。")
+
+    def save(self, *args, **kwargs):
+        if self.pk and GameResultRevision.objects.filter(pk=self.pk).exists():
+            raise ValidationError("正式赛果版本只允许追加，不能修改。")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("正式赛果版本不能删除。")
 
 
 class ScheduleSlotFamily(UUIDModel):
@@ -1264,6 +1511,7 @@ class GameMediaUploadStaging(UUIDModel):
     width = models.PositiveIntegerField()
     height = models.PositiveIntegerField()
     scoresheet_complete_confirmed = models.BooleanField(default=False)
+    archived_correction_allowed = models.BooleanField(default=False)
     uploaded_by = models.ForeignKey(
         Account,
         on_delete=models.PROTECT,
@@ -1392,6 +1640,13 @@ class GameScoresheet(UUIDModel):
         blank=True,
         on_delete=models.PROTECT,
         related_name="current_for_scoresheets",
+    )
+    pending_correction = models.ForeignKey(
+        CompetitionCorrection,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="pending_scoresheets",
     )
 
     class Meta:

@@ -1709,6 +1709,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -1751,6 +1767,174 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SetAdminActiveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/accounts/{account_id}/rename": {
+      "post": {
+        "operationId": "core_api_admin_rename_managed_account",
+        "summary": "Rename Managed Account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccountOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameAccountIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/accounts/{account_id}/reset-password": {
+      "post": {
+        "operationId": "core_api_admin_reset_managed_admin_password",
+        "summary": "Reset Managed Admin Password",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccountOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetAdminPasswordIn"
               }
             }
           },
@@ -4013,6 +4197,516 @@
         ]
       }
     },
+    "/api/v1/admin/corrections/preview": {
+      "post": {
+        "operationId": "core_api_admin_corrections_preview_competition_correction",
+        "summary": "Preview Competition Correction",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionPreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-corrections"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionPreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/corrections": {
+      "post": {
+        "operationId": "core_api_admin_corrections_create_competition_correction",
+        "summary": "Create Competition Correction",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-corrections"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "core_api_admin_corrections_list_competition_corrections",
+        "summary": "List Competition Corrections",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "season_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season Id"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "correction_status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Correction Status"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CorrectionOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-corrections"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/corrections/{correction_id}": {
+      "get": {
+        "operationId": "core_api_admin_corrections_get_competition_correction",
+        "summary": "Get Competition Correction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "correction_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-corrections"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/corrections/{correction_id}/apply": {
+      "post": {
+        "operationId": "core_api_admin_corrections_apply_competition_correction",
+        "summary": "Apply Competition Correction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "correction_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-corrections"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/corrections/{correction_id}/cancel": {
+      "post": {
+        "operationId": "core_api_admin_corrections_cancel_competition_correction",
+        "summary": "Cancel Competition Correction",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "correction_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Correction Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-corrections"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionCancelIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/seasons/{season_id}/draw-assignments": {
       "get": {
         "operationId": "core_api_admin_draw_get_draw_assignments",
@@ -4591,6 +5285,364 @@
         "security": [
           {
             "SuperadminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/leader-bindings": {
+      "get": {
+        "operationId": "core_api_admin_leaders_list_leader_bindings",
+        "summary": "List Leader Bindings",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "include_history",
+            "schema": {
+              "default": true,
+              "title": "Include History",
+              "type": "boolean"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminLeaderBindingOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-leader-bindings"
+        ],
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/leader-bindings/transfer-preview": {
+      "post": {
+        "operationId": "core_api_admin_leaders_preview_transfer",
+        "summary": "Preview Transfer",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaderTransferPreviewOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-leader-bindings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaderTransferPreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/seasons/{season_id}/leader-bindings/transfer": {
+      "post": {
+        "operationId": "core_api_admin_leaders_apply_transfer",
+        "summary": "Apply Transfer",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Season Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-leader-bindings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaderTransferApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/leader-bindings/{binding_id}/release": {
+      "post": {
+        "operationId": "core_api_admin_leaders_release_binding",
+        "summary": "Release Binding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLeaderBindingErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-leader-bindings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaderReleaseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
           }
         ]
       }
@@ -6030,6 +7082,22 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
           }
         ],
         "responses": {
@@ -6676,6 +7744,136 @@
                 "required": [
                   "expected_version",
                   "scoresheet_complete_confirmed",
+                  "image"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "AdminSessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/game-media/{asset_id}/restore": {
+      "post": {
+        "operationId": "core_api_game_media_restore_admin_game_media",
+        "summary": "Restore Admin Game Media",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaAssetOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameMediaErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "admin-game-media"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "title": "MultiPartBodyParams",
+                "type": "object",
+                "properties": {
+                  "expected_version": {
+                    "title": "Expected Version",
+                    "type": "integer"
+                  },
+                  "image": {
+                    "format": "binary",
+                    "title": "Image",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expected_version",
                   "image"
                 ]
               }
@@ -13048,6 +14246,42 @@
         "title": "SetAdminActiveIn",
         "type": "object"
       },
+      "RenameAccountIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "username"
+        ],
+        "title": "RenameAccountIn",
+        "type": "object"
+      },
+      "ResetAdminPasswordIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "new_password": {
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "new_password"
+        ],
+        "title": "ResetAdminPasswordIn",
+        "type": "object"
+      },
       "AdminDivisionOut": {
         "properties": {
           "id": {
@@ -16104,6 +17338,548 @@
         "title": "RetryJobIn",
         "type": "object"
       },
+      "CorrectionPreviewOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "season_status": {
+            "title": "Season Status",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "change_count": {
+            "title": "Change Count",
+            "type": "integer"
+          },
+          "public_impact": {
+            "title": "Public Impact",
+            "type": "boolean"
+          },
+          "archived_impact": {
+            "title": "Archived Impact",
+            "type": "boolean"
+          },
+          "requires_scoresheet_republication": {
+            "title": "Requires Scoresheet Republication",
+            "type": "boolean"
+          },
+          "can_create": {
+            "title": "Can Create",
+            "type": "boolean"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          },
+          "before": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Before",
+            "type": "array"
+          },
+          "after": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "After",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "publication_impacts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Publication Impacts",
+            "type": "array"
+          },
+          "downstream_impacts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Downstream Impacts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_name",
+          "season_status",
+          "season_version",
+          "changed",
+          "change_count",
+          "public_impact",
+          "archived_impact",
+          "requires_scoresheet_republication",
+          "can_create",
+          "impact_hash",
+          "before",
+          "after",
+          "warnings",
+          "blockers",
+          "publication_impacts",
+          "downstream_impacts"
+        ],
+        "title": "CorrectionPreviewOut",
+        "type": "object"
+      },
+      "CorrectionErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "CorrectionErrorOut",
+        "type": "object"
+      },
+      "CorrectionPreviewIn": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/GameCorrectionChangeIn"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "downstream_resolutions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DownstreamResolutionIn"
+            },
+            "title": "Downstream Resolutions",
+            "type": "array"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "season_id",
+          "expected_season_version",
+          "changes"
+        ],
+        "title": "CorrectionPreviewIn",
+        "type": "object"
+      },
+      "DownstreamResolutionIn": {
+        "properties": {
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          }
+        },
+        "required": [
+          "slot_id",
+          "action"
+        ],
+        "title": "DownstreamResolutionIn",
+        "type": "object"
+      },
+      "GameCorrectionChangeIn": {
+        "properties": {
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "period_id": {
+            "format": "uuid",
+            "title": "Period Id",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "standard_venue_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Standard Venue Id"
+          },
+          "venue_name": {
+            "title": "Venue Name",
+            "type": "string"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "away_team_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "home_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Score"
+          },
+          "away_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "leader_adjustable": {
+            "default": true,
+            "title": "Leader Adjustable",
+            "type": "boolean"
+          },
+          "cancel_active_request": {
+            "default": false,
+            "title": "Cancel Active Request",
+            "type": "boolean"
+          },
+          "override_rules": {
+            "default": false,
+            "title": "Override Rules",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "game_id",
+          "expected_version",
+          "date",
+          "period_id",
+          "start_time",
+          "venue_name",
+          "status"
+        ],
+        "title": "GameCorrectionChangeIn",
+        "type": "object"
+      },
+      "CorrectionOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_name": {
+            "title": "Season Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "before_snapshot": {
+            "additionalProperties": true,
+            "title": "Before Snapshot",
+            "type": "object"
+          },
+          "proposed_changes": {
+            "additionalProperties": true,
+            "title": "Proposed Changes",
+            "type": "object"
+          },
+          "impact_snapshot": {
+            "additionalProperties": true,
+            "title": "Impact Snapshot",
+            "type": "object"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "applied_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied By"
+          },
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "cancelled_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled By"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "season_id",
+          "season_name",
+          "status",
+          "reason",
+          "before_snapshot",
+          "proposed_changes",
+          "impact_snapshot",
+          "impact_hash",
+          "created_by",
+          "created_at",
+          "applied_by",
+          "applied_at",
+          "cancelled_by",
+          "cancelled_at",
+          "version"
+        ],
+        "title": "CorrectionOut",
+        "type": "object"
+      },
+      "CorrectionCreateIn": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/GameCorrectionChangeIn"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "downstream_resolutions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DownstreamResolutionIn"
+            },
+            "title": "Downstream Resolutions",
+            "type": "array"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "season_id",
+          "expected_season_version",
+          "changes",
+          "impact_hash"
+        ],
+        "title": "CorrectionCreateIn",
+        "type": "object"
+      },
+      "CorrectionApplyIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version",
+          "impact_hash"
+        ],
+        "title": "CorrectionApplyIn",
+        "type": "object"
+      },
+      "CorrectionCancelIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "CorrectionCancelIn",
+        "type": "object"
+      },
       "DrawDatasetOut": {
         "properties": {
           "season_id": {
@@ -17522,6 +19298,265 @@
           "impact_hash"
         ],
         "title": "LifecycleApplyIn",
+        "type": "object"
+      },
+      "AdminLeaderBindingOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "released_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released By"
+          },
+          "release_reason": {
+            "title": "Release Reason",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "season_id",
+          "account_id",
+          "username",
+          "team_id",
+          "team_name",
+          "active",
+          "released_at",
+          "released_by",
+          "release_reason",
+          "version",
+          "created_at"
+        ],
+        "title": "AdminLeaderBindingOut",
+        "type": "object"
+      },
+      "AdminLeaderBindingErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AdminLeaderBindingErrorOut",
+        "type": "object"
+      },
+      "LeaderTransferPreviewOut": {
+        "properties": {
+          "season_id": {
+            "format": "uuid",
+            "title": "Season Id",
+            "type": "string"
+          },
+          "season_version": {
+            "title": "Season Version",
+            "type": "integer"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "team_name": {
+            "title": "Team Name",
+            "type": "string"
+          },
+          "release_bindings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Release Bindings",
+            "type": "array"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "season_id",
+          "season_version",
+          "changed",
+          "account_id",
+          "username",
+          "team_id",
+          "team_name",
+          "release_bindings",
+          "impact_hash"
+        ],
+        "title": "LeaderTransferPreviewOut",
+        "type": "object"
+      },
+      "LeaderTransferPreviewIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "account_id",
+          "team_id"
+        ],
+        "title": "LeaderTransferPreviewIn",
+        "type": "object"
+      },
+      "LeaderTransferApplyIn": {
+        "properties": {
+          "expected_season_version": {
+            "title": "Expected Season Version",
+            "type": "integer"
+          },
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "team_id": {
+            "format": "uuid",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "impact_hash": {
+            "title": "Impact Hash",
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_season_version",
+          "account_id",
+          "team_id",
+          "impact_hash"
+        ],
+        "title": "LeaderTransferApplyIn",
+        "type": "object"
+      },
+      "LeaderReleaseIn": {
+        "properties": {
+          "expected_version": {
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "LeaderReleaseIn",
         "type": "object"
       },
       "AdvancedFieldOut": {
@@ -18961,6 +20996,10 @@
             "title": "Read Only",
             "type": "boolean"
           },
+          "archived_correction_allowed": {
+            "title": "Archived Correction Allowed",
+            "type": "boolean"
+          },
           "team_count": {
             "title": "Team Count",
             "type": "integer"
@@ -19001,6 +21040,7 @@
           "season_status",
           "season_version",
           "read_only",
+          "archived_correction_allowed",
           "team_count",
           "active_team_count",
           "player_count",
@@ -19555,6 +21595,16 @@
             "default": "",
             "title": "Maintenance Token",
             "type": "string"
+          },
+          "archived_correction_confirmed": {
+            "default": false,
+            "title": "Archived Correction Confirmed",
+            "type": "boolean"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
           }
         },
         "required": [
@@ -19895,6 +21945,10 @@
           "can_delete": {
             "title": "Can Delete",
             "type": "boolean"
+          },
+          "can_restore": {
+            "title": "Can Restore",
+            "type": "boolean"
           }
         },
         "required": [
@@ -19916,7 +21970,8 @@
           "created_at",
           "version",
           "can_replace",
-          "can_delete"
+          "can_delete",
+          "can_restore"
         ],
         "title": "GameMediaAssetOut",
         "type": "object"
@@ -21595,6 +23650,18 @@
             ],
             "title": "Publication"
           },
+          "pending_correction": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Correction"
+          },
           "can_upload_source": {
             "title": "Can Upload Source",
             "type": "boolean"
@@ -21616,6 +23683,7 @@
           "recognition",
           "lease",
           "publication",
+          "pending_correction",
           "can_upload_source"
         ],
         "title": "ScoresheetDetailOut",
@@ -22052,6 +24120,18 @@
             ],
             "title": "Publication"
           },
+          "pending_correction": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Correction"
+          },
           "can_upload_source": {
             "title": "Can Upload Source",
             "type": "boolean"
@@ -22069,6 +24149,7 @@
           "recognition",
           "lease",
           "publication",
+          "pending_correction",
           "can_upload_source"
         ],
         "title": "ScoresheetSyncOut",

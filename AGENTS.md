@@ -45,11 +45,11 @@
 
 ## Agent 接手与交付
 - 接手任务先完整阅读本文件、`docs/MAINTAINER_GUIDE.md`、`WORKFLOW.md` 及受影响领域的权威文档；涉及安全清理、依赖升级、扫描告警或行为“改进”时还必须阅读 `docs/FINDING_DISPOSITIONS.md`。随后再检查分支、`HEAD`、`origin/main`、工作区和运行制品；不得从任务标题或旧对话摘要猜测当前状态。
-- 开始修改前冻结基线 SHA、任务范围、明确不做事项和文件 allowlist。若 `HEAD` 移动或出现他人产品改动，停止写入并重新核对，不得 reset、clean 或覆盖。
+- 开始修改前记录基线 SHA、任务范围和明确不做事项。文件范围以候选分支相对基线的 Git diff 为准；若基线或共享工作区出现他人产品改动，停止写入并重新核对，不得 reset、clean 或覆盖。
 - 实现者只修改批准范围并提供聚焦测试、相邻流程、完整门槛、已知边界和未验证事项。涉及 UI 必须使用真实浏览器或微信开发者工具；涉及数据库、并发、迁移和恢复必须使用隔离 PostgreSQL 或成套恢复副本。
-- 候选交接必须包含 base/HEAD、精确 allowlist、逐文件模式/大小/SHA-256、聚合指纹、实际测试输出、运行制品身份和剩余边界。任何候选变化都会使旧指纹和旧验收失效。
+- 实现者可以在功能分支正常提交候选。候选交接必须包含 base、PR head commit/tree、Git diff 路径、实际测试输出、运行制品身份和剩余边界；Git commit/tree 是候选的内容身份，不再手工维护逐文件哈希清单。任何新提交都会使旧验收失效，并按影响范围重新测试。
 - 独立测试任务拥有并维护 `docs/INDEPENDENT_TEST_PLAN_AND_RESULTS.md`；实现和提交任务不得读取后顺手改写、暂存或提交该报告，也不得用自己的测试替代独立结论。
-- 对纳入独立验收的产品候选，只有收到独立测试对冻结候选的 `ACCEPTED_FOR_COMMIT`，提交任务才可按批准 allowlist 暂存。纯文档等明确由用户授权直接提交的任务仍须冻结 allowlist 并完成同等 staged/远端核对。提交前检查 staged diff、文件模式、空白错误、敏感内容和未跟踪文件；推送后核对本地 `HEAD`、`origin/main`、GitHub `main`、最终 tree/哈希及全部 required CI。
+- 独立测试绑定 PR head SHA，在 required CI 成功并完成差异审查、聚焦及必要动态验收后发送 `ACCEPTED_FOR_MERGE <SHA>`。squash merge 后若 `main` tree 与已验收 PR tree 相同，只需确认身份和 `main` CI，不机械重跑完整测试；tree 不同则重新验收。提交前仍须检查 staged diff、空白错误、敏感内容和未跟踪文件，合并后核对本地、远端、GitHub `main`、最终 tree 及 required CI。
 - 详细接手、验证、交接和提交命令以 `docs/MAINTAINER_GUIDE.md` 与 `WORKFLOW.md` 为准；本文件只保留不可违反的仓库级约束。
 
 ## 权威文档索引

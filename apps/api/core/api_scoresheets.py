@@ -26,6 +26,7 @@ from core.scoresheet_schema_v2 import ensure_v2_document, has_recognition_result
 from core.scoresheet_v2.models import ScoresheetDocument
 from core.scoresheet_v2.recognition import PROMPT_VERSION
 from core.scoresheet_v2.template import load_template_definition
+from core.services.competition_corrections import proposed_game_for_correction
 from core.services.game_media import can_upload_scoresheet_source, issue_media_ticket
 from core.services.idempotency import IdempotencyError, execute_idempotent
 from core.services.scoresheet_recognition import RETRY_DELAYS
@@ -153,6 +154,7 @@ class ScoresheetDetailOut(Schema):
     recognition: dict[str, Any] | None
     lease: dict[str, Any] | None
     publication: dict[str, Any] | None
+    pending_correction: dict[str, Any] | None
     can_upload_source: bool
 
 
@@ -180,6 +182,7 @@ class ScoresheetSyncOut(Schema):
     recognition: dict[str, Any] | None
     lease: dict[str, Any] | None
     publication: dict[str, Any] | None
+    pending_correction: dict[str, Any] | None
     can_upload_source: bool
 
 
@@ -367,8 +370,20 @@ def _publication(scoresheet: GameScoresheet) -> dict[str, Any] | None:
     }
 
 
-def _detail(scoresheet: GameScoresheet, *, actor: Account) -> dict[str, Any]:
-    game = scoresheet.game
+def _allows_archived_web_correction(request: HttpRequest) -> bool:
+    return bool(
+        request.auth.is_pkuba_superadmin
+        and not hasattr(request, "miniapp_session")
+    )
+
+
+def _detail(
+    scoresheet: GameScoresheet,
+    *,
+    actor: Account,
+    allow_archived_correction: bool,
+) -> dict[str, Any]:
+    game = proposed_game_for_correction(scoresheet.game, scoresheet.pending_correction)
     source = None
     if scoresheet.source_asset_id:
         asset = scoresheet.source_asset
@@ -438,7 +453,21 @@ def _detail(scoresheet: GameScoresheet, *, actor: Account) -> dict[str, Any]:
         "recognition": _recognition(scoresheet),
         "lease": _lease(scoresheet),
         "publication": _publication(scoresheet),
-        "can_upload_source": can_upload_scoresheet_source(actor, scoresheet.game),
+        "pending_correction": (
+            {
+                "id": str(scoresheet.pending_correction_id),
+                "status": scoresheet.pending_correction.status,
+                "reason": scoresheet.pending_correction.reason,
+                "impact_hash": scoresheet.pending_correction.impact_hash,
+            }
+            if scoresheet.pending_correction_id
+            else None
+        ),
+        "can_upload_source": can_upload_scoresheet_source(
+            actor,
+            scoresheet.game,
+            allow_archived_correction=allow_archived_correction,
+        ),
     }
 
 
@@ -454,6 +483,7 @@ def _get_scoresheet(scoresheet_id: UUID) -> GameScoresheet:
                 "source_asset",
                 "current_publication",
                 "current_publication__published_by",
+                "pending_correction",
             )
             .prefetch_related("recognition_runs", "edit_lease__account")
             .get(id=scoresheet_id)
@@ -649,7 +679,10 @@ def list_scoresheets(
                         publication["publication_number"] if publication else None
                     ),
                     "can_upload_source": can_upload_scoresheet_source(
-                        request.auth, game, has_publication=game.has_scoresheet_publication
+                        request.auth,
+                        game,
+                        has_publication=game.has_scoresheet_publication,
+                        allow_archived_correction=_allows_archived_web_correction(request),
                     ),
                 }
             )
@@ -668,7 +701,11 @@ def list_scoresheets(
 def get_scoresheet(request: HttpRequest, scoresheet_id: UUID):
     try:
         _require_admin(request)
-        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
+        return _detail(
+            _get_scoresheet(scoresheet_id),
+            actor=request.auth,
+            allow_archived_correction=_allows_archived_web_correction(request),
+        )
     except ScoresheetError as error:
         return _error(error)
 
@@ -715,7 +752,21 @@ def get_scoresheet_sync(
             "recognition": _recognition(scoresheet),
             "lease": _lease(scoresheet),
             "publication": _publication(scoresheet),
-            "can_upload_source": can_upload_scoresheet_source(request.auth, scoresheet.game),
+            "pending_correction": (
+                {
+                    "id": str(scoresheet.pending_correction_id),
+                    "status": scoresheet.pending_correction.status,
+                    "reason": scoresheet.pending_correction.reason,
+                    "impact_hash": scoresheet.pending_correction.impact_hash,
+                }
+                if scoresheet.pending_correction_id
+                else None
+            ),
+            "can_upload_source": can_upload_scoresheet_source(
+                request.auth,
+                scoresheet.game,
+                allow_archived_correction=_allows_archived_web_correction(request),
+            ),
         }
     except ScoresheetError as error:
         return _error(error)
@@ -845,7 +896,11 @@ def update_scoresheet_draft(request: HttpRequest, scoresheet_id: UUID, payload: 
             change_type=payload.change_type,
             explicit_save=payload.explicit_save,
         )
-        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
+        return _detail(
+            _get_scoresheet(scoresheet_id),
+            actor=request.auth,
+            allow_archived_correction=_allows_archived_web_correction(request),
+        )
     except (GameScoresheet.DoesNotExist, ScoresheetError, ValueError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -873,7 +928,11 @@ def set_scoresheet_region_review(
             region=region,
             reviewed=payload.reviewed,
         )
-        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
+        return _detail(
+            _get_scoresheet(scoresheet_id),
+            actor=request.auth,
+            allow_archived_correction=_allows_archived_web_correction(request),
+        )
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -913,7 +972,12 @@ def review_game_context_endpoint(
             command=command,
         )
         return Status(
-            status, _detail(_get_scoresheet(UUID(str(body["scoresheet_id"]))), actor=request.auth)
+            status,
+            _detail(
+                _get_scoresheet(UUID(str(body["scoresheet_id"]))),
+                actor=request.auth,
+                allow_archived_correction=_allows_archived_web_correction(request),
+            ),
         )
     except IdempotencyError as error:
         return Status(error.status, {"code": error.code, "message": str(error)})
@@ -937,7 +1001,11 @@ def validate_scoresheet_endpoint(
             client_id=payload.client_id,
             surface=payload.surface,
         )
-        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
+        return _detail(
+            _get_scoresheet(scoresheet_id),
+            actor=request.auth,
+            allow_archived_correction=_allows_archived_web_correction(request),
+        )
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -962,7 +1030,11 @@ def acknowledge_scoresheet_warnings(
             surface=payload.surface,
             warning_ids=payload.warning_ids,
         )
-        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
+        return _detail(
+            _get_scoresheet(scoresheet_id),
+            actor=request.auth,
+            allow_archived_correction=_allows_archived_web_correction(request),
+        )
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)
@@ -1002,7 +1074,12 @@ def publish_scoresheet_endpoint(
             command=command,
         )
         return Status(
-            status, _detail(_get_scoresheet(UUID(str(body["scoresheet_id"]))), actor=request.auth)
+            status,
+            _detail(
+                _get_scoresheet(UUID(str(body["scoresheet_id"]))),
+                actor=request.auth,
+                allow_archived_correction=_allows_archived_web_correction(request),
+            ),
         )
     except IdempotencyError as error:
         return Status(error.status, {"code": error.code, "message": str(error)})
@@ -1133,7 +1210,11 @@ def apply_scoresheet_recognition(
             surface=payload.surface,
             regions=payload.regions,
         )
-        return _detail(_get_scoresheet(scoresheet_id), actor=request.auth)
+        return _detail(
+            _get_scoresheet(scoresheet_id),
+            actor=request.auth,
+            allow_archived_correction=_allows_archived_web_correction(request),
+        )
     except (GameScoresheet.DoesNotExist, ScoresheetError) as error:
         if isinstance(error, GameScoresheet.DoesNotExist):
             error = ScoresheetError("SCORESHEET_NOT_FOUND", "记录表不存在。", status=404)

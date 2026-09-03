@@ -24,6 +24,7 @@ from core.models import (
     Season,
     Team,
 )
+from core.services.game_results import append_game_result_revision
 
 ELIMINATION_STAGES = (
     Game.Stage.KNOCKOUT,
@@ -662,8 +663,7 @@ def _analyze(
         unsafe_game_ids = {
             game.id
             for game in games
-            if _game_start(game) <= now.astimezone(ZoneInfo(season.timezone))
-            or game.status != Game.Status.SCHEDULED
+            if game.status != Game.Status.SCHEDULED
             or game.home_score is not None
             or game.away_score is not None
         }
@@ -671,7 +671,7 @@ def _analyze(
             blockers.append(
                 {
                     "code": "GAME_ALREADY_STARTED_OR_SCORED",
-                    "message": "受影响比赛已开赛、已有赛果或不再是未赛状态，不能在本页改写。",
+                    "message": "受影响比赛已有赛果或不再是未赛状态，不能在本页改写。",
                     "count": len(unsafe_game_ids),
                 }
             )
@@ -831,6 +831,11 @@ def apply_draw_assignments(
                 game.version += 1
                 game.full_clean()
                 game.save(update_fields=["home_team", "away_team", "version", "updated_at"])
+                append_game_result_revision(
+                    game=game,
+                    actor=actor,
+                    reason="DRAW_CORRECTION",
+                )
 
             season.version += 1
             season.save(update_fields=["version", "updated_at"])
@@ -1079,7 +1084,7 @@ def _analyze_game_assignment(
         participant_changed
         and not historical_backfill
         and source_blocker is None
-        and (unsafe_started or unsafe_result or sum(references.values()))
+        and (unsafe_result or sum(references.values()))
     ):
         blockers.append(
             {
@@ -1090,6 +1095,16 @@ def _analyze_game_assignment(
         )
 
     warnings: list[dict[str, object]] = []
+    if participant_changed and unsafe_started and not unsafe_result:
+        warnings.append(
+            {
+                "code": "PAST_GAME_CORRECTION",
+                "message": "比赛时间已过；这只是风险提示，不阻止超级管理员补齐或纠正签位。",
+                "side": "GAME",
+                "team_id": home_team_id,
+                "team_name": f"{teams[home_team_id].name} — {teams[away_team_id].name}",
+            }
+        )
     if previous_key and game.stage != Game.Stage.RELEGATION:
         for side, team_id in (("HOME", home_team_id), ("AWAY", away_team_id)):
             if team_id not in previous_winner_games:
@@ -1346,6 +1361,11 @@ def apply_game_draw_assignments(
             game.version += 1
             game.full_clean()
             game.save(update_fields=["home_team", "away_team", "version", "updated_at"])
+            append_game_result_revision(
+                game=game,
+                actor=actor,
+                reason="DRAW_CORRECTION",
+            )
             season.version += 1
             season.save(update_fields=["version", "updated_at"])
 

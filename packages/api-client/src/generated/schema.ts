@@ -616,6 +616,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/accounts/{account_id}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rename Managed Account */
+        post: operations["core_api_admin_rename_managed_account"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/accounts/{account_id}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset Managed Admin Password */
+        post: operations["core_api_admin_reset_managed_admin_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/seasons": {
         parameters: {
             query?: never;
@@ -1099,6 +1133,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/corrections/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Competition Correction */
+        post: operations["core_api_admin_corrections_preview_competition_correction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Competition Corrections */
+        get: operations["core_api_admin_corrections_list_competition_corrections"];
+        put?: never;
+        /** Create Competition Correction */
+        post: operations["core_api_admin_corrections_create_competition_correction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/corrections/{correction_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Competition Correction */
+        get: operations["core_api_admin_corrections_get_competition_correction"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/corrections/{correction_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Competition Correction */
+        post: operations["core_api_admin_corrections_apply_competition_correction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/corrections/{correction_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Competition Correction */
+        post: operations["core_api_admin_corrections_cancel_competition_correction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/seasons/{season_id}/draw-assignments": {
         parameters: {
             query?: never;
@@ -1196,6 +1316,74 @@ export interface paths {
         put?: never;
         /** Apply Lifecycle */
         post: operations["core_api_admin_lifecycle_apply_lifecycle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/leader-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Leader Bindings */
+        get: operations["core_api_admin_leaders_list_leader_bindings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/leader-bindings/transfer-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Transfer */
+        post: operations["core_api_admin_leaders_preview_transfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/seasons/{season_id}/leader-bindings/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Transfer */
+        post: operations["core_api_admin_leaders_apply_transfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/leader-bindings/{binding_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release Binding */
+        post: operations["core_api_admin_leaders_release_binding"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1657,6 +1845,23 @@ export interface paths {
         put?: never;
         /** Replace Admin Game Media */
         post: operations["core_api_game_media_replace_admin_game_media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/game-media/{asset_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Admin Game Media */
+        post: operations["core_api_game_media_restore_admin_game_media"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3381,6 +3586,20 @@ export interface components {
             /** Active */
             active: boolean;
         };
+        /** RenameAccountIn */
+        RenameAccountIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Username */
+            username: string;
+        };
+        /** ResetAdminPasswordIn */
+        ResetAdminPasswordIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** New Password */
+            new_password: string;
+        };
         /** AdminDivisionOut */
         AdminDivisionOut: {
             /**
@@ -4607,6 +4826,254 @@ export interface components {
             /** Expected Version */
             expected_version: number;
         };
+        /** CorrectionPreviewOut */
+        CorrectionPreviewOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Season Status */
+            season_status: string;
+            /** Season Version */
+            season_version: number;
+            /** Changed */
+            changed: boolean;
+            /** Change Count */
+            change_count: number;
+            /** Public Impact */
+            public_impact: boolean;
+            /** Archived Impact */
+            archived_impact: boolean;
+            /** Requires Scoresheet Republication */
+            requires_scoresheet_republication: boolean;
+            /** Can Create */
+            can_create: boolean;
+            /** Impact Hash */
+            impact_hash: string;
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            }[];
+            /** After */
+            after: {
+                [key: string]: unknown;
+            }[];
+            /** Warnings */
+            warnings: {
+                [key: string]: unknown;
+            }[];
+            /** Blockers */
+            blockers: {
+                [key: string]: unknown;
+            }[];
+            /** Publication Impacts */
+            publication_impacts: {
+                [key: string]: unknown;
+            }[];
+            /** Downstream Impacts */
+            downstream_impacts: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** CorrectionErrorOut */
+        CorrectionErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** CorrectionPreviewIn */
+        CorrectionPreviewIn: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Expected Season Version */
+            expected_season_version: number;
+            /** Changes */
+            changes: components["schemas"]["GameCorrectionChangeIn"][];
+            /**
+             * Downstream Resolutions
+             * @default []
+             */
+            downstream_resolutions: components["schemas"]["DownstreamResolutionIn"][];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /** DownstreamResolutionIn */
+        DownstreamResolutionIn: {
+            /**
+             * Slot Id
+             * Format: uuid
+             */
+            slot_id: string;
+            /** Action */
+            action: string;
+            /** Team Id */
+            team_id?: string | null;
+        };
+        /** GameCorrectionChangeIn */
+        GameCorrectionChangeIn: {
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Period Id
+             * Format: uuid
+             */
+            period_id: string;
+            /**
+             * Start Time
+             * Format: time
+             */
+            start_time: string;
+            /** Standard Venue Id */
+            standard_venue_id?: string | null;
+            /** Venue Name */
+            venue_name: string;
+            /** Home Team Id */
+            home_team_id?: string | null;
+            /** Away Team Id */
+            away_team_id?: string | null;
+            /** Home Score */
+            home_score?: number | null;
+            /** Away Score */
+            away_score?: number | null;
+            /** Status */
+            status: string;
+            /**
+             * Leader Adjustable
+             * @default true
+             */
+            leader_adjustable: boolean;
+            /**
+             * Cancel Active Request
+             * @default false
+             */
+            cancel_active_request: boolean;
+            /**
+             * Override Rules
+             * @default false
+             */
+            override_rules: boolean;
+        };
+        /** CorrectionOut */
+        CorrectionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Name */
+            season_name: string;
+            /** Status */
+            status: string;
+            /** Reason */
+            reason: string;
+            /** Before Snapshot */
+            before_snapshot: {
+                [key: string]: unknown;
+            };
+            /** Proposed Changes */
+            proposed_changes: {
+                [key: string]: unknown;
+            };
+            /** Impact Snapshot */
+            impact_snapshot: {
+                [key: string]: unknown;
+            };
+            /** Impact Hash */
+            impact_hash: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Applied By */
+            applied_by: string | null;
+            /** Applied At */
+            applied_at: string | null;
+            /** Cancelled By */
+            cancelled_by: string | null;
+            /** Cancelled At */
+            cancelled_at: string | null;
+            /** Version */
+            version: number;
+        };
+        /** CorrectionCreateIn */
+        CorrectionCreateIn: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Expected Season Version */
+            expected_season_version: number;
+            /** Changes */
+            changes: components["schemas"]["GameCorrectionChangeIn"][];
+            /**
+             * Downstream Resolutions
+             * @default []
+             */
+            downstream_resolutions: components["schemas"]["DownstreamResolutionIn"][];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Impact Hash */
+            impact_hash: string;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+        };
+        /** CorrectionApplyIn */
+        CorrectionApplyIn: {
+            /** Expected Version */
+            expected_version: number;
+            /** Impact Hash */
+            impact_hash: string;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+        };
+        /** CorrectionCancelIn */
+        CorrectionCancelIn: {
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+        };
         /** DrawDatasetOut */
         DrawDatasetOut: {
             /**
@@ -5178,6 +5645,149 @@ export interface components {
             /** Impact Hash */
             impact_hash: string;
         };
+        /** AdminLeaderBindingOut */
+        AdminLeaderBindingOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Username */
+            username: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /** Active */
+            active: boolean;
+            /** Released At */
+            released_at: string | null;
+            /** Released By */
+            released_by: string | null;
+            /** Release Reason */
+            release_reason: string;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AdminLeaderBindingErrorOut */
+        AdminLeaderBindingErrorOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** LeaderTransferPreviewOut */
+        LeaderTransferPreviewOut: {
+            /**
+             * Season Id
+             * Format: uuid
+             */
+            season_id: string;
+            /** Season Version */
+            season_version: number;
+            /** Changed */
+            changed: boolean;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Username */
+            username: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /** Team Name */
+            team_name: string;
+            /** Release Bindings */
+            release_bindings: {
+                [key: string]: unknown;
+            }[];
+            /** Impact Hash */
+            impact_hash: string;
+        };
+        /** LeaderTransferPreviewIn */
+        LeaderTransferPreviewIn: {
+            /** Expected Season Version */
+            expected_season_version: number;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /** LeaderTransferApplyIn */
+        LeaderTransferApplyIn: {
+            /** Expected Season Version */
+            expected_season_version: number;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /**
+             * Team Id
+             * Format: uuid
+             */
+            team_id: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Impact Hash */
+            impact_hash: string;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+        };
+        /** LeaderReleaseIn */
+        LeaderReleaseIn: {
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+        };
         /** AdvancedFieldOut */
         AdvancedFieldOut: {
             /** Name */
@@ -5739,6 +6349,8 @@ export interface components {
             season_version: number;
             /** Read Only */
             read_only: boolean;
+            /** Archived Correction Allowed */
+            archived_correction_allowed: boolean;
             /** Team Count */
             team_count: number;
             /** Active Team Count */
@@ -6000,6 +6612,16 @@ export interface components {
              * @default
              */
             maintenance_token: string;
+            /**
+             * Archived Correction Confirmed
+             * @default false
+             */
+            archived_correction_confirmed: boolean;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** MobileDashboardGameOut */
         MobileDashboardGameOut: {
@@ -6142,6 +6764,8 @@ export interface components {
             can_replace: boolean;
             /** Can Delete */
             can_delete: boolean;
+            /** Can Restore */
+            can_restore: boolean;
         };
         /** GameMediaErrorOut */
         GameMediaErrorOut: {
@@ -6826,6 +7450,10 @@ export interface components {
             publication: {
                 [key: string]: unknown;
             } | null;
+            /** Pending Correction */
+            pending_correction: {
+                [key: string]: unknown;
+            } | null;
             /** Can Upload Source */
             can_upload_source: boolean;
         };
@@ -7021,6 +7649,10 @@ export interface components {
             } | null;
             /** Publication */
             publication: {
+                [key: string]: unknown;
+            } | null;
+            /** Pending Correction */
+            pending_correction: {
                 [key: string]: unknown;
             } | null;
             /** Can Upload Source */
@@ -8415,7 +9047,9 @@ export interface operations {
     core_api_admin_change_admin_active: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 account_id: string;
             };
@@ -8424,6 +9058,98 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SetAdminActiveIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_rename_managed_account: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameAccountIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccountOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_reset_managed_admin_password: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetAdminPasswordIn"];
             };
         };
         responses: {
@@ -9865,6 +10591,328 @@ export interface operations {
             };
         };
     };
+    core_api_admin_corrections_preview_competition_correction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionPreviewIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionPreviewOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_corrections_list_competition_corrections: {
+        parameters: {
+            query?: {
+                season_id?: string | null;
+                correction_status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_corrections_create_competition_correction: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_corrections_get_competition_correction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_corrections_apply_competition_correction: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionApplyIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_corrections_cancel_competition_correction: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                correction_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionCancelIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionErrorOut"];
+                };
+            };
+        };
+    };
     core_api_admin_draw_get_draw_assignments: {
         parameters: {
             query?: never;
@@ -10218,6 +11266,228 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LifecycleErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_leaders_list_leader_bindings: {
+        parameters: {
+            query: {
+                season_id: string;
+                include_history?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_leaders_preview_transfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaderTransferPreviewIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaderTransferPreviewOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_leaders_apply_transfer: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                season_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaderTransferApplyIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_admin_leaders_release_binding: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                binding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaderReleaseIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLeaderBindingErrorOut"];
                 };
             };
         };
@@ -11090,7 +12360,9 @@ export interface operations {
     core_api_admin_roster_update_team_roster: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 team_id: string;
             };
@@ -11433,6 +12705,87 @@ export interface operations {
         responses: {
             /** @description Created */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaAssetOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameMediaErrorOut"];
+                };
+            };
+        };
+    };
+    core_api_game_media_restore_admin_game_media: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Expected Version */
+                    expected_version: number;
+                    /**
+                     * Image
+                     * Format: binary
+                     */
+                    image: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

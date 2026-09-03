@@ -25,7 +25,7 @@ from core.tests.test_scoresheets import (
     obtain_lease,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 def source_fixture(phase):
@@ -118,8 +118,11 @@ def test_source_capabilities_match_record_history_and_rejected_write_is_zero_wri
     settings.MEDIA_ROOT = tmp_path
     setup, game, source, sheet = source_fixture(phase)
     client = authenticated_client(setup[role], surface)
-    permitted = not phase.startswith("archived") and (
-        phase == "unpublished" or role == "superadmin"
+    archived = phase.startswith("archived")
+    permitted = (
+        not archived and (phase == "unpublished" or role == "superadmin")
+    ) or (
+        archived and role == "superadmin" and surface == "WEB"
     )
     before = business_snapshot(tmp_path)
     media_url = (
@@ -158,7 +161,7 @@ def test_source_capabilities_match_record_history_and_rejected_write_is_zero_wri
         )
         assert rejected.status_code == (400 if phase.startswith("archived") else 403)
         assert rejected.json()["code"] == (
-            "SEASON_NOT_PUBLISHED" if phase.startswith("archived") else "SUPERADMIN_REQUIRED"
+            "SEASON_MEDIA_READ_ONLY" if archived else "SUPERADMIN_REQUIRED"
         )
         assert business_snapshot(tmp_path) == before
     else:
@@ -277,7 +280,8 @@ def test_failed_source_retry_rechecks_authority_before_reviving_staging(
         fault.setattr(game_media.default_storage, "save", fail_storage)
         failed = post()
     assert failed.status_code == 500
-    staging = GameMediaUploadStaging.objects.get(uploaded_by=actor, operation="game-media.replace")
+    operation = "admin-game-media.replace" if surface == "WEB" else "game-media.replace"
+    staging = GameMediaUploadStaging.objects.get(uploaded_by=actor, operation=operation)
     assert staging.status == GameMediaUploadStaging.Status.FAILED
     assert staging.error_code == "MEDIA_STORAGE_FAILED"
     assert business_snapshot(tmp_path)["files"] == before_failure["files"]
@@ -316,7 +320,7 @@ def test_failed_source_retry_rechecks_authority_before_reviving_staging(
     if transition != "unchanged":
         expected = {
             "published": (403, "SUPERADMIN_REQUIRED"),
-            "archived": (400, "SEASON_NOT_PUBLISHED"),
+            "archived": (400, "SEASON_MEDIA_READ_ONLY"),
             "version_changed": (409, "VERSION_CONFLICT"),
         }
         assert (response.status_code, response.json()["code"]) == expected[transition]

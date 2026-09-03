@@ -426,3 +426,5 @@
 @media (prefers-reduced-motion: reduce) {
   .media-game-row { transition: none; }
 }
+.photo-replacement-control.archived-restore { border-left: 3px solid var(--red); background: #fff7f5; padding: 10px; }
+.photo-replacement-control.archived-restore small { color: var(--muted); }

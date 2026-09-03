@@ -35,8 +35,8 @@ where = ["."]
 include = ["config*", "core*"]
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings"
-python_files = ["test_*.py", "tests.py"]
+DJANGO_SETTINGS_MODULE = "config.test_settings"
+python_files = ["test_*.py"]
 addopts = "-q --strict-markers"
 
 [tool.ruff]

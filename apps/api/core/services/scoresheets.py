@@ -47,6 +47,8 @@ from core.scoresheet_schema_v2 import (
     roster_prior_snapshot,
 )
 from core.scoresheet_v2.recognition import PROMPT_VERSION
+from core.services.archive_invalidation import invalidate_ready_season_archives
+from core.services.game_results import append_game_result_revision
 from core.services.inbox_tasks import (
     close_scoresheet_tasks,
     sync_scoresheet_recognition_tasks,
@@ -54,7 +56,7 @@ from core.services.inbox_tasks import (
 from core.services.scoresheet_game_context import (
     CONTEXT_MAX_AGE,
     CONTEXT_SALT,
-    current_context,
+    current_context_for_scoresheet,
     player_conflicts,
     resolve_player,
     review_binding,
@@ -437,8 +439,7 @@ def _assert_recognition_inactive(
     *,
     actor: Account,
 ) -> None:
-    if actor.is_pkuba_superadmin:
-        return
+    del actor
     latest = _latest_recognition(scoresheet)
     if latest and latest.status in ACTIVE_RECOGNITION_STATUSES:
         raise ScoresheetError(
@@ -495,10 +496,25 @@ def register_scoresheet_source(
             .select_related("season", "division", "home_team", "away_team")
             .get(id=game.id)
         )
-        if locked_game.season.status != locked_game.season.Status.PUBLISHED:
+        scoresheet = GameScoresheet.objects.select_for_update().filter(game=locked_game).first()
+        archived_correction = locked_game.season.status == locked_game.season.Status.ARCHIVED
+        if locked_game.season.status == locked_game.season.Status.PUBLISHED:
+            pass
+        elif (
+            archived_correction
+            and actor.is_pkuba_superadmin
+            and scoresheet is not None
+            and scoresheet.current_publication_id is not None
+        ):
+            pass
+        else:
             raise ScoresheetError(
-                "SEASON_NOT_PUBLISHED",
-                "只有已公开赛季可以上传记录表。",
+                "SEASON_ARCHIVED" if archived_correction else "SEASON_NOT_PUBLISHED",
+                (
+                    "归档赛季只允许超级管理员为已有当前 publication 的记录表上传纠错版本。"
+                    if archived_correction
+                    else "只有已公开赛季可以上传记录表。"
+                ),
                 status=409,
             )
         if not locked_game.home_team_id or not locked_game.away_team_id:
@@ -509,13 +525,13 @@ def register_scoresheet_source(
             )
         prior = game_prior_snapshot(locked_game)
         roster = roster_prior_snapshot(locked_game)
-        scoresheet = GameScoresheet.objects.select_for_update().filter(game=locked_game).first()
         if scoresheet is None:
             scoresheet = GameScoresheet.objects.create(game=locked_game)
             recognition_trigger = ScoresheetRecognitionRun.Trigger.UPLOAD
         else:
             recognition_trigger = ScoresheetRecognitionRun.Trigger.REUPLOAD
             _assert_correction_permission(scoresheet, actor)
+            _assert_recognition_inactive(scoresheet, actor=actor)
             close_scoresheet_tasks(scoresheet.id, reason="SOURCE_REPLACED")
             ScoresheetRecognitionRun.objects.filter(
                 scoresheet=scoresheet,
@@ -554,7 +570,7 @@ def register_scoresheet_source(
         scoresheet.validation_draft_version = None
         scoresheet.acknowledged_warnings = []
         roster_ready = bool(roster.get("A")) and bool(roster.get("B"))
-        qwen_ready = bool(settings.QWEN_API_KEY.strip())
+        qwen_ready = bool(settings.QWEN_API_KEY.strip()) and not archived_correction
         recognition_ready = roster_ready and qwen_ready
         scoresheet.status = (
             GameScoresheet.Status.RECOGNITION_QUEUED
@@ -594,6 +610,8 @@ def register_scoresheet_source(
             last_error_code=(
                 ""
                 if recognition_ready
+                else "ARCHIVED_MANUAL_REVIEW_REQUIRED"
+                if archived_correction
                 else "ROSTER_MISSING"
                 if not roster_ready
                 else "CREDENTIALS_MISSING"
@@ -601,6 +619,8 @@ def register_scoresheet_source(
             last_error=(
                 ""
                 if recognition_ready
+                else "归档记录表纠错不启动新的 AI 识别；请在网页端人工复核并重新发布。"
+                if archived_correction
                 else "上传时双方球员名单不完整，未调用识别服务。"
                 if not roster_ready
                 else "服务端未配置 QWEN_API_KEY，未调用识别服务；可直接完整手工录入。"
@@ -633,7 +653,7 @@ def register_scoresheet_source(
                 "recognition_run_id": str(run.id),
             },
         )
-        if run.status == ScoresheetRecognitionRun.Status.FAILED:
+        if run.status == ScoresheetRecognitionRun.Status.FAILED and not archived_correction:
             sync_scoresheet_recognition_tasks(scoresheet, run)
     return scoresheet
 
@@ -1091,7 +1111,9 @@ def _lock_publication_context(scoresheet_id, actor):
     Parent team locks cover roster inserts as well as existing player updates.
     No source, draft, review or validation is written by this helper.
     """
-    locator = GameScoresheet.objects.values("game_id", "game__season_id").get(id=scoresheet_id)
+    locator = GameScoresheet.objects.values(
+        "game_id", "game__season_id", "pending_correction_id"
+    ).get(id=scoresheet_id)
     season = Season.objects.select_for_update().get(id=locator["game__season_id"])
     game = Game.objects.select_for_update().get(id=locator["game_id"])
     if game.season_id != season.id:
@@ -1099,10 +1121,29 @@ def _lock_publication_context(scoresheet_id, actor):
     game.season = season
     game.division = Division.objects.select_for_update().get(id=game.division_id)
     game.period = Period.objects.select_for_update().get(id=game.period_id)
+    pending_correction = None
+    proposed_team_ids: list[object] = []
+    if locator["pending_correction_id"]:
+        from core.models import CompetitionCorrection
+        from core.services.competition_corrections import correction_change_for_game
+
+        pending_correction = CompetitionCorrection.objects.select_for_update().get(
+            id=locator["pending_correction_id"]
+        )
+        proposed = correction_change_for_game(pending_correction, game.id)
+        if proposed:
+            proposed_team_ids = [
+                team_id
+                for team_id in (
+                    proposed.get("home_team_id"),
+                    proposed.get("away_team_id"),
+                )
+                if team_id
+            ]
     teams = {
         team.id: team
         for team in Team.objects.select_for_update()
-        .filter(id__in=[game.home_team_id, game.away_team_id])
+        .filter(id__in=[game.home_team_id, game.away_team_id, *proposed_team_ids])
         .order_by("id")
     }
     game.home_team = teams.get(game.home_team_id)
@@ -1110,6 +1151,7 @@ def _lock_publication_context(scoresheet_id, actor):
     list(RosterPlayer.objects.select_for_update().filter(team_id__in=teams).order_by("id"))
     sheet = GameScoresheet.objects.select_for_update().get(id=scoresheet_id)
     sheet.game = game
+    sheet.pending_correction = pending_correction
     actor = Account.objects.select_for_update(no_key=True).get(id=actor.id)
     if not actor.is_pkuba_admin:
         raise ScoresheetError("ADMIN_REQUIRED", "该操作仅限当前有效管理员。", status=403)
@@ -1138,7 +1180,7 @@ def review_scoresheet_game_context(
             sheet, actor=actor, surface=surface, allow_archived_correction=lease.archived_correction
         )
         _assert_version(sheet, expected_version)
-        context = current_context(sheet.game)
+        context = current_context_for_scoresheet(sheet)
         try:
             binding = signing.loads(review_token, salt=CONTEXT_SALT, max_age=CONTEXT_MAX_AGE)
         except signing.BadSignature as error:
@@ -1176,7 +1218,11 @@ def review_scoresheet_game_context(
             "roster_snapshot": copy.deepcopy(sheet.roster_snapshot),
             "draft_version": sheet.draft_version,
         }
-        prior = game_prior_snapshot(sheet.game)
+        from core.services.competition_corrections import proposed_game_for_correction
+
+        prior = game_prior_snapshot(
+            proposed_game_for_correction(sheet.game, sheet.pending_correction)
+        )
         prior["confirmed_player_bindings"] = copy.deepcopy(
             sheet.game_prior_snapshot.get("confirmed_player_bindings", [])
         )
@@ -1311,7 +1357,7 @@ def validate_scoresheet(
             allow_archived_correction=lease.archived_correction,
         )
         _assert_version(scoresheet, expected_version)
-        report = validation_with_context(scoresheet, current_context(scoresheet.game))
+        report = validation_with_context(scoresheet, current_context_for_scoresheet(scoresheet))
         report["draft_version"] = scoresheet.draft_version
         report["source_version"] = scoresheet.source_version
         report["source_asset_id"] = (
@@ -1499,6 +1545,13 @@ def publish_scoresheet(
     if not actor.is_pkuba_admin:
         raise ScoresheetError("ADMIN_REQUIRED", "发布仅限管理员。", status=403)
     with transaction.atomic():
+        if GameScoresheet.objects.filter(
+            id=scoresheet_id,
+            pending_correction__isnull=False,
+        ).exists():
+            from core.services.superadmin_command_lock import lock_superadmin_commands
+
+            lock_superadmin_commands()
         try:
             scoresheet, actor = _lock_publication_context(scoresheet_id, actor)
         except GameScoresheet.DoesNotExist as error:
@@ -1537,7 +1590,7 @@ def publish_scoresheet(
                 "原图、先验或草稿已变化，必须重新执行服务端校验。",
                 status=409,
             )
-        context = current_context(scoresheet.game)
+        context = current_context_for_scoresheet(scoresheet)
         fresh_report = validation_with_context(scoresheet, context)
         if fresh_report["game_context"]["required"]:
             raise ScoresheetError("GAME_CONTEXT_REVIEW_REQUIRED",
@@ -1574,6 +1627,33 @@ def publish_scoresheet(
 
         game = scoresheet.game
         previous_game_score = [game.home_score, game.away_score]
+        pending_correction = None
+        if scoresheet.pending_correction_id:
+            from core.services.competition_corrections import (
+                CompetitionCorrectionError,
+                apply_pending_correction_for_publication,
+                correction_change_for_game,
+            )
+
+            change = correction_change_for_game(scoresheet.pending_correction, game.id)
+            if change is None or (
+                change.get("home_score"),
+                change.get("away_score"),
+            ) != (home_score, away_score):
+                raise ScoresheetError(
+                    "CORRECTION_SCORE_MISMATCH",
+                    "记录表最终比分与纠错预览不一致；请按纠错目标复核，或取消后重新创建纠错。",
+                    status=409,
+                )
+            try:
+                pending_correction = apply_pending_correction_for_publication(
+                    sheet=scoresheet,
+                    actor=actor,
+                )
+            except CompetitionCorrectionError as error:
+                raise ScoresheetError(error.code, str(error), status=error.status) from error
+            game = Game.objects.select_for_update().get(id=game.id)
+            scoresheet.game = game
         next_number = (
             ScoresheetPublication.objects.filter(scoresheet=scoresheet).aggregate(
                 maximum=Max("publication_number")
@@ -1599,6 +1679,30 @@ def publish_scoresheet(
         game.status = Game.Status.COMPLETED
         game.version += 1
         game.save(update_fields=["home_score", "away_score", "status", "version", "updated_at"])
+        append_game_result_revision(
+            game=game,
+            actor=actor,
+            reason="SCORESHEET_PUBLICATION",
+            publication=publication,
+            correction=pending_correction,
+        )
+        archived_season_version = None
+        invalidated_archives = 0
+        # A pending CompetitionCorrection already advances and invalidates the
+        # archived season atomically. A standalone archived re-publication must
+        # do the same here so no pre-correction "final" package remains
+        # downloadable after the public result authority changes.
+        if pending_correction is None:
+            season = Season.objects.select_for_update().get(id=game.season_id)
+            if season.status == Season.Status.ARCHIVED:
+                season.version += 1
+                season.save(update_fields=["version", "updated_at"])
+                archived_season_version = season.version
+                invalidated_archives = invalidate_ready_season_archives(
+                    season=season,
+                    actor=actor,
+                    reason="SCORESHEET_REPUBLISHED",
+                )
 
         source = scoresheet.source_asset
         source.review_status = GameMediaAsset.ReviewStatus.APPROVED
@@ -1636,6 +1740,16 @@ def publish_scoresheet(
                 "updated_at",
             ]
         )
+        if pending_correction is not None:
+            from core.services.competition_corrections import (
+                finish_pending_correction_after_publication,
+            )
+
+            finish_pending_correction_after_publication(
+                sheet=scoresheet,
+                correction=pending_correction,
+                actor=actor,
+            )
         _event_locked(
             scoresheet,
             "PUBLISHED",
@@ -1675,7 +1789,12 @@ def publish_scoresheet(
                 "team_stat_count": len(team_rows),
                 "player_stat_count": len(player_rows),
             },
-            metadata={"game_id": str(game.id)},
+            metadata={
+                "game_id": str(game.id),
+                "archived_correction": archived_season_version is not None,
+                "season_version": archived_season_version,
+                "invalidated_archive_count": invalidated_archives,
+            },
         )
         close_scoresheet_tasks(scoresheet.id, reason="PUBLISHED")
         return publication

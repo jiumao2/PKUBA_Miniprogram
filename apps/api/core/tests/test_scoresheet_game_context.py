@@ -39,7 +39,7 @@ from core.services.scoresheets import (
 from core.services.wechat import issue_session
 from core.tests.test_scoresheets import create_scoresheet, make_ready, obtain_lease
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
@@ -437,6 +437,7 @@ def test_wrong_player_mapping_is_atomic_and_current_actor_is_rechecked(ready_she
     assert snapshot() == before
 
 
+@pytest.mark.django_db(transaction=True)
 def test_concurrent_review_only_one_revision_and_audit(ready_sheet):
     setup, game, _, _, _, _ = ready_sheet
     game.venue_name = "并发复核场地"

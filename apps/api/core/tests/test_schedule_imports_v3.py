@@ -13,6 +13,7 @@ from core.models import (
     CompetitionGroup,
     Division,
     Game,
+    GameResultRevision,
     ParticipantSlot,
     Period,
     PeriodCapacity,
@@ -303,6 +304,10 @@ def test_valid_v3_upload_stages_then_atomically_confirms_and_resets(tmp_path):
         )
     assert confirmed.status == ScheduleImportBatch.Status.CONFIRMED
     assert Game.objects.filter(season=setup["season"]).count() == 7
+    assert GameResultRevision.objects.filter(game__season=setup["season"]).count() == 7
+    assert not Game.objects.filter(
+        season=setup["season"], current_result_revision__isnull=True
+    ).exists()
     assert CompetitionGroup.objects.filter(division=setup["men"], code="A").exists()
     assert ParticipantSlot.objects.filter(division__season=setup["season"]).count() == 6
     assert not Game.objects.filter(season=setup["season"], leader_adjustable=False).exists()
@@ -325,6 +330,7 @@ def test_valid_v3_upload_stages_then_atomically_confirms_and_resets(tmp_path):
     )
     assert result["game_count"] == 7
     assert not Game.objects.filter(season=setup["season"]).exists()
+    assert not GameResultRevision.objects.filter(game__season=setup["season"]).exists()
     assert ScheduleSlotFamily.objects.filter(season=setup["season"]).count() == 2
 
 

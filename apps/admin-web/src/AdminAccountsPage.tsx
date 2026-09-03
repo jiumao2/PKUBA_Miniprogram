@@ -3,10 +3,16 @@ import {
   type AdminAccount,
   type AdminManagedAccount,
   type AdminRegistrationPolicy,
+  type AdminSeason,
+  type LeaderBinding,
+  type LeaderTransferPreview,
+  type RosterDataset,
   type createAdminClient,
 } from "@pkuba/api-client";
 
 import { useAdminDirtySource } from "./dirtyGuard";
+import { formatAdminSeasonLabel } from "./seasonLabel";
+import "./admin-accounts.css";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type PendingAction =
@@ -17,15 +23,34 @@ type PendingAction =
 export function AdminAccountsPage({
   account,
   client,
+  seasons = [],
+  seasonId = "",
+  onSeasonChange = () => undefined,
+  onDataChanged = async () => undefined,
 }: {
   account: AdminAccount;
   client: AdminClient;
+  seasons?: AdminSeason[];
+  seasonId?: string;
+  onSeasonChange?: (seasonId: string) => void;
+  onDataChanged?: () => Promise<void>;
 }) {
   const [accounts, setAccounts] = useState<AdminManagedAccount[]>([]);
   const [invite, setInvite] = useState<AdminRegistrationPolicy | null>(null);
   const [inviteCode, setInviteCode] = useState("");
   const [inviteAgain, setInviteAgain] = useState("");
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [editingAccount, setEditingAccount] = useState<AdminManagedAccount | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [passwordAccount, setPasswordAccount] = useState<AdminManagedAccount | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordAgain, setNewPasswordAgain] = useState("");
+  const [roster, setRoster] = useState<RosterDataset | null>(null);
+  const [bindings, setBindings] = useState<LeaderBinding[]>([]);
+  const [leaderAccountId, setLeaderAccountId] = useState("");
+  const [leaderTeamId, setLeaderTeamId] = useState("");
+  const [leaderReason, setLeaderReason] = useState("");
+  const [leaderPreview, setLeaderPreview] = useState<LeaderTransferPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,26 +61,34 @@ export function AdminAccountsPage({
     "admin-invite-form",
     Boolean(inviteCode || inviteAgain),
   );
+  useAdminDirtySource(
+    "admin-account-corrections",
+    Boolean(editingAccount || passwordAccount || leaderAccountId || leaderTeamId || leaderReason),
+  );
 
   const load = useCallback(async () => {
     const generation = ++loadGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
-      const [nextAccounts, nextInvite] = await Promise.all([
+      const [nextAccounts, nextInvite, nextRoster, nextBindings] = await Promise.all([
         client.listAdminAccounts(),
         client.getAdminRegistrationPolicy(),
+        seasonId ? client.getRosterDataset(seasonId) : Promise.resolve(null),
+        seasonId ? client.listLeaderBindings(seasonId, true) : Promise.resolve([]),
       ]);
       if (generation !== loadGenerationRef.current) return;
       setAccounts(nextAccounts);
       setInvite(nextInvite);
+      setRoster(nextRoster);
+      setBindings(nextBindings);
     } catch (reason: unknown) {
       if (generation !== loadGenerationRef.current) return;
       setError(reason instanceof Error ? reason.message : "无法读取管理员列表");
     } finally {
       if (generation === loadGenerationRef.current) setLoading(false);
     }
-  }, [client]);
+  }, [client, seasonId]);
 
   useEffect(() => {
     loadGenerationRef.current += 1;
@@ -63,11 +96,128 @@ export function AdminAccountsPage({
     setInvite(null);
     setInviteCode("");
     setInviteAgain("");
+    setRoster(null);
+    setBindings([]);
+    setLeaderAccountId("");
+    setLeaderTeamId("");
+    setLeaderReason("");
+    setLeaderPreview(null);
+    setPending(null);
+    setEditingAccount(null);
+    setPasswordAccount(null);
     if (account.role === "SUPERADMIN") void load();
     return () => {
       loadGenerationRef.current += 1;
     };
-  }, [account.role, load]);
+  }, [account.role, load, seasonId]);
+
+  const rename = async () => {
+    if (!editingAccount) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await client.renameAccount(editingAccount.id, editingAccount.version, usernameDraft);
+      setEditingAccount(null);
+      setUsernameDraft("");
+      setMessage("账号昵称已更正；OpenID、稳定账号 ID 和历史记录均未改变。");
+      await load();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "昵称更正失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetPassword = async () => {
+    if (!passwordAccount) return;
+    if (newPassword.length < 4 || newPassword !== newPasswordAgain) {
+      setError(newPassword.length < 4 ? "网页密码至少需要 4 个字符。" : "两次输入的新密码不一致。");
+      return;
+    }
+    if (!window.confirm(`确认重置 ${accountName(passwordAccount)} 的网页密码并撤销其旧网页会话？`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await client.resetAdminPassword(passwordAccount.id, passwordAccount.version, newPassword);
+      setPasswordAccount(null);
+      setNewPassword("");
+      setNewPasswordAgain("");
+      setMessage("网页密码已重置；旧网页会话将在下次请求时失效，密码未写入审计日志。");
+      await load();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "密码重置失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const previewLeader = async () => {
+    const selectedSeason = seasons.find((item) => item.id === seasonId);
+    if (!selectedSeason || !leaderAccountId || !leaderTeamId) {
+      setError("请选择赛季、账号和球队。");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      setLeaderPreview(await client.previewLeaderTransfer(seasonId, {
+        expected_season_version: selectedSeason.version,
+        account_id: leaderAccountId,
+        team_id: leaderTeamId,
+        reason: leaderReason,
+      }));
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "领队转移预览失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyLeader = async () => {
+    const selectedSeason = seasons.find((item) => item.id === seasonId);
+    if (!selectedSeason || !leaderPreview) return;
+    if (!window.confirm("确认释放预览中列出的旧绑定，并原子建立新绑定？历史绑定会保留。")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await client.transferLeaderBinding(seasonId, {
+        expected_season_version: selectedSeason.version,
+        account_id: leaderAccountId,
+        team_id: leaderTeamId,
+        reason: leaderReason,
+        impact_hash: leaderPreview.impact_hash,
+        confirmed: true,
+      });
+      setLeaderPreview(null);
+      setLeaderAccountId("");
+      setLeaderTeamId("");
+      setLeaderReason("");
+      setMessage("领队绑定已原子转移，旧绑定保留为历史记录。");
+      await onDataChanged();
+      await load();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "领队绑定转移失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const releaseLeader = async (binding: LeaderBinding) => {
+    if (!window.confirm(`确认释放 ${binding.username} 与 ${binding.team_name} 的当前绑定？`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await client.releaseLeaderBinding(binding.id, binding.version, "超级管理员网页纠错");
+      setMessage("领队绑定已释放，历史记录仍可审计。");
+      await onDataChanged();
+      await load();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "领队绑定释放失败");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const execute = async () => {
     if (!pending) return;
@@ -140,7 +290,7 @@ export function AdminAccountsPage({
       <section className="panel account-intro">
         <div>
           <p className="eyebrow">权限边界</p>
-          <h2>管理员账户</h2>
+          <h2>账号与权限</h2>
           <p>
             超级管理员可以升级普通管理员，也可以降级其他超级管理员。系统禁止自我降级，并保护最后一个有效超级管理员。
           </p>
@@ -189,14 +339,14 @@ export function AdminAccountsPage({
         <div className="panel-heading">
           <div>
             <p className="eyebrow">当前权限状态</p>
-            <h2>{loading ? "正在读取" : `${accounts.length} 个管理员账号`}</h2>
+            <h2>{loading ? "正在读取" : `${accounts.length} 个系统账号`}</h2>
           </div>
           <span className="subtle">所有修改均校验版本并写入审计日志</span>
         </div>
         {!loading && accounts.length === 0 ? (
-          <div className="empty-state">尚无管理员账号。</div>
+          <div className="empty-state">系统中尚无账号。</div>
         ) : (
-          <div className="account-table" role="table" aria-label="管理员账户">
+          <div className="account-table" role="table" aria-label="系统账号与权限">
             <div className="account-row account-head" role="row">
               <span>账号</span>
               <span>角色</span>
@@ -209,7 +359,7 @@ export function AdminAccountsPage({
                   <strong>{accountName(item)}</strong>
                   <span>@{item.username}{item.id === account.id ? " · 当前账号" : ""}</span>
                 </div>
-                <span>{item.role === "SUPERADMIN" ? "超级管理员" : "普通管理员"}</span>
+                <span>{roleLabel(item.role)}</span>
                 <span className={item.is_active ? "status ready" : "status inactive"}>
                   {item.is_active ? "有效" : "已停用"}
                 </span>
@@ -241,12 +391,42 @@ export function AdminAccountsPage({
                   >
                     {item.is_active ? "停用" : "恢复"}
                   </button>
+                  <button className="text-action" type="button" onClick={() => { setEditingAccount(item); setUsernameDraft(item.username); }}>
+                    更正昵称
+                  </button>
+                  {item.id !== account.id && (item.role === "ADMIN" || item.role === "SUPERADMIN") && (
+                    <button className="text-action" type="button" onClick={() => { setPasswordAccount(item); setNewPassword(""); setNewPasswordAgain(""); }}>
+                      重置密码
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </section>
+
+      <section className="panel leader-binding-panel">
+        <div className="panel-heading">
+          <div><p className="eyebrow">赛季内身份关系</p><h2>领队绑定纠错</h2></div>
+          <label>赛季<select value={seasonId} onChange={(event) => { setLeaderPreview(null); onSeasonChange(event.target.value); }}>{seasons.map((item) => <option key={item.id} value={item.id}>{formatAdminSeasonLabel(item)}</option>)}</select></label>
+        </div>
+        <p className="subtle">转移会原子释放同账号或同球队的现行绑定；旧绑定不删除，跨赛季绑定仍被禁止。</p>
+        <div className="leader-transfer-grid">
+          <label>目标账号<select value={leaderAccountId} onChange={(event) => { setLeaderAccountId(event.target.value); setLeaderPreview(null); }}><option value="">请选择</option>{accounts.filter((item) => item.is_active).map((item) => <option key={item.id} value={item.id}>{item.username} · {roleLabel(item.role)}</option>)}</select></label>
+          <label>目标球队<select value={leaderTeamId} onChange={(event) => { setLeaderTeamId(event.target.value); setLeaderPreview(null); }}><option value="">请选择</option>{roster?.teams.filter((team) => team.active).map((team) => <option key={team.id} value={team.id}>{roster.divisions.find((division) => division.id === team.division_id)?.name ?? "未分组"} · {team.name}</option>)}</select></label>
+          <label className="leader-reason">理由（选填）<input maxLength={300} value={leaderReason} onChange={(event) => { setLeaderReason(event.target.value); setLeaderPreview(null); }} /></label>
+          <button className="secondary-action" type="button" disabled={busy} onClick={() => void previewLeader()}>预览转移影响</button>
+        </div>
+        {leaderPreview && <div className="leader-preview"><strong>{leaderPreview.changed ? "将建立新绑定" : "当前绑定已经一致"}</strong><span>{leaderPreview.username} → {leaderPreview.team_name}</span><p>{leaderPreview.release_bindings.length ? `将释放 ${leaderPreview.release_bindings.length} 条现行绑定。` : "无需释放其他绑定。"}</p><button className="danger-action" type="button" disabled={busy || !leaderPreview.changed} onClick={() => void applyLeader()}>确认原子转移</button></div>}
+        <div className="leader-binding-list">
+          {bindings.map((binding) => <article className={binding.active ? "active" : "history"} key={binding.id}><div><strong>{binding.username}</strong><span>{binding.team_name}</span></div><small>{binding.active ? "现行绑定" : `已释放 · ${binding.released_by ?? "系统"}`}</small>{binding.active && <button className="text-action destructive" type="button" disabled={busy} onClick={() => void releaseLeader(binding)}>释放</button>}</article>)}
+          {!bindings.length && <p className="subtle">当前赛季尚无领队绑定。</p>}
+        </div>
+      </section>
+
+      {editingAccount && <section className="confirmation-panel" role="dialog" aria-label="更正账号昵称"><div><p className="eyebrow">稳定 ID 不变</p><h2>更正昵称</h2><label>新昵称<input autoFocus maxLength={32} value={usernameDraft} onChange={(event) => setUsernameDraft(event.target.value)} /></label></div><div className="confirmation-actions"><button className="secondary-action" type="button" onClick={() => setEditingAccount(null)}>取消</button><button className="primary-action" disabled={busy} type="button" onClick={() => void rename()}>确认更正</button></div></section>}
+      {passwordAccount && <section className="confirmation-panel" role="dialog" aria-label="重置管理员密码"><div><p className="eyebrow">仅重置网页密码</p><h2>重置 {accountName(passwordAccount)} 的密码</h2><p>旧密码、密码哈希和令牌不会显示；旧网页会话将失效。</p><label>新密码<input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label><label>再次输入<input type="password" value={newPasswordAgain} onChange={(event) => setNewPasswordAgain(event.target.value)} /></label></div><div className="confirmation-actions"><button className="secondary-action" type="button" onClick={() => { setPasswordAccount(null); setNewPassword(""); setNewPasswordAgain(""); }}>取消</button><button className="danger-action" disabled={busy} type="button" onClick={() => void resetPassword()}>确认重置</button></div></section>}
 
       {pending && (
         <section className="confirmation-panel" role="alertdialog" aria-labelledby="account-confirm-title">
@@ -274,6 +454,12 @@ export function AdminAccountsPage({
 
 function accountName(account: AdminManagedAccount): string {
   return account.username;
+}
+
+function roleLabel(role: string): string {
+  if (role === "SUPERADMIN") return "超级管理员";
+  if (role === "ADMIN") return "普通管理员";
+  return "普通用户";
 }
 
 function confirmationTitle(action: PendingAction): string {

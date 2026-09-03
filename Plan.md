@@ -26,7 +26,7 @@ PKUBA 为北京大学篮球赛事提供统一的小程序、管理站和服务�
 2. `v*` tag ruleset、`production` Environment、CODEOWNERS 和最小 break-glass 实际启用。
 3. 在空服务器按 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) 建立
    `/opt/pkuba/production`，空数据库完成迁移并一次性创建首位超级管理员。
-4. 在隔离环境完成真实蓝绿发布、应用回切、掉电恢复、24 小时保留和成对恢复演练。
+4. 在隔离环境完成真实蓝绿发布、应用回切、掉电恢复、默认 2 小时保留和成对恢复演练；实际保留期限以权威 retained state 的 deadline 为准。
 5. 配置正式 HTTPS、微信合法域名和真实微信身份，完成开发者工具及真机逐页验收。
 6. 由授权发布负责人批准候选后创建 `v1.0.0` 标签并通过 GitHub Actions 发布。
 

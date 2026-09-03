@@ -135,8 +135,9 @@ describe("ScheduleEditorPage colors", () => {
     expect(html).toContain("已锁定 · 领队不可调");
   });
 
-  it("keeps archived schedule details visible but prevents every mutation", async () => {
+  it("routes archived schedule edits through the correction center", async () => {
     const archived = { ...season, status: "ARCHIVED" as const };
+    const onOpenCorrection = vi.fn();
     const client = {
       getAdminScheduleOptions: vi.fn().mockResolvedValue({
         periods: [{ id: "period-1", code: "P1", name: "第一时段", start_time: "12:50:00" }],
@@ -155,15 +156,23 @@ describe("ScheduleEditorPage colors", () => {
         season={archived}
         onSeasonChange={vi.fn()}
         onUpdated={vi.fn().mockResolvedValue(undefined)}
+        onOpenCorrection={onOpenCorrection}
       />,
     );
 
     await userEvent.click(screen.getByRole("button", { name: /男甲.*甲队.*乙队/ }));
-    expect(await screen.findByText(/归档赛季只读/)).toBeVisible();
-    expect(screen.getByLabelText("比赛日期")).toBeDisabled();
-    expect(screen.getByLabelText(/允许领队申请调赛/)).toBeDisabled();
-    expect(screen.getByRole("button", { name: "二次确认并保存" })).toBeDisabled();
-    await userEvent.click(screen.getByRole("button", { name: "二次确认并保存" }));
+    expect(await screen.findByText(/归档赛季保持归档/)).toBeVisible();
+    expect(screen.getByLabelText("比赛日期")).toBeEnabled();
+    expect(screen.getByLabelText(/允许领队申请调赛/)).toBeEnabled();
+    const submit = screen.getByRole("button", { name: "在纠错中心预览影响" });
+    expect(submit).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText("比赛日期"));
+    await userEvent.type(screen.getByLabelText("比赛日期"), "2026-03-22");
+    expect(submit).toBeEnabled();
+    await userEvent.click(submit);
     expect(client.updateAdminScheduleGame).not.toHaveBeenCalled();
+    expect(onOpenCorrection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: baseGame.id, date: "2026-03-22" }),
+    );
   });
 });

@@ -6,6 +6,15 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
 CHECKS = {
+    "game_result_participants": """
+        SELECT COUNT(*) FROM core_game game
+        WHERE (
+            game.home_score IS NOT NULL
+            OR game.away_score IS NOT NULL
+            OR game.status IN ('COMPLETED', 'FORFEIT')
+        )
+        AND (game.home_team_id IS NULL OR game.away_team_id IS NULL)
+    """,
     "team_scope": """
         SELECT COUNT(*) FROM core_team team
         JOIN core_division division ON division.id = team.division_id
@@ -144,6 +153,28 @@ CHECKS = {
            WHERE asset.game_id <> scoresheet.game_id
               OR (superseded.id IS NOT NULL AND
                   superseded.scoresheet_id <> publication.scoresheet_id))
+        + (SELECT COUNT(*) FROM core_gamescoresheet scoresheet
+           JOIN core_competitioncorrection correction
+             ON correction.id = scoresheet.pending_correction_id
+           JOIN core_game game ON game.id = scoresheet.game_id
+           WHERE scoresheet.pending_correction_id IS NOT NULL
+             AND (correction.season_id <> game.season_id
+                  OR correction.status <> 'AWAITING_SCORESHEET'))
+    """,
+    "result_authority_scope": """
+        SELECT COUNT(*) FROM core_game game
+        LEFT JOIN core_gameresultrevision revision
+          ON revision.id = game.current_result_revision_id
+        WHERE game.current_result_revision_id IS NULL
+           OR revision.id IS NULL
+           OR (
+              revision.game_id <> game.id
+              OR revision.status <> game.status
+              OR revision.home_team_id IS DISTINCT FROM game.home_team_id
+              OR revision.away_team_id IS DISTINCT FROM game.away_team_id
+              OR revision.home_score IS DISTINCT FROM game.home_score
+              OR revision.away_score IS DISTINCT FROM game.away_score
+          )
     """,
     "statistics_scope": """
         SELECT
