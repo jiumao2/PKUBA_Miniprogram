@@ -46,7 +46,7 @@ blue_api_port=${PKUBA_BLUE_API_PORT:-18000}
 blue_web_port=${PKUBA_BLUE_WEB_PORT:-18080}
 green_api_port=${PKUBA_GREEN_API_PORT:-18001}
 green_web_port=${PKUBA_GREEN_WEB_PORT:-18081}
-retention_seconds=${PKUBA_OLD_SLOT_RETENTION_SECONDS:-86400}
+retention_seconds=${PKUBA_OLD_SLOT_RETENTION_SECONDS:-7200}
 stability_seconds=${PKUBA_SERVICE_STABILITY_SECONDS:-10}
 gateway_probe_attempts=${PKUBA_GATEWAY_PROBE_ATTEMPTS:-30}
 gateway_probe_delay_seconds=${PKUBA_GATEWAY_PROBE_DELAY_SECONDS:-2}
@@ -105,7 +105,7 @@ IFS=$'\t' read -r \
 
 retain_until=$(<"$target_deadline_file")
 [[ $retain_until =~ ^[0-9]+$ ]] || die "retention deadline is invalid"
-(( $(date +%s) < retain_until )) || die "the 24-hour application rollback window expired"
+(( $(date +%s) < retain_until )) || die "the configured application rollback window expired"
 docker compose version >/dev/null 2>&1 || die "docker compose is unavailable"
 
 slot_api_port() {

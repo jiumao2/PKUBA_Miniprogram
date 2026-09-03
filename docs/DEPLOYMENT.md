@@ -216,7 +216,7 @@ writer fence 内完成，payload、清单和目录 durable 后最后写 `SUCCESS
 
 ## 应用回切与数据恢复
 
-普通应用故障只允许回切保留窗内、release contract 明确兼容的旧应用：
+普通应用故障只允许回切保留窗内、release contract 明确兼容的旧应用。保留窗默认 2 小时，实际期限以权威 retained state 中的 deadline 为准：
 
 ```bash
 sudo /usr/local/sbin/pkuba-rollback-retained-application blue ROLLBACK_APPLICATION_ONLY

@@ -68,4 +68,4 @@
 - 新同周手册申请遇到旧应用误自动批准时，数据库 fail closed，确认、申请、比赛、预留、任务、邮件和审计均零部分写。
 - capability/feature-activation 门禁在 Compose、停服和数据库/媒体/归档访问前拒绝不理解新通道的旧版本。
 - 激活预检会动态拒绝全部非终态调赛申请和仍有效的旧版 `reschedule.create` 幂等响应；过期或已包含新通道字段的记录不会误阻断。检查必须位于旧写入已停止的同一围栏内，不能先检查再允许旧栈继续写入。
-- 只有 capability contract 明确允许的保留栈可在 24 小时窗口内执行 application-only 回切；数据库、媒体与归档均不恢复。
+- 只有 capability contract 明确允许的保留栈可在默认 2 小时窗口内执行 application-only 回切；实际期限以权威 retained state 为准，数据库、媒体与归档均不恢复。
