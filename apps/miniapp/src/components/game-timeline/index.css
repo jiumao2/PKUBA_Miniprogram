@@ -1,9 +1,9 @@
 .game-timeline {
-  margin-top: 22rpx;
+  margin-top: 18rpx;
 }
 
 .timeline-day + .timeline-day {
-  margin-top: 42rpx;
+  margin-top: 34rpx;
 }
 
 .timeline-date {
@@ -15,7 +15,7 @@
 }
 
 .timeline-time-block + .timeline-time-block {
-  margin-top: 24rpx;
+  margin-top: 20rpx;
 }
 
 .timeline-time-heading {
@@ -45,7 +45,7 @@
 }
 
 .timeline-game {
-  padding: 20rpx 22rpx 18rpx;
+  padding: 17rpx 20rpx 15rpx;
   border-left: 8rpx solid;
   border-bottom: 1rpx solid #ded9d1;
 }
@@ -77,15 +77,20 @@
 }
 
 .timeline-game-topline {
-  margin-bottom: 12rpx;
+  gap: 14rpx;
+  margin-bottom: 9rpx;
 }
 
 .timeline-division {
+  min-width: 0;
+  overflow: hidden;
   padding: 5rpx 10rpx;
   color: #fff;
   font-size: 26rpx;
   font-weight: 800;
   letter-spacing: 1rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .timeline-men .timeline-division {
@@ -97,12 +102,16 @@
 }
 
 .timeline-venue {
+  flex: 0 1 auto;
+  overflow: hidden;
   color: #6f6b65;
   font-size: 26rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .timeline-team-row {
-  min-height: 48rpx;
+  min-height: 46rpx;
 }
 
 .timeline-team {
@@ -115,8 +124,9 @@
 }
 
 .timeline-score {
-  flex: 0 0 58rpx;
+  flex: 0 0 72rpx;
   text-align: right;
+  white-space: nowrap;
 }
 
 .timeline-score.has-score {
@@ -133,8 +143,10 @@
 }
 
 .timeline-game-footline {
-  min-height: 30rpx;
-  margin-top: 9rpx;
+  justify-content: flex-end;
+  min-height: 28rpx;
+  margin-top: 7rpx;
+  gap: 12rpx;
   color: #817b74;
   font-size: 26rpx;
 }

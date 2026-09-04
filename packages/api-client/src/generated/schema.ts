@@ -8100,6 +8100,7 @@ export interface operations {
                 day_count?: number;
                 date_from?: string | null;
                 date_to?: string | null;
+                anchor_date?: string | null;
             };
             header?: never;
             path?: never;

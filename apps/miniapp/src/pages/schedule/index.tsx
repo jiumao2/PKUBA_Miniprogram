@@ -6,7 +6,11 @@ import type { Brackets } from "@pkuba/api-client";
 import { api } from "../../api";
 import { BracketView } from "../../components/bracket-view";
 import { ScheduleDayScroller } from "../../components/schedule-day-scroller";
-import { navigateToOnce } from "../../navigation";
+import {
+  consumeScheduleFocusIntent,
+  navigateToOnce,
+  type ScheduleFocusIntent,
+} from "../../navigation";
 import { gameDetailRoute } from "../../routes";
 import { usePublicPageShare } from "../../sharing";
 import { syncTabBar } from "../../tabbar";
@@ -16,6 +20,7 @@ export default function SchedulePage() {
   const [brackets, setBrackets] = useState<Brackets | null>(null);
   const [view, setView] = useState<"schedule" | "bracket">("schedule");
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
+  const [scheduleFocus, setScheduleFocus] = useState<ScheduleFocusIntent | null>(null);
   const [bracketLoading, setBracketLoading] = useState(false);
   const [bracketMessage, setBracketMessage] = useState("");
   const bracketLoadIdRef = useRef(0);
@@ -47,7 +52,12 @@ export default function SchedulePage() {
 
   useDidShow(() => {
     syncTabBar(1);
-    if (view === "schedule") setScheduleRefreshKey((value) => value + 1);
+    const focusIntent = consumeScheduleFocusIntent();
+    if (focusIntent) {
+      setView("schedule");
+      setScheduleFocus(focusIntent);
+      setScheduleRefreshKey((value) => value + 1);
+    } else if (view === "schedule") setScheduleRefreshKey((value) => value + 1);
     else void loadBrackets();
   });
 
@@ -78,6 +88,7 @@ export default function SchedulePage() {
       </View>
       {view === "schedule" && (
         <ScheduleDayScroller
+          focusIntent={scheduleFocus}
           refreshKey={scheduleRefreshKey}
           onGameClick={(game) => void navigateToOnce(gameDetailRoute(game.id))}
         />

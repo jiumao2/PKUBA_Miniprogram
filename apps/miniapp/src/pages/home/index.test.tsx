@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import React from "react";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   getCurrentSeason: vi.fn(),
   getHomeDashboard: vi.fn(),
   switchTab: vi.fn(),
+  switchToScheduleDate: vi.fn(),
 }));
 
 vi.mock("@tarojs/taro", async () => {
@@ -25,6 +26,15 @@ vi.mock("@tarojs/components", () => ({
     <button onClick={onClick} {...props}>{children}</button>
   ),
   Image: ({ src, ...props }: any) => <img src={src} {...props} />,
+  Picker: ({ children, onChange, ...props }: any) => (
+    <div
+      data-testid="calendar-range-picker"
+      onClick={() => onChange({ detail: { value: 1 } })}
+      {...props}
+    >
+      {children}
+    </div>
+  ),
   Text: ({ children, ...props }: any) => <span {...props}>{children}</span>,
   View: ({ children, ...props }: any) => <div {...props}>{children}</div>,
 }));
@@ -36,7 +46,10 @@ vi.mock("../../api", () => ({
   },
 }));
 vi.mock("../../components/game-timeline", () => ({ GameTimeline: () => null }));
-vi.mock("../../navigation", () => ({ navigateToOnce: vi.fn() }));
+vi.mock("../../navigation", () => ({
+  navigateToOnce: vi.fn(),
+  switchToScheduleDate: state.switchToScheduleDate,
+}));
 vi.mock("../../tabbar", () => ({ syncTabBar: vi.fn() }));
 
 import { ApiError } from "@pkuba/api-client";
@@ -106,5 +119,18 @@ describe("HomePage public-season states", () => {
     expect(screen.getByText("暂无近期比赛")).toBeVisible();
     expect(screen.queryByText("当前处于休赛期")).not.toBeInTheDocument();
     expect(screen.queryByText("暂时无法加载")).not.toBeInTheDocument();
+  });
+
+  it("selects a season month and sends a clicked day as a one-shot schedule focus", async () => {
+    state.getCurrentSeason.mockResolvedValue(season);
+
+    render(<HomePage />);
+
+    await screen.findByText("比赛日历");
+    fireEvent.click(screen.getByTestId("calendar-range-picker"));
+    expect(screen.getByText("2026年3月")).toBeVisible();
+
+    fireEvent.click(screen.getByLabelText(/3月21日 周六，0 场比赛/));
+    expect(state.switchToScheduleDate).toHaveBeenCalledExactlyOnceWith("2026-03-21");
   });
 });

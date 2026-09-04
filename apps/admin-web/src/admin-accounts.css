@@ -1,17 +1,259 @@
-.leader-binding-panel { display: grid; gap: 14px; }
-.leader-binding-panel .panel-heading label { min-width: 290px; color: var(--muted); font-size: 12px; }
-.leader-binding-panel select, .leader-binding-panel input, .confirmation-panel input { width: 100%; margin-top: 5px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
-.leader-transfer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: end; }
-.leader-transfer-grid label { color: var(--muted); font-size: 12px; }
-.leader-reason { grid-column: 1 / -1; }
-.leader-transfer-grid button { justify-self: start; }
-.leader-preview { display: grid; gap: 5px; padding: 13px; border-left: 3px solid var(--red); background: #fff7f5; }
-.leader-preview p { margin: 0; color: var(--muted); }
-.leader-preview button { justify-self: start; margin-top: 4px; }
-.leader-binding-list { display: grid; gap: 7px; }
-.leader-binding-list article { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(130px, .7fr) auto; gap: 14px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; }
-.leader-binding-list article > div { display: flex; gap: 8px; flex-wrap: wrap; }
-.leader-binding-list article span, .leader-binding-list article small { color: var(--muted); }
-.leader-binding-list article.history { opacity: .7; background: #f7f5f1; }
-.confirmation-panel label { display: block; margin-top: 10px; color: var(--muted); font-size: 12px; }
-@media (max-width: 760px) { .leader-transfer-grid { grid-template-columns: 1fr; } .leader-reason { grid-column: auto; } .leader-binding-list article { grid-template-columns: 1fr; } }
+.leader-binding-panel {
+  overflow: hidden;
+}
+
+.leader-season-picker,
+.leader-transfer-grid label,
+.account-dialog-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--pkuba-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.leader-season-picker {
+  min-width: min(310px, 42vw);
+}
+
+.leader-binding-panel select,
+.leader-binding-panel input,
+.account-dialog-form input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--pkuba-line);
+  border-radius: var(--pkuba-radius-sm);
+  color: var(--pkuba-ink);
+  background: white;
+  font: inherit;
+}
+
+.leader-binding-panel select:focus,
+.leader-binding-panel input:focus,
+.account-dialog-form input:focus {
+  border-color: var(--pkuba-red);
+  outline: 2px solid rgb(201 31 38 / 10%);
+}
+
+.leader-binding-body {
+  display: grid;
+  gap: 20px;
+  padding: 20px 24px 24px;
+}
+
+.leader-binding-guidance {
+  margin: 0;
+  color: var(--pkuba-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.leader-transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.leader-reason {
+  grid-column: 1 / -1;
+}
+
+.leader-transfer-grid button,
+.leader-preview button {
+  justify-self: start;
+}
+
+.leader-preview {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-left: 4px solid var(--pkuba-red);
+  background: #fff7f5;
+}
+
+.leader-preview:focus {
+  outline: 2px solid rgb(201 31 38 / 18%);
+  outline-offset: 2px;
+}
+
+.leader-preview p {
+  margin: 0;
+  color: var(--pkuba-muted);
+  font-size: 13px;
+}
+
+.leader-preview button {
+  margin-top: 5px;
+}
+
+.leader-binding-table {
+  overflow: hidden;
+  border: 1px solid var(--pkuba-line);
+  border-radius: var(--pkuba-radius-sm);
+}
+
+.leader-binding-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(170px, 1.2fr) minmax(140px, .8fr) 72px;
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--pkuba-line);
+  font-size: 13px;
+}
+
+.leader-binding-row:last-of-type {
+  border-bottom: 0;
+}
+
+.leader-binding-head {
+  color: var(--pkuba-muted);
+  background: var(--pkuba-canvas);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.leader-binding-row > * {
+  min-width: 0;
+}
+
+.leader-binding-team,
+.leader-binding-status {
+  overflow: hidden;
+  color: var(--pkuba-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leader-binding-row.history {
+  background: #f7f5f1;
+  opacity: .74;
+}
+
+.leader-binding-empty {
+  margin: 0;
+  padding: 20px 14px;
+  color: var(--pkuba-muted);
+  font-size: 13px;
+}
+
+.account-dialog-backdrop {
+  z-index: 70;
+}
+
+.account-dialog {
+  width: min(100%, 520px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 28px;
+  border: 1px solid var(--pkuba-line);
+  border-radius: var(--pkuba-radius-lg);
+  color: var(--pkuba-ink);
+  background: white;
+  box-shadow: 0 24px 70px rgb(23 22 20 / 22%);
+}
+
+.account-dialog h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.account-dialog-detail {
+  margin: 12px 0 20px;
+  color: var(--pkuba-muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.account-dialog-form {
+  display: grid;
+  gap: 14px;
+}
+
+.account-toast {
+  position: fixed;
+  z-index: 60;
+  top: 22px;
+  right: 24px;
+  width: min(420px, calc(100vw - 36px));
+  padding: 12px 15px;
+  border-left: 4px solid;
+  border-radius: var(--pkuba-radius-sm);
+  background: white;
+  box-shadow: 0 12px 32px rgb(23 22 20 / 16%);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.account-toast.is-success {
+  border-left-color: var(--pkuba-success);
+  color: var(--pkuba-success);
+}
+
+.account-toast.is-error {
+  border-left-color: var(--pkuba-red);
+  color: var(--pkuba-red-dark);
+}
+
+@media (max-width: 760px) {
+  .leader-binding-panel .panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .leader-season-picker {
+    min-width: 0;
+  }
+
+  .leader-transfer-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .leader-reason {
+    grid-column: auto;
+  }
+
+  .leader-binding-head {
+    display: none;
+  }
+
+  .leader-binding-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    padding: 14px;
+  }
+
+  .leader-binding-row > *::before {
+    display: inline-block;
+    width: 58px;
+    margin-right: 8px;
+    color: var(--pkuba-muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .leader-binding-account::before { content: "账号"; }
+  .leader-binding-team::before { content: "球队"; }
+  .leader-binding-status::before { content: "状态"; }
+  .leader-binding-action::before { content: "操作"; }
+
+  .leader-binding-team,
+  .leader-binding-status {
+    white-space: normal;
+  }
+
+  .account-dialog {
+    padding: 24px 20px;
+  }
+
+  .account-toast {
+    top: 16px;
+    right: 18px;
+  }
+}

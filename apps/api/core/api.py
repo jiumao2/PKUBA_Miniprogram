@@ -324,20 +324,29 @@ def serialize_game(game: Game) -> dict[str, object]:
     }
 
 
-def _schedule_focus_date(match_dates: list[date], today: date) -> date | None:
-    return today if match_dates else None
+def _nearest_schedule_date(match_dates: list[date], anchor: date) -> date | None:
+    if not match_dates:
+        return None
+    return min(
+        match_dates,
+        key=lambda value: (
+            abs((value - anchor).days),
+            value < anchor,
+            value,
+        ),
+    )
 
 
 def _initial_schedule_dates(
-    match_dates: list[date], today: date, day_count: int
+    match_dates: list[date], anchor: date, day_count: int
 ) -> list[date]:
-    before = [value for value in match_dates if value < today][-2:]
-    after = [value for value in match_dates if value > today][:2]
+    before = [value for value in match_dates if value < anchor][-2:]
+    after = [value for value in match_dates if value > anchor][:2]
     neighbours = sorted(
         [*before, *after],
-        key=lambda value: (abs((value - today).days), value < today, value),
+        key=lambda value: (abs((value - anchor).days), value < anchor, value),
     )[: max(day_count - 1, 0)]
-    return sorted([today, *neighbours])
+    return sorted([anchor, *neighbours])
 
 
 def _serialize_public_group_photo(asset: GameMediaAsset) -> dict[str, object]:
@@ -640,6 +649,7 @@ def schedule_days(
     day_count: int = 5,
     date_from: date | None = None,
     date_to: date | None = None,
+    anchor_date: date | None = None,
 ):
     del request
     today = timezone.localdate()
@@ -650,12 +660,16 @@ def schedule_days(
     match_dates = list(
         games.order_by("date").values_list("date", flat=True).distinct()
     )
-    focus_date = _schedule_focus_date(match_dates, today)
+    focus_date = (
+        _nearest_schedule_date(match_dates, anchor_date)
+        if direction == "initial" and anchor_date is not None
+        else today if match_dates else None
+    )
     day_count = min(max(day_count, 1), 5)
 
     if direction == "initial":
         selected_dates = (
-            _initial_schedule_dates(match_dates, today, day_count)
+            _initial_schedule_dates(match_dates, focus_date, day_count)
             if focus_date is not None
             else []
         )

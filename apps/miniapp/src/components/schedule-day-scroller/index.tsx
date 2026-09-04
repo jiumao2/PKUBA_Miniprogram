@@ -4,6 +4,7 @@ import type { Game, ScheduleDay, ScheduleDays } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { formatDate } from "../../format";
+import type { ScheduleFocusIntent } from "../../navigation";
 import { GameTimeline } from "../game-timeline";
 import {
   mergeScheduleDays,
@@ -14,17 +15,19 @@ import "./index.css";
 
 export function ScheduleDayScroller({
   divisionId = "",
+  focusIntent = null,
   refreshKey,
   mode = "public",
   onGameClick,
 }: {
   divisionId?: string;
+  focusIntent?: ScheduleFocusIntent | null;
   refreshKey: number;
   mode?: "public" | "admin";
   onGameClick: (game: Game) => void;
 }) {
   const [days, setDays] = useState<ScheduleDay[]>([]);
-  const [focusDate, setFocusDate] = useState("");
+  const [todayDate, setTodayDate] = useState("");
   const [hasPrevious, setHasPrevious] = useState(false);
   const [hasNext, setHasNext] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -37,6 +40,8 @@ export function ScheduleDayScroller({
   const [scrollTarget, setScrollTarget] = useState("");
   const daysRef = useRef<ScheduleDay[]>([]);
   const divisionRef = useRef(divisionId);
+  const focusIntentIdRef = useRef(0);
+  const requestedAnchorRef = useRef("");
   const initialBusyRef = useRef<number | null>(null);
   const refreshBusyRef = useRef<number | null>(null);
   const beforeBusyRef = useRef<number | null>(null);
@@ -49,7 +54,7 @@ export function ScheduleDayScroller({
   }
 
   function applyMetadata(result: ScheduleDays) {
-    setFocusDate(result.focus_date ?? "");
+    setTodayDate(result.today);
     setHasPrevious(result.has_previous);
     setHasNext(result.has_next);
   }
@@ -71,7 +76,12 @@ export function ScheduleDayScroller({
     setInitialLoading(true);
     setInitialError("");
     try {
-      const result = await api.getScheduleDays(queryFor("initial"));
+      const result = await api.getScheduleDays(queryFor(
+        "initial",
+        requestedAnchorRef.current
+          ? `anchor_date=${encodeURIComponent(requestedAnchorRef.current)}`
+          : "",
+      ));
       if (requestVersion !== requestVersionRef.current) return;
       const anchor = result.focus_date ? scheduleDayAnchor(result.focus_date) : "";
       setScrollTarget(anchor);
@@ -164,10 +174,19 @@ export function ScheduleDayScroller({
 
   useEffect(() => {
     const divisionChanged = divisionRef.current !== divisionId;
-    if (divisionChanged) {
+    const focusChanged = Boolean(
+      focusIntent && focusIntent.id !== focusIntentIdRef.current,
+    );
+    if (divisionChanged || focusChanged) {
       divisionRef.current = divisionId;
+      if (focusChanged && focusIntent) {
+        focusIntentIdRef.current = focusIntent.id;
+        requestedAnchorRef.current = focusIntent.date;
+      } else {
+        requestedAnchorRef.current = "";
+      }
       commitDays([]);
-      setFocusDate("");
+      setTodayDate("");
       setScrollTarget("");
       setInitialError("");
       setBeforeError("");
@@ -181,7 +200,17 @@ export function ScheduleDayScroller({
     if (!daysRef.current.length) void loadInitial();
     else void revalidateLoadedRange();
     // refreshKey deliberately revalidates on every page show without expanding the window.
-  }, [divisionId, refreshKey]);
+  }, [divisionId, focusIntent?.id, refreshKey]);
+
+  function returnToToday() {
+    if (!todayDate) return;
+    if (daysRef.current.some((day) => day.date === todayDate)) {
+      setScrollTarget(scheduleDayAnchor(todayDate));
+      return;
+    }
+    requestedAnchorRef.current = "";
+    void loadInitial(true);
+  }
 
   if (initialLoading && !days.length) {
     return <View className="schedule-window-skeleton" aria-label="正在读取赛程">
@@ -200,6 +229,11 @@ export function ScheduleDayScroller({
 
   return <View className={`schedule-window ${mode === "admin" ? "is-admin" : ""}`}>
     {refreshing && <View className="schedule-refreshing"><Text>正在更新赛程</Text></View>}
+    {initialError && (
+      <Button className="direction-retry" onClick={() => void loadInitial()}>
+        {initialError} · 重新加载
+      </Button>
+    )}
     <ScrollView
       className="schedule-day-scroll"
       scrollY
@@ -244,9 +278,9 @@ export function ScheduleDayScroller({
         />
       </View>
     </ScrollView>
-    {focusDate && <Button
+    {todayDate && <Button
       className="return-today"
-      onClick={() => setScrollTarget(scheduleDayAnchor(focusDate))}
+      onClick={returnToToday}
     >回到今天</Button>}
   </View>;
 }

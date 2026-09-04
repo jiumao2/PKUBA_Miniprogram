@@ -359,6 +359,23 @@
               "title": "Date To"
             },
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "anchor_date",
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor Date"
+            },
+            "required": false
           }
         ],
         "responses": {
