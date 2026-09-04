@@ -7,6 +7,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const allowlistPath = resolve(root, "docs/dependency-audit-allowlist.json");
 const GHSA_PATTERN = /^GHSA-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/;
 const ALLOWED_SCOPES = new Set(["development", "production-transitive"]);
+const AUDIT_ATTEMPTS = 3;
+const AUDIT_FETCH_TIMEOUT_MS = 45_000;
+const AUDIT_PROCESS_TIMEOUT_MS = 60_000;
 
 function isValidIsoDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value ?? "")) return false;
@@ -136,30 +139,68 @@ export function evaluateAuditPolicy({ productionReport, fullReport, allowlist, t
   };
 }
 
-function runNpmAudit({ omitDev }) {
-  const npmCli = process.env.npm_execpath;
+function auditFailureReason(audit, report) {
+  if (audit.error?.code) return `process error ${audit.error.code}`;
+  const responseMessage = [
+    report?.message,
+    report?.error?.summary,
+    report?.error?.detail,
+  ].find((value) => typeof value === "string" && value.trim());
+  if (responseMessage) return responseMessage.replace(/\s+/g, " ").trim().slice(0, 300);
+  if (!audit.stdout?.trim()) return `exit ${String(audit.status)} without JSON output`;
+  return `exit ${String(audit.status)} without vulnerability metadata`;
+}
+
+export function runNpmAudit({
+  omitDev,
+  npmCli = process.env.npm_execpath,
+  spawn = spawnSync,
+  onRetry = (message) => console.warn(message),
+}) {
   if (!npmCli) throw new Error("npm_execpath is unavailable; run this check through npm run.");
-  const args = [npmCli, "audit", ...(omitDev ? ["--omit=dev"] : []), "--json"];
-  const audit = spawnSync(process.execPath, args, {
-    cwd: root,
-    encoding: "utf8",
-    shell: false,
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  if (audit.error) throw audit.error;
-  if (!audit.stdout?.trim()) {
-    throw new Error(audit.stderr || "npm audit did not return JSON.");
+  const label = omitDev ? "Production" : "Full";
+  const args = [
+    npmCli,
+    "audit",
+    ...(omitDev ? ["--omit=dev"] : []),
+    "--json",
+    `--fetch-timeout=${AUDIT_FETCH_TIMEOUT_MS}`,
+    "--fetch-retries=0",
+  ];
+  let lastFailure = "unknown response";
+
+  for (let attempt = 1; attempt <= AUDIT_ATTEMPTS; attempt += 1) {
+    const audit = spawn(process.execPath, args, {
+      cwd: root,
+      encoding: "utf8",
+      shell: false,
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: AUDIT_PROCESS_TIMEOUT_MS,
+    });
+    let report = null;
+    try {
+      report = audit.stdout?.trim() ? JSON.parse(audit.stdout) : null;
+    } catch {
+      // The command result is invalid and must be retried or rejected below.
+    }
+    if (
+      [0, 1].includes(audit.status)
+      && report?.metadata?.vulnerabilities
+      && typeof report?.vulnerabilities === "object"
+    ) {
+      return report;
+    }
+    lastFailure = auditFailureReason(audit, report);
+    if (attempt < AUDIT_ATTEMPTS) {
+      onRetry(
+        `${label} npm audit attempt ${attempt}/${AUDIT_ATTEMPTS} returned no valid report: ${lastFailure}`,
+      );
+    }
   }
-  let report;
-  try {
-    report = JSON.parse(audit.stdout);
-  } catch (error) {
-    throw new Error(`Cannot parse npm audit output: ${error}`);
-  }
-  if (![0, 1].includes(audit.status)) {
-    throw new Error(audit.stderr || `npm audit failed with status ${audit.status}.`);
-  }
-  return report;
+
+  throw new Error(
+    `${label} npm audit failed closed after ${AUDIT_ATTEMPTS} attempts: ${lastFailure}`,
+  );
 }
 
 function main() {

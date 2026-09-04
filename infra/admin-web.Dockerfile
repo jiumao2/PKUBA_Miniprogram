@@ -11,7 +11,7 @@ COPY packages/api-client/package.json ./packages/api-client/package.json
 COPY packages/design-tokens/package.json ./packages/design-tokens/package.json
 COPY packages/scoresheet-domain/package.json ./packages/scoresheet-domain/package.json
 
-RUN npm ci \
+RUN npm ci --no-audit \
     --workspace @pkuba/admin-web \
     --workspace @pkuba/api-client \
     --workspace @pkuba/design-tokens \

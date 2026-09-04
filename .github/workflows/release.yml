@@ -187,7 +187,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-      - run: npm ci
+      - run: npm ci --no-audit
       - run: npm run build:packages
       - name: Build for the production API domain
         env:

@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { evaluateAuditPolicy, validateAllowlist } from "./check-npm-audit.mjs";
+import {
+  evaluateAuditPolicy,
+  runNpmAudit,
+  validateAllowlist,
+} from "./check-npm-audit.mjs";
 
 const TODAY = "2026-09-01";
 
@@ -183,4 +187,56 @@ test("requires production-transitive scope for advisories in the production audi
     }),
     /scope mismatch/,
   );
+});
+
+test("retries malformed registry responses without weakening the audit result", () => {
+  const accepted = report([]);
+  const results = [
+    {
+      status: 1,
+      stdout: JSON.stringify({
+        message: "network timeout at the official audit endpoint",
+        error: { summary: "", detail: "" },
+      }),
+      stderr: "",
+    },
+    { status: 0, stdout: JSON.stringify(accepted), stderr: "" },
+  ];
+  const calls = [];
+  const actual = runNpmAudit({
+    omitDev: true,
+    npmCli: "/npm-cli.js",
+    spawn: (...args) => {
+      calls.push(args);
+      return results.shift();
+    },
+    onRetry: () => undefined,
+  });
+
+  assert.deepEqual(actual, accepted);
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0][1].includes("--fetch-timeout=45000"));
+  assert.ok(calls[0][1].includes("--fetch-retries=0"));
+  assert.equal(calls[0][2].timeout, 60_000);
+});
+
+test("fails closed after bounded invalid audit responses", () => {
+  let attempts = 0;
+  assert.throws(
+    () => runNpmAudit({
+      omitDev: false,
+      npmCli: "/npm-cli.js",
+      spawn: () => {
+        attempts += 1;
+        return {
+          status: 1,
+          stdout: JSON.stringify({ message: "registry unavailable" }),
+          stderr: "",
+        };
+      },
+      onRetry: () => undefined,
+    }),
+    /Full npm audit failed closed after 3 attempts: registry unavailable/,
+  );
+  assert.equal(attempts, 3);
 });
