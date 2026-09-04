@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const allowlistPath = resolve(root, "docs/dependency-audit-allowlist.json");
+const packageLockPath = resolve(root, "package-lock.json");
 const GHSA_PATTERN = /^GHSA-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/;
 const ALLOWED_SCOPES = new Set(["development", "production-transitive"]);
 const AUDIT_ATTEMPTS = 3;
@@ -139,6 +140,63 @@ export function evaluateAuditPolicy({ productionReport, fullReport, allowlist, t
   };
 }
 
+export function deriveProductionReport(fullReport, packageLock) {
+  auditCounts(fullReport, "Full");
+  const packages = packageLock?.packages;
+  if (!packages || typeof packages !== "object" || Array.isArray(packages)) {
+    throw new Error("package-lock.json must contain a packages map.");
+  }
+
+  const vulnerabilities = fullReport.vulnerabilities;
+  const productionNames = new Set();
+  for (const [name, vulnerability] of Object.entries(vulnerabilities)) {
+    if (!Array.isArray(vulnerability?.nodes) || vulnerability.nodes.length === 0) {
+      throw new Error(`Full npm audit cannot classify ${name} without installed node locations.`);
+    }
+    for (const location of vulnerability.nodes) {
+      if (typeof location !== "string" || !Object.hasOwn(packages, location)) {
+        throw new Error(`Full npm audit location is absent from package-lock.json: ${String(location)}`);
+      }
+      if (packages[location]?.dev !== true) {
+        productionNames.add(name);
+      }
+    }
+  }
+
+  const pending = [...productionNames];
+  while (pending.length > 0) {
+    const name = pending.pop();
+    for (const via of vulnerabilities[name]?.via ?? []) {
+      if (typeof via !== "string") continue;
+      if (!Object.hasOwn(vulnerabilities, via)) {
+        throw new Error(`Full npm audit references an unknown vulnerability: ${via}`);
+      }
+      if (!productionNames.has(via)) {
+        productionNames.add(via);
+        pending.push(via);
+      }
+    }
+  }
+
+  const productionVulnerabilities = {};
+  const counts = { info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 };
+  for (const [name, vulnerability] of Object.entries(vulnerabilities)) {
+    if (!productionNames.has(name)) continue;
+    if (!Object.hasOwn(counts, vulnerability?.severity) || vulnerability.severity === "total") {
+      throw new Error(`Full npm audit has an invalid severity for ${name}.`);
+    }
+    productionVulnerabilities[name] = vulnerability;
+    counts[vulnerability.severity] += 1;
+    counts.total += 1;
+  }
+
+  return {
+    ...fullReport,
+    metadata: { ...fullReport.metadata, vulnerabilities: counts },
+    vulnerabilities: productionVulnerabilities,
+  };
+}
+
 function auditFailureReason(audit, report) {
   if (audit.error?.code) return `process error ${audit.error.code}`;
   const responseMessage = [
@@ -152,17 +210,15 @@ function auditFailureReason(audit, report) {
 }
 
 export function runNpmAudit({
-  omitDev,
   npmCli = process.env.npm_execpath,
   spawn = spawnSync,
   onRetry = (message) => console.warn(message),
 }) {
   if (!npmCli) throw new Error("npm_execpath is unavailable; run this check through npm run.");
-  const label = omitDev ? "Production" : "Full";
+  const label = "Full";
   const args = [
     npmCli,
     "audit",
-    ...(omitDev ? ["--omit=dev"] : []),
     "--json",
     `--fetch-timeout=${AUDIT_FETCH_TIMEOUT_MS}`,
     "--fetch-retries=0",
@@ -206,9 +262,11 @@ export function runNpmAudit({
 function main() {
   try {
     const allowlist = JSON.parse(readFileSync(allowlistPath, "utf8"));
+    const packageLock = JSON.parse(readFileSync(packageLockPath, "utf8"));
+    const fullReport = runNpmAudit({});
     const result = evaluateAuditPolicy({
-      productionReport: runNpmAudit({ omitDev: true }),
-      fullReport: runNpmAudit({ omitDev: false }),
+      productionReport: deriveProductionReport(fullReport, packageLock),
+      fullReport,
       allowlist,
     });
     console.log(
