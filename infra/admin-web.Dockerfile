@@ -1,6 +1,6 @@
 ARG CADDY_BASE_IMAGE=caddy:2.10-alpine
 
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 
 WORKDIR /workspace
 
