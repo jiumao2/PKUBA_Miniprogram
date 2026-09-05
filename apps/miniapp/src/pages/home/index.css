@@ -223,6 +223,28 @@
   line-height: 1.2;
 }
 
+.game-density-range-trigger {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+}
+
+.game-density-range-trigger:active {
+  opacity: 0.68;
+}
+
+.game-density-range-label {
+  color: #c91f26;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.game-density-range-chevron {
+  color: #77716a;
+  font-size: 24rpx;
+  font-weight: 850;
+}
+
 .game-density-total {
   flex: 0 0 auto;
   color: #625d57;
@@ -263,6 +285,10 @@
   color: #3a3531;
 }
 
+.game-density-day:not(.is-outside):active {
+  opacity: 0.7;
+}
+
 .game-density-day.level-0 {
   background: #efede9;
 }
@@ -293,6 +319,7 @@
 .game-density-day.is-outside {
   min-height: 90rpx;
   border-color: transparent;
+  color: #aaa49c;
   background: #f7f5f1;
 }
 

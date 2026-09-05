@@ -311,6 +311,60 @@ def test_schedule_days_keeps_today_before_future_games_and_handles_empty_schedul
     assert empty["total_games"] == 0
 
 
+def test_schedule_days_resolves_explicit_anchor_to_nearest_public_matchday():
+    target_season = season()
+    game = placeholder_game(target_season)
+    today = timezone.localdate()
+    first_date = today + timedelta(days=3)
+    middle_date = today + timedelta(days=7)
+    last_date = today + timedelta(days=12)
+    Game.objects.filter(id=game.id).update(date=first_date)
+    _create_game_on(game, code="ANCHOR-MIDDLE", match_date=middle_date)
+    _create_game_on(game, code="ANCHOR-LAST", match_date=last_date)
+    void_game = _create_game_on(
+        game,
+        code="ANCHOR-VOID",
+        match_date=today + timedelta(days=5),
+    )
+    Game.objects.filter(id=void_game.id).update(status=Game.Status.VOID)
+
+    client = Client()
+
+    exact = client.get(
+        "/api/v1/public/schedule-days",
+        {"anchor_date": first_date.isoformat()},
+    ).json()
+    tied = client.get(
+        "/api/v1/public/schedule-days",
+        {"anchor_date": (today + timedelta(days=5)).isoformat()},
+    ).json()
+    before = client.get(
+        "/api/v1/public/schedule-days",
+        {"anchor_date": (today - timedelta(days=30)).isoformat()},
+    ).json()
+    after = client.get(
+        "/api/v1/public/schedule-days",
+        {"anchor_date": (today + timedelta(days=30)).isoformat()},
+    ).json()
+
+    assert exact["focus_date"] == first_date.isoformat()
+    assert tied["focus_date"] == middle_date.isoformat()
+    assert before["focus_date"] == first_date.isoformat()
+    assert after["focus_date"] == last_date.isoformat()
+    assert all(
+        row["date"] != (today + timedelta(days=5)).isoformat()
+        for row in tied["days"]
+    )
+
+    Game.objects.all().update(status=Game.Status.VOID)
+    empty = client.get(
+        "/api/v1/public/schedule-days",
+        {"anchor_date": middle_date.isoformat()},
+    ).json()
+    assert empty["focus_date"] is None
+    assert empty["days"] == []
+
+
 def test_schedule_days_range_revalidates_only_loaded_dates():
     target_season = season()
     game = placeholder_game(target_season)

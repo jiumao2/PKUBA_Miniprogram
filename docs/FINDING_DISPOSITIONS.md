@@ -93,7 +93,7 @@
 | --- | --- |
 | 来源 / 公开引用 | [`dependency-audit-allowlist.json`](dependency-audit-allowlist.json)、[`check-npm-audit.mjs`](../scripts/check-npm-audit.mjs)、[`package.json`](../package.json) |
 | 公开安全摘要 | 当前 npm 依赖树仍含已知上游 advisory；机器清单逐 GHSA 记录包、依赖路径、命令边界、scope、理由和到期日。GitHub 的开放 Dependabot 告警与 npm audit 的包节点或 GHSA 计数不是同一口径。 |
-| 技术状态 | 审计门禁已验证；它只证明生产 high/critical 为零且所有当前 GHSA 都经过精确审查，不证明上游漏洞已消失。 |
+| 技术状态 | 审计门禁已验证；它只证明生产 high/critical 为零且所有当前 GHSA 都经过精确审查，不证明上游漏洞已消失。门禁只请求一次完整审计报告，再按同一锁文件的精确安装位置推导生产范围，避免两次外部请求产生不一致快照；官方端点异常时采用短超时和有限重试，仍无法取得完整报告则保持失败。安装和构建阶段关闭 npm 的重复隐式审计，只保留显式门禁。 |
 | 产品处置 | `DEFERRED` |
 | 适用边界 | 只覆盖机器清单中精确匹配的 GHSA、包、依赖路径、命令边界、scope 和 `expires_on`；机器清单是逐项例外的权威来源。 |
 | 用户决定日期 | 2026-09-01 |

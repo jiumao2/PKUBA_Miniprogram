@@ -51,6 +51,7 @@ function TimelineGame({ game, onClick }: { game: Game; onClick?: (game: Game) =>
   const women = game.division_gender === "WOMEN";
   const score = formatOfficialScore(game.home_score, game.away_score);
   const hasScore = score !== null;
+  const showStatus = game.status === "FORFEIT" || !game.participants_resolved;
   return (
     <View
       className={`timeline-game ${women ? "timeline-women" : "timeline-men"} ${onClick ? "is-clickable" : ""}`}
@@ -58,7 +59,7 @@ function TimelineGame({ game, onClick }: { game: Game; onClick?: (game: Game) =>
     >
       <View className="timeline-game-topline">
         <Text className="timeline-division">
-          {game.division_name}
+          {game.division_name} · {game.group_name ?? stageLabel(game.stage)}
         </Text>
         <Text className="timeline-venue">{game.venue_name}</Text>
       </View>
@@ -74,11 +75,12 @@ function TimelineGame({ game, onClick }: { game: Game; onClick?: (game: Game) =>
           {hasScore ? game.away_score : ""}
         </Text>
       </View>
-      <View className="timeline-game-footline">
-        <Text>{game.group_name ?? stageLabel(game.stage)}</Text>
-        {game.status === "FORFEIT" && <Text className="forfeit-label">弃权</Text>}
-        {!game.participants_resolved && <Text className="pending-label">对阵待定</Text>}
-      </View>
+      {showStatus && (
+        <View className="timeline-game-footline">
+          {game.status === "FORFEIT" && <Text className="forfeit-label">弃权</Text>}
+          {!game.participants_resolved && <Text className="pending-label">对阵待定</Text>}
+        </View>
+      )}
     </View>
   );
 }

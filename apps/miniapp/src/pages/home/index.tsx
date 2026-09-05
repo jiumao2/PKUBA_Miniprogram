@@ -1,18 +1,20 @@
-import { Button, Image, Text, View } from "@tarojs/components";
+import { Button, Image, Picker, Text, View } from "@tarojs/components";
 import Taro, { useDidShow } from "@tarojs/taro";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ApiError, type HomeDashboard, type Season } from "@pkuba/api-client";
 
 import logoUrl from "../../assets/pkuba-logo.png";
 import { api } from "../../api";
 import { GameTimeline } from "../../components/game-timeline";
-import { navigateToOnce } from "../../navigation";
+import { navigateToOnce, switchToScheduleDate } from "../../navigation";
 import { gameDetailRoute } from "../../routes";
 import { usePublicPageShare } from "../../sharing";
 import { formatDate } from "../../format";
 import { syncTabBar } from "../../tabbar";
 import {
   buildSeasonCalendar,
+  calendarRangeOptions,
+  type CalendarRange,
   densityLevel,
   localDateKey,
   shortDate,
@@ -86,7 +88,7 @@ export default function HomePage() {
       {notice && <State title={notice.title} detail={notice.detail} />}
       {!loading && !notice && dashboard && (
         <>
-          <GameDensity dashboard={dashboard} />
+          <GameDensity dashboard={dashboard} season={season} />
           <Matchday
             dashboard={dashboard}
             onSchedule={() => Taro.switchTab({ url: "/pages/schedule/index" })}
@@ -98,19 +100,48 @@ export default function HomePage() {
   );
 }
 
-function GameDensity({ dashboard }: { dashboard: HomeDashboard }) {
+function GameDensity({ dashboard, season }: { dashboard: HomeDashboard; season: Season | null }) {
+  const [range, setRange] = useState<CalendarRange>("recent");
   const days = dashboard.daily_game_counts;
   const today = localDateKey(new Date());
-  const cells = buildSeasonCalendar(today, days);
-  const maxGames = Math.max(0, ...cells.map((day) => day.gameCount));
-  const totalGames = cells.reduce((total, day) => total + day.gameCount, 0);
+  const seasonStart = season?.starts_on ?? today;
+  const seasonEnd = season?.ends_on ?? today;
+  const rangeOptions = useMemo(
+    () => calendarRangeOptions(seasonStart, seasonEnd),
+    [seasonEnd, seasonStart],
+  );
+  const effectiveRange = rangeOptions.some((option) => option.value === range) ? range : "recent";
+  const rangeIndex = Math.max(0, rangeOptions.findIndex((option) => option.value === effectiveRange));
+  const cells = buildSeasonCalendar(today, days, effectiveRange, seasonStart, seasonEnd);
+  const activeCells = cells.filter((cell) => !cell.outside);
+  const maxGames = Math.max(0, ...days.map((day) => day.game_count));
+  const totalGames = activeCells.reduce((total, day) => total + day.gameCount, 0);
+  const firstDate = activeCells[0]?.date ?? seasonStart;
+  const lastDate = activeCells[activeCells.length - 1]?.date ?? seasonEnd;
 
   return (
     <View className="game-density">
       <View className="game-density-heading">
-        <Text className="game-density-title">比赛日历</Text>
+        <Picker
+          mode="selector"
+          range={rangeOptions.map((option) => option.label)}
+          value={rangeIndex}
+          onChange={(event) => {
+            const next = rangeOptions[Number(event.detail.value)];
+            if (next) setRange(next.value);
+          }}
+        >
+          <View
+            className="game-density-range-trigger"
+            aria-label={`选择比赛日历范围，当前${rangeOptions[rangeIndex].label}`}
+          >
+            <Text className="game-density-title">比赛日历</Text>
+            <Text className="game-density-range-label">{rangeOptions[rangeIndex].label}</Text>
+            <Text className="game-density-range-chevron" aria-hidden>⌄</Text>
+          </View>
+        </Picker>
         <Text className="game-density-total">
-          {shortDate(cells[0].date)}—{shortDate(cells[cells.length - 1].date)} · {totalGames} 场
+          {shortDate(firstDate)}—{shortDate(lastDate)} · {totalGames} 场
         </Text>
       </View>
       <View className="game-density-weekdays" aria-hidden>
@@ -118,12 +149,19 @@ function GameDensity({ dashboard }: { dashboard: HomeDashboard }) {
       </View>
       <View className="game-density-grid">
         {cells.map((cell) => cell.outside ? (
-          <View className="game-density-day is-outside" key={cell.key} />
+          <View
+            aria-label={`${formatDate(cell.date)}，不可选择`}
+            className="game-density-day is-outside"
+            key={cell.key}
+          >
+            <Text className="game-density-date">{shortDate(cell.date)}</Text>
+          </View>
         ) : (
           <View
             aria-label={`${formatDate(cell.date)}，${cell.gameCount} 场比赛${cell.date === today ? "，今天" : ""}`}
             className={`game-density-day level-${densityLevel(cell.gameCount, maxGames)} ${cell.date === today ? "is-today" : ""}`}
             key={cell.key}
+            onClick={() => void switchToScheduleDate(cell.date)}
           >
             <View className="game-density-date-row">
               <Text className="game-density-date">{shortDate(cell.date)}</Text>

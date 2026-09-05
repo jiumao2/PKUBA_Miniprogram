@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { evaluateAuditPolicy, validateAllowlist } from "./check-npm-audit.mjs";
+import {
+  deriveProductionReport,
+  evaluateAuditPolicy,
+  runNpmAudit,
+  validateAllowlist,
+} from "./check-npm-audit.mjs";
 
 const TODAY = "2026-09-01";
 
@@ -183,4 +188,118 @@ test("requires production-transitive scope for advisories in the production audi
     }),
     /scope mismatch/,
   );
+});
+
+test("derives production scope from the same full report and exact lockfile locations", () => {
+  const prodAdvisory = advisory("GHSA-AAAA-BBBB-CCCC", "prod-leaf");
+  const devAdvisory = advisory("GHSA-DDDD-EEEE-FFFF", "dev-leaf", "high");
+  const fullReport = {
+    metadata: {
+      vulnerabilities: { info: 0, low: 0, moderate: 2, high: 1, critical: 0, total: 3 },
+    },
+    vulnerabilities: {
+      "prod-wrapper": {
+        severity: "moderate",
+        via: ["prod-leaf"],
+        nodes: ["node_modules/prod-wrapper"],
+      },
+      "prod-leaf": {
+        severity: "moderate",
+        via: [prodAdvisory],
+        nodes: ["node_modules/prod-leaf"],
+      },
+      "dev-leaf": {
+        severity: "high",
+        via: [devAdvisory],
+        nodes: ["node_modules/dev-leaf"],
+      },
+    },
+  };
+  const productionReport = deriveProductionReport(fullReport, {
+    packages: {
+      "node_modules/prod-wrapper": {},
+      "node_modules/prod-leaf": {},
+      "node_modules/dev-leaf": { dev: true },
+    },
+  });
+
+  assert.deepEqual(Object.keys(productionReport.vulnerabilities), ["prod-wrapper", "prod-leaf"]);
+  assert.deepEqual(productionReport.metadata.vulnerabilities, {
+    info: 0,
+    low: 0,
+    moderate: 2,
+    high: 0,
+    critical: 0,
+    total: 2,
+  });
+});
+
+test("fails closed when full audit locations cannot be classified from the lockfile", () => {
+  const fullReport = {
+    metadata: {
+      vulnerabilities: { info: 0, low: 0, moderate: 1, high: 0, critical: 0, total: 1 },
+    },
+    vulnerabilities: {
+      tool: {
+        severity: "moderate",
+        via: [advisory("GHSA-AAAA-BBBB-CCCC", "tool")],
+        nodes: ["node_modules/tool"],
+      },
+    },
+  };
+  assert.throws(
+    () => deriveProductionReport(fullReport, { packages: {} }),
+    /location is absent from package-lock.json/,
+  );
+});
+
+test("retries malformed registry responses without weakening the audit result", () => {
+  const accepted = report([]);
+  const results = [
+    {
+      status: 1,
+      stdout: JSON.stringify({
+        message: "network timeout at the official audit endpoint",
+        error: { summary: "", detail: "" },
+      }),
+      stderr: "",
+    },
+    { status: 0, stdout: JSON.stringify(accepted), stderr: "" },
+  ];
+  const calls = [];
+  const actual = runNpmAudit({
+    npmCli: "/npm-cli.js",
+    spawn: (...args) => {
+      calls.push(args);
+      return results.shift();
+    },
+    onRetry: () => undefined,
+  });
+
+  assert.deepEqual(actual, accepted);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0][1].includes("--omit=dev"), false);
+  assert.ok(calls[0][1].includes("--fetch-timeout=45000"));
+  assert.ok(calls[0][1].includes("--fetch-retries=0"));
+  assert.equal(calls[0][2].timeout, 60_000);
+});
+
+test("fails closed after bounded invalid audit responses", () => {
+  let attempts = 0;
+  assert.throws(
+    () => runNpmAudit({
+      npmCli: "/npm-cli.js",
+      spawn: () => {
+        attempts += 1;
+        return {
+          status: 1,
+          stdout: JSON.stringify({ message: "registry unavailable" }),
+          stderr: "",
+        };
+      },
+      onRetry: () => undefined,
+    }),
+    /Full npm audit failed closed after 3 attempts: registry unavailable/,
+  );
+  assert.equal(attempts, 3);
 });
