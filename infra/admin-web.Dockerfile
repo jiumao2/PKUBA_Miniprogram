@@ -28,7 +28,7 @@ RUN npm --workspace @pkuba/design-tokens run build \
     && npm --workspace @pkuba/api-client run build \
     && npm --workspace @pkuba/admin-web run build
 
-FROM python:3.13-slim AS django-static
+FROM python:3.14-slim AS django-static
 
 WORKDIR /app
 COPY apps/api/pyproject.toml apps/api/requirements.lock ./
