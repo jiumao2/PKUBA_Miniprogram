@@ -194,7 +194,7 @@ jobs:
           PKUBA_API_BASE_URL: https://api.pkuba.cn
           PKUBA_ADMIN_WEB_URL: https://admin.pkuba.cn
         run: npm --workspace @pkuba/miniapp run build:weapp
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pkuba-miniapp-${{ github.ref_name }}
           path: apps/miniapp/dist
