@@ -148,9 +148,11 @@ describe("CorrectionCenterPage", () => {
     );
 
     expect(await screen.findByLabelText("比赛日期")).toHaveValue("2026-05-11");
+    expect(screen.getByText("1 选择与编辑")).toHaveAttribute("aria-current", "step");
     expect(screen.getByText("v9")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "生成影响预览" }));
     await waitFor(() => expect(client.previewCompetitionCorrection).toHaveBeenCalledTimes(1));
+    expect(screen.getByText("2 影响预览")).toHaveAttribute("aria-current", "step");
     expect(client.previewCompetitionCorrection).toHaveBeenCalledWith(
       expect.objectContaining({
         expected_season_version: 4,
@@ -165,10 +167,12 @@ describe("CorrectionCenterPage", () => {
     await userEvent.click(screen.getByLabelText(/我已核对修改前后内容/));
     await userEvent.click(screen.getByRole("button", { name: "冻结纠错单" }));
     expect(await screen.findByText("等待最终应用")).toBeVisible();
+    expect(screen.getByText("3 冻结纠错单")).toHaveAttribute("aria-current", "step");
     expect(screen.getByLabelText("比赛日期")).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "确认并原子应用" }));
     await waitFor(() => expect(client.applyCompetitionCorrection).toHaveBeenCalled());
     await waitFor(() => expect(onUpdated).toHaveBeenCalled());
+    expect(screen.getByText("4 原子应用")).toHaveAttribute("aria-current", "step");
   });
 
   it("requires a new preview after selecting a downstream resolution", async () => {

@@ -158,7 +158,7 @@ def _error(error: RescheduleError):
         "NOT_SEASON_LEADER",
         "NOT_GAME_LEADER",
         "OPPONENT_LEADER_REQUIRED",
-        "REQUESTER_REQUIRED",
+        "REQUESTER_TEAM_LEADER_REQUIRED",
         "SELECTED_LEADER_REQUIRED",
         "TEAM_NOT_SELECTED",
         "ADMIN_REQUIRED",
@@ -230,14 +230,14 @@ def _actions(request_item: RescheduleRequest, actor: Account) -> list[str]:
     actions: list[str] = []
     if request_item.is_terminal:
         return actions
-    if request_item.requester_id == actor.id:
+    binding = _binding(actor, request_item.game.season)
+    if binding and binding.team_id == request_item.requester_team_id:
         actions.append("WITHDRAW")
     pending = [
         item
         for item in request_item.confirmations.all()
         if item.response == TeamConfirmation.Response.PENDING
     ]
-    binding = _binding(actor, request_item.game.season)
     if binding:
         for confirmation in pending:
             if confirmation.team_id != binding.team_id:

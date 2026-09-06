@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AdminReschedulePage } from "@pkuba/api-client";
+import { ApiError, type AdminReschedulePage } from "@pkuba/api-client";
 import {
   RescheduleManagementPage,
   reviewClassificationText,
@@ -185,6 +185,7 @@ describe("RescheduleManagementPage", () => {
         selected_team_ids: [],
       },
     ));
+    expect(await screen.findByRole("status")).toHaveTextContent("按普通办法批准已完成。");
   });
 
   it("submits cross-round approval and authoritative voter ids", async () => {
@@ -227,5 +228,90 @@ describe("RescheduleManagementPage", () => {
         selected_team_ids: ["team-3"],
       },
     ));
+  });
+
+  it("keeps a 409 conflict visible after refreshing authoritative data", async () => {
+    const user = userEvent.setup();
+    const refreshedDataset: AdminReschedulePage = {
+      ...dataset,
+      items: [{
+        ...dataset.items[0],
+        requester_team_name: "刷新后的法学院",
+        version: 4,
+      }],
+    };
+    const listAdminRescheduleRequests = vi.fn()
+      .mockResolvedValueOnce(dataset)
+      .mockResolvedValueOnce(refreshedDataset);
+    const actOnAdminReschedule = vi.fn().mockRejectedValue(
+      new ApiError("申请状态已更新，请刷新后重试。", 409, "VERSION_CONFLICT"),
+    );
+    type Props = Parameters<typeof RescheduleManagementPage>[0];
+    const client = {
+      listAdminRescheduleRequests,
+      getAdminRescheduleVoterCandidates: vi.fn(async () => []),
+      actOnAdminReschedule,
+    } as unknown as Props["client"];
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<RescheduleManagementPage client={client} initialDataset={dataset} />);
+    await waitFor(() => expect(listAdminRescheduleRequests).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "认定跨轮次并批准" }));
+
+    await waitFor(() => expect(listAdminRescheduleRequests).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "申请状态已更新，请刷新后重试。 页面已刷新，请重新核对后操作。",
+    );
+    expect(screen.getAllByText((_, element) => (
+      element?.textContent === "申请方：刷新后的法学院"
+    ))).toHaveLength(2);
+  });
+
+  it("keeps the conflict reason when its authoritative refresh also fails", async () => {
+    const user = userEvent.setup();
+    const listAdminRescheduleRequests = vi.fn()
+      .mockResolvedValueOnce(dataset)
+      .mockRejectedValueOnce(new Error("无法连接服务"));
+    const actOnAdminReschedule = vi.fn().mockRejectedValue(
+      new ApiError("申请状态已更新，请刷新后重试。", 409, "VERSION_CONFLICT"),
+    );
+    type Props = Parameters<typeof RescheduleManagementPage>[0];
+    const client = {
+      listAdminRescheduleRequests,
+      getAdminRescheduleVoterCandidates: vi.fn(async () => []),
+      actOnAdminReschedule,
+    } as unknown as Props["client"];
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<RescheduleManagementPage client={client} initialDataset={dataset} />);
+    await waitFor(() => expect(listAdminRescheduleRequests).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "认定跨轮次并批准" }));
+
+    await waitFor(() => expect(listAdminRescheduleRequests).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "申请状态已更新，请刷新后重试。 页面已刷新，请重新核对后操作。 刷新失败：无法连接服务",
+    );
+  });
+
+  it("does not refresh away a non-conflict action error", async () => {
+    const user = userEvent.setup();
+    const listAdminRescheduleRequests = vi.fn(async () => dataset);
+    const actOnAdminReschedule = vi.fn().mockRejectedValue(
+      new ApiError("当前管理员无权处理。", 403, "SUPERADMIN_REQUIRED"),
+    );
+    type Props = Parameters<typeof RescheduleManagementPage>[0];
+    const client = {
+      listAdminRescheduleRequests,
+      getAdminRescheduleVoterCandidates: vi.fn(async () => []),
+      actOnAdminReschedule,
+    } as unknown as Props["client"];
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<RescheduleManagementPage client={client} initialDataset={dataset} />);
+    await waitFor(() => expect(listAdminRescheduleRequests).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "认定跨轮次并批准" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("当前管理员无权处理。");
+    expect(listAdminRescheduleRequests).toHaveBeenCalledTimes(1);
   });
 });

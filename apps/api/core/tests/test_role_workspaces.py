@@ -13,6 +13,13 @@ from core.models import (
     MiniAppSession,
     ParticipantSlot,
     RescheduleRequest,
+    SeasonLeaderBinding,
+    SlotReservation,
+)
+from core.services.leader_bindings import (
+    preview_leader_transfer,
+    release_leader_binding,
+    transfer_leader_binding,
 )
 from core.services.wechat import issue_session
 from core.tests.factories import reschedule_setup
@@ -144,6 +151,171 @@ def test_leader_can_create_and_opponent_can_accept_from_api():
     assert "target_venue_id" not in accepted.json()
     assert "target_venue_name" not in accepted.json()
     assert accepted.json()["game"]["venue_name"] == setup["venues"][0].name
+
+
+def test_withdrawal_follows_current_requester_team_leader_after_transfer():
+    setup = reschedule_setup()
+    client = Client()
+    former_leader = setup["accounts"][0]
+    successor = Account.objects.create_user(
+        username="successor-leader",
+        password="test-password",
+    )
+    former_token = issue_session(former_leader)
+    successor_token = issue_session(successor)
+    game = setup["games"][0]
+    created = post_json(
+        client,
+        "/api/v1/reschedule-requests/",
+        {
+            "game_id": str(game.id),
+            "expected_game_version": game.version,
+            "target_date": setup["target_date"].isoformat(),
+            "target_period_id": str(setup["period"].id),
+            "process_route": "ORDINARY",
+        },
+        former_token,
+    )
+    assert created.status_code == 201
+    request = RescheduleRequest.objects.get(id=created.json()["id"])
+    reservation = SlotReservation.objects.get(id=request.reservation_id)
+    game.refresh_from_db()
+    unchanged = (
+        request.version,
+        request.status,
+        game.version,
+        game.active_reschedule_request_id,
+        reservation.status,
+    )
+
+    setup["season"].refresh_from_db()
+    preview, _ = preview_leader_transfer(
+        actor=setup["superadmin"],
+        season_id=setup["season"].id,
+        expected_season_version=setup["season"].version,
+        account_id=successor.id,
+        team_id=request.requester_team_id,
+        reason="测试领队交接",
+    )
+    assert isinstance(preview["impact_hash"], str)
+    transfer_leader_binding(
+        actor=setup["superadmin"],
+        season_id=setup["season"].id,
+        expected_season_version=setup["season"].version,
+        account_id=successor.id,
+        team_id=request.requester_team_id,
+        reason="测试领队交接",
+        impact_hash=preview["impact_hash"],
+        confirmed=True,
+    )
+
+    denied = post_json(
+        client,
+        f"/api/v1/reschedule-requests/{request.id}/withdraw",
+        {"expected_version": request.version},
+        former_token,
+    )
+    assert denied.status_code == 403
+    assert denied.json() == {
+        "code": "REQUESTER_TEAM_LEADER_REQUIRED",
+        "message": "只有申请球队当前领队可以撤回该申请。",
+    }
+    request.refresh_from_db()
+    reservation.refresh_from_db()
+    game.refresh_from_db()
+    assert (
+        request.version,
+        request.status,
+        game.version,
+        game.active_reschedule_request_id,
+        reservation.status,
+    ) == unchanged
+    assert request.requester_id == former_leader.id
+
+    former_list = client.get(
+        "/api/v1/reschedule-requests/",
+        HTTP_AUTHORIZATION=f"Bearer {former_token}",
+    )
+    successor_list = client.get(
+        "/api/v1/reschedule-requests/",
+        HTTP_AUTHORIZATION=f"Bearer {successor_token}",
+    )
+    assert former_list.status_code == 200
+    assert former_list.json()["items"] == []
+    assert successor_list.status_code == 200
+    successor_item = successor_list.json()["items"][0]
+    assert successor_item["id"] == str(request.id)
+    assert "WITHDRAW" in successor_item["actions"]
+
+    withdrawn = post_json(
+        client,
+        f"/api/v1/reschedule-requests/{request.id}/withdraw",
+        {"expected_version": successor_item["version"]},
+        successor_token,
+    )
+    assert withdrawn.status_code == 200
+    assert withdrawn.json()["status"] == RescheduleRequest.Status.WITHDRAWN
+    request.refresh_from_db()
+    reservation.refresh_from_db()
+    game.refresh_from_db()
+    assert request.requester_id == former_leader.id
+    assert reservation.status == SlotReservation.Status.RELEASED
+    assert game.active_reschedule_request_id is None
+
+
+def test_requester_team_without_active_leader_requires_admin_cancel():
+    setup = reschedule_setup()
+    client = Client()
+    leader = setup["accounts"][0]
+    leader_token = issue_session(leader)
+    superadmin_token = issue_session(setup["superadmin"])
+    game = setup["games"][0]
+    created = post_json(
+        client,
+        "/api/v1/reschedule-requests/",
+        {
+            "game_id": str(game.id),
+            "expected_game_version": game.version,
+            "target_date": setup["target_date"].isoformat(),
+            "target_period_id": str(setup["period"].id),
+            "process_route": "ORDINARY",
+        },
+        leader_token,
+    )
+    assert created.status_code == 201
+    request = RescheduleRequest.objects.get(id=created.json()["id"])
+    binding = SeasonLeaderBinding.objects.get(
+        season=setup["season"],
+        team=request.requester_team,
+        active=True,
+    )
+    release_leader_binding(
+        actor=setup["superadmin"],
+        binding_id=binding.id,
+        expected_version=binding.version,
+        reason="测试释放领队",
+        confirmed=True,
+    )
+
+    denied = post_json(
+        client,
+        f"/api/v1/reschedule-requests/{request.id}/withdraw",
+        {"expected_version": request.version},
+        leader_token,
+    )
+    assert denied.status_code == 403
+    assert denied.json()["code"] == "REQUESTER_TEAM_LEADER_REQUIRED"
+    request.refresh_from_db()
+    assert request.status == RescheduleRequest.Status.WAITING_OPPONENT
+
+    cancelled = post_json(
+        client,
+        f"/api/v1/reschedule-requests/{request.id}/admin-cancel",
+        {"expected_version": request.version},
+        superadmin_token,
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == RescheduleRequest.Status.ADMIN_CANCELLED
 
 
 def test_handbook_entry_includes_same_week_and_preserves_review_route_from_api():
