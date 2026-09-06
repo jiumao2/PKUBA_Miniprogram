@@ -29,7 +29,7 @@ export function calendarRangeOptions(
     });
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
-  options.push({ value: "all", label: "全部赛季" });
+  options.push({ value: "all", label: "全部" });
   return options;
 }
 
