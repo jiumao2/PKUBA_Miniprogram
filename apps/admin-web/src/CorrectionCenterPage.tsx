@@ -124,6 +124,13 @@ export function CorrectionCenterPage({
   const selected = drafts[selectedId] ?? null;
   const locked = Boolean(correction);
   const scoresheetGameId = correction ? republishGameId(correction) : null;
+  const activeFlowStep = correction?.status === "APPLIED"
+    ? 4
+    : correction
+      ? 3
+      : preview
+        ? 2
+        : 1;
   const shownGames = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("zh-CN");
     if (!needle) return games;
@@ -348,7 +355,18 @@ export function CorrectionCenterPage({
       </header>
 
       <div className="correction-flow" aria-label="纠错流程">
-        <span className="active">1 选择与编辑</span><span>2 影响预览</span><span>3 冻结纠错单</span><span>4 原子应用</span>
+        {["选择与编辑", "影响预览", "冻结纠错单", "原子应用"].map((label, index) => {
+          const step = index + 1;
+          return (
+            <span
+              aria-current={activeFlowStep === step ? "step" : undefined}
+              className={activeFlowStep === step ? "active" : undefined}
+              key={label}
+            >
+              {step} {label}
+            </span>
+          );
+        })}
       </div>
 
       <div className="correction-layout">

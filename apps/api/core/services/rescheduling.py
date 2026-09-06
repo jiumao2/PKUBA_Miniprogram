@@ -775,8 +775,20 @@ def withdraw_request(
     now = now or timezone.now()
     request, game, reservation = _locked_request(request_id)
     _require_version(request, expected_version)
-    if request.requester_id != actor.id:
-        _raise("REQUESTER_REQUIRED", "只有申请方可以撤回该申请。")
+    current_leader = (
+        SeasonLeaderBinding.objects.select_for_update()
+        .filter(
+            season_id=game.season_id,
+            team_id=request.requester_team_id,
+            active=True,
+        )
+        .first()
+    )
+    if current_leader is None or current_leader.account_id != actor.id:
+        _raise(
+            "REQUESTER_TEAM_LEADER_REQUIRED",
+            "只有申请球队当前领队可以撤回该申请。",
+        )
     if request.is_terminal:
         _raise("REQUEST_ALREADY_TERMINAL", "申请已经结束。")
     return _release_request(

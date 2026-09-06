@@ -44,10 +44,10 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
   const [selectedVoters, setSelectedVoters] = useState<string[]>([]);
   const loadGeneration = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ preserveError = false }: { preserveError?: boolean } = {}) => {
     const generation = ++loadGeneration.current;
     setLoading(true);
-    setError("");
+    if (!preserveError) setError("");
     try {
       const next = await client.listAdminRescheduleRequests({
         view,
@@ -68,7 +68,10 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
     } catch (reason: unknown) {
       if (generation !== loadGeneration.current) return;
       setDataset(null);
-      setError(reason instanceof Error ? reason.message : "无法读取调赛申请");
+      const message = reason instanceof Error ? reason.message : "无法读取调赛申请";
+      setError((current) => preserveError && current
+        ? `${current} 刷新失败：${message}`
+        : message);
     } finally {
       if (generation === loadGeneration.current) setLoading(false);
     }
@@ -123,7 +126,7 @@ export function RescheduleManagementPage({ client, initialDataset = null }: { cl
     } catch (reason: unknown) {
       if (reason instanceof ApiError && reason.status === 409) {
         setError(`${reason.message} 页面已刷新，请重新核对后操作。`);
-        await load();
+        await load({ preserveError: true });
       } else {
         setError(reason instanceof Error ? reason.message : "调赛处理失败");
       }
