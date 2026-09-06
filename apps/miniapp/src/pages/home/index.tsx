@@ -101,7 +101,7 @@ export default function HomePage() {
 }
 
 function GameDensity({ dashboard, season }: { dashboard: HomeDashboard; season: Season | null }) {
-  const [range, setRange] = useState<CalendarRange>("recent");
+  const [range, setRange] = useState<CalendarRange>("all");
   const days = dashboard.daily_game_counts;
   const today = localDateKey(new Date());
   const seasonStart = season?.starts_on ?? today;
@@ -110,7 +110,7 @@ function GameDensity({ dashboard, season }: { dashboard: HomeDashboard; season: 
     () => calendarRangeOptions(seasonStart, seasonEnd),
     [seasonEnd, seasonStart],
   );
-  const effectiveRange = rangeOptions.some((option) => option.value === range) ? range : "recent";
+  const effectiveRange = rangeOptions.some((option) => option.value === range) ? range : "all";
   const rangeIndex = Math.max(0, rangeOptions.findIndex((option) => option.value === effectiveRange));
   const cells = buildSeasonCalendar(today, days, effectiveRange, seasonStart, seasonEnd);
   const activeCells = cells.filter((cell) => !cell.outside);

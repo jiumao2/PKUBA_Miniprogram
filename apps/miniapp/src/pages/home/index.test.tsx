@@ -121,12 +121,14 @@ describe("HomePage public-season states", () => {
     expect(screen.queryByText("暂时无法加载")).not.toBeInTheDocument();
   });
 
-  it("selects a season month and sends a clicked day as a one-shot schedule focus", async () => {
+  it("defaults to the complete season, then selects a month and sends a clicked day as a one-shot schedule focus", async () => {
     state.getCurrentSeason.mockResolvedValue(season);
 
     render(<HomePage />);
 
     await screen.findByText("比赛日历");
+    expect(screen.getByText("全部")).toBeVisible();
+    expect(screen.getByText("3/21—5/31 · 0 场")).toBeVisible();
     fireEvent.click(screen.getByTestId("calendar-range-picker"));
     expect(screen.getByText("2026年3月")).toBeVisible();
 

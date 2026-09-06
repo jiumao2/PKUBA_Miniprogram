@@ -75,7 +75,7 @@ describe("home season calendar", () => {
       { value: "month:2026-03", label: "2026年3月" },
       { value: "month:2026-04", label: "2026年4月" },
       { value: "month:2026-05", label: "2026年5月" },
-      { value: "all", label: "全部赛季" },
+      { value: "all", label: "全部" },
     ]);
   });
 
