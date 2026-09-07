@@ -1,4 +1,4 @@
-<cover-view class="tabbar-shell">
+<cover-view wx:if="{{!hidden}}" class="tabbar-shell">
   <cover-view class="tabbar">
     <cover-view
       wx:for="{{list}}"

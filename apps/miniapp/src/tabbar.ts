@@ -4,7 +4,7 @@ import { api } from "./api";
 import { getMiniAppSession } from "./auth";
 
 interface TabBarController {
-  setData(data: { selected?: number; inboxCount?: string }): void;
+  setData(data: { selected?: number; inboxCount?: string; hidden?: boolean }): void;
 }
 
 interface PageWithTabBar {
@@ -23,6 +23,11 @@ export function syncTabBar(
   };
   if (!apply()) setTimeout(apply, 0);
   if (options.refreshInbox !== false) void refreshInboxBadge();
+}
+
+export function setTabBarHidden(hidden: boolean) {
+  const page = Taro.getCurrentInstance().page as unknown as PageWithTabBar | undefined;
+  page?.getTabBar?.()?.setData({ hidden });
 }
 
 export async function refreshInboxBadge() {

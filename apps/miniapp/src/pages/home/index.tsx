@@ -10,7 +10,7 @@ import { navigateToOnce, switchToScheduleDate } from "../../navigation";
 import { gameDetailRoute } from "../../routes";
 import { usePublicPageShare } from "../../sharing";
 import { formatDate } from "../../format";
-import { syncTabBar } from "../../tabbar";
+import { setTabBarHidden, syncTabBar } from "../../tabbar";
 import {
   buildSeasonCalendar,
   calendarRangeOptions,
@@ -55,6 +55,7 @@ export default function HomePage() {
   });
 
   useDidShow(() => {
+    setTabBarHidden(false);
     syncTabBar(0);
     setLoading(true);
     setNotice(null);
@@ -126,7 +127,9 @@ function GameDensity({ dashboard, season }: { dashboard: HomeDashboard; season: 
           mode="selector"
           range={rangeOptions.map((option) => option.label)}
           value={rangeIndex}
+          onCancel={() => setTabBarHidden(false)}
           onChange={(event) => {
+            setTabBarHidden(false);
             const next = rangeOptions[Number(event.detail.value)];
             if (next) setRange(next.value);
           }}
@@ -134,6 +137,7 @@ function GameDensity({ dashboard, season }: { dashboard: HomeDashboard; season: 
           <View
             className="game-density-range-trigger"
             aria-label={`选择比赛日历范围，当前${rangeOptions[rangeIndex].label}`}
+            onClick={() => setTabBarHidden(true)}
           >
             <Text className="game-density-title">比赛日历</Text>
             <Text className="game-density-range-label">{rangeOptions[rangeIndex].label}</Text>
