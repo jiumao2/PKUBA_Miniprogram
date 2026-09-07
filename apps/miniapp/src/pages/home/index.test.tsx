@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   getHomeDashboard: vi.fn(),
   switchTab: vi.fn(),
   switchToScheduleDate: vi.fn(),
+  setTabBarHidden: vi.fn(),
 }));
 
 vi.mock("@tarojs/taro", async () => {
@@ -26,13 +27,18 @@ vi.mock("@tarojs/components", () => ({
     <button onClick={onClick} {...props}>{children}</button>
   ),
   Image: ({ src, ...props }: any) => <img src={src} {...props} />,
-  Picker: ({ children, onChange, ...props }: any) => (
-    <div
-      data-testid="calendar-range-picker"
-      onClick={() => onChange({ detail: { value: 1 } })}
-      {...props}
-    >
+  Picker: ({ children, onCancel, onChange }: any) => (
+    <div data-testid="calendar-range-picker">
       {children}
+      <button
+        data-testid="calendar-range-select"
+        onClick={() => onChange({ detail: { value: 1 } })}
+      >
+        选择三月
+      </button>
+      <button data-testid="calendar-range-cancel" onClick={() => onCancel({})}>
+        取消选择
+      </button>
     </div>
   ),
   Text: ({ children, ...props }: any) => <span {...props}>{children}</span>,
@@ -50,7 +56,10 @@ vi.mock("../../navigation", () => ({
   navigateToOnce: vi.fn(),
   switchToScheduleDate: state.switchToScheduleDate,
 }));
-vi.mock("../../tabbar", () => ({ syncTabBar: vi.fn() }));
+vi.mock("../../tabbar", () => ({
+  setTabBarHidden: state.setTabBarHidden,
+  syncTabBar: vi.fn(),
+}));
 
 import { ApiError } from "@pkuba/api-client";
 
@@ -129,7 +138,18 @@ describe("HomePage public-season states", () => {
     await screen.findByText("比赛日历");
     expect(screen.getByText("全部")).toBeVisible();
     expect(screen.getByText("3/21—5/31 · 0 场")).toBeVisible();
-    fireEvent.click(screen.getByTestId("calendar-range-picker"));
+
+    state.setTabBarHidden.mockClear();
+    fireEvent.click(screen.getByLabelText("选择比赛日历范围，当前全部"));
+    expect(state.setTabBarHidden).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByTestId("calendar-range-cancel"));
+    expect(state.setTabBarHidden).toHaveBeenLastCalledWith(false);
+    expect(screen.getByText("全部")).toBeVisible();
+
+    fireEvent.click(screen.getByLabelText("选择比赛日历范围，当前全部"));
+    expect(state.setTabBarHidden).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByTestId("calendar-range-select"));
+    expect(state.setTabBarHidden).toHaveBeenLastCalledWith(false);
     expect(screen.getByText("2026年3月")).toBeVisible();
 
     fireEvent.click(screen.getByLabelText(/3月21日 周六，0 场比赛/));
