@@ -31,7 +31,7 @@
     "babel-preset-taro": "4.2.1",
     "typescript": "^5.9.2",
     "vite": "4.5.14",
-    "vitest": "^3.2.4",
+    "vitest": "^5.0.0",
     "webpack": "5.104.1"
   }
 }
