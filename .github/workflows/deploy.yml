@@ -24,7 +24,7 @@ jobs:
       api_digest: ${{ steps.images.outputs.api_digest }}
       web_digest: ${{ steps.images.outputs.web_digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.version_tag }}
           fetch-depth: 0

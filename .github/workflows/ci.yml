@@ -38,7 +38,7 @@ jobs:
       DJANGO_SECRET_KEY: ci-only
       DJANGO_DEBUG: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -59,7 +59,7 @@ jobs:
       PKUBA_API_BASE_URL: https://api.pkuba.cn
       PKUBA_ADMIN_WEB_URL: https://admin.pkuba.cn
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate blue/green Compose, Caddy and deployment scripts
         run: bash scripts/prod/validate-blue-green.sh
       - uses: actions/setup-node@v4
@@ -97,7 +97,7 @@ jobs:
   openapi:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

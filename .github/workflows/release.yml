@@ -20,7 +20,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -97,7 +97,7 @@ jobs:
       postgres_digest: ${{ steps.base-images.outputs.postgres_digest }}
       caddy_digest: ${{ steps.base-images.outputs.caddy_digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -182,7 +182,7 @@ jobs:
     needs: verified-main
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -225,7 +225,7 @@ jobs:
       POSTGRES_DIGEST: ${{ needs.publish.outputs.postgres_digest }}
       CADDY_DIGEST: ${{ needs.publish.outputs.caddy_digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Create or update the GitHub release
         run: |
           notes=$(cat <<EOF
