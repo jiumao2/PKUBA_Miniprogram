@@ -102,6 +102,21 @@
 | 禁止动作 | 不得仅为清零告警擅自升级依赖、扩大 allowlist、关闭或驳回 Dependabot 告警，或宣称风险已修复。 |
 | 私密记录引用 | 不适用；若后续证据包含未公开利用细节，改存私密 Security Advisory。 |
 
+### DEPENDABOT-AUTO-PR-001 — 关闭自动 PR，保留漏洞告警
+
+| 字段 | 内容 |
+| --- | --- |
+| 来源 / 公开引用 | [Dependabot 配置](../.github/dependabot.yml)、[维护流程](../WORKFLOW.md)及 GitHub 仓库安全更新开关。 |
+| 公开安全摘要 | 为减少维护噪声，关闭常规版本升级和安全修复自动 PR，依赖修复改由维护者人工评估和提交。 |
+| 技术状态 | 配置将全部生态的 `open-pull-requests-limit` 设为 `0`；安全修复自动 PR 使用 GitHub 独立开关关闭，实际状态须分别核对默认分支与平台开关。关闭自动 PR 不代表漏洞已修复。 |
+| 产品处置 | `KEEP_AS_DESIGNED` |
+| 适用边界 | 仅关闭自动创建依赖更新 PR；保留 Dependabot alerts、dependency graph、CI 依赖审计、dependency review、CodeQL、secret scanning 和 push protection。每月人工集中复核，影响生产的高危告警及时单独处理。 |
+| 用户决定日期 | 2026-09-22 |
+| 复核 / 到期日 | 无固定到期日；每月复核漏洞和依赖维护需求。 |
+| 重新打开条件 | 用户要求恢复自动 PR；人工维护出现实际漏修；GitHub 平台行为变化导致当前设置不能保持告警或阻止自动 PR。 |
+| 禁止动作 | 不得把自动 PR 关闭视为配置缺陷而擅自重新开启；不得据此关闭或驳回漏洞告警、删除 CI 审计或修改已有漏洞处置。 |
+| 私密记录引用 | 不适用。 |
+
 ### PUBLIC-ID-001 — 微信 AppID 是公开标识
 
 | 字段 | 内容 |
