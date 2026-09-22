@@ -76,8 +76,9 @@ npm --workspace @pkuba/miniapp run build:weapp
 - 限制 bypass；紧急 break-glass 只能由授权负责人使用，并必须补 PR、事故记录和事后审计。
 - 启用线性历史，只允许 squash merge；合并后自动删除短期分支。
 - 暂不要求 `CODEOWNERS`；有明确负责人后再配置，不能使用虚构账号。
-- 启用 GitHub private vulnerability reporting、secret scanning、push protection、Dependabot、
+- 启用 GitHub private vulnerability reporting、secret scanning、push protection、Dependabot alerts、
   dependency graph、dependency review 与 CodeQL；工作流文件存在不等于平台功能已启用。
+- 常规版本升级和安全修复自动 PR 均关闭，漏洞告警与 CI 依赖审计保留；由维护者人工评估和提交依赖更新。边界见 [`DEPENDABOT-AUTO-PR-001`](docs/FINDING_DISPOSITIONS.md#dependabot-auto-pr-001--关闭自动-pr保留漏洞告警)。
 - 关闭、驳回或修改 GitHub 安全告警是独立外部变更，必须取得当前用户对精确告警的明确授权；代码、测试或 allowlist 通过不自动授予该权限。
 - 为 `v*` 配置 tag ruleset：仅授权发布负责人可创建或删除，且 tag 必须指向受保护 `main` 上已经绑定独立验收结论的 SHA。当前 `production` Environment 只有 `v*` 分支策略，没有 required reviewer；当 `PRODUCTION_DEPLOYMENTS_ENABLED=true` 时，推送 Tag 会立即自动部署，因此创建并推送 Tag 本身就是生产部署授权。
 
