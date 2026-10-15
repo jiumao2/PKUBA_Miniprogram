@@ -60,7 +60,7 @@ admin.{$PKUBA_DOMAIN} {
 	}
 }
 
-{$PKUBA_DOMAIN} {
+{$PKUBA_DOMAIN}, www.{$PKUBA_DOMAIN} {
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	redir https://admin.{$PKUBA_DOMAIN}{uri} permanent
 }

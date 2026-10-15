@@ -585,6 +585,7 @@ commit_one=$(git -C "$repository" rev-parse HEAD)
 git -C "$repository" tag v1.2.3
 git -C "$repository" worktree add -q --detach "$release_root/v1.2.3" "$commit_one"
 printf 'second\n' >"$repository/release-generation"
+printf '# second gateway configuration\n' >>"$repository/infra/Caddyfile.gateway"
 cat >"$repository/infra/release-contract.env" <<'EOF'
 PKUBA_PREVIOUS_APP_COMPATIBLE=1
 PKUBA_APP_CAPABILITY=reschedule-route-v2
@@ -592,6 +593,7 @@ PKUBA_REQUIRED_PREVIOUS_APP_CAPABILITY=reschedule-route-v1
 EOF
 git -C "$repository" add release-generation
 git -C "$repository" add infra/release-contract.env
+git -C "$repository" add infra/Caddyfile.gateway
 git -C "$repository" commit -qm second
 commit_two=$(git -C "$repository" rev-parse HEAD)
 git -C "$repository" tag v1.2.4
@@ -706,7 +708,28 @@ if [[ ${1:-} == exec ]]; then
 fi
 if [[ ${1:-} == compose ]]; then
   joined=" $* "
+  compose_directory=
+  previous=
+  for argument in "$@"; do
+    [[ $previous != --project-directory ]] || compose_directory=$argument
+    previous=$argument
+  done
+  if [[ $joined == *' caddy validate '* \
+    && ${PKUBA_FAIL_GATEWAY_VALIDATE_TAG:-} == "${compose_directory##*/}" ]]; then
+    exit 78
+  fi
+  if [[ $joined == *' up '* && ${!#} == gateway ]]; then
+    [[ $joined == *' --no-deps '* && $joined == *' --wait '* \
+      && $joined == *' --wait-timeout 60 '* ]] || exit 80
+    [[ -e $PKUBA_TEST_STATE_ROOT/maintenance.enabled ]] || exit 81
+    if [[ ${PKUBA_FAIL_GATEWAY_UP_TAG:-} == "${compose_directory##*/}" ]]; then
+      exit 82
+    fi
+    printf '%s\n' "$compose_directory" >"$PKUBA_TEST_STATE_ROOT/../gateway-mounted-release"
+  fi
   if [[ $joined == *' caddy reload '* ]]; then
+    [[ $(<"$PKUBA_TEST_STATE_ROOT/../gateway-mounted-release") == "$compose_directory" ]] \
+      || { echo 'gateway still mounts a different release' >&2; exit 83; }
     count=0
     [[ -f ${PKUBA_RELOAD_COUNT_FILE:-} ]] && count=$(<"$PKUBA_RELOAD_COUNT_FILE")
     count=$((count + 1))
@@ -1067,6 +1090,7 @@ printf 'archive\n' >"$fixture/data-sentinels/archive"
 before_hash=$(sha256sum "$fixture"/data-sentinels/*)
 
 reset_deploy_fixture() {
+  printf '%s\n' "$release_root/v1.2.3" >"$state_root/../gateway-mounted-release"
   run_root /usr/bin/rm -rf "$fixture/deploy/backups" "$fixture/deploy/logs"
   run_root /usr/bin/rm -rf "$state_root/release-transaction" \
     "$state_root/release-transaction-completed"
@@ -1104,6 +1128,28 @@ run_deploy() {
     PKUBA_RELEASE_IDENTITY_VALIDATOR="$script_dir/validate-release-identity.sh" \
     "${@}"
 }
+
+# Invalid gateway config is rejected before maintenance or database access.
+reset_deploy_fixture
+: >"$docker_log"
+! run_deploy PKUBA_FAIL_GATEWAY_VALIDATE_TAG=v1.2.4 \
+  bash "$script_dir/deploy-blue-green.sh" \
+    v1.2.4 "$commit_two" "$api_two" "$web_two" \
+    >"$fixture/gateway-validation-failure.log" 2>&1
+grep -Fq 'caddy validate' "$docker_log"
+[[ ! -e $state_root/maintenance.enabled && ! -e $state_root/release-transaction ]]
+[[ $(<"$state_root/../gateway-mounted-release") == "$release_root/v1.2.3" ]]
+! grep -Eq 'pg_dump|deployment_preflight| up .*gateway' "$docker_log"
+
+# A failed gateway replacement follows the existing OLD recovery direction.
+reset_deploy_fixture
+! run_deploy PKUBA_FAIL_GATEWAY_UP_TAG=v1.2.4 \
+  bash "$script_dir/deploy-blue-green.sh" \
+    v1.2.4 "$commit_two" "$api_two" "$web_two" \
+    >"$fixture/gateway-start-failure.log" 2>&1
+grep -Fq 'PKUBA_RELEASE_RECOVERY_RESULT=' "$fixture/gateway-start-failure.log"
+[[ $(<"$state_root/../gateway-mounted-release") == "$release_root/v1.2.3" ]]
+[[ ! -e $state_root/maintenance.enabled && ! -e $state_root/release-transaction ]]
 
 # Backup-retention enumeration is a preflight, not a best-effort process
 # substitution. A producer failure must stop before fetch/worktree cleanup,
@@ -1206,6 +1252,7 @@ assert_deploy_commit_failure_restores_everything mv-success '/SUCCESS'
 # Only application Compose operations are allowed; three data sentinels and
 # their hashes must remain byte-for-byte unchanged.
 reset_rollback_fixture() {
+  printf '%s\n' "$release_root/v1.2.4" >"$state_root/../gateway-mounted-release"
   # A new independent mktemp scenario must not inherit archived transactions.
   # Recovery retries within a scenario never call this reset.
   run_root /usr/bin/rm -rf "$state_root/release-transaction" \
@@ -1495,7 +1542,7 @@ assert_recovery_is_fail_closed() {
 
 # A failed restore write, second gateway reload, or stable-entry probe must
 # never remove maintenance or discard the recovery journal.
-for failure_mode in second-reload stable-probe persistent-state-restore; do
+for failure_mode in second-reload gateway-start stable-probe persistent-state-restore; do
   reset_deploy_fixture
   marker=$fixture/deploy-recovery-$failure_mode
   /usr/bin/rm -f "$marker"
@@ -1503,6 +1550,9 @@ for failure_mode in second-reload stable-probe persistent-state-restore; do
     PKUBA_FAIL_ONCE_MARKER="$marker"
   )
   case "$failure_mode" in
+    gateway-start)
+      common_failure+=(PKUBA_FAIL_MV_DEST_PATTERN=/current.env PKUBA_FAIL_GATEWAY_UP_TAG=v1.2.3)
+      ;;
     second-reload)
       common_failure+=(PKUBA_FAIL_MV_DEST_PATTERN=/current.env PKUBA_FAIL_RELOAD_AT=2)
       ;;
@@ -1607,6 +1657,7 @@ assert_current_release() {
   parsed=$(bash "$script_dir/parse-release-state.sh" "$state_root/current.env")
   IFS=$'\t' read -r actual_slot actual_tag _ <<<"$parsed"
   [[ $actual_slot == "$expected_slot" && $actual_tag == "$expected_tag" ]]
+  [[ $(<"$state_root/../gateway-mounted-release") == "$release_root/$expected_tag" ]]
   assert_upstreams_for_slot "$expected_slot"
   [[ ! -e $state_root/maintenance.enabled ]]
   [[ ! -e $state_root/release-transaction ]]
@@ -1809,6 +1860,7 @@ python3 "$script_dir/verify-paired-backup.py" \
   --scratch-root "$fixture/paired-preflight" --allow-test-root >/dev/null
 
 reset_paired_fixture() {
+  printf '%s\n' "$release_root/v1.2.4" >"$state_root/../gateway-mounted-release"
   run_root /usr/bin/rm -rf "$state_root/paired-restore-transaction" \
     "$state_root/paired-restore-completed" \
     "$fixture/deploy/incident-snapshots" \
@@ -1853,6 +1905,7 @@ assert_paired_completed() {
   parsed=$(bash "$script_dir/parse-release-state.sh" "$state_root/current.env")
   IFS=$'\t' read -r slot tag _ <<<"$parsed"
   [[ $slot == blue && $tag == v1.2.3 ]]
+  [[ $(<"$state_root/../gateway-mounted-release") == "$release_root/$tag" ]]
   assert_upstreams_for_slot "$slot"
   [[ ! -e $state_root/maintenance.enabled \
     && ! -e $state_root/paired-restore-transaction \
