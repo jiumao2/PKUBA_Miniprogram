@@ -571,7 +571,7 @@ mkdir -p "$repository/scripts/prod"
 for helper in check-app-capability.sh parse-release-contract.sh \
   derive-release-capability.sh parse-release-state.sh validate-release-identity.sh \
   recover-release-transaction.sh acquire-deploy-lock.py fence-deploy-writers.sh \
-  verify-paired-backup.py; do
+  verify-paired-backup.py probe-gateway-redirects.sh; do
   cp "$script_dir/$helper" "$repository/scripts/prod/$helper"
 done
 cat >"$repository/infra/release-contract.env" <<'EOF'
@@ -807,6 +807,18 @@ cat >"$fixture/fake-bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 url=${!#}
+if [[ $url == *'/_deployment/redirect-check?probe=1' ]]; then
+  [[ ${PKUBA_FAIL_REDIRECT_PROBE:-0} != 1 ]] || exit 60
+  domain=${url#https://}
+  domain=${domain%%/*}
+  domain=${domain#www.}
+  printf '301 https://admin.%s/_deployment/redirect-check?probe=1' "$domain"
+  exit 0
+fi
+if [[ " $* " == *' --dump-header '* ]]; then
+  printf 'HTTP/2 200\r\nX-PKUBA-Gateway-Redirects: root,www\r\n\r\n'
+  exit 0
+fi
 if [[ $url == *:18000/* || $url == *:18080/* ]]; then
   tag=v1.2.3
   commit=$PKUBA_TEST_COMMIT_ONE
@@ -1150,6 +1162,20 @@ reset_deploy_fixture
 grep -Fq 'PKUBA_RELEASE_RECOVERY_RESULT=' "$fixture/gateway-start-failure.log"
 [[ $(<"$state_root/../gateway-mounted-release") == "$release_root/v1.2.3" ]]
 [[ ! -e $state_root/maintenance.enabled && ! -e $state_root/release-transaction ]]
+
+# A public DNS/TLS/redirect failure must not commit the new release.
+reset_deploy_fixture
+before_redirect_state=$(sha256sum "$state_root/current.env" "$state_root/upstreams.caddy")
+! run_deploy PKUBA_FAIL_REDIRECT_PROBE=1 \
+  bash "$script_dir/deploy-blue-green.sh" \
+    v1.2.4 "$commit_two" "$api_two" "$web_two" \
+    >"$fixture/gateway-redirect-failure.log" 2>&1
+grep -Fq 'public gateway redirects did not pass HTTPS verification' "$fixture/gateway-redirect-failure.log"
+! grep -Fq 'PKUBA_DEPLOYMENT_RESULT=success' "$fixture/gateway-redirect-failure.log"
+[[ $(sha256sum "$state_root/current.env" "$state_root/upstreams.caddy") == "$before_redirect_state" ]]
+[[ $(<"$state_root/../gateway-mounted-release") == "$release_root/v1.2.3" ]]
+[[ ! -e $state_root/maintenance.enabled && ! -e $state_root/release-transaction ]]
+[[ $(sha256sum "$fixture"/data-sentinels/*) == "$before_hash" ]]
 
 # Backup-retention enumeration is a preflight, not a best-effort process
 # substitution. A producer failure must stop before fetch/worktree cleanup,

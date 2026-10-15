@@ -74,6 +74,7 @@ docker run --rm \
 [[ $(grep -Fc 'header_up X-Forwarded-Proto https' "$repo_root/infra/Caddyfile.slot") -eq 2 ]]
 bash "$repo_root/scripts/prod/test-slot-forwarded-proto.sh"
 bash "$repo_root/scripts/prod/test-gateway-config.sh"
+bash "$repo_root/scripts/prod/test-gateway-probe.sh"
 
 bash -n "$repo_root"/scripts/prod/*.sh
 bash "$repo_root/scripts/prod/test-deploy-ssh-gate.sh"

@@ -53,6 +53,7 @@ for release in old new invalid; do
     >"$fixture/$release/infra/Caddyfile.gateway"
 done
 sed -i 's/, www\.{$PKUBA_DOMAIN}//' "$fixture/old/infra/Caddyfile.gateway"
+sed -i '/header X-PKUBA-Gateway-Redirects/d' "$fixture/old/infra/Caddyfile.gateway"
 sed -i 's/encode zstd gzip/invalid_directive/' "$fixture/invalid/infra/Caddyfile.gateway"
 docker network create "$project" >/dev/null
 
@@ -95,12 +96,33 @@ assert_www_unavailable() {
   fi
 }
 
+probe_redirects() {
+  local port
+  port=$(docker port "$project" 443/tcp | awk -F: 'NR == 1 {print $NF}')
+  mkdir -p "$fixture/bin"
+  cat >"$fixture/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+exec /usr/bin/curl -q --noproxy '*' --cacert "$PROBE_TEST_CA" \
+  --connect-to "::127.0.0.1:$PROBE_TEST_PORT" "$@"
+EOF
+  chmod +x "$fixture/bin/curl"
+  PATH="$fixture/bin:$PATH" PROBE_TEST_CA="$fixture/root.crt" PROBE_TEST_PORT="$port" \
+    bash "$repo_root/scripts/prod/probe-gateway-redirects.sh" example.test "$@"
+}
+
 activate old
 docker cp "$project:/data/caddy/pki/authorities/local/root.crt" "$fixture/root.crt"
 [[ $(request example.test) == 301 ]]
 assert_www_unavailable
+probe_redirects --if-advertised
+if probe_redirects --required; then
+  echo 'old gateway incorrectly passed the new deployment gate' >&2
+  exit 1
+fi
 activate new
 assert_redirects
+probe_redirects --required
+probe_redirects --if-advertised
 
 # Invalid candidate validation leaves the running, valid gateway untouched.
 if compose invalid run --rm --no-deps gateway caddy validate \
@@ -115,6 +137,7 @@ assert_redirects
 activate old
 [[ $(request example.test) == 301 ]]
 assert_www_unavailable
+probe_redirects --if-advertised
 activate new
 docker restart "$project" >/dev/null
 compose new up -d --no-deps --wait --wait-timeout 60 gateway

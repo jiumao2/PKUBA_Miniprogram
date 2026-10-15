@@ -9,7 +9,7 @@ API 可靠性、备份恢复和部署规范定义。
 
 - Django/PostgreSQL 是唯一业务权威；管理站和微信小程序不自行推导权限或状态。
 - 旧小程序、历史脚本和旧工作簿只用于理解来源，不是兼容实现或上线入口。
-- 正式入口为 `admin.pkuba.cn`、`api.pkuba.cn` 和微信小程序；根域名跳转管理站。
+- 正式入口为 `admin.pkuba.cn`、`api.pkuba.cn` 和微信小程序；`pkuba.cn` 与 `www.pkuba.cn` 通过 HTTPS 301 跳转管理站，并保留路径和查询参数。
 - API、数据库、媒体、归档、OpenAPI、生成客户端和两端页面必须保持同一版本合同。
 
 ## 身份与权限

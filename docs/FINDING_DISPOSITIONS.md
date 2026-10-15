@@ -194,6 +194,15 @@
 
 ### PROD-RECOVERY-001 — 首次上线接受未动态演练的恢复路径
 
+2026-10-15 复核：PR #46 的版本化网关挂载与恢复变更已触发本项重新打开条件。
+用户已明确批准补齐风险登记、HTTPS 跳转门禁和系统规范，并在隔离验收及 CI 后合并代码。
+这不是沿用 `v1.0.2` 的风险接受，也不授权本轮生产连接、部署或恢复演练。
+本次范围仅为部署、应用回切、发布中断恢复及成对恢复选用目标版本的网关配置；
+Compose 重建挂载后重载，保留证书卷及既有 journal/maintenance/OLD-or-NEW 恢复方向。
+隔离 Caddy 已验证配置替换、HTTPS 跳转、回切和重启；mocked release safety 已验证故障恢复。
+这些证据不等于真实生产四条恢复路径的动态演练；生产资源、ACME 和公网 DNS 风险仍须在
+下一次精确版本部署授权时复核，不得据本项将它们标为已通过或删除恢复标记。
+
 | 字段 | 内容 |
 | --- | --- |
 | 来源 / 公开引用 | [`DEPLOYMENT.md`](DEPLOYMENT.md)、[`deploy-blue-green.sh`](../scripts/prod/deploy-blue-green.sh)、[`rollback-retained-application.sh`](../scripts/prod/rollback-retained-application.sh)、[`restore-paired-data.sh`](../scripts/prod/restore-paired-data.sh)、[`recover-release-transaction.sh`](../scripts/prod/recover-release-transaction.sh) |

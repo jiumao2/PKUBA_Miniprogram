@@ -765,6 +765,8 @@ write_journal_phase RUNTIME_SWITCHED
 crash_point runtime-switched
 wait_gateway_identity "$release_tag" "$release_commit" \
   || die "stable gateway did not expose the verified candidate"
+bash "$release_dir/scripts/prod/probe-gateway-redirects.sh" "$public_domain" \
+  || die "public gateway redirects did not pass HTTPS verification"
 
 # Before NEW_COMMITTED, every crash or ordinary failure deterministically
 # restores the old application and every original state file.
