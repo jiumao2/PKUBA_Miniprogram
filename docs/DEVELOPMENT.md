@@ -17,6 +17,12 @@
 - Docker Engine、Docker Compose、Buildx；
 - 微信小程序验证需要微信开发者工具。
 
+前端测试使用 Vitest 4 / Vite 7；小程序产品构建仍固定为 Taro 4 的 `webpack5` / `weapp`，
+不启用 Taro 的 Vite 编译器或 H5 开发服务。根目录的定向依赖覆盖用于更新旧工具链中的安全
+依赖（包括 Taro 插件的可选 Vite peer），不代表这些未使用编译路径已获兼容认证；切换编译器
+或启用 H5 前必须重新验证。安装脚本白名单保持不变；依赖审计的限时构建工具例外及复核
+条件见 [`FINDING_DISPOSITIONS.md`](FINDING_DISPOSITIONS.md#npm-build-only-001--两项构建工具漏洞限时接受)。
+
 正式本地验收基线是 Windows + Ubuntu 24.04 WSL2。macOS 可用 Docker Desktop 进行
 开发预览，但不能替代约定的正式验收环境。
 

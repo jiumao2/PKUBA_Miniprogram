@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildOnlyContext,
   deriveProductionReport,
   evaluateAuditPolicy,
   runNpmAudit,
@@ -81,12 +82,107 @@ test("accepts reviewed production and development advisories", () => {
   assert.equal(result.fullAdvisories, 2);
 });
 
-test("never allows production high or critical advisories", () => {
+test("blocks production high or critical without an explicit build-only decision", () => {
   const item = advisory("GHSA-AAAA-BBBB-CCCC", "prod-tool", "high");
   assert.throws(
     () => policy({ production: [item], productionCounts: { high: 1, moderate: 0, total: 1 } }),
     /Production dependency audit failed/,
   );
+});
+
+function buildRiskFixture() {
+  const id = "GHSA-AAAA-BBBB-CCCC";
+  const cause = advisory(id, "build-leaf", "high");
+  const fullReport = {
+    metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 2, critical: 0, total: 2 } },
+    vulnerabilities: {
+      wrapper: { severity: "high", via: ["build-leaf"], nodes: ["node_modules/wrapper"] },
+      "build-leaf": { severity: "high", via: [cause], nodes: ["node_modules/build-leaf"] },
+    },
+  };
+  const lock = { packages: { "node_modules/build-leaf": { version: "1.0.0" } } };
+  const usage = { "build.mjs": "build --type weapp\n" };
+  const buildContext = buildOnlyContext(lock, usage);
+  return {
+    productionReport: structuredClone(fullReport), fullReport, buildContext, today: TODAY,
+    allowlist: { schema_version: 2, entries: [{
+      ...exception(id, "build-leaf", "production-transitive"),
+      build_only: { severity: "high", ...buildContext },
+    }] },
+  };
+}
+
+test("accepts an exact reviewed build-only cause while preserving raw high counts", () => {
+  const result = evaluateAuditPolicy(buildRiskFixture());
+  assert.equal(result.productionCounts.high, 2);
+  assert.deepEqual(result.acceptedBuildOnly, ["GHSA-AAAA-BBBB-CCCC"]);
+});
+
+test("a new GHSA in the same excepted package still blocks", () => {
+  const args = buildRiskFixture();
+  const newCause = advisory("GHSA-DDDD-EEEE-FFFF", "build-leaf", "critical");
+  for (const report of [args.productionReport, args.fullReport]) report.vulnerabilities["build-leaf"].via.push(newCause);
+  assert.throws(() => evaluateAuditPolicy(args), /Unreviewed dependency advisories/);
+});
+
+test("ordinary exceptions never authorize an unrelated runtime high advisory", () => {
+  const args = buildRiskFixture();
+  for (const report of [args.productionReport, args.fullReport]) {
+    report.vulnerabilities.runtime = { severity: "high", via: [advisory("GHSA-DDDD-EEEE-FFFF", "runtime", "high")] };
+    report.metadata.vulnerabilities.high++;
+    report.metadata.vulnerabilities.total++;
+  }
+  args.allowlist.entries.push(exception("GHSA-DDDD-EEEE-FFFF", "runtime", "production-transitive"));
+  assert.throws(() => evaluateAuditPolicy(args), /Production dependency audit failed/);
+});
+
+test("build-only decisions expire and reject severity, version, path, usage or scope changes", () => {
+  const expired = buildRiskFixture();
+  expired.today = "2026-12-01";
+  assert.throws(() => evaluateAuditPolicy(expired), /expired/);
+  const severity = buildRiskFixture();
+  for (const report of [severity.productionReport, severity.fullReport]) report.vulnerabilities["build-leaf"].via[0].severity = "critical";
+  assert.throws(() => evaluateAuditPolicy(severity), /requires re-review/);
+  for (const lock of [
+    { packages: { "node_modules/build-leaf": { version: "1.0.1" } } },
+    { packages: { "node_modules/other/node_modules/build-leaf": { version: "1.0.0" } } },
+  ]) {
+    const changed = buildRiskFixture();
+    changed.buildContext = buildOnlyContext(lock, { "build.mjs": "build --type weapp\n" });
+    assert.throws(() => evaluateAuditPolicy(changed), /requires re-review/);
+  }
+  const usage = buildRiskFixture();
+  usage.buildContext.usage_sha256 = "f".repeat(64);
+  assert.throws(() => evaluateAuditPolicy(usage), /requires re-review/);
+  const scope = buildRiskFixture();
+  scope.allowlist.entries[0].scope = "development";
+  assert.throws(() => evaluateAuditPolicy(scope), /scope mismatch/);
+  const missing = buildRiskFixture();
+  delete missing.buildContext;
+  assert.throws(() => evaluateAuditPolicy(missing), /requires re-review/);
+});
+
+test("malformed build-only decisions cannot relax the policy", () => {
+  for (const value of [{}, { severity: "unknown", lock_sha256: "a".repeat(64), usage_sha256: "b".repeat(64) }]) {
+    const args = buildRiskFixture();
+    args.allowlist.entries[0].build_only = value;
+    assert.throws(() => evaluateAuditPolicy(args), /Invalid build-only/);
+  }
+});
+
+test("an unexplained high/critical package or missing advisory cause fails closed", () => {
+  const unknown = buildRiskFixture();
+  unknown.productionReport.vulnerabilities.wrapper.via = ["missing"];
+  assert.throws(() => evaluateAuditPolicy(unknown), /cannot resolve advisory causes/);
+  const unexplained = buildRiskFixture();
+  unexplained.productionReport.vulnerabilities.wrapper.severity = "critical";
+  assert.throws(() => evaluateAuditPolicy(unexplained), /cannot explain critical/);
+});
+
+test("review fingerprints are portable across CRLF/LF and detect command changes", () => {
+  const lock = { packages: {} };
+  assert.deepEqual(buildOnlyContext(lock, { file: "a\r\nb\r\n" }), buildOnlyContext(lock, { file: "a\nb\n" }));
+  assert.notDeepEqual(buildOnlyContext(lock, { file: "build --type weapp" }), buildOnlyContext(lock, { file: "create" }));
 });
 
 test("fails closed on a new unreviewed full-tree advisory", () => {
