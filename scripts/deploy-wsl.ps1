@@ -64,7 +64,7 @@ else {
     ''
 }
 $qwenBaseUrl = if ($projectEnv.QWEN_BASE_URL) { $projectEnv.QWEN_BASE_URL } else { 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
-$qwenModel = if ($projectEnv.QWEN_MODEL) { $projectEnv.QWEN_MODEL } else { 'qwen3.8-max' }
+$qwenModel = if ($projectEnv.QWEN_MODEL) { $projectEnv.QWEN_MODEL } else { 'qwen3.8-max-0902' }
 $qwenReasoningEffort = if ($projectEnv.QWEN_REASONING_EFFORT) { $projectEnv.QWEN_REASONING_EFFORT } else { 'xhigh' }
 $scoresheetRecognitionUpscaleTargetPixels = if ($projectEnv.SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS) { $projectEnv.SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS } else { '8000000' }
 $scoresheetRecognitionTimeoutSeconds = if ($projectEnv.SCORESHEET_RECOGNITION_TIMEOUT_SECONDS) { $projectEnv.SCORESHEET_RECOGNITION_TIMEOUT_SECONDS } else { '180' }

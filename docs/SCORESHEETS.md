@@ -64,7 +64,7 @@
 
 完整 Base64 Data URI 的十进制上限固定为 `20,000,000` 字节。超限时保持宽高不变、透明背景铺白，并在 JPEG 质量 1–95 中选择满足限制的最高质量；质量 1 仍无法满足时，以不可重试的 `IMAGE_DATA_URI_TOO_LARGE` 结束，不实例化 Qwen 客户端、不产生 token、也不进入后三次自动重试。原始上传文件始终原样保存在私有审计来源中，EXIF 纠正、放大和压缩只作用于 Qwen 临时副本。
 
-默认使用 `qwen3.8-max`、`xhigh`、高分辨率视觉与 thinking、`seed=1234`、原版动态名单枚举 Schema 和严格结构校验。OpenAI SDK 的 `180` 秒参数是一次请求的网络读写超时，不是严格的总墙钟时限；超时按可重试错误处理。Worker 每分钟续期 PostgreSQL 五分钟任务租约，因此等待流式输出期间不会被其他 worker 重领。每个任务记录真实模型、提示词版本、最终发送图像 SHA-256、token、来源版本和入队草稿版本；来源被替换或任务已非当前周期时结果标记为 `SUPERSEDED`，不得写入当前草稿。
+默认使用 `qwen3.8-max-0902`、`xhigh`、高分辨率视觉与 thinking、`seed=1234`、原版动态名单枚举 Schema 和严格结构校验。OpenAI SDK 的 `180` 秒参数是一次请求的网络读写超时，不是严格的总墙钟时限；超时按可重试错误处理。Worker 每分钟续期 PostgreSQL 五分钟任务租约，因此等待流式输出期间不会被其他 worker 重领。每个任务记录真实模型、提示词版本、最终发送图像 SHA-256、token、来源版本和入队草稿版本；来源被替换或任务已非当前周期时结果标记为 `SUPERSEDED`，不得写入当前草稿。
 
 ### 失败后的整稿重新识别
 
@@ -80,13 +80,15 @@
 ```dotenv
 QWEN_API_KEY=
 QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen3.8-max
+QWEN_MODEL=qwen3.8-max-0902
 QWEN_REASONING_EFFORT=xhigh
 SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=8000000
 SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=180
 ```
 
 `scripts/deploy-wsl.ps1` 获取密钥时依次使用当前 Windows 进程/系统环境中的 `QWEN_API_KEY`、项目私有 `.env`、已有 `.env.wsl.local`，并把最终值写入被 Git 忽略的 `.env.wsl.local`。`check-api.sh` 与 `pytest-api.sh` 只通过容器环境传递该配置，不打印密钥。普通回归默认使用 Mock；只有显式启用真实识别验收时才会产生 Qwen 调用与费用。
+
+已有环境中显式设置的 `QWEN_MODEL` 优先于代码默认值；升级镜像不会覆盖它，切换模型须同步修改该配置。历史识别记录仍保留当次实际使用的模型名。
 
 未配置 `QWEN_API_KEY` 时，worker 会把任务一次性标记为不可重试失败，页面仍可进入人工录入。生产 worker：
 

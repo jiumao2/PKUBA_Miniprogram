@@ -2338,7 +2338,7 @@ def test_recognition_capability_and_removed_stop_endpoint(tmp_path):
     assert capability.json() == {
         "configured": False,
         "provider": "QWEN",
-        "model": "qwen3.8-max",
+        "model": "qwen3.8-max-0902",
         "prompt_version": "scoresheet-2026-08-24-v25-cn",
         "max_attempts": 4,
         "retry_delays_seconds": [30, 30, 30],
@@ -2370,7 +2370,8 @@ def test_provider_retry_after_longer_than_default_is_honored(tmp_path, monkeypat
         assert 73 <= remaining <= 77
 
 
-def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, monkeypatch):
+@pytest.mark.parametrize("model", ["qwen3.8-max-0902", "qwen3.8-max"])
+def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, monkeypatch, model):
     import base64
     import hashlib
     import sys
@@ -2395,7 +2396,7 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
     with override_settings(
         MEDIA_ROOT=tmp_path,
         QWEN_API_KEY="private-test-key",
-        QWEN_MODEL="qwen3.8-max",
+        QWEN_MODEL=model,
         QWEN_REASONING_EFFORT="xhigh",
         SCORESHEET_RECOGNITION_UPSCALE_TARGET_PIXELS=8_000_000,
         SCORESHEET_RECOGNITION_TIMEOUT_SECONDS=180,
@@ -2409,7 +2410,7 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
     assert hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest() == (
         "ad8bd0f20d5b0d18496187555d3ad7d7559b734cac08cca1612a56e9e50b8586"
     )
-    assert captured["model"] == "qwen3.8-max"
+    assert captured["model"] == model
     assert captured["client"]["timeout"] == 180
     assert captured["seed"] == 1234
     assert captured["stream"] is True
@@ -2443,7 +2444,7 @@ def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, mo
     assert all(value not in user_text + schema_text for value in forbidden_values if value)
     processed_image = base64.b64decode(image_url.split(",", 1)[1])
     run.refresh_from_db()
-    assert run.model_name == "qwen3.8-max"
+    assert run.model_name == model
     assert run.prompt_version == PROMPT_VERSION
     assert run.image_sha256 == hashlib.sha256(processed_image).hexdigest()
 
