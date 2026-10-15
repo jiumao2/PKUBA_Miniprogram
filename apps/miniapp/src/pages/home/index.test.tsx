@@ -88,10 +88,15 @@ const dashboard = {
 };
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-04-01T04:00:00Z"));
   vi.clearAllMocks();
   state.getHomeDashboard.mockResolvedValue(dashboard);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("HomePage public-season states", () => {
   it("renders NO_PUBLIC_SEASON as a normal offseason state", async () => {
@@ -119,25 +124,67 @@ describe("HomePage public-season states", () => {
     expect(screen.queryByText(/。，/)).not.toBeInTheDocument();
   });
 
-  it("keeps the successful dashboard visible", async () => {
+  it.each([
+    { days: [] },
+    { days: [{ date: "2026-03-28", game_count: 0 }] },
+  ])("hides the calendar without positive counts ($days) but keeps the empty-state entry", async ({ days }) => {
     state.getCurrentSeason.mockResolvedValue(season);
+    state.getHomeDashboard.mockResolvedValue({ ...dashboard, daily_game_counts: days });
 
     render(<HomePage />);
 
-    expect(await screen.findByText("比赛日历")).toBeVisible();
-    expect(screen.getByText("暂无近期比赛")).toBeVisible();
+    expect(await screen.findByText("暂无近期比赛")).toBeVisible();
+    expect(screen.queryByText("比赛日历")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("calendar-range-picker")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("查看完整赛程"));
+    expect(state.switchTab).toHaveBeenCalledWith({ url: "/pages/schedule/index" });
     expect(screen.queryByText("当前处于休赛期")).not.toBeInTheDocument();
     expect(screen.queryByText("暂时无法加载")).not.toBeInTheDocument();
   });
 
-  it("defaults to the complete season, then selects a month and sends a clicked day as a one-shot schedule focus", async () => {
+  it.each([
+    ["2026-03-15", "RECENT_RESULTS"],
+    ["2026-06-01", "NEXT_DAY"],
+  ])("shows the calendar with only games on %s, even outside season bounds", async (date, mode) => {
     state.getCurrentSeason.mockResolvedValue(season);
+    state.getHomeDashboard.mockResolvedValue({
+      ...dashboard,
+      mode,
+      display_date: date,
+      total_games: 1,
+      daily_game_counts: [{ date, game_count: 1 }],
+    });
+
+    render(<HomePage />);
+
+    await screen.findByText("比赛日历");
+    expect(screen.getByLabelText(/4月1日.*0 场比赛.*今天/)).toBeVisible();
+    fireEvent.click(screen.getByLabelText(/，1 场比赛/));
+    expect(state.switchToScheduleDate).toHaveBeenCalledExactlyOnceWith(date);
+  });
+
+  it("defaults to game days plus today, then selects a month and sends a clicked day as a one-shot schedule focus", async () => {
+    state.getCurrentSeason.mockResolvedValue(season);
+    state.getHomeDashboard.mockResolvedValue({
+      ...dashboard,
+      mode: "NEXT_DAY",
+      display_date: "2026-04-02",
+      total_games: 1,
+      daily_game_counts: [
+        { date: "2026-03-28", game_count: 2 },
+        { date: "2026-04-02", game_count: 1 },
+      ],
+    });
 
     render(<HomePage />);
 
     await screen.findByText("比赛日历");
     expect(screen.getByText("全部")).toBeVisible();
-    expect(screen.getByText("3/21—5/31 · 0 场")).toBeVisible();
+    expect(screen.getByText("3/23—4/5 · 3 场")).toBeVisible();
+    expect(screen.getByLabelText(/4月1日.*今天/)).toBeVisible();
+    fireEvent.click(screen.getByLabelText(/4月5日.*0 场比赛/));
+    expect(state.switchToScheduleDate).toHaveBeenCalledExactlyOnceWith("2026-04-05");
+    state.switchToScheduleDate.mockClear();
 
     state.setTabBarHidden.mockClear();
     fireEvent.click(screen.getByLabelText("选择比赛日历范围，当前全部"));

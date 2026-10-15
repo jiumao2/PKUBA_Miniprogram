@@ -53,8 +53,16 @@ export function buildSeasonCalendar(
     first = startOfWeek(activeStart);
     last = endOfWeek(activeEnd);
   } else if (range === "all") {
-    activeStart = parseDate(seasonStart);
-    activeEnd = parseDate(seasonEnd);
+    const gameDates = days.filter((day) => day.game_count > 0).map((day) => day.date);
+    if (gameDates.length === 0) return [];
+    let firstDate = anchorDate;
+    let lastDate = anchorDate;
+    for (const date of gameDates) {
+      if (date < firstDate) firstDate = date;
+      if (date > lastDate) lastDate = date;
+    }
+    activeStart = parseDate(firstDate);
+    activeEnd = parseDate(lastDate);
     first = startOfWeek(activeStart);
     last = endOfWeek(activeEnd);
   } else {
@@ -71,7 +79,7 @@ export function buildSeasonCalendar(
   const cursor = new Date(first);
   while (cursor <= last) {
     const date = utcDateKey(cursor);
-    const outside = range !== "recent" && (
+    const outside = range.startsWith("month:") && (
       cursor < activeStart
       || cursor > activeEnd
       || cursor < seasonFirst
