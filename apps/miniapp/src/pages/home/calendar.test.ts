@@ -4,6 +4,7 @@ import {
   buildSeasonCalendar,
   calendarRangeOptions,
   densityLevel,
+  localDateKey,
 } from "./calendar";
 
 describe("home season calendar", () => {
@@ -56,17 +57,53 @@ describe("home season calendar", () => {
     expect(march.find((cell) => cell.date === "2026-03-21")?.outside).toBe(false);
   });
 
-  it("covers the complete season with aligned natural weeks", () => {
+  it.each([
+    ["2026-03-01", "2026-02-23", "2026-04-05"],
+    ["2026-04-01", "2026-03-23", "2026-04-05"],
+    ["2026-05-12", "2026-03-23", "2026-05-17"],
+  ])("covers today %s and actual game days, regardless of season bounds", (today, first, last) => {
+    const days = [
+      { date: "2026-04-02", game_count: 1 },
+      { date: "2026-01-01", game_count: 0 },
+      { date: "2026-03-28", game_count: 2 },
+      { date: "2026-12-31", game_count: 0 },
+    ];
     const cells = buildSeasonCalendar(
-      "2026-04-01",
-      [],
+      today,
+      days,
       "all",
-      "2026-03-21",
-      "2026-05-10",
+      "2026-04-01",
+      "2026-04-01",
     );
-    expect(cells[0]).toMatchObject({ date: "2026-03-16", outside: true });
-    expect(cells[cells.length - 1]).toMatchObject({ date: "2026-05-10", outside: false });
-    expect(cells).toHaveLength(56);
+    expect(cells[0].date).toBe(first);
+    expect(cells[cells.length - 1].date).toBe(last);
+    expect(cells.length % 7).toBe(0);
+    expect(cells.every((cell) => !cell.outside)).toBe(true);
+    expect(cells.filter((cell) => cell.date === today)).toHaveLength(1);
+    expect(cells.find((cell) => cell.date === "2026-03-28")?.gameCount).toBe(2);
+    expect(cells.reduce((total, cell) => total + cell.gameCount, 0)).toBe(3);
+    expect(buildSeasonCalendar(today, days, "all", "2025-01-01", "2027-12-31")).toEqual(cells);
+  });
+
+  it.each([
+    ["2026-04-01", "2026-04-02", "2026-03-30", "2026-04-05"],
+    ["2027-01-01", "2026-12-27", "2026-12-21", "2027-01-03"],
+  ])("aligns single-game and cross-year ranges for %s", (today, gameDate, first, last) => {
+    const cells = buildSeasonCalendar(today, [{ date: gameDate, game_count: 1 }], "all");
+    expect(cells[0].date).toBe(first);
+    expect(cells[cells.length - 1].date).toBe(last);
+    expect(cells.every((cell) => !cell.outside)).toBe(true);
+    expect(cells[0].gameCount).toBe(0);
+  });
+
+  it("returns no all-range cells when there are no valid games", () => {
+    expect(buildSeasonCalendar("2026-04-01", [], "all")).toEqual([]);
+    expect(buildSeasonCalendar("2026-04-01", [{ date: "2026-03-28", game_count: 0 }], "all")).toEqual([]);
+  });
+
+  it("uses the Beijing date at midnight", () => {
+    expect(localDateKey(new Date("2026-03-31T15:59:59Z"))).toBe("2026-03-31");
+    expect(localDateKey(new Date("2026-03-31T16:00:00Z"))).toBe("2026-04-01");
   });
 
   it("offers recent, each season month, and complete-season ranges", () => {

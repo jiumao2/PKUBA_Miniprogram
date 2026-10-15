@@ -2,6 +2,34 @@
   "schema_version": 2,
   "entries": [
     {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "scope": "production-transitive",
+      "dependency_path": "Taro helper / runner tools > chokidar / find-yarn-workspace-root / fast-glob > micromatch > braces 3.0.3",
+      "command_boundary": "仅 webpack5/weapp 构建和本地 watch 的受控文件模式；不接受线上用户提供的 glob，不启用 Taro H5/Vite 服务。",
+      "expires_on": "2026-11-30",
+      "reason": "用户于 2026-10-15 接受限时构建风险：恶意深度模式可令构建失败，漏洞未修复。保留扫描，不引入第三方 fork；依赖或命令边界变化须重新审查。",
+      "build_only": {
+        "severity": "high",
+        "lock_sha256": "a98a1fbef0e87a6b6457d72b17da0ae7a9d68ec43b723cf27831a72c3d9a0c71",
+        "usage_sha256": "a484118ed65e252175de831ac20a48fc441045c1b46cd0a9acbab7df9df8ae70"
+      }
+    },
+    {
+      "id": "GHSA-hrh2-vp3x-79xf",
+      "package": "decompress",
+      "scope": "development",
+      "dependency_path": "@tarojs/cli > download-git-repo > download > decompress 4.2.1",
+      "command_boundary": "模块可由 CLI 加载，但 PKUBA build/watch/test 不调用 create/update 的远程模板下载和解包；禁止使用此依赖解压不可信归档。",
+      "expires_on": "2026-11-30",
+      "reason": "用户于 2026-10-15 接受未调用模板解包路径的限时风险；不是漏洞修复，不适用于生产媒体、备份恢复或未来模板命令。",
+      "build_only": {
+        "severity": "critical",
+        "lock_sha256": "a98a1fbef0e87a6b6457d72b17da0ae7a9d68ec43b723cf27831a72c3d9a0c71",
+        "usage_sha256": "a484118ed65e252175de831ac20a48fc441045c1b46cd0a9acbab7df9df8ae70"
+      }
+    },
+    {
       "id": "GHSA-67mh-4wv8-2f99",
       "package": "esbuild",
       "scope": "production-transitive",
@@ -18,123 +46,6 @@
       "command_boundary": "PKUBA 不启动 H5 webpack-dev-server，也不调用 uuid v3/v5/v6 的 buffer 输出参数。",
       "expires_on": "2026-11-30",
       "reason": "受影响 API 只存在于未启动的 H5 开发服务器依赖链，不进入 weapp 产物或服务端运行时。"
-    },
-    {
-      "id": "GHSA-9jgg-88mc-972h",
-      "package": "webpack-dev-server",
-      "scope": "production-transitive",
-      "dependency_path": "@tarojs/taro / @tarojs/webpack5-runner > webpack-dev-server",
-      "command_boundary": "PKUBA 的 miniapp 脚本只执行 taro build --type weapp，不运行 H5 dev server。",
-      "expires_on": "2026-11-30",
-      "reason": "漏洞只影响本地 H5 开发服务器；微信构建和生产服务器均不启动该服务。"
-    },
-    {
-      "id": "GHSA-4v9v-hfq4-rm2v",
-      "package": "webpack-dev-server",
-      "scope": "production-transitive",
-      "dependency_path": "@tarojs/taro / @tarojs/webpack5-runner > webpack-dev-server",
-      "command_boundary": "PKUBA 的 miniapp 脚本只执行 taro build --type weapp，不运行 H5 dev server。",
-      "expires_on": "2026-11-30",
-      "reason": "漏洞只影响本地 H5 开发服务器；微信构建和生产服务器均不启动该服务。"
-    },
-    {
-      "id": "GHSA-79cf-xcqc-c78w",
-      "package": "webpack-dev-server",
-      "scope": "production-transitive",
-      "dependency_path": "@tarojs/taro / @tarojs/webpack5-runner > webpack-dev-server",
-      "command_boundary": "PKUBA 的 miniapp 脚本只执行 taro build --type weapp，不运行 H5 dev server。",
-      "expires_on": "2026-11-30",
-      "reason": "漏洞只影响本地 H5 开发服务器；微信构建和生产服务器均不启动该服务。"
-    },
-    {
-      "id": "GHSA-mx8g-39q3-5c79",
-      "package": "webpack-dev-server",
-      "scope": "production-transitive",
-      "dependency_path": "@tarojs/taro / @tarojs/webpack5-runner > webpack-dev-server",
-      "command_boundary": "PKUBA 的 miniapp 脚本只执行 taro build --type weapp，不运行 H5 dev server 或 HMR。",
-      "expires_on": "2026-11-30",
-      "reason": "漏洞只影响 HMR WebSocket；微信构建和生产服务器均不启动该服务。"
-    },
-    {
-      "id": "GHSA-f5vj-f2hx-8m93",
-      "package": "webpack-dev-server",
-      "scope": "production-transitive",
-      "dependency_path": "@tarojs/taro / @tarojs/webpack5-runner > webpack-dev-server",
-      "command_boundary": "PKUBA 的 miniapp 脚本只执行 taro build --type weapp，不运行 H5 dev server。",
-      "expires_on": "2026-11-30",
-      "reason": "漏洞端点只存在于未启动的 H5 开发服务器，不进入 weapp 产物。"
-    },
-    {
-      "id": "GHSA-m28w-2pqf-7qgj",
-      "package": "webpack-dev-server",
-      "scope": "production-transitive",
-      "dependency_path": "@tarojs/taro / @tarojs/webpack5-runner > webpack-dev-server",
-      "command_boundary": "PKUBA 的 miniapp 脚本只执行 taro build --type weapp，不运行 H5 dev server。",
-      "expires_on": "2026-11-30",
-      "reason": "漏洞只影响未启动的 H5 开发服务器 Host/Origin 处理，不进入生产运行时。"
-    },
-    {
-      "id": "GHSA-g4jq-h2w9-997c",
-      "package": "vite",
-      "scope": "development",
-      "dependency_path": "@pkuba/miniapp > vite 4 (Taro React optional peer)",
-      "command_boundary": "miniapp 源码、配置和脚本均不导入或启动 Vite；编译器固定为 webpack5。",
-      "expires_on": "2026-11-30",
-      "reason": "保留 Vite 4 只为满足 Taro 4.2.1 optional peer；受影响中间件未被 PKUBA 调用。"
-    },
-    {
-      "id": "GHSA-jqfw-vq24-v9c3",
-      "package": "vite",
-      "scope": "development",
-      "dependency_path": "@pkuba/miniapp > vite 4 (Taro React optional peer)",
-      "command_boundary": "miniapp 源码、配置和脚本均不导入或启动 Vite；编译器固定为 webpack5。",
-      "expires_on": "2026-11-30",
-      "reason": "保留 Vite 4 只为满足 Taro 4.2.1 optional peer；受影响文件服务器未被 PKUBA 调用。"
-    },
-    {
-      "id": "GHSA-93m4-6634-74q7",
-      "package": "vite",
-      "scope": "development",
-      "dependency_path": "@pkuba/miniapp > vite 4 (Taro React optional peer)",
-      "command_boundary": "miniapp 源码、配置和脚本均不导入或启动 Vite；编译器固定为 webpack5。",
-      "expires_on": "2026-11-30",
-      "reason": "受影响 Windows Vite 文件服务器未启动；强升 Vite 会破坏 Taro 4 的 peer 合同。"
-    },
-    {
-      "id": "GHSA-4w7w-66w2-5vf9",
-      "package": "vite",
-      "scope": "development",
-      "dependency_path": "@pkuba/miniapp > vite 4 (Taro React optional peer)",
-      "command_boundary": "miniapp 源码、配置和脚本均不导入或启动 Vite；编译器固定为 webpack5。",
-      "expires_on": "2026-11-30",
-      "reason": "受影响 optimized-deps 服务路径未启动；小程序测试使用根工作区安全的 Vite 7/Vitest。"
-    },
-    {
-      "id": "GHSA-c27g-q93r-2cwf",
-      "package": "vite",
-      "scope": "development",
-      "dependency_path": "@pkuba/miniapp > vite 4 (Taro React optional peer)",
-      "command_boundary": "miniapp 源码、配置和脚本均不导入或启动 Vite launch-editor；编译器固定为 webpack5。",
-      "expires_on": "2026-11-30",
-      "reason": "受影响 launch-editor HTTP 路径未被启动或暴露。"
-    },
-    {
-      "id": "GHSA-v6wh-96g9-6wx3",
-      "package": "vite",
-      "scope": "development",
-      "dependency_path": "@pkuba/miniapp > vite 4 (Taro React optional peer)",
-      "command_boundary": "miniapp 源码、配置和脚本均不导入或启动 Vite launch-editor；编译器固定为 webpack5。",
-      "expires_on": "2026-11-30",
-      "reason": "受影响 launch-editor UNC 路径未被启动或暴露。"
-    },
-    {
-      "id": "GHSA-fx2h-pf6j-xcff",
-      "package": "vite",
-      "scope": "development",
-      "dependency_path": "@pkuba/miniapp > vite 4 (Taro React optional peer)",
-      "command_boundary": "miniapp 源码、配置和脚本均不导入或启动 Vite；编译器固定为 webpack5。",
-      "expires_on": "2026-11-30",
-      "reason": "受影响 Windows 文件服务器未启动；生产构建另有 HTTPS 域名与产物内容门禁。"
     },
     {
       "id": "GHSA-5c6j-r48x-rmvq",
@@ -162,15 +73,6 @@
       "command_boundary": "Taro build 只调用 validateConfig API；PKUBA 从不执行 glob CLI 的 -c/--cmd。",
       "expires_on": "2026-11-30",
       "reason": "漏洞只存在于 glob CLI shell:true 命令选项；强制 override 会令旧 Taro 依赖树 invalid。"
-    },
-    {
-      "id": "GHSA-xcpc-8h2w-3j85",
-      "package": "adm-zip",
-      "scope": "development",
-      "dependency_path": "@tarojs/cli > adm-zip",
-      "command_boundary": "仅 taro create 的远程 ZIP 模板分支可达；PKUBA build/watch/test 不调用 create。",
-      "expires_on": "2026-11-30",
-      "reason": "PKUBA 不下载或解压 Taro 远程模板；0.6.0 是超出 Taro 声明的版本，避免强制升级。"
     },
     {
       "id": "GHSA-mp2f-45pm-3cg9",
@@ -216,15 +118,6 @@
       "command_boundary": "仅 taro create/update 的模板或版本查询可达；PKUBA build/watch/test 不调用这些命令。",
       "expires_on": "2026-11-30",
       "reason": "项目构建不接受重定向 URL，也不运行 Taro 更新命令；强升旧 CLI 网络栈会破坏兼容。"
-    },
-    {
-      "id": "GHSA-rc47-6667-2j5j",
-      "package": "http-cache-semantics",
-      "scope": "development",
-      "dependency_path": "@tarojs/cli > download/latest-version > got > cacheable-request > http-cache-semantics",
-      "command_boundary": "仅 taro create/update 网络请求可达；PKUBA build/watch/test 不调用这些命令。",
-      "expires_on": "2026-11-30",
-      "reason": "常规 weapp 构建没有远程模板或版本缓存输入，故受影响正则不可达。"
     },
     {
       "id": "GHSA-vcc3-ghjq-m6fr",
@@ -288,24 +181,6 @@
       "command_boundary": "只在显式 config.prerender 时由 miniprogram-simulate 使用；PKUBA 未配置 prerender。",
       "expires_on": "2026-11-30",
       "reason": "未启用的 prerender 模拟器不会读取 CSS source map 路径；生产产物不包含该工具。"
-    },
-    {
-      "id": "GHSA-w3rx-r6r6-pgpr",
-      "package": "image-size",
-      "scope": "development",
-      "dependency_path": "@tarojs/webpack5-runner > miniprogram-simulate > less 3 > image-size 0.5",
-      "command_boundary": "只在显式 config.prerender 模拟器链可达；PKUBA 未配置 prerender 或 ICNS 处理。",
-      "expires_on": "2026-11-30",
-      "reason": "正常构建不加载模拟器的旧 Less/image-size，也不解析不可信 ICNS。"
-    },
-    {
-      "id": "GHSA-5p2g-fcmc-qvqq",
-      "package": "image-size",
-      "scope": "development",
-      "dependency_path": "@tarojs/webpack5-runner > miniprogram-simulate > less 3 > image-size 0.5",
-      "command_boundary": "只在显式 config.prerender 模拟器链可达；PKUBA 未配置 prerender 或 JXL/HEIF 处理。",
-      "expires_on": "2026-11-30",
-      "reason": "正常构建不加载模拟器的旧 Less/image-size，也不解析不可信 JXL 或 HEIF。"
     }
   ]
 }

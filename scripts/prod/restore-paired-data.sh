@@ -641,6 +641,9 @@ EOF
     sync -f "$transaction_dir/next-upstreams.caddy"
     atomic_install "$transaction_dir/next-current.env" "$current_state"
     atomic_install "$transaction_dir/next-upstreams.caddy" "$upstreams_file" 644
+    compose_gateway run --rm --no-deps gateway \
+      caddy validate --config /etc/caddy/Caddyfile
+    compose_gateway up -d --no-deps --wait --wait-timeout 60 gateway
     compose_gateway exec -T gateway caddy reload --config /etc/caddy/Caddyfile
     wait_gateway live || die "stable gateway did not expose the matching application"
     crash_point after-runtime-restore

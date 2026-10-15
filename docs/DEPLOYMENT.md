@@ -18,8 +18,9 @@
 | 数据卷 | `pkuba-prod-postgres`、`pkuba-prod-media`、`pkuba-prod-archives` |
 | Caddy 卷 | `pkuba-prod-caddy-data`、`pkuba-prod-caddy-config` |
 
-`admin.pkuba.cn` 承载管理站，`api.pkuba.cn` 只承载 `/api/*`，`pkuba.cn` 永久 301
-到管理站。三站均发送 HSTS。API 域名上的非 API 路径返回 404，不提供第二个管理站入口。
+`admin.pkuba.cn` 承载管理站，`api.pkuba.cn` 只承载 `/api/*`，`pkuba.cn` 和 `www.pkuba.cn`
+永久 301 到管理站，保留路径和查询参数。各入口均使用 HTTPS 并发送 HSTS；域名须解析到网关，
+证书由 Caddy 自动管理。API 域名上的非 API 路径返回 404，不提供第二个管理站入口。
 
 PostgreSQL 17 和 Caddy 2.10 的官方多架构 index 先由 release workflow 复制到项目 GHCR，
 再按同一个不可变 digest 使用；服务器不会直接拉取可变官方标签。release manifest 同时记录
@@ -194,6 +195,14 @@ shell。密码登录只有在外部探针通过且 root-only finalizer 成功后
 8. 原子提交 current、retained、deadline、upstream、release audit；确认完成审计 durable 后才
    移除 maintenance。
 
+网关配置随发布版本生效：部署预检先校验目标 `Caddyfile.gateway`；切流时在维护窗口内
+通过 Compose 更新网关的版本目录挂载，等待健康后重载配置，不再只重载旧容器中的文件。
+挂载变化会短暂重建网关，但保留 Caddy 证书和配置卷。应用回切、发布中断恢复和成对数据
+恢复同样选用目标版本的网关配置；失败时保留维护状态和恢复日志，不将未完成切换记为成功。
+新增域名还须满足 DNS 与证书签发条件。提交新发布状态前，部署脚本使用系统信任根验证根域名
+与 `www` 的公网 HTTPS、精确 301 和保留路径/查询的目标；不跳过证书校验，不跟随重定向。
+失败进入既有 OLD 恢复方向，不输出部署成功。
+
 事务阶段：
 
 ```text
@@ -256,6 +265,10 @@ reload、probe 或 cleanup 失败都保持零 writer 和可诊断事务。
 - `/api/v1/health/ready` 与 `/api/v1/health`：数据库、迁移、媒体、归档，以及
   scoresheet/archive/expiry worker heartbeat；任一关键项失败为 503，并返回 tag/commit。
 - `https://admin.pkuba.cn/_deployment/ready`：管理站镜像身份。
+- 新网关在该响应添加 `X-PKUBA-Gateway-Redirects: root,www`，标记当前部署配置支持的跳转。
+  部署必须检查该标记及两个入口；定时探针仅在实际网关返回标记时自动启用跳转检查。
+  旧版本缺少标记时只跳过这项新增检查，原 API/后台检查不变；未知标记、网络或证书错误均失败。
+  因此仅合并代码不会提前要求旧生产网关提供 `www`，回切旧配置也按旧版本边界检查。
 - `production-probe.yml` 每 15 分钟只在仓库变量和 URL 均显式配置时执行公开探针；未配置
   时安全跳过，不构成生产健康证明。
 - 管理站登录页和登录后侧栏共用统一备案页脚；公开页面验收必须确认工信部备案链接与带

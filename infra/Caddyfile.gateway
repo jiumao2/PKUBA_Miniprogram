@@ -52,6 +52,8 @@ admin.{$PKUBA_DOMAIN} {
 	encode zstd gzip
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	handle /_deployment/ready {
+		header X-PKUBA-Gateway-Redirects "root,www"
+		header Cache-Control "no-store"
 		import active_web
 	}
 	import deployment_maintenance_text
@@ -60,7 +62,7 @@ admin.{$PKUBA_DOMAIN} {
 	}
 }
 
-{$PKUBA_DOMAIN} {
+{$PKUBA_DOMAIN}, www.{$PKUBA_DOMAIN} {
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	redir https://admin.{$PKUBA_DOMAIN}{uri} permanent
 }

@@ -488,6 +488,10 @@ install_upstreams() {
 }
 
 reload_gateway() {
+  compose_gateway "$1" run --rm --no-deps gateway \
+    caddy validate --config /etc/caddy/Caddyfile || return 1
+  compose_gateway "$1" up -d --no-deps --wait --wait-timeout 60 gateway \
+    || return 1
   compose_gateway "$1" exec -T gateway caddy reload --config /etc/caddy/Caddyfile
 }
 

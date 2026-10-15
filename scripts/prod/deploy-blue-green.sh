@@ -291,6 +291,8 @@ done
 
 compose_data "$release_dir" config --quiet
 compose_gateway "$release_dir" config --quiet
+compose_gateway "$release_dir" run --rm --no-deps gateway \
+  caddy validate --config /etc/caddy/Caddyfile
 compose_candidate config --quiet
 data_container=$(compose_data "$release_dir" ps -q db)
 gateway_container=$(compose_gateway "$release_dir" ps -q gateway)
@@ -528,6 +530,10 @@ install_upstreams() {
 }
 
 reload_gateway() {
+  # exec alone keeps the old container's release-specific bind mount. Reconcile
+  # it under the release journal so recovery can select the old release again.
+  compose_gateway "$release_dir" up -d --no-deps --wait --wait-timeout 60 gateway \
+    || return 1
   compose_gateway "$release_dir" exec -T gateway \
     caddy reload --config /etc/caddy/Caddyfile
 }
@@ -759,6 +765,8 @@ write_journal_phase RUNTIME_SWITCHED
 crash_point runtime-switched
 wait_gateway_identity "$release_tag" "$release_commit" \
   || die "stable gateway did not expose the verified candidate"
+bash "$release_dir/scripts/prod/probe-gateway-redirects.sh" "$public_domain" \
+  || die "public gateway redirects did not pass HTTPS verification"
 
 # Before NEW_COMMITTED, every crash or ordinary failure deterministically
 # restores the old application and every original state file.

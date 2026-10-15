@@ -89,7 +89,9 @@ export default function HomePage() {
       {notice && <State title={notice.title} detail={notice.detail} />}
       {!loading && !notice && dashboard && (
         <>
-          <GameDensity dashboard={dashboard} season={season} />
+          {dashboard.daily_game_counts.some((day) => day.game_count > 0) && (
+            <GameDensity dashboard={dashboard} season={season} />
+          )}
           <Matchday
             dashboard={dashboard}
             onSchedule={() => Taro.switchTab({ url: "/pages/schedule/index" })}

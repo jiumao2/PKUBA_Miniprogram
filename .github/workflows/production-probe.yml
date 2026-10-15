@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - uses: actions/checkout@v4
       - name: Probe the public API and admin entry
         env:
           API_READY_URL: ${{ vars.PRODUCTION_API_READY_URL }}
@@ -31,3 +32,5 @@ jobs:
           [[ "$api_body" == *'"status":"ok"'* || "$api_body" == *'"status": "ok"'* ]]
           curl --fail --silent --show-error --location \
             --connect-timeout 10 --max-time 20 "$ADMIN_URL" >/dev/null
+      - name: Probe redirects only when the deployed gateway supports them
+        run: bash scripts/prod/probe-gateway-redirects.sh pkuba.cn --if-advertised
