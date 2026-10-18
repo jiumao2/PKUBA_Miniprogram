@@ -29,7 +29,12 @@ from .api_game_media import admin_router as admin_game_media_router
 from .api_game_media import router as game_media_router
 from .api_inbox import router as inbox_router
 from .api_mobile_admin import router as mobile_admin_router
+from .api_notifications import router as notifications_router
 from .api_public_stats import router as public_stats_router
+from .api_referees import admin_router as admin_referees_router
+from .api_referees import router as referees_router
+from .api_registrations import admin_router as admin_registrations_router
+from .api_registrations import router as registrations_router
 from .api_reschedule import router as reschedule_router
 from .api_scoresheets import (
     PublicScoresheetStatOut,
@@ -825,3 +830,8 @@ api.add_router("/game-media", game_media_router)
 api.add_router("/inbox", inbox_router)
 api.add_router("/scoresheets", scoresheet_router)
 api.add_router("/public", public_scoresheet_router)
+api.add_router("/admin/referees", admin_referees_router)
+api.add_router("/referees", referees_router)
+api.add_router("/registrations", registrations_router)
+api.add_router("/admin/registrations", admin_registrations_router)
+api.add_router("/notifications", notifications_router)
