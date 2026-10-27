@@ -28,6 +28,42 @@ export function formatOfficialScore(
 export type Division = components["schemas"]["DivisionOut"];
 export type Season = components["schemas"]["SeasonOut"];
 export type Game = components["schemas"]["GameOut"];
+export type RefereeContext = components["schemas"]["RefereeContextOut"];
+export type Registration = components["schemas"]["RegistrationOut"];
+export type RegistrationSummary = components["schemas"]["RegistrationSummary"];
+export type RegistrationForm = components["schemas"]["RegistrationForm"];
+export type RegistrationContext = components["schemas"]["RegistrationContextOut"];
+export type RegistrationPolicy = components["schemas"]["RegistrationPolicyOut"];
+export type RegistrationHistory = components["schemas"]["RegistrationHistoryOut"];
+export type RegistrationSave = components["schemas"]["SaveRegistrationIn"];
+export type RegistrationReview = components["schemas"]["ReviewRegistrationIn"];
+export type LeaderHandover = components["schemas"]["HandoverOut"];
+export type HandoverResolution = components["schemas"]["ResolveHandoverIn"];
+export type NotificationConfig = components["schemas"]["NotificationConfigOut"];
+export type NotificationChoice = components["schemas"]["NotificationChoiceIn"];
+
+export const registrationStatusLabels: Record<string, string> = {
+  DRAFT: "草稿", PENDING: "待审核", RETURNED: "已退回", APPROVED: "已通过", CHANGE_PENDING: "名单变更待审核",
+};
+export type RefereeQualification = components["schemas"]["RefereeQualificationOut"];
+export type RefereeAvailability = components["schemas"]["RefereeAvailabilityOut"];
+export type RefereeAssignment = components["schemas"]["RefereeAssignmentOut"];
+export type RefereeCrew = components["schemas"]["RefereeCrewOut"];
+export type RefereeGame = components["schemas"]["RefereeGameOut"];
+export type RefereeCandidate = components["schemas"]["RefereeCandidateOut"];
+export type SetRefereeAvailability = components["schemas"]["RefereeAvailabilityIn"];
+export type SetRefereeQualification = components["schemas"]["RefereeQualificationIn"];
+export type SetRefereeAssignments = components["schemas"]["RefereeAssignmentIn"];
+
+export const refereeRoleLabels: Record<string, string> = {
+  CREW_CHIEF: "主裁判",
+  FIRST_UMPIRE: "第一副裁判",
+  SECOND_UMPIRE: "第二副裁判",
+  SCORER: "记录员",
+  TIMER: "计时员",
+  ASSISTANT_SCORER: "助理记录员",
+  SHOT_CLOCK_OPERATOR: "进攻计时员",
+};
 export type ScheduleDays = components["schemas"]["ScheduleDaysOut"];
 export type ScheduleDay = components["schemas"]["ScheduleDayOut"];
 export type PublicGameDetail = components["schemas"]["PublicGameDetailOut"];
@@ -542,6 +578,7 @@ export interface InboxTask {
   target_url: string;
   created_at: string;
   updated_at: string;
+  wechat_status?: string | null;
 }
 
 export interface InboxPage {
@@ -704,6 +741,35 @@ export function createPkubaClient(baseUrl = "", request: RequestAdapter = browse
 
   return {
     getCurrentSeason: () => send<Season>("/api/v1/public/season"),
+    getRegistrationContext: (token: string, seasonId = "") => send<RegistrationContext>(`/api/v1/registrations/context${seasonId ? `?season_id=${encodeURIComponent(seasonId)}` : ""}`, bearer(token)),
+    getRegistration: (id: string, token: string) => send<Registration>(`/api/v1/registrations/${id}`, bearer(token)),
+    createRegistration: (seasonId: string, teamName: string, token: string, key: string) =>
+      send<Registration>("/api/v1/registrations/", json("POST", { season_id: seasonId, team_name: teamName }, token, key)),
+    saveRegistration: (id: string, payload: RegistrationSave, token: string, key: string) =>
+      send<Registration>(`/api/v1/registrations/${id}`, json("PUT", payload, token, key)),
+    getRegistrationHistory: (id: string, token: string, page = 1) =>
+      send<PagedResponse<RegistrationHistory>>(`/api/v1/registrations/${id}/history?page=${page}&page_size=10`, bearer(token)),
+    initiateLeaderHandover: (id: string, version: number, username: string, token: string, key: string) =>
+      send<LeaderHandover>(`/api/v1/registrations/${id}/handover`, json("POST", { expected_version: version, username }, token, key)),
+    resolveLeaderHandover: (id: string, payload: HandoverResolution, token: string, key: string) =>
+      send<LeaderHandover>(`/api/v1/registrations/handovers/${id}/resolve`, json("POST", payload, token, key)),
+    getNotificationConfig: (token: string) => send<NotificationConfig>("/api/v1/notifications/config", bearer(token)),
+    saveNotificationChoice: (payload: NotificationChoice, token: string, key: string) =>
+      send<{ saved: boolean }>("/api/v1/notifications/choices", json("POST", payload, token, key)),
+    getRefereeContext: (token: string) =>
+      send<RefereeContext>("/api/v1/referees/context", bearer(token)),
+    getRefereeCrew: (gameId: string, token: string) =>
+      send<RefereeCrew>(`/api/v1/referees/games/${gameId}/crew`, bearer(token)),
+    listRefereeAvailability: (seasonId: string, token: string, page = 1) =>
+      send<PagedResponse<RefereeAvailability>>(
+        `/api/v1/referees/seasons/${seasonId}/availability?page=${page}&page_size=10`, bearer(token)),
+    listRefereeAssignments: (seasonId: string, token: string, page = 1) =>
+      send<PagedResponse<RefereeAssignment>>(
+        `/api/v1/referees/seasons/${seasonId}/assignments?page=${page}&page_size=10`, bearer(token)),
+    setRefereeAvailability: (
+      seasonId: string, payload: SetRefereeAvailability, token: string, idempotencyKey: string,
+    ) => send<RefereeAvailability>(`/api/v1/referees/seasons/${seasonId}/availability`,
+      json("PUT", payload, token, idempotencyKey)),
     getHomeDashboard: () => send<HomeDashboard>("/api/v1/public/home"),
     getStandings: () => send<Standings>("/api/v1/public/standings"),
     getBrackets: () => send<Brackets>("/api/v1/public/brackets"),
@@ -1198,10 +1264,55 @@ export function createAdminClient(baseUrl = "", onUnauthorized?: () => void) {
       parseAdminResponse<AdminWebLoginChallenge>(
         await fetchAdmin("/api/v1/auth/admin/web-login/challenge", { method: "POST" }),
       ),
+    listRefereeQualifications: async (seasonId: string, page = 1) =>
+      parseAdminResponse<PagedResponse<RefereeQualification>>(await fetchAdmin(
+        `/api/v1/admin/referees/seasons/${seasonId}/qualifications?page=${page}&page_size=20`,
+      )),
+    setRefereeQualification: async (
+      seasonId: string, payload: SetRefereeQualification, idempotencyKey: string,
+    ) => parseAdminResponse<RefereeQualification>(await fetchAdmin(
+      `/api/v1/admin/referees/seasons/${seasonId}/qualifications`, {
+        method: "PUT", headers: { "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey, ...csrfHeaders() }, body: JSON.stringify(payload),
+      },
+    )),
+    listRefereeGames: async (seasonId: string, page = 1, date = "") =>
+      parseAdminResponse<PagedResponse<RefereeGame>>(await fetchAdmin(
+        `/api/v1/admin/referees/seasons/${seasonId}/games?page=${page}&page_size=20${date ? `&date=${encodeURIComponent(date)}` : ""}`,
+      )),
+    listRefereeCandidates: async (seasonId: string, gameId: string, page = 1) =>
+      parseAdminResponse<PagedResponse<RefereeCandidate>>(await fetchAdmin(
+        `/api/v1/admin/referees/seasons/${seasonId}/games/${gameId}/candidates?page=${page}&page_size=100`,
+      )),
+    assignReferees: async (
+      seasonId: string, gameId: string, payload: SetRefereeAssignments, idempotencyKey: string,
+    ) => parseAdminResponse<RefereeGame>(await fetchAdmin(
+      `/api/v1/admin/referees/seasons/${seasonId}/games/${gameId}/assignments`, {
+        method: "PUT", headers: { "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey, ...csrfHeaders() }, body: JSON.stringify(payload),
+      },
+    )),
     getWebLoginStatus: async () =>
       parseAdminResponse<AdminWebLoginStatus>(
         await fetchAdmin("/api/v1/auth/admin/web-login/status"),
       ),
+    getRegistrationPolicy: async (seasonId: string) => parseAdminResponse<RegistrationPolicy>(await fetchAdmin(
+      `/api/v1/admin/registrations/seasons/${seasonId}/policy`)),
+    setRegistrationPolicy: async (seasonId: string, deadline: string | null, version: number, key: string) =>
+      parseAdminResponse<RegistrationPolicy>(await fetchAdmin(`/api/v1/admin/registrations/seasons/${seasonId}/policy`, {
+        method: "PUT", headers: { "Content-Type": "application/json", "Idempotency-Key": key, ...csrfHeaders() },
+        body: JSON.stringify({ deadline, expected_version: version }),
+      })),
+    listRegistrations: async (seasonId: string, page = 1, status = "") =>
+      parseAdminResponse<PagedResponse<RegistrationSummary>>(await fetchAdmin(
+        `/api/v1/admin/registrations/seasons/${seasonId}?page=${page}&page_size=20&status=${encodeURIComponent(status)}`)),
+    getRegistration: async (id: string) => parseAdminResponse<Registration>(await fetchAdmin(`/api/v1/admin/registrations/${id}`)),
+    getRegistrationHistory: async (id: string, page = 1) => parseAdminResponse<PagedResponse<RegistrationHistory>>(await fetchAdmin(
+      `/api/v1/admin/registrations/${id}/history?page=${page}&page_size=10`)),
+    reviewRegistration: async (id: string, payload: RegistrationReview, key: string) =>
+      parseAdminResponse<Registration>(await fetchAdmin(`/api/v1/admin/registrations/${id}/review`, {
+        method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key, ...csrfHeaders() }, body: JSON.stringify(payload),
+      })),
     consumeWebLogin: async (browserToken: string) =>
       parseAdminResponse<AdminAccount>(
         await fetchAdmin("/api/v1/auth/admin/web-login/consume", {

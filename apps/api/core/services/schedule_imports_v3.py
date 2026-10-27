@@ -35,6 +35,7 @@ from core.models import (
     ImportIssue,
     ParticipantSlot,
     Period,
+    RefereeAssignment,
     RescheduleRequest,
     ScheduleGridDraft,
     ScheduleImportBatch,
@@ -2198,6 +2199,11 @@ def _reset_preview(season: Season, *, now: datetime) -> dict[str, object]:
     media_count = GameMediaAsset.objects.filter(game_id__in=game_ids).count()
     if media_count:
         blockers.append(_blocker("GAME_MEDIA_EXIST", "导入比赛已关联媒体文件。", media_count))
+    referee_count = RefereeAssignment.objects.filter(game_id__in=game_ids).count()
+    if referee_count:
+        blockers.append(_blocker(
+            "REFEREE_ASSIGNMENTS_EXIST", "导入比赛已有执裁选派或历史记录。", referee_count,
+        ))
 
     result_revisions = GameResultRevision.objects.filter(game_id__in=game_ids)
     protected_revision_count = result_revisions.exclude(

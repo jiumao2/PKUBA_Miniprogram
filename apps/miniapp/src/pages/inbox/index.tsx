@@ -5,6 +5,7 @@ import type { InboxTask } from "@pkuba/api-client";
 
 import { api } from "../../api";
 import { getMiniAppSession } from "../../auth";
+import { NotificationSubscribe } from "../../components/notification-subscribe";
 import "./index.css";
 
 type TaskStatus = "OPEN" | "CLOSED";
@@ -100,6 +101,7 @@ export default function InboxPage() {
           <Text>已完成</Text>
         </View>
       </View>
+      <NotificationSubscribe />
 
       {loading && <TaskState text="正在读取任务…" />}
       {!loading && !items.length && !error && (
@@ -122,6 +124,7 @@ export default function InboxPage() {
                 {!!task.body && <Text className="task-body">{task.body}</Text>}
                 <View className="task-meta-line">
                   <Text className="task-time">{formatDateTime(task.created_at)}</Text>
+                  {task.wechat_status && <Text>微信：{({ PENDING: "待发送", SENDING: "发送中", SENT: "已发送", NEEDS_AUTH: "需订阅", NOT_CONFIGURED: "待配置", UNKNOWN: "结果待核对", FAILED: "发送失败", SKIPPED: "已跳过" } as Record<string, string>)[task.wechat_status] ?? "待核对"}</Text>}
                   {task.due_at && task.status === "OPEN" && (
                     <Text className="task-due">截止 {formatDateTime(task.due_at)}</Text>
                   )}

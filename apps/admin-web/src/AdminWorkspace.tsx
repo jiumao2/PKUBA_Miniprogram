@@ -22,6 +22,8 @@ import { DrawMappingPage } from "./DrawMappingPage";
 import { LoginScreen } from "./LoginScreen";
 import { GameMediaWorkbench } from "./GameMediaWorkbench";
 import { RescheduleManagementPage } from "./RescheduleManagementPage";
+import { RefereeManagementPage } from "./RefereeManagementPage";
+import { RegistrationManagementPage } from "./RegistrationManagementPage";
 import { ScheduleEditorPage } from "./ScheduleEditorPage";
 import { SchedulePlannerWorkspace } from "./SchedulePlannerWorkspace";
 import { ScheduleOverview } from "./ScheduleOverview";
@@ -43,6 +45,8 @@ export const navigation = [
   { id: "draw", label: "签位结果录入", available: true },
   { id: "corrections", label: "纠错中心", available: true },
   { id: "reschedule", label: "调赛处理", available: true },
+  { id: "referees", label: "裁判与记录台", available: true },
+  { id: "registrations", label: "球队报名审核", available: true },
   { id: "media", label: "比赛资料", available: true },
   { id: "admins", label: "管理员账户", available: true },
   { id: "archives", label: "备份与归档", available: true },
@@ -368,6 +372,10 @@ export function AdminWorkspace() {
                     ? "比赛资料"
                 : page === "reschedule"
                   ? "调赛处理"
+                : page === "referees"
+                  ? "裁判与记录台"
+                : page === "registrations"
+                  ? "球队报名审核"
                 : page === "admins"
                   ? "管理员账户"
                 : page === "archives"
@@ -410,6 +418,16 @@ export function AdminWorkspace() {
             detail={`${error}。请稍后重试；如持续失败，请联系核心开发者。`}
             tone="error"
           />
+        )}
+        {!loading && !error && selectedAdminSeason && page === "referees" && (
+          <RefereeManagementPage key={`${account.id}:${selectedAdminSeason.id}`}
+            client={adminClient} seasons={adminSeasons} seasonId={selectedAdminSeason.id}
+            onSeasonChange={setSelectedAdminSeasonId} />
+        )}
+        {!loading && !error && selectedAdminSeason && page === "registrations" && (
+          <RegistrationManagementPage key={`${account.id}:${selectedAdminSeason.id}`}
+            client={adminClient} season={selectedAdminSeason} seasons={adminSeasons}
+            onSeasonChange={setSelectedAdminSeasonId} />
         )}
         {!loading && !error && selectedAdminSeason && page === "schedule-import" && (
           <SchedulePlannerWorkspace

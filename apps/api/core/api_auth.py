@@ -32,6 +32,7 @@ from core.models import (
     WebLoginChallenge,
     WeChatIdentity,
 )
+from core.services.superadmin_command_lock import lock_superadmin_commands
 from core.services.wechat import (
     WeChatAuthError,
     complete_profile,
@@ -413,8 +414,10 @@ def claimable_teams(request: HttpRequest, season_id: UUID):
     claimed = SeasonLeaderBinding.objects.filter(season=season, active=True).values_list(
         "team_id", flat=True
     )
-    teams = Team.objects.filter(season=season, active=True).exclude(id__in=claimed).select_related(
-        "division"
+    teams = (
+        Team.objects.filter(season=season, active=True)
+        .exclude(id__in=claimed)
+        .select_related("division")
     )
     assignments = {
         assignment.team_id: assignment
@@ -448,10 +451,11 @@ def claimable_teams(request: HttpRequest, season_id: UUID):
 def claim_leader_team(request: HttpRequest, payload: LeaderClaimIn):
     try:
         with transaction.atomic():
+            lock_superadmin_commands()
+            account = Account.objects.select_for_update().get(id=request.auth.id)
             season = Season.objects.select_for_update().get(
                 id=payload.season_id, status=Season.Status.PUBLISHED
             )
-            account = Account.objects.select_for_update().get(id=request.auth.id)
             team = Team.objects.select_for_update().get(
                 id=payload.team_id, season=season, active=True
             )
@@ -502,11 +506,7 @@ def claim_leader_team(request: HttpRequest, payload: LeaderClaimIn):
 )
 def register_admin(request: HttpRequest, payload: AdminRegisterIn):
     with transaction.atomic():
-        policy = (
-            AdminRegistrationPolicy.objects.select_for_update()
-            .filter(singleton_key=1)
-            .first()
-        )
+        policy = AdminRegistrationPolicy.objects.select_for_update().filter(singleton_key=1).first()
         account = Account.objects.select_for_update().get(id=request.auth.id)
         if account.is_pkuba_admin:
             return _serialize_miniapp_me(account)
@@ -587,9 +587,7 @@ def admin_web_login_status(request: HttpRequest):
     challenge_id = stored.get("challenge_id")
     try:
         challenge = (
-            WebLoginChallenge.objects.select_related("account")
-            .filter(id=challenge_id)
-            .first()
+            WebLoginChallenge.objects.select_related("account").filter(id=challenge_id).first()
         )
     except (TypeError, ValueError, ValidationError):
         challenge = None
@@ -694,9 +692,7 @@ def admin_web_login_consume(request: HttpRequest, payload: AdminWebLoginConsumeI
     with transaction.atomic():
         try:
             challenge = (
-                WebLoginChallenge.objects.select_for_update()
-                .filter(id=challenge_id)
-                .first()
+                WebLoginChallenge.objects.select_for_update().filter(id=challenge_id).first()
             )
         except (TypeError, ValueError, ValidationError):
             challenge = None
