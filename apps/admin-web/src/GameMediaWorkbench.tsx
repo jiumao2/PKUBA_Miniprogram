@@ -467,10 +467,18 @@ export function GameMediaWorkbench({
               <section className="media-detail-section scoresheet-section">
                 {selectedGame.workflow_mode === "FORFEIT_ATTACHMENT" ? <>
                   <div className="media-section-heading"><div><span>01</span><div><h3>记录表（选填）</h3><p>弃权比赛无需识别、核对或发布记录表。</p></div></div><strong>弃权赛果已发布</strong></div>
-                  <p>原图和历史内容保留；记录表及比赛照片均可不上传。</p>
-                  {assets.filter((asset) => asset.game_id === selectedGame.game_id && asset.kind === "SCORESHEET").map((asset) =>
-                    asset.content_url ? <a key={asset.id} href={asset.content_url} target="_blank" rel="noreferrer">查看记录表原图</a> : <p key={asset.id}>记录表原图已归档或不可在线查看</p>)}
-                  {selectedGame.can_upload_source && <PhotoUploadButton disabled={busy} label="上传或替换记录表附件" onFiles={(files) => { if (files[0]) void uploadForfeitSource(files[0]); }} />}
+                  <div className="forfeit-attachment-content">
+                    <p>原图和历史内容保留；记录表及比赛照片均可不上传。</p>
+                    <div className="forfeit-attachment-actions">
+                      {assets.filter((asset) => asset.game_id === selectedGame.game_id && asset.kind === "SCORESHEET").map((asset) =>
+                        asset.content_url ? (
+                          <a className="photo-add-button" key={asset.id} href={asset.content_url} target="_blank" rel="noreferrer">
+                            查看记录表原图<ExternalLink size={14} aria-hidden />
+                          </a>
+                        ) : <span className="forfeit-attachment-unavailable" key={asset.id}>记录表原图已归档或不可在线查看</span>)}
+                      {selectedGame.can_upload_source && <PhotoUploadButton disabled={busy} label="上传或替换记录表附件" onFiles={(files) => { if (files[0]) void uploadForfeitSource(files[0]); }} />}
+                    </div>
+                  </div>
                 </> : <>
                 <div className="media-section-heading">
                   <div><span>01</span><div><h3>记录表</h3><p>识别、人工核对、校验与发布在同一流程中完成。</p></div></div>
