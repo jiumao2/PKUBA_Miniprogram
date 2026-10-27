@@ -292,6 +292,14 @@
 
 .scoresheet-recognition-copy { margin: 15px 0 0; color: #7a746d; font-size: 12px; }
 
+.forfeit-attachment-content { margin-top: 20px; padding-top: 17px; border-top: 1px solid var(--media-soft-line); }
+.forfeit-attachment-content > p { margin: 0; color: var(--pkuba-muted); font-size: 12px; line-height: 1.55; }
+.forfeit-attachment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+.forfeit-attachment-actions .photo-add-button { gap: 7px; min-height: 32px; text-decoration: none; }
+.forfeit-attachment-actions .photo-add-button:focus-visible,
+.forfeit-attachment-actions .photo-add-button:has(input:focus-visible) { outline: 2px solid var(--pkuba-red); outline-offset: 3px; }
+.forfeit-attachment-unavailable { color: var(--pkuba-muted); font-size: 12px; line-height: 1.55; }
+
 .scoresheet-primary-row {
   display: flex;
   align-items: center;
