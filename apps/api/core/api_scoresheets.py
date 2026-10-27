@@ -107,7 +107,12 @@ class ScoresheetErrorOut(Schema):
     message: str
 
 
-class ScoresheetQueueItemOut(Schema):
+class ScoresheetWorkflowOut(Schema):
+    game_status: str
+    workflow_mode: Literal["NORMAL", "FORFEIT_ATTACHMENT"]
+
+
+class ScoresheetQueueItemOut(ScoresheetWorkflowOut):
     game_id: UUID
     game_code: str
     game_label: str
@@ -138,7 +143,7 @@ class ScoresheetQueuePageOut(Schema):
     division_names: list[str]
 
 
-class ScoresheetDetailOut(Schema):
+class ScoresheetDetailOut(ScoresheetWorkflowOut):
     id: UUID
     game: dict[str, Any]
     source: dict[str, Any] | None
@@ -170,7 +175,7 @@ class SyncEventOut(Schema):
     created_at: datetime
 
 
-class ScoresheetSyncOut(Schema):
+class ScoresheetSyncOut(ScoresheetWorkflowOut):
     scoresheet_id: UUID
     current_version: int
     current_event: int
@@ -428,6 +433,8 @@ def _detail(
         )
     return {
         "id": scoresheet.id,
+        "game_status": game.status,
+        "workflow_mode": "FORFEIT_ATTACHMENT" if game.status == Game.Status.FORFEIT else "NORMAL",
         "game": {
             "id": str(game.id),
             "code": game.code,
@@ -579,7 +586,7 @@ def list_scoresheets(
         if normalized_division:
             games = games.filter(division__name=normalized_division)
         if scope == "ACTION_REQUIRED":
-            games = games.filter(
+            games = games.exclude(status=Game.Status.FORFEIT).filter(
                 Q(scoresheet__isnull=True)
                 | Q(
                     scoresheet__status__in=(
@@ -591,7 +598,7 @@ def list_scoresheets(
                 )
             )
         elif scope == "IN_PROGRESS":
-            games = games.filter(
+            games = games.exclude(status=Game.Status.FORFEIT).filter(
                 scoresheet__status__in=(
                     GameScoresheet.Status.RECOGNITION_QUEUED,
                     GameScoresheet.Status.RECOGNIZING,
@@ -599,13 +606,18 @@ def list_scoresheets(
                 )
             )
         elif scope == "PUBLISHED":
-            games = games.filter(scoresheet__status=GameScoresheet.Status.PUBLISHED)
-        if processing == "UPLOAD":
             games = games.filter(
+                Q(status=Game.Status.FORFEIT)
+                | Q(scoresheet__status=GameScoresheet.Status.PUBLISHED)
+            )
+        if processing == "UPLOAD":
+            games = games.exclude(status=Game.Status.FORFEIT).filter(
                 Q(scoresheet__isnull=True) | Q(scoresheet__source_asset_id__isnull=True)
             )
         elif processing == "SCORESHEET_REVIEW":
-            games = games.filter(scoresheet__source_asset_id__isnull=False).exclude(
+            games = games.exclude(status=Game.Status.FORFEIT).filter(
+                scoresheet__source_asset_id__isnull=False
+            ).exclude(
                 scoresheet__status__in=(
                     GameScoresheet.Status.PUBLISHED,
                     GameScoresheet.Status.RECOGNITION_QUEUED,
@@ -614,7 +626,10 @@ def list_scoresheets(
                 )
             )
         elif processing == "COMPLETE":
-            games = games.filter(scoresheet__status=GameScoresheet.Status.PUBLISHED)
+            games = games.filter(
+                Q(status=Game.Status.FORFEIT)
+                | Q(scoresheet__status=GameScoresheet.Status.PUBLISHED)
+            )
         normalized_query = " ".join(query.split())[:120]
         if normalized_query:
             games = games.filter(
@@ -628,6 +643,7 @@ def list_scoresheets(
             )
         games = games.annotate(
             queue_priority=Case(
+                When(status=Game.Status.FORFEIT, then=Value(7)),
                 When(scoresheet__status=GameScoresheet.Status.RECOGNITION_FAILED, then=Value(0)),
                 When(scoresheet__status=GameScoresheet.Status.DRAFT, then=Value(1)),
                 When(scoresheet__status=GameScoresheet.Status.READY, then=Value(2)),
@@ -656,6 +672,10 @@ def list_scoresheets(
             rows.append(
                 {
                     "game_id": game.id,
+                    "game_status": game.status,
+                    "workflow_mode": (
+                        "FORFEIT_ATTACHMENT" if game.status == Game.Status.FORFEIT else "NORMAL"
+                    ),
                     "game_code": game.code,
                     "game_label": (
                         f"{game.division.name} · {game.home_display} — {game.away_display}"
@@ -729,6 +749,10 @@ def get_scoresheet_sync(
         )
         return {
             "scoresheet_id": scoresheet.id,
+            "game_status": scoresheet.game.status,
+            "workflow_mode": (
+                "FORFEIT_ATTACHMENT" if scoresheet.game.status == Game.Status.FORFEIT else "NORMAL"
+            ),
             "current_version": scoresheet.draft_version,
             "current_event": scoresheet.event_sequence,
             "requires_full_reload": requires_full,

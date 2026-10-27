@@ -1128,6 +1128,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         && get().document?.id === document.id && !get().contextReviewing
         && sync.current_version >= get().serverRevision && api.syncIsCurrent(document.id, sync);
       if (!isCurrent()) return;
+      if (sync.workflow_mode === 'FORFEIT_ATTACHMENT' || sync.game_status === 'VOID') {
+        set({
+          online: true, readOnly: true, autoAcquireLease: false, leaseHolder: null,
+          readOnlyReason: '比赛已弃权或作废，无需核对或发布记录表。未保存的本地输入仍保留。',
+          ...sourceCapabilityState(get().games, document.id, false),
+        });
+        return;
+      }
       let lease = api.leaseState(document.id);
       const remoteHolder = sync.lease;
       const localHolder = lease?.holder;

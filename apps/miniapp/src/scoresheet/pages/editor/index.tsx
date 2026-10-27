@@ -185,7 +185,8 @@ export default function ScoresheetEditorPage() {
       // Draft progress does not prove an actor's permission is newer. Preserve the
       // later capability observation even when accepting an earlier request's commit.
       if (order < latest.order || belowKnown) {
-        next = { ...raw, can_upload_source: latest.detail.can_upload_source };
+        next = { ...raw, can_upload_source: latest.detail.can_upload_source,
+          game_status: latest.detail.game_status, workflow_mode: latest.detail.workflow_mode };
         observation.orders.set(next, order);
         if (isWrite) observation.writes.add(next);
       }
@@ -467,13 +468,30 @@ export default function ScoresheetEditorPage() {
       if (latest?.id !== current.id || (known && (order < known.order
         || update.current_version < known.knownVersion || update.current_event < known.knownEvent))) return true;
       const canUploadSource = update.can_upload_source === true;
-      const nextCapability = { ...latest, can_upload_source: canUploadSource };
+      const nextCapability = { ...latest, can_upload_source: canUploadSource,
+        game_status: update.game_status, workflow_mode: update.workflow_mode };
       observation.orders.set(nextCapability, order);
       // Keep complete-body counters unchanged until a full response is available.
       observation.latest = { order, detail: nextCapability, knownVersion: update.current_version, knownEvent: update.current_event };
       serverRef.current = nextCapability;
       setSheet((shown) => shown?.id === latest.id
-        ? { ...shown, can_upload_source: canUploadSource } : shown);
+        ? { ...shown, can_upload_source: canUploadSource,
+          game_status: update.game_status, workflow_mode: update.workflow_mode } : shown);
+      if (update.workflow_mode === "FORFEIT_ATTACHMENT" || update.game_status === "VOID") {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        if (pendingRef.current) {
+          recoveryRef.current = { local: pendingRef.current,
+            baseVersion: pendingBaseVersionRef.current ?? current.draft_version };
+          storeRecovery(scoresheetId, recoveryRef.current.local, recoveryRef.current.baseVersion);
+          pendingRef.current = null;
+          pendingBaseVersionRef.current = null;
+        }
+        leaseRef.current = "";
+        clearStoredLease(scoresheetId);
+        setReadOnly(true);
+        setSaveState("比赛已弃权或作废 · 无需核对或发布 · 本地输入已保留");
+        return true;
+      }
       if ((update.events.length || update.requires_full_reload) && !savingRef.current) {
         const next = await readServer();
         if (actionFlightRef.current || next.draft_version < (serverRef.current?.draft_version ?? 0)) return true;

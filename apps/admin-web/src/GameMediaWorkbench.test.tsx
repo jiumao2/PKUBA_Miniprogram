@@ -79,6 +79,25 @@ function clientWith(overrides: Partial<AdminClient> = {}) {
 }
 
 describe("GameMediaWorkbench", () => {
+  it("shows forfeits as complete and uploads an optional attachment without opening recognition", async () => {
+    const row = { ...games[1], game_status: "FORFEIT", workflow_mode: "FORFEIT_ATTACHMENT" as const };
+    const client = clientWith({
+      getScoresheetQueuePage: vi.fn().mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 20, division_names: [] }),
+      listAdminGameMedia: vi.fn().mockResolvedValue([]),
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<GameMediaWorkbench client={client} seasons={seasons} seasonId="season-live"
+      initialGameId={row.game_id} onSeasonChange={vi.fn()} />);
+    const input = await screen.findByLabelText("上传或替换记录表附件");
+    expect(screen.getByText("弃权比赛无需识别、核对或发布记录表。")).toBeVisible();
+    expect(screen.queryByLabelText("记录表处理进度")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /上传并识别|继续核对/ })).not.toBeInTheDocument();
+    const file = new File(["fixture"], "forfeit.jpg", { type: "image/jpeg" });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(client.uploadAdminGameMedia).toHaveBeenCalledWith(row.game_id, "SCORESHEET", true, file, expect.any(String)));
+    expect(await screen.findByText("记录表附件已保存，弃权赛果不变。")).toBeVisible();
+  });
+
   it.each(["refused", "unknown"] as const)("refreshes a partially uploaded batch and distinguishes %s results", async outcome => {
     const user = userEvent.setup();
     const stored: GameMediaAsset[] = [];

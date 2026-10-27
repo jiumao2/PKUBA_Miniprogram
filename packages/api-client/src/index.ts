@@ -357,6 +357,8 @@ export interface ScoresheetDraftChange {
 }
 
 export interface ScoresheetSync {
+  game_status?: string;
+  workflow_mode?: "NORMAL" | "FORFEIT_ATTACHMENT";
   scoresheet_id: string;
   can_upload_source: boolean;
   current_version: number;

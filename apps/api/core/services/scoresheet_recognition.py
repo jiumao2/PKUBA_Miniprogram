@@ -130,6 +130,7 @@ def _targets_current_document(run: ScoresheetRecognitionRun, sheet: GameScoreshe
         or sheet.source_asset_id != run.source_asset_id
         or latest_id != run.id
         or sheet.game.season.status != Season.Status.PUBLISHED
+        or sheet.game.status in {Game.Status.FORFEIT, Game.Status.VOID}
         or not sheet.game.home_team_id or not sheet.game.away_team_id
         or sheet.source_asset.deleted_at
         or sheet.source_asset.storage_status != GameMediaAsset.StorageStatus.ONLINE
@@ -190,7 +191,7 @@ def claim_next_run(worker_name: str) -> ClaimedRun | None:
     now = timezone.now()
     with transaction.atomic():
         eligible = (
-            ScoresheetRecognitionRun.objects.filter(attempt_count__lt=4)
+            ScoresheetRecognitionRun.objects.filter(Q(attempt_count__lt=4) | Q(result_only=True))
             .filter(
                 Q(status=ScoresheetRecognitionRun.Status.QUEUED)
                 | Q(
@@ -211,6 +212,10 @@ def claim_next_run(worker_name: str) -> ClaimedRun | None:
         if locked is None or not eligible.filter(id=run_id).exists():
             return None
         run, scoresheet = locked
+        if run.result_only or scoresheet.game.status in {Game.Status.FORFEIT, Game.Status.VOID}:
+            _finish_result_only(run, scoresheet, error_code="RESULT_NOT_RECEIVED",
+                                error="识别请求已结束或执行租约失效；不自动重发。")
+            return None
         if not _targets_current_document(run, scoresheet):
             _supersede(run)
             return None
@@ -538,6 +543,27 @@ def call_qwen(run: ScoresheetRecognitionRun) -> tuple[dict[str, object], dict[st
     return mapped.model_dump(mode="json"), usage
 
 
+def _finish_result_only(run, sheet, *, result=None, usage=None, error_code="", error=""):
+    """Retain evidence without touching the current source, draft or publication."""
+    run.result_only = True
+    run.auto_apply_allowed = False
+    run.status = (ScoresheetRecognitionRun.Status.SUCCEEDED if result is not None
+                  else ScoresheetRecognitionRun.Status.FAILED)
+    run.provider_result = result if result is not None else {}
+    run.provider_usage = usage or {}
+    run.applied_draft_version = None
+    run.last_error_code = error_code
+    run.last_error = error[:4000]
+    run.finished_at = timezone.now()
+    run.next_attempt_at = None
+    run.worker_lease_token = None
+    run.worker_lease_owner = ""
+    run.worker_lease_expires_at = None
+    run.save()
+    _event_locked(sheet, "RECOGNITION_RESULT_RETAINED", payload={"run_id": str(run.id)})
+    return "stored_only"
+
+
 def _complete_success(
     claim: ClaimedRun, result: dict[str, object], usage: dict[str, object]
 ) -> str:
@@ -551,6 +577,8 @@ def _complete_success(
             or run.worker_lease_token != claim.worker_token
         ):
             return "superseded"
+        if run.result_only or scoresheet.game.status in {Game.Status.FORFEIT, Game.Status.VOID}:
+            return _finish_result_only(run, scoresheet, result=result, usage=usage)
         if not _targets_current_document(run, scoresheet):
             _supersede(run)
             return "superseded"
@@ -694,6 +722,8 @@ def _complete_failure(claim: ClaimedRun, failure: RecognitionAttemptError) -> st
             or run.worker_lease_token != claim.worker_token
         ):
             return "superseded"
+        if run.result_only or scoresheet.game.status in {Game.Status.FORFEIT, Game.Status.VOID}:
+            return _finish_result_only(run, scoresheet, error_code=failure.code, error=str(failure))
         if not _targets_current_document(run, scoresheet):
             _supersede(run)
             return "superseded"
@@ -765,6 +795,16 @@ def _complete_failure(claim: ClaimedRun, failure: RecognitionAttemptError) -> st
 
 
 def execute_claim(claim: ClaimedRun) -> str:
+    with transaction.atomic():
+        locked = _locked_run_context(claim.run_id)
+        if locked is None:
+            return "superseded"
+        current, sheet = locked
+        if current.worker_lease_token != claim.worker_token or current.status != "RUNNING":
+            return "superseded"
+        if current.result_only or sheet.game.status in {Game.Status.FORFEIT, Game.Status.VOID}:
+            return _finish_result_only(current, sheet, error_code="GAME_RESULT_NO_SCORESHEET",
+                                       error="比赛无需记录表处理，未发送识别请求。")
     run = ScoresheetRecognitionRun.objects.select_related("scoresheet", "source_asset").get(
         id=claim.run_id
     )

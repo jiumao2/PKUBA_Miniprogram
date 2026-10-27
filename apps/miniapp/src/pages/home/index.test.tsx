@@ -99,6 +99,24 @@ afterEach(() => {
 });
 
 describe("HomePage public-season states", () => {
+  it("keeps the title empty while loading, then shows the actual season name", async () => {
+    let resolveSeason!: (value: typeof season) => void;
+    state.getCurrentSeason.mockReturnValue(new Promise<typeof season>((resolve) => {
+      resolveSeason = resolve;
+    }));
+
+    const { container } = render(<HomePage />);
+
+    expect(screen.getByText("正在加载")).toBeVisible();
+    expect(container.querySelector(".hero-title")).toBeEmptyDOMElement();
+    expect(screen.queryByText("北大杯")).not.toBeInTheDocument();
+
+    resolveSeason({ ...season, name: "2026 新生杯", competition_type: "FRESHMAN_CUP" });
+
+    expect(await screen.findByText("2026 新生杯")).toBeVisible();
+    expect(screen.queryByText("北大杯")).not.toBeInTheDocument();
+  });
+
   it("renders NO_PUBLIC_SEASON as a normal offseason state", async () => {
     state.getCurrentSeason.mockRejectedValue(
       new ApiError("当前处于休赛期，暂无公开赛季。", 404, "NO_PUBLIC_SEASON"),
@@ -110,6 +128,7 @@ describe("HomePage public-season states", () => {
     expect(screen.getByText("暂无公开赛季。")).toBeVisible();
     expect(screen.queryByText("暂时无法加载")).not.toBeInTheDocument();
     expect(screen.queryByText(/请稍后重试/)).not.toBeInTheDocument();
+    expect(screen.queryByText("北大杯")).not.toBeInTheDocument();
   });
 
   it("keeps a punctuated operational error readable", async () => {
@@ -122,6 +141,7 @@ describe("HomePage public-season states", () => {
     expect(await screen.findByText("暂时无法加载")).toBeVisible();
     expect(screen.getByText("网关暂时繁忙。请稍后重试。")).toBeVisible();
     expect(screen.queryByText(/。，/)).not.toBeInTheDocument();
+    expect(screen.queryByText("北大杯")).not.toBeInTheDocument();
   });
 
   it.each([

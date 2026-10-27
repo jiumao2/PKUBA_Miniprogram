@@ -317,6 +317,8 @@ export interface ScoresheetContextPlayerMapping {
 }
 
 export interface ScoresheetDetail {
+  game_status?: string;
+  workflow_mode?: "NORMAL" | "FORFEIT_ATTACHMENT";
   id: string;
   can_upload_source: boolean;
   game: Record<string, unknown>;
@@ -379,6 +381,8 @@ export interface ScoresheetDetail {
 }
 
 export interface ScoresheetQueueItem {
+  game_status?: string;
+  workflow_mode?: "NORMAL" | "FORFEIT_ATTACHMENT";
   game_id: string;
   can_upload_source: boolean;
   game_code: string;

@@ -169,6 +169,12 @@ def _assert_scoresheet_operable(
     allow_archived_correction: bool = False,
 ) -> None:
     season_status = scoresheet.game.season.status
+    if scoresheet.game.status in {Game.Status.FORFEIT, Game.Status.VOID}:
+        raise ScoresheetError(
+            "SCORESHEET_NOT_REQUIRED",
+            "本场已弃权或作废，无需记录表核对或发布；原图和历史内容已保留。",
+            status=409,
+        )
     if season_status == scoresheet.game.season.Status.PUBLISHED:
         pass
     elif (
@@ -427,6 +433,7 @@ def recognition_retry_allowed(run: ScoresheetRecognitionRun) -> bool:
         and not sheet.source_asset.deleted_at
         and sheet.source_asset.storage_status == GameMediaAsset.StorageStatus.ONLINE
         and sheet.game.season.status == Season.Status.PUBLISHED
+        and sheet.game.status not in {Game.Status.FORFEIT, Game.Status.VOID}
         and sheet.game.home_team_id and sheet.game.away_team_id
         and not sheet.current_publication_id
         and not sheet.publications.exists()
@@ -441,7 +448,7 @@ def _assert_recognition_inactive(
 ) -> None:
     del actor
     latest = _latest_recognition(scoresheet)
-    if latest and latest.status in ACTIVE_RECOGNITION_STATUSES:
+    if latest and latest.status in ACTIVE_RECOGNITION_STATUSES and not latest.result_only:
         raise ScoresheetError(
             "RECOGNITION_ACTIVE",
             "自动识别正在执行或等待重试，完成前记录表保持只读。",
@@ -457,6 +464,10 @@ def _assert_lease_locked(
     client_id: str,
     surface: str,
 ) -> ScoresheetEditLease:
+    if scoresheet.game.status in {Game.Status.FORFEIT, Game.Status.VOID}:
+        raise ScoresheetError(
+            "SCORESHEET_NOT_REQUIRED", "本场已弃权或作废，无需记录表核对或发布。", status=409,
+        )
     _assert_correction_permission(scoresheet, actor)
     _assert_recognition_inactive(scoresheet, actor=actor)
     lease = _active_lease_locked(scoresheet)
@@ -532,9 +543,13 @@ def register_scoresheet_source(
             recognition_trigger = ScoresheetRecognitionRun.Trigger.REUPLOAD
             _assert_correction_permission(scoresheet, actor)
             _assert_recognition_inactive(scoresheet, actor=actor)
+            if locked_game.status == Game.Status.FORFEIT:
+                _event_locked(scoresheet, "FORFEIT_SOURCE_REPLACING", actor=actor)
+                _revision_locked(scoresheet, ScoresheetRevision.Reason.SOURCE_REPLACED, actor=actor)
             close_scoresheet_tasks(scoresheet.id, reason="SOURCE_REPLACED")
             ScoresheetRecognitionRun.objects.filter(
                 scoresheet=scoresheet,
+                result_only=False,
                 status__in=[
                     ScoresheetRecognitionRun.Status.QUEUED,
                     ScoresheetRecognitionRun.Status.RUNNING,
@@ -571,12 +586,14 @@ def register_scoresheet_source(
         scoresheet.acknowledged_warnings = []
         roster_ready = bool(roster.get("A")) and bool(roster.get("B"))
         qwen_ready = bool(settings.QWEN_API_KEY.strip()) and not archived_correction
-        recognition_ready = roster_ready and qwen_ready
-        scoresheet.status = (
-            GameScoresheet.Status.RECOGNITION_QUEUED
-            if recognition_ready
-            else GameScoresheet.Status.RECOGNITION_FAILED
-        )
+        attachment_only = locked_game.status == Game.Status.FORFEIT
+        recognition_ready = roster_ready and qwen_ready and not attachment_only
+        if attachment_only:
+            scoresheet.status = GameScoresheet.Status.DRAFT
+        elif recognition_ready:
+            scoresheet.status = GameScoresheet.Status.RECOGNITION_QUEUED
+        else:
+            scoresheet.status = GameScoresheet.Status.RECOGNITION_FAILED
         scoresheet.save(
             update_fields=[
                 "source_asset",
@@ -593,6 +610,14 @@ def register_scoresheet_source(
                 "updated_at",
             ]
         )
+        if attachment_only:
+            ScoresheetEditLease.objects.filter(scoresheet=scoresheet).delete()
+            close_scoresheet_tasks(scoresheet.id, reason="FORFEIT_ATTACHMENT")
+            _event_locked(scoresheet, "FORFEIT_SOURCE_SAVED", actor=actor, payload={
+                "asset_id": str(asset.id), "source_version": scoresheet.source_version,
+            })
+            _revision_locked(scoresheet, ScoresheetRevision.Reason.SOURCE_REPLACED, actor=actor)
+            return scoresheet
         run = ScoresheetRecognitionRun.objects.create(
             scoresheet=scoresheet,
             source_asset=asset,
@@ -726,7 +751,7 @@ def acquire_edit_lease(
         if scoresheet.current_publication_id and not actor.is_pkuba_superadmin:
             return None, None, True, "记录表已发布；普通管理员只能只读查看，纠错仅限超级管理员。"
         latest = _latest_recognition(scoresheet)
-        if latest and latest.status in ACTIVE_RECOGNITION_STATUSES:
+        if latest and latest.status in ACTIVE_RECOGNITION_STATUSES and not latest.result_only:
             return (
                 None,
                 None,
@@ -1926,6 +1951,25 @@ def recognition_diff(
         raise ScoresheetError("RECOGNITION_SUPERSEDED", "识别结果不属于当前原图。", status=409)
     if run.status != ScoresheetRecognitionRun.Status.SUCCEEDED or not run.provider_result:
         raise ScoresheetError("RECOGNITION_NOT_READY", "识别结果尚未就绪。", status=409)
+    if run.result_only:
+        retained_prior = run.provider_result.get("game_prior") or {}
+        current = current_context_for_scoresheet(scoresheet)
+        if (
+            not retained_prior.get("source_hash")
+            or retained_prior["source_hash"] != (scoresheet.draft.get("game_prior") or {}).get(
+                "source_hash"
+            )
+            or scoresheet.roster_snapshot != current["roster"]
+            or any(
+                (retained_prior.get(side) or {}).get("team_id")
+                != current["game"][side]["team_id"]
+                for side in ("team_a", "team_b")
+            )
+        ):
+            raise ScoresheetError(
+                "RECOGNITION_CONTEXT_CHANGED",
+                "保留结果的参赛方或名单已变化，请人工复核，不可直接套用。", status=409,
+            )
     candidate = merge_recognition_result(
         scoresheet.draft,
         run.provider_result,

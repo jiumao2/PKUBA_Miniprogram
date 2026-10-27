@@ -411,6 +411,9 @@ def sync_scoresheet_recognition_tasks(
         "game__home_team",
         "game__away_team",
     ).get(id=scoresheet.id)
+    if scoresheet.game.status in {"FORFEIT", "VOID"} or run.result_only:
+        close_scoresheet_tasks(scoresheet.id, reason="GAME_RESULT_NO_SCORESHEET")
+        return None
     review_key = (
         f"scoresheet:{scoresheet.id}:source:{run.source_version}:"
         f"cycle:{run.cycle}:review"
