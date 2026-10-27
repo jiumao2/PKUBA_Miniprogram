@@ -7,7 +7,7 @@ from datetime import timedelta
 from threading import Barrier
 
 import pytest
-from django.db import close_old_connections, transaction
+from django.db import close_old_connections, connections, transaction
 from django.test import Client
 from django.utils import timezone
 
@@ -21,7 +21,7 @@ from core.models import (
 )
 from core.services import scoresheet_recognition as worker
 from core.services.competition_corrections import apply_correction
-from core.services.game_media import replace_game_media, upload_game_media
+from core.services.game_media import GameMediaError, replace_game_media, upload_game_media
 from core.services.scoresheet_workflow import reconcile_scoresheet_game_status
 from core.services.scoresheets import (
     ScoresheetError,
@@ -301,6 +301,56 @@ def test_replaced_forfeit_source_retains_old_response_without_touching_new_draft
     assert sheet.recognition_runs.count() == 1
 
 
+def test_return_to_normal_cannot_replace_source_until_previous_request_finishes(settings):
+    setup, game, _, asset, sheet = create_scoresheet()
+    run = queue_run(sheet)
+    claim = worker.claim_next_run("first")
+    transition(setup, game, "FORFEIT")
+    transition(setup, game, "SCHEDULED")
+    sheet.refresh_from_db()
+    before = (sheet.source_asset_id, sheet.source_version, sheet.draft_version)
+    assets = GameMediaAsset.objects.filter(game=game).count()
+    settings.QWEN_API_KEY = "isolated-no-external-calls"
+    with pytest.raises(GameMediaError) as error:
+        replace_game_media(
+            actor=setup["superadmin"], asset_id=asset.id, expected_version=asset.version,
+            scoresheet_complete_confirmed=True, uploaded_file=image_file("second.jpg"),
+        )
+    assert error.value.code == "RECOGNITION_ACTIVE"
+    sheet.refresh_from_db()
+    asset.refresh_from_db()
+    assert (sheet.source_asset_id, sheet.source_version, sheet.draft_version) == before
+    assert asset.deleted_at is None
+    assert GameMediaAsset.objects.filter(game=game).count() == assets
+    assert sheet.recognition_runs.count() == 1
+    assert worker.claim_next_run("second") is None
+    assert worker._complete_success(claim, provider_document(sheet, run.id), {}) == "stored_only"
+    replace_game_media(
+        actor=setup["superadmin"], asset_id=asset.id, expected_version=asset.version,
+        scoresheet_complete_confirmed=True, uploaded_file=image_file("second.jpg"),
+    )
+    assert worker.claim_next_run("second") is not None
+
+
+def test_worker_skips_queued_run_with_older_running_result_only_request():
+    setup, game, _, asset, sheet = create_scoresheet()
+    run = queue_run(sheet)
+    claim = worker.claim_next_run("first")
+    transition(setup, game, "FORFEIT")
+    transition(setup, game, "SCHEDULED")
+    sheet.refresh_from_db()
+    # Simulate a persisted queue from an older writer; do not dispatch a model call.
+    queued = ScoresheetRecognitionRun.objects.create(
+        scoresheet=sheet, source_asset=asset, source_version=sheet.source_version,
+        base_draft_version=sheet.draft_version, cycle=2, status="QUEUED",
+    )
+    assert worker.claim_next_run("second") is None
+    assert sheet.recognition_runs.filter(status="RUNNING").count() == 1
+    assert worker._complete_success(claim, provider_document(sheet, run.id), {}) == "stored_only"
+    next_claim = worker.claim_next_run("second")
+    assert next_claim is not None and next_claim.run_id == queued.id
+
+
 @pytest.mark.django_db(transaction=True)
 def test_forfeit_transition_serializes_against_recognition_completion():
     setup, game, _, _, sheet = create_scoresheet()
@@ -323,7 +373,7 @@ def test_forfeit_transition_serializes_against_recognition_completion():
                     game=locked, actor=setup["superadmin"], previous_status=previous,
                 )
         finally:
-            close_old_connections()
+            connections.close_all()
 
     def complete():
         close_old_connections()
@@ -331,7 +381,7 @@ def test_forfeit_transition_serializes_against_recognition_completion():
             barrier.wait(timeout=10)
             return worker._complete_success(claim, result, {})
         finally:
-            close_old_connections()
+            connections.close_all()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         changed, completed = pool.submit(change_status), pool.submit(complete)

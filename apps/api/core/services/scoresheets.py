@@ -438,6 +438,9 @@ def recognition_retry_allowed(run: ScoresheetRecognitionRun) -> bool:
         and not sheet.current_publication_id
         and not sheet.publications.exists()
         and run.last_error_code not in SOURCE_PREREQUISITE_ERRORS
+        and not sheet.recognition_runs.filter(
+            status=ScoresheetRecognitionRun.Status.RUNNING,
+        ).exists()
     )
 
 
@@ -453,6 +456,15 @@ def _assert_recognition_inactive(
             "RECOGNITION_ACTIVE",
             "自动识别正在执行或等待重试，完成前记录表保持只读。",
             status=409,
+        )
+
+
+def _assert_no_running_recognition(scoresheet: GameScoresheet) -> None:
+    # A result-only request still occupies a provider call, even when an older
+    # source is no longer the latest run. Manual review does not start a call.
+    if scoresheet.recognition_runs.filter(status=ScoresheetRecognitionRun.Status.RUNNING).exists():
+        raise ScoresheetError(
+            "RECOGNITION_ACTIVE", "上一轮识别仍在执行，结束前不能启动新的识别。", status=409,
         )
 
 
@@ -543,6 +555,8 @@ def register_scoresheet_source(
             recognition_trigger = ScoresheetRecognitionRun.Trigger.REUPLOAD
             _assert_correction_permission(scoresheet, actor)
             _assert_recognition_inactive(scoresheet, actor=actor)
+            if locked_game.status != Game.Status.FORFEIT:
+                _assert_no_running_recognition(scoresheet)
             if locked_game.status == Game.Status.FORFEIT:
                 _event_locked(scoresheet, "FORFEIT_SOURCE_REPLACING", actor=actor)
                 _revision_locked(scoresheet, ScoresheetRevision.Reason.SOURCE_REPLACED, actor=actor)
@@ -1872,6 +1886,7 @@ def retry_recognition(
             raise ScoresheetError("RECOGNITION_NOT_FOUND", "识别任务不存在。", status=404)
         if latest.status in ACTIVE_RECOGNITION_STATUSES:
             raise ScoresheetError("RECOGNITION_ACTIVE", "当前识别任务仍在执行。", status=409)
+        _assert_no_running_recognition(scoresheet)
         if latest.status != ScoresheetRecognitionRun.Status.FAILED:
             raise ScoresheetError(
                 "RECOGNITION_RETRY_NOT_ALLOWED",

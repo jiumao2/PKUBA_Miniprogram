@@ -1737,7 +1737,7 @@ class ScoresheetRecognitionRun(UUIDModel):
     auto_apply_allowed = models.BooleanField(default=True)
     # Sticky across subsequent game status changes: finish an in-flight request
     # for evidence only, never retry it or apply its result automatically.
-    result_only = models.BooleanField(default=False)
+    result_only = models.BooleanField(default=False, db_default=False)
     applied_draft_version = models.PositiveIntegerField(null=True, blank=True)
     recognition_notes = models.TextField(blank=True)
     last_error_code = models.CharField(max_length=64, blank=True)

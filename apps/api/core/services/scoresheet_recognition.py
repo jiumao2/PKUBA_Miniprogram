@@ -17,7 +17,7 @@ from threading import Event, Thread
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.db import close_old_connections, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
 from pydantic import ValidationError
@@ -192,6 +192,12 @@ def claim_next_run(worker_name: str) -> ClaimedRun | None:
     with transaction.atomic():
         eligible = (
             ScoresheetRecognitionRun.objects.filter(Q(attempt_count__lt=4) | Q(result_only=True))
+            .alias(other_running=Exists(
+                ScoresheetRecognitionRun.objects.filter(
+                    scoresheet_id=OuterRef("scoresheet_id"), status="RUNNING",
+                ).exclude(id=OuterRef("id"))
+            ))
+            .filter(Q(other_running=False) | Q(status="RUNNING"))
             .filter(
                 Q(status=ScoresheetRecognitionRun.Status.QUEUED)
                 | Q(
