@@ -126,6 +126,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_response(301)
             self.send_header("Location", "https://admin.example.test" + self.path)
+        # Delimit the empty body; newer curl rejects an unframed TLS EOF.
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def log_message(self, *_):

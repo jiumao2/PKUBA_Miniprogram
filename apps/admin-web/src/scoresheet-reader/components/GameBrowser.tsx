@@ -143,7 +143,7 @@ export function GameBrowser({
               <span className="game-matchup"><strong>{game.team_a_name}</strong><em aria-hidden>—</em><strong>{game.team_b_name}</strong><small>{game.division}</small></span>
               <span className="game-venue"><MapPin size={13} />{game.venue || '地点待定'}</span>
               <span className={`game-ready state-${game.document_id ? game.scoresheet_state : (game.ready ? 'not_uploaded' : 'disabled')}`}>
-                {openingGameId === game.id ? '打开中' : (game.document_id ? stateLabels[game.scoresheet_state] : (game.ready ? '待上传' : '球队待定'))}
+                {game.workflow_mode === 'FORFEIT_ATTACHMENT' ? '弃权赛果已发布' : openingGameId === game.id ? '打开中' : (game.document_id ? stateLabels[game.scoresheet_state] : (game.ready ? '待上传' : '球队待定'))}
               </span>
               </button>
               {allowUploads && game.document_id && game.ready && game.can_upload_source ? (

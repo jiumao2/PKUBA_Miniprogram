@@ -103,6 +103,25 @@ describe('server-authoritative source permissions', () => {
 });
 
 describe('source capability transport and synchronization', () => {
+  it('retains unsaved input and stops all editor writes when a game becomes forfeit', async () => {
+    const document = makeDocument('forfeit-sync');
+    useEditorStore.setState({ document, serverRevision: document.revision, dirty: true,
+      readOnly: false, autoAcquireLease: true, canUploadSource: true });
+    vi.spyOn(api, 'sync').mockResolvedValue({ current_version: document.revision + 1,
+      current_event: 99, requires_full_reload: true, events: [], lease: null,
+      recognition: null, can_upload_source: true, game_status: 'FORFEIT', workflow_mode: 'FORFEIT_ATTACHMENT' });
+    vi.spyOn(api, 'syncIsCurrent').mockReturnValue(true);
+    const acquire = vi.spyOn(api, 'acquire');
+    await useEditorStore.getState().syncNow();
+    const state = useEditorStore.getState();
+    expect(state.document).toBe(document);
+    expect(state.dirty).toBe(true);
+    expect(state.readOnly).toBe(true);
+    expect(state.autoAcquireLease).toBe(false);
+    expect(state.readOnlyReason).toContain('本地输入仍保留');
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
   it('uses queue capability instead of document status', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({
       items: [false, true].map((allowed, index) => ({

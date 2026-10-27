@@ -183,7 +183,7 @@ export default function GameDetailPage() {
     if (kind === "SCORESHEET") {
       const confirmation = await Taro.showModal({
         title: "上传记录表",
-        content: "请确认记录表已正确结表，应填项目、最终比分和签字完整，整张照片无缺角、无遮挡。",
+        content: detail.game.status === "FORFEIT" ? "确认照片属于本场比赛。弃权记录表仅作为附件保存，无需填写完整技术统计，不进行识别或发布。" : "请确认记录表已正确结表，应填项目、最终比分和签字完整，整张照片无缺角、无遮挡。",
         confirmText: "已核对",
         confirmColor: "#c91f26",
       });
@@ -215,7 +215,7 @@ export default function GameDetailPage() {
     if (asset.kind === "SCORESHEET") {
       const confirmation = await Taro.showModal({
         title: "重新上传记录表",
-        content: "请确认新照片中的应填项目、最终比分和签字已经完成，整张表无缺角、无遮挡。",
+        content: detail?.game.status === "FORFEIT" ? "确认替换本场弃权记录表附件；保留历史原图，不进行识别或发布。" : "请确认新照片中的应填项目、最终比分和签字已经完成，整张表无缺角、无遮挡。",
         confirmText: "已核对",
         confirmColor: "#c91f26",
       });
@@ -305,7 +305,7 @@ export default function GameDetailPage() {
     <View className="detail-section game-stat-section">
       <Text className="detail-section-title">单场数据</Text>
       {stats ? <PublishedGameStats stats={stats} /> : (
-        <Text className="detail-empty">本场暂无已发布的球员数据。</Text>
+        <Text className="detail-empty">{detail.game.status === "FORFEIT" ? "本场为弃权比赛，不提供球员技术统计。" : "本场暂无已发布的球员数据。"}</Text>
       )}
     </View>
 
@@ -356,9 +356,7 @@ function GameHeading({ detail }: { detail: PublicGameDetail }) {
 }
 
 function PublishedGameStats({ stats }: { stats: PublicScoresheetStat }) {
-  const players = stats.player_stats.filter(
-    (row) => row.appeared || row.points || row.personal_fouls,
-  );
+  const players = stats.player_stats;
   if (!players.length) return <Text className="detail-empty">本场暂无球员数据。</Text>;
   const sideStats = new Map(stats.team_stats.map((row) => [String(row.side ?? ""), row]));
   const teams = [

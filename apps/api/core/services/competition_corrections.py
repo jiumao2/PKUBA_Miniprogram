@@ -777,8 +777,12 @@ def analyze_correction(
         active_recognition = ScoresheetRecognitionRun.objects.filter(
             scoresheet__game=game,
             status__in=ACTIVE_RECOGNITION_STATUSES,
+            result_only=False,
         ).exists()
-        if active_recognition and _state_differs(before[game.id], change):
+        if (
+            active_recognition and _state_differs(before[game.id], change)
+            and change["status"] != Game.Status.FORFEIT
+        ):
             blockers.append(
                 {
                     "code": "SCORESHEET_RECOGNITION_ACTIVE",
@@ -1265,6 +1269,9 @@ def _apply_game_change(
     sheet = GameScoresheet.objects.select_for_update().filter(game=game).first()
     if result_changed and sheet and sheet.current_publication_id and not keep_publication:
         _withdraw_publication(sheet=sheet, actor=actor, correction=correction)
+    from core.services.scoresheet_workflow import reconcile_scoresheet_game_status
+
+    reconcile_scoresheet_game_status(game=game, actor=actor, previous_status=before["status"])
     AdminAuditLog.objects.create(
         actor=actor,
         action="SUPERADMIN_GAME_CORRECTED",

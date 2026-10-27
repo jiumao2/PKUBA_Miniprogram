@@ -18,6 +18,7 @@ from core.models import (
     GameScoresheet,
     Period,
     RescheduleRequest,
+    ScoresheetRecognitionRun,
     Season,
     SlotReservation,
     Team,
@@ -420,6 +421,17 @@ def update_admin_game(
             if game.version != payload.expected_version:
                 return _error("VERSION_CONFLICT", "比赛已被其他操作更新，请刷新。", 409)
             before = _snapshot(game)
+            if (
+                payload.status != game.status and payload.status != Game.Status.FORFEIT
+                and ScoresheetRecognitionRun.objects.filter(
+                    scoresheet__game=game, status__in=["QUEUED", "RUNNING", "RETRY_WAIT"],
+                    result_only=False,
+                ).exists()
+            ):
+                return _error(
+                    "SCORESHEET_RECOGNITION_ACTIVE",
+                    "识别仍在进行；当前只允许改为弃权并保留识别证据。", 409,
+                )
             if GameScoresheet.objects.filter(
                 game=game,
                 current_publication__isnull=False,
@@ -600,6 +612,11 @@ def update_admin_game(
             game.version += 1
             game.full_clean()
             game.save()
+            from core.services.scoresheet_workflow import reconcile_scoresheet_game_status
+
+            reconcile_scoresheet_game_status(
+                game=game, actor=request.auth, previous_status=before["status"]
+            )
             if any(
                 before[key] != _snapshot(game)[key]
                 for key in (

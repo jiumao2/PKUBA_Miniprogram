@@ -66,6 +66,8 @@ type RawRecognition = {
 };
 
 type RawDetail = {
+  game_status?: string;
+  workflow_mode?: 'NORMAL' | 'FORFEIT_ATTACHMENT';
   id: string;
   can_upload_source: boolean;
   game: Record<string, unknown>;
@@ -111,6 +113,8 @@ type RawIssue = {
 };
 
 type RawQueue = {
+  game_status?: string;
+  workflow_mode?: 'NORMAL' | 'FORFEIT_ATTACHMENT';
   game_id: string;
   can_upload_source: boolean;
   game_code: string;
@@ -127,6 +131,8 @@ type RawQueue = {
 };
 
 type RawSync = {
+  game_status?: string;
+  workflow_mode?: 'NORMAL' | 'FORFEIT_ATTACHMENT';
   can_upload_source: boolean;
   current_version: number;
   current_event: number;
@@ -367,6 +373,7 @@ function gameFromQueue(row: RawQueue): GameSummary {
           : 'not_uploaded';
   return {
     id: row.game_id,
+    workflow_mode: row.workflow_mode,
     competition: row.competition,
     division: row.division_name,
     date: row.date,
@@ -374,10 +381,10 @@ function gameFromQueue(row: RawQueue): GameSummary {
     venue: row.venue,
     team_a_name: row.home_name,
     team_b_name: row.away_name,
-    ready: Boolean(row.home_name && row.away_name),
-    unavailable_reason: row.home_name && row.away_name ? '' : '比赛双方尚未落位',
+    ready: row.workflow_mode !== 'FORFEIT_ATTACHMENT' && Boolean(row.home_name && row.away_name),
+    unavailable_reason: row.workflow_mode === 'FORFEIT_ATTACHMENT' ? '弃权资料请在比赛资料页查看或上传，无需识别。' : row.home_name && row.away_name ? '' : '比赛双方尚未落位',
     document_id: row.scoresheet_id,
-    can_upload_source: row.can_upload_source === true,
+    can_upload_source: row.workflow_mode !== 'FORFEIT_ATTACHMENT' && row.can_upload_source === true,
     scoresheet_state: state,
   };
 }
@@ -400,7 +407,8 @@ export const api = {
     return detailCache.get(documentId)?.pending_correction ?? null;
   },
   sourceUploadAllowed(documentId: string): boolean {
-    return detailCache.get(documentId)?.can_upload_source === true;
+    const detail = detailCache.get(documentId);
+    return detail?.workflow_mode !== 'FORFEIT_ATTACHMENT' && detail?.can_upload_source === true;
   },
 
   syncIsCurrent(documentId: string, sync: RawSync): boolean {
@@ -464,6 +472,7 @@ export const api = {
     file: File,
   ): Promise<DocumentRecognitionResponse> {
     const current = await loadRawDetail(documentId);
+    if (current.workflow_mode === 'FORFEIT_ATTACHMENT') throw new Error('弃权附件请在比赛资料页上传，无需识别。');
     if (!current.can_upload_source) throw new Error('当前账号不能重新上传这场比赛的记录表原图。');
     if (!current.source) throw new Error('当前记录表没有可替换的原图。');
     await admin.replaceAdminGameMedia(current.source.id, current.source.version, true, file);

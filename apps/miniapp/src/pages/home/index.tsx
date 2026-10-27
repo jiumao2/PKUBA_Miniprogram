@@ -74,7 +74,7 @@ export default function HomePage() {
       <View className="hero">
         <View className="hero-copy">
           <Text className="hero-year">{season?.year ?? ""}</Text>
-          <Text className="hero-title">{season?.name ?? "北大杯"}</Text>
+          <Text className="hero-title">{season?.name ?? ""}</Text>
           <View className="hero-rule"><View className="hero-rule-accent" /></View>
         </View>
         <Image

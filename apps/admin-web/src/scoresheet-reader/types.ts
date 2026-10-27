@@ -113,6 +113,7 @@ export interface DocumentChangeLogPage {
 }
 
 export interface GameSummary {
+  workflow_mode?: 'NORMAL' | 'FORFEIT_ATTACHMENT';
   id: string;
   competition: string;
   division: string;

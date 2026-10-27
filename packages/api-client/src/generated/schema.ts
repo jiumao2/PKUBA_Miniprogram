@@ -7055,6 +7055,13 @@ export interface components {
         };
         /** ScoresheetQueueItemOut */
         ScoresheetQueueItemOut: {
+            /** Game Status */
+            game_status: string;
+            /**
+             * Workflow Mode
+             * @enum {string}
+             */
+            workflow_mode: "NORMAL" | "FORFEIT_ATTACHMENT";
             /**
              * Game Id
              * Format: uuid
@@ -7404,6 +7411,13 @@ export interface components {
         ScoreMark: "filled_dot" | "diagonal";
         /** ScoresheetDetailOut */
         ScoresheetDetailOut: {
+            /** Game Status */
+            game_status: string;
+            /**
+             * Workflow Mode
+             * @enum {string}
+             */
+            workflow_mode: "NORMAL" | "FORFEIT_ATTACHMENT";
             /**
              * Id
              * Format: uuid
@@ -7616,6 +7630,13 @@ export interface components {
         };
         /** ScoresheetSyncOut */
         ScoresheetSyncOut: {
+            /** Game Status */
+            game_status: string;
+            /**
+             * Workflow Mode
+             * @enum {string}
+             */
+            workflow_mode: "NORMAL" | "FORFEIT_ATTACHMENT";
             /**
              * Scoresheet Id
              * Format: uuid

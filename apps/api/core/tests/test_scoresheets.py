@@ -87,7 +87,7 @@ def image_file(name: str = "scoresheet.jpg") -> SimpleUploadedFile:
     return SimpleUploadedFile(name, content.getvalue(), content_type="image/jpeg")
 
 
-def create_scoresheet():
+def create_scoresheet(*, include_bench=False):
     setup = reschedule_setup()
     setup["ordinary_admin"] = setup["admin"]
     setup["admin"] = setup["superadmin"]
@@ -103,7 +103,7 @@ def create_scoresheet():
                 name=f"{prefix}{index}号",
                 jersey_number=str(index + 3),
             )
-            for index in range(1, 6)
+            for index in range(1, 7 if include_bench else 6)
         ]
         player_rows[side] = created[0]
     asset = upload_game_media(
@@ -2067,6 +2067,49 @@ def test_superadmin_can_correct_and_republish_the_same_source(tmp_path):
         )
         assert blocked.status_code == 409
         assert blocked.json()["code"] == "SCORESHEET_REPUBLICATION_REQUIRED"
+
+
+def test_registered_nonparticipants_are_public_and_exported_but_not_ranked(tmp_path):
+    with override_settings(MEDIA_ROOT=tmp_path):
+        setup, game, _, _, scoresheet = create_scoresheet(include_bench=True)
+        token = obtain_lease(scoresheet, setup["admin"])
+        scoresheet = make_ready(scoresheet, setup["admin"], token)
+        publication = publish_scoresheet(
+            scoresheet_id=scoresheet.id,
+            actor=setup["admin"],
+            expected_version=scoresheet.draft_version,
+            lease_token=token,
+            client_id="web-1",
+            surface=ScoresheetEditLease.Surface.WEB,
+        )
+        public = Client().get(f"/api/v1/public/scoresheet-stats?game_id={game.id}")
+        assert public.status_code == 200
+        rows = public.json()[0]["player_stats"]
+        assert len(rows) == 12
+        bench = [row for row in rows if not row["appeared"]]
+        assert len(bench) == 2
+        assert all(
+            not row["starter"] and row["points"] == row["personal_fouls"] == 0
+            for row in bench
+        )
+        assert publication.player_stats.count() == 12
+
+        client = Client()
+        client.force_login(setup["admin"])
+        csv_response = client.get(f"/api/v1/scoresheets/{scoresheet.id}/exports/csv")
+        xlsx_response = client.get(f"/api/v1/scoresheets/exports/seasons/{game.season_id}/xlsx")
+        assert csv_response.status_code == xlsx_response.status_code == 200
+        workbook = load_workbook(io.BytesIO(xlsx_response.content), read_only=True)
+        exported = list(workbook["球员单场统计"].iter_rows(min_row=2, values_only=True))
+        assert len(exported) == 12
+        for row in bench:
+            assert row["player_name"] in csv_response.content.decode("utf-8-sig")
+            assert any(item[3] == row["player_name"] and item[5] == "否" for item in exported)
+        leaderboard = Client().get("/api/v1/public/leaderboards/players")
+        assert leaderboard.status_code == 200
+        ranked = leaderboard.json()["items"]
+        assert not {row["player_id"] for row in bench} & {row["player_id"] for row in ranked}
+        assert all(row["games_played"] == 1 for row in ranked)
 
 
 def test_public_stats_and_exports_use_the_immutable_publication_snapshot(tmp_path):

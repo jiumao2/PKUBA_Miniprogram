@@ -166,6 +166,24 @@ beforeEach(() => {
 });
 
 describe("server-authoritative original image replacement", () => {
+  it("stops editing without re-acquiring or overwriting the shown draft after forfeit sync", async () => {
+    await mount();
+    const before = clone(fixture.server!.draft);
+    const acquired = fixture.api.acquireScoresheetLease.mock.calls.length;
+    fixture.api.syncScoresheet.mockResolvedValue({ ...syncPayload(),
+      current_version: fixture.server!.draft_version + 1, current_event: 30,
+      requires_full_reload: true, lease: null,
+      game_status: "FORFEIT", workflow_mode: "FORFEIT_ATTACHMENT" });
+    await poll();
+    expect(container.textContent).toContain("比赛已弃权或作废");
+    expect(container.textContent).toContain("本地输入已保留");
+    expect(fixture.api.acquireScoresheetLease).toHaveBeenCalledTimes(acquired);
+    expect(fixture.api.saveScoresheetDraft).not.toHaveBeenCalled();
+    expect(fixture.server!.draft).toEqual(before);
+    await poll();
+    expect(fixture.api.acquireScoresheetLease).toHaveBeenCalledTimes(acquired);
+  });
+
   it.each(["DRAFT", "PUBLISHED"])("hides forbidden source replacement despite an editable %s lease", async (status) => {
     fixture.server!.status = status as ScoresheetDetail["status"];
     fixture.server!.can_upload_source = false;

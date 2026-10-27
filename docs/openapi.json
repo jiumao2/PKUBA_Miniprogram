@@ -22693,6 +22693,18 @@
       },
       "ScoresheetQueueItemOut": {
         "properties": {
+          "game_status": {
+            "title": "Game Status",
+            "type": "string"
+          },
+          "workflow_mode": {
+            "enum": [
+              "NORMAL",
+              "FORFEIT_ATTACHMENT"
+            ],
+            "title": "Workflow Mode",
+            "type": "string"
+          },
           "game_id": {
             "format": "uuid",
             "title": "Game Id",
@@ -22821,6 +22833,8 @@
           }
         },
         "required": [
+          "game_status",
+          "workflow_mode",
           "game_id",
           "game_code",
           "game_label",
@@ -23562,6 +23576,18 @@
       },
       "ScoresheetDetailOut": {
         "properties": {
+          "game_status": {
+            "title": "Game Status",
+            "type": "string"
+          },
+          "workflow_mode": {
+            "enum": [
+              "NORMAL",
+              "FORFEIT_ATTACHMENT"
+            ],
+            "title": "Workflow Mode",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -23685,6 +23711,8 @@
           }
         },
         "required": [
+          "game_status",
+          "workflow_mode",
           "id",
           "game",
           "source",
@@ -24063,6 +24091,18 @@
       },
       "ScoresheetSyncOut": {
         "properties": {
+          "game_status": {
+            "title": "Game Status",
+            "type": "string"
+          },
+          "workflow_mode": {
+            "enum": [
+              "NORMAL",
+              "FORFEIT_ATTACHMENT"
+            ],
+            "title": "Workflow Mode",
+            "type": "string"
+          },
           "scoresheet_id": {
             "format": "uuid",
             "title": "Scoresheet Id",
@@ -24155,6 +24195,8 @@
           }
         },
         "required": [
+          "game_status",
+          "workflow_mode",
           "scoresheet_id",
           "current_version",
           "current_event",

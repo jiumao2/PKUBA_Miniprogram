@@ -164,11 +164,11 @@ export default function ScoresheetListPage() {
                   {item.date} · {item.start_time}
                 </Text>
                 <Text className={`sheet-list-status status-${item.status.toLowerCase()}`}>
-                  {STATUS[item.status] ?? item.status}
+                  {item.workflow_mode === "FORFEIT_ATTACHMENT" ? "弃权赛果已发布" : STATUS[item.status] ?? item.status}
                 </Text>
               </View>
               <Text className="sheet-list-label">{item.game_label}</Text>
-              {item.recognition_status && (
+              {item.workflow_mode !== "FORFEIT_ATTACHMENT" && item.recognition_status && (
                 <Text className="sheet-list-recognition">
                   {item.recognition_status === "SUCCEEDED"
                     ? "识别完成"
@@ -180,7 +180,9 @@ export default function ScoresheetListPage() {
                 </Text>
               )}
             </View>
-            {item.scoresheet_id ? (
+            {item.workflow_mode === "FORFEIT_ATTACHMENT" ? (
+              <Button className="sheet-list-action" onClick={() => Taro.navigateTo({ url: `/pages/game-media/index?id=${item.game_id}` })}>查看资料 / 可选上传</Button>
+            ) : item.scoresheet_id ? (
               <Button
                 className="sheet-list-action"
                 onClick={() => Taro.navigateTo({ url: `/scoresheet/pages/editor/index?id=${item.scoresheet_id}` })}

@@ -47,7 +47,7 @@
       "vite": "7.3.7"
     },
     "adm-zip": "0.6.1",
-    "fast-uri": "3.1.8",
+    "fast-uri": "3.1.9",
     "http-cache-semantics": "4.3.0",
     "js-yaml": "4.3.2",
     "postcss-selector-parser": "7.1.6",

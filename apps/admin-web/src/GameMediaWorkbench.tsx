@@ -249,6 +249,27 @@ export function GameMediaWorkbench({
     }
   };
 
+  const uploadForfeitSource = async (file: File) => {
+    if (!selectedGame?.can_upload_source || busy) return;
+    const source = assets.find((asset) => asset.game_id === selectedGame.game_id && asset.kind === "SCORESHEET");
+    if (!window.confirm("确认保存本场弃权记录表附件？只保存原图，不进行识别或发布球员统计。")) return;
+    const operation = `forfeit:${selectedGame.game_id}:${source?.id ?? "new"}:${source?.version ?? 0}:${file.name}:${file.size}:${file.lastModified}`;
+    const key = mediaOperationKeys.current.get(operation) ?? createIdempotencyKey();
+    mediaOperationKeys.current.set(operation, key);
+    setBusy(true);
+    try {
+      if (source) await client.replaceAdminGameMedia(source.id, source.version, true, file, key);
+      else await client.uploadAdminGameMedia(selectedGame.game_id, "SCORESHEET", true, file, key);
+      mediaOperationKeys.current.delete(operation);
+      setMessage("记录表附件已保存，弃权赛果不变。");
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : "附件保存结果未确认，请刷新后重试。");
+    } finally {
+      await Promise.all([loadAssets(), loadGames()]);
+      setBusy(false);
+    }
+  };
+
   const uploadPhotos = async (
     kind: "GROUP_PHOTO" | "GAME_PHOTO",
     files: File[],
@@ -409,7 +430,7 @@ export function GameMediaWorkbench({
                     <span className="media-game-when"><strong>{formatDate(game.date)}</strong><small>{game.start_time} · {game.division_name}</small></span>
                     <span className="media-game-matchup"><strong>{game.home_name}</strong><em aria-hidden>—</em><strong>{game.away_name}</strong></span>
                     <span className="media-game-meta">
-                      <span className={`scoresheet-state state-${game.status.toLocaleLowerCase()}`}>{scoresheetStatusLabels[game.status] ?? game.status}</span>
+                      <span className={`scoresheet-state state-${game.workflow_mode === "FORFEIT_ATTACHMENT" ? "published" : game.status.toLocaleLowerCase()}`}>{game.workflow_mode === "FORFEIT_ATTACHMENT" ? "弃权赛果已发布" : scoresheetStatusLabels[game.status] ?? game.status}</span>
                       <span><ImageIcon size={13} />{photos.length}</span>
                     </span>
                   </button>
@@ -444,6 +465,13 @@ export function GameMediaWorkbench({
               </header>
 
               <section className="media-detail-section scoresheet-section">
+                {selectedGame.workflow_mode === "FORFEIT_ATTACHMENT" ? <>
+                  <div className="media-section-heading"><div><span>01</span><div><h3>记录表（选填）</h3><p>弃权比赛无需识别、核对或发布记录表。</p></div></div><strong>弃权赛果已发布</strong></div>
+                  <p>原图和历史内容保留；记录表及比赛照片均可不上传。</p>
+                  {assets.filter((asset) => asset.game_id === selectedGame.game_id && asset.kind === "SCORESHEET").map((asset) =>
+                    asset.content_url ? <a key={asset.id} href={asset.content_url} target="_blank" rel="noreferrer">查看记录表原图</a> : <p key={asset.id}>记录表原图已归档或不可在线查看</p>)}
+                  {selectedGame.can_upload_source && <PhotoUploadButton disabled={busy} label="上传或替换记录表附件" onFiles={(files) => { if (files[0]) void uploadForfeitSource(files[0]); }} />}
+                </> : <>
                 <div className="media-section-heading">
                   <div><span>01</span><div><h3>记录表</h3><p>识别、人工核对、校验与发布在同一流程中完成。</p></div></div>
                   <strong>{scoresheetStatusLabels[selectedGame.status] ?? selectedGame.status}</strong>
@@ -488,6 +516,7 @@ export function GameMediaWorkbench({
                     </div>
                   )}
                 </div>
+                </>}
               </section>
 
               <section className="media-detail-section photos-section">
