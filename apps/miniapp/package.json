@@ -30,7 +30,7 @@
     "@vitejs/plugin-react": "4.7.0",
     "babel-preset-taro": "4.2.1",
     "typescript": "^5.9.2",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.12",
     "webpack": "5.104.1"
   }
 }

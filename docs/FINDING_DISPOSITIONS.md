@@ -119,6 +119,10 @@
 
 ### NPM-BUILD-ONLY-001 — 两项构建工具漏洞限时接受
 
+2026-10-27 状态更新：上游已于 2026-10-23 撤回 `GHSA-vfj7-8cjw-p6xm`，说明其不具实际可利用性；实时 npm audit 已不包含该公告，因此移除失效的 braces 机器例外，保留下表历史决定。braces 未升级，不声称已修复；decompress 的限时例外继续生效。
+
+2026-10-27 经用户批准复核：兼容升级 Vitest 4.1.12、body-parser 1.20.9、fast-uri 3.1.9、follow-redirects 1.16.2、launch-editor 2.14.2 后，原有例外的包路径和命令边界未扩大；重新绑定锁文件指纹。braces 仍仅处理受控构建文件模式；decompress 的模板解包路径未被 build/watch/test 调用。另按用户决定在机器清单登记 `serialize-javascript` 的低危 `GHSA-m5mm-p8h7-m29v` 至 2026-11-30：仅用于受控缓存键、CSS/source map 和压缩选项，不把攻击者提供的函数嵌入 HTML。其 7.1.3 修复版超出上游插件的 `^6.0.2` 合同；这是接受风险，不是修复漏洞。
+
 | 字段 | 内容 |
 | --- | --- |
 | 来源 / 公开引用 | [braces advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)、[decompress advisory](https://github.com/advisories/GHSA-hrh2-vp3x-79xf)、[`dependency-audit-allowlist.json`](dependency-audit-allowlist.json)。 |
