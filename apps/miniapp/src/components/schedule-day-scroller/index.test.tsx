@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import React from "react";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ getScheduleDays: vi.fn() }));
+const state = vi.hoisted(() => ({
+  getScheduleDays: vi.fn(),
+  upper: () => {},
+  lower: () => {},
+}));
 
 vi.mock("@tarojs/components", () => ({
   Button: ({ children, onClick, ...props }: any) => (
@@ -21,9 +25,11 @@ vi.mock("@tarojs/components", () => ({
     onScrollToUpper: _onScrollToUpper,
     onScrollToLower: _onScrollToLower,
     ...props
-  }: any) => (
-    <div data-scroll-target={scrollIntoView} {...props}>{children}</div>
-  ),
+  }: any) => {
+    state.upper = _onScrollToUpper;
+    state.lower = _onScrollToLower;
+    return <div data-scroll-target={scrollIntoView} {...props}>{children}</div>;
+  },
   Text: ({ children, ...props }: any) => <span {...props}>{children}</span>,
   View: ({ children, ...props }: any) => <div {...props}>{children}</div>,
 }));
@@ -39,6 +45,63 @@ afterEach(() => {
 });
 
 describe("ScheduleDayScroller initial focus", () => {
+  const windowResult = {
+    today: "2026-09-03", focus_date: "2026-09-03",
+    days: [{ date: "2026-09-03", games: [] }],
+    has_previous: true, has_next: true, total_games: 10,
+  };
+
+  it("keeps the native sibling position stable while refreshing and after failure", async () => {
+    let rejectRefresh!: (reason: Error) => void;
+    state.getScheduleDays.mockResolvedValueOnce(windowResult)
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectRefresh = reject; }));
+    const view = render(<ScheduleDayScroller refreshKey={1} onGameClick={vi.fn()} />);
+    await screen.findByText("今日无比赛");
+    const scroller = document.querySelector("[data-scroll-target]")!;
+    const slot = () => Array.from(scroller.parentElement!.children).indexOf(scroller);
+    const originalSlot = slot();
+    view.rerender(<ScheduleDayScroller refreshKey={2} onGameClick={vi.fn()} />);
+    await screen.findByText("正在更新赛程");
+    expect(slot()).toBe(originalSlot);
+    await act(async () => rejectRefresh(new Error("offline")));
+    expect(screen.queryByText("正在更新赛程")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-scroll-target]")).toBe(scroller);
+    expect(slot()).toBe(originalSlot);
+  });
+
+  it("ignores programmatic boundary events but allows user paging in both directions", async () => {
+    state.getScheduleDays.mockResolvedValue(windowResult);
+    render(<ScheduleDayScroller refreshKey={1} onGameClick={vi.fn()} />);
+    await screen.findByText("今日无比赛");
+    const scroller = document.querySelector("[data-scroll-target]")!;
+    await act(async () => { state.upper(); state.lower(); });
+    expect(state.getScheduleDays).toHaveBeenCalledTimes(1);
+    fireEvent.touchStart(scroller);
+    await act(async () => state.upper());
+    expect(state.getScheduleDays).toHaveBeenLastCalledWith(expect.stringContaining("direction=before"));
+    await act(async () => state.lower());
+    expect(state.getScheduleDays).toHaveBeenLastCalledWith(expect.stringContaining("direction=after"));
+    fireEvent.click(screen.getByText("回到今天"));
+    await act(async () => { state.upper(); state.lower(); });
+    expect(state.getScheduleDays).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not let a pending earlier page replace a newer return-to-today target", async () => {
+    let resolveBefore!: (value: unknown) => void;
+    state.getScheduleDays.mockResolvedValueOnce({ ...windowResult,
+      days: [{ date: "2026-09-02", games: [] }, ...windowResult.days],
+    }).mockImplementationOnce(() => new Promise((resolve) => { resolveBefore = resolve; }));
+    render(<ScheduleDayScroller refreshKey={1} onGameClick={vi.fn()} />);
+    await screen.findByRole("button", { name: "回到今天" });
+    const scroller = document.querySelector("[data-scroll-target]")!;
+    fireEvent.touchStart(scroller);
+    await act(async () => state.upper());
+    fireEvent.click(screen.getByText("回到今天"));
+    await act(async () => resolveBefore({ ...windowResult, days: [{ date: "2026-09-01", games: [] }] }));
+    expect(scroller).toHaveAttribute("data-scroll-target", scheduleDayAnchor("2026-09-03"));
+    expect(screen.queryByText("9月1日 周二")).not.toBeInTheDocument();
+  });
+
   it("commits the today placeholder and anchor in the first render update", async () => {
     state.getScheduleDays.mockResolvedValue({
       today: "2026-09-03",

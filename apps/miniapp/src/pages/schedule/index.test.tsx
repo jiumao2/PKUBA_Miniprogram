@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
 import React from "react";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   consumeScheduleFocusIntent: vi.fn(),
+  show: () => {},
+  scrollerRender: vi.fn(),
 }));
 
 vi.mock("@tarojs/taro", async () => {
-  const ReactModule = await import("react");
   return {
-    useDidShow: (callback: () => void) => ReactModule.useEffect(callback, []),
+    useDidShow: (callback: () => void) => { state.show = callback; },
   };
 });
 vi.mock("@tarojs/components", () => ({
@@ -21,9 +22,10 @@ vi.mock("@tarojs/components", () => ({
 vi.mock("../../api", () => ({ api: { getBrackets: vi.fn() } }));
 vi.mock("../../components/bracket-view", () => ({ BracketView: () => null }));
 vi.mock("../../components/schedule-day-scroller", () => ({
-  ScheduleDayScroller: ({ focusIntent }: any) => (
-    <div data-testid="schedule-focus">{focusIntent?.date ?? "today"}</div>
-  ),
+  ScheduleDayScroller: ({ focusIntent, refreshKey }: any) => {
+    state.scrollerRender(refreshKey);
+    return <div data-testid="schedule-focus">{focusIntent?.date ?? "today"}</div>;
+  },
 }));
 vi.mock("../../navigation", () => ({
   consumeScheduleFocusIntent: state.consumeScheduleFocusIntent,
@@ -44,8 +46,19 @@ describe("SchedulePage calendar handoff", () => {
     state.consumeScheduleFocusIntent.mockReturnValue({ date: "2026-04-18", id: 9 });
 
     render(<SchedulePage />);
+    act(() => state.show());
 
     expect(await screen.findByTestId("schedule-focus")).toHaveTextContent("2026-04-18");
     expect(state.consumeScheduleFocusIntent).toHaveBeenCalledTimes(1);
+  });
+
+  it("mounts the scroller only after first show and refreshes on subsequent shows", () => {
+    state.consumeScheduleFocusIntent.mockReturnValue(null);
+    render(<SchedulePage />);
+    expect(state.scrollerRender).not.toHaveBeenCalled();
+    act(() => state.show());
+    expect(state.scrollerRender.mock.calls).toEqual([[1]]);
+    act(() => state.show());
+    expect(state.scrollerRender.mock.calls).toEqual([[1], [2]]);
   });
 });

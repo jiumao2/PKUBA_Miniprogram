@@ -51,7 +51,7 @@
     "http-cache-semantics": "4.3.0",
     "js-yaml": "4.3.2",
     "postcss-selector-parser": "7.1.6",
-    "qs": "6.16.0",
+    "qs": "6.16.1",
     "shell-quote": "1.11.0",
     "swiper": "$swiper",
     "webpack": "5.104.1",

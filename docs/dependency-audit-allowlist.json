@@ -2,6 +2,33 @@
   "schema_version": 2,
   "entries": [
     {
+      "id": "GHSA-qr28-fpjm-wq7f",
+      "package": "decode-uri-component",
+      "scope": "development",
+      "dependency_path": "@tarojs/cli > download/latest-version > got > cacheable-request > normalize-url > query-string > decode-uri-component 0.2.2",
+      "command_boundary": "仅 Taro create/update 的模板或版本查询 URL 处理链；PKUBA build/watch/test 不调用这些命令，不向此依赖传入外部 URL。",
+      "expires_on": "2026-11-30",
+      "reason": "用户于 2026-11-03 接受此 high 公告的限时构建风险。恶意百分号编码可耗尽处理资源；修复版 0.5.1 改为 ESM 默认导出，不兼容 query-string 5 的 CommonJS 函数调用。漏洞仍存在，不适用于线上请求或未来模板命令。"
+    },
+    {
+      "id": "GHSA-3g3m-2fjr-6pw4",
+      "package": "glob",
+      "scope": "development",
+      "dependency_path": "@tarojs/plugin-doctor > glob 10.2.6; stylus > glob 10.5.0",
+      "command_boundary": "仅对受控仓库配置、样式路径执行同步文件匹配，不接收线上模式，不使用 AbortSignal 作为遍历资源边界。",
+      "expires_on": "2026-11-30",
+      "reason": "用户于 2026-11-03 接受此 moderate 公告的限时构建风险。取消后继续遍历可能耗尽构建资源；修复版 14.0.2 超出上游 10.x 合同，后续独立评估工具链升级。漏洞仍存在，不授权处理不可信目录或模式。"
+    },
+    {
+      "id": "GHSA-g3hv-75wg-m249",
+      "package": "minimatch",
+      "scope": "development",
+      "dependency_path": "Taro/ESLint/glob/postcss-url and openapi-typescript > @redocly/openapi-core > minimatch 3.x/5.x/9.x",
+      "command_boundary": "只匹配受代码评审控制的仓库文件、样式及本地生成 OpenAPI 路径，不接收用户上传的匹配模式或远程规范。",
+      "expires_on": "2026-11-30",
+      "reason": "用户于 2026-11-03 接受此 moderate 公告的限时构建风险。恶意模式可能放大匹配工作量；修复版 11.0.1 的命名导出不兼容现有 Redocly 等调用的 CommonJS 函数接口。漏洞仍存在，不适用于线上输入或不可信仓库构建。"
+    },
+    {
       "id": "GHSA-hrh2-vp3x-79xf",
       "package": "decompress",
       "scope": "development",
@@ -11,7 +38,7 @@
       "reason": "用户于 2026-10-15 接受未调用模板解包路径的限时风险；不是漏洞修复，不适用于生产媒体、备份恢复或未来模板命令。",
       "build_only": {
         "severity": "critical",
-        "lock_sha256": "aa579fdf86c2e540dc039560788c0fa5111498b41e5aa97dd2e39020aaeb244e",
+        "lock_sha256": "ef1856f287ae7cc553a1db28ad0da950e5299c310fb95eb573a92189933b4d6a",
         "usage_sha256": "a484118ed65e252175de831ac20a48fc441045c1b46cd0a9acbab7df9df8ae70"
       }
     },
