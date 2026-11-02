@@ -47,6 +47,8 @@ export function ScheduleDayScroller({
   const beforeBusyRef = useRef<number | null>(null);
   const afterBusyRef = useRef<number | null>(null);
   const requestVersionRef = useRef(0);
+  const userScrollRef = useRef(false);
+  const positionVersionRef = useRef(0);
 
   function commitDays(next: ScheduleDay[]) {
     daysRef.current = next;
@@ -73,6 +75,8 @@ export function ScheduleDayScroller({
     if (initialBusyRef.current !== null && !force) return;
     const requestVersion = ++requestVersionRef.current;
     initialBusyRef.current = requestVersion;
+    userScrollRef.current = false;
+    positionVersionRef.current += 1;
     setInitialLoading(true);
     setInitialError("");
     try {
@@ -125,6 +129,7 @@ export function ScheduleDayScroller({
 
   async function loadBefore() {
     const requestVersion = requestVersionRef.current;
+    const positionVersion = positionVersionRef.current;
     if (
       beforeBusyRef.current === requestVersion
       || !hasPrevious
@@ -136,7 +141,8 @@ export function ScheduleDayScroller({
     const anchor = daysRef.current[0].date;
     try {
       const result = await api.getScheduleDays(queryFor("before", `cursor=${anchor}`));
-      if (requestVersion !== requestVersionRef.current) return;
+      if (requestVersion !== requestVersionRef.current
+        || positionVersion !== positionVersionRef.current) return;
       setScrollTarget(scheduleDayAnchor(anchor));
       commitDays(mergeScheduleDays(daysRef.current, result.days));
       setHasPrevious(result.has_previous);
@@ -204,6 +210,8 @@ export function ScheduleDayScroller({
 
   function returnToToday() {
     if (!todayDate) return;
+    userScrollRef.current = false;
+    positionVersionRef.current += 1;
     if (daysRef.current.some((day) => day.date === todayDate)) {
       setScrollTarget(scheduleDayAnchor(todayDate));
       return;
@@ -228,12 +236,18 @@ export function ScheduleDayScroller({
   }
 
   return <View className={`schedule-window ${mode === "admin" ? "is-admin" : ""}`}>
-    {refreshing && <View className="schedule-refreshing"><Text>正在更新赛程</Text></View>}
-    {initialError && (
-      <Button className="direction-retry" onClick={() => void loadInitial()}>
-        {initialError} · 重新加载
-      </Button>
-    )}
+    {/* Keep these slots mounted: moving a native ScrollView between sibling
+        indexes resets its scroll position in the WeChat renderer. */}
+    <View>
+      {refreshing && <View className="schedule-refreshing"><Text>正在更新赛程</Text></View>}
+    </View>
+    <View>
+      {initialError && (
+        <Button className="direction-retry" onClick={() => void loadInitial()}>
+          {initialError} · 重新加载
+        </Button>
+      )}
+    </View>
     <ScrollView
       className="schedule-day-scroll"
       scrollY
@@ -242,11 +256,14 @@ export function ScheduleDayScroller({
       upperThreshold={100}
       lowerThreshold={160}
       scrollIntoView={scrollTarget}
+      onTouchStart={() => {
+        if (initialBusyRef.current === null) userScrollRef.current = true;
+      }}
       onScroll={() => {
         if (scrollTarget) setScrollTarget("");
       }}
-      onScrollToUpper={() => void loadBefore()}
-      onScrollToLower={() => void loadAfter()}
+      onScrollToUpper={() => { if (userScrollRef.current) void loadBefore(); }}
+      onScrollToLower={() => { if (userScrollRef.current) void loadAfter(); }}
     >
       <View className="schedule-scroll-content">
         <DirectionalState

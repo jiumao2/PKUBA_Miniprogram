@@ -86,7 +86,7 @@ export default function SchedulePage() {
           </View>
         </View>
       </View>
-      {view === "schedule" && (
+      {view === "schedule" && scheduleRefreshKey > 0 && (
         <ScheduleDayScroller
           focusIntent={scheduleFocus}
           refreshKey={scheduleRefreshKey}
