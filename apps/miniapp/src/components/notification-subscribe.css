@@ -1,0 +1,2 @@
+.subscribe-panel { display: flex; flex-direction: column; gap: 18rpx; margin-top: 20rpx; padding: 24rpx; border: 1rpx solid #e3dbd0; border-radius: 18rpx; background: #fffdf9; font-size: 26rpx; line-height: 1.6; }
+.subscribe-panel button { width: 100%; margin: 0; }

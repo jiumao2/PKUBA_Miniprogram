@@ -4,6 +4,18 @@
 
 下列高风险命令接受可选请求头 `Idempotency-Key`：
 
+- `POST /api/v1/registrations/`
+- `PUT /api/v1/registrations/{registration_id}`
+- `POST /api/v1/registrations/{registration_id}/handover`
+- `POST /api/v1/registrations/handovers/{handover_id}/resolve`
+- `PUT /api/v1/admin/registrations/seasons/{season_id}/policy`
+- `POST /api/v1/admin/registrations/{registration_id}/review`
+- `POST /api/v1/notifications/choices`
+
+- `PUT /api/v1/referees/seasons/{season_id}/availability`
+- `PUT /api/v1/admin/referees/seasons/{season_id}/qualifications`
+- `PUT /api/v1/admin/referees/seasons/{season_id}/games/{game_id}/assignments`
+
 - `POST /api/v1/reschedule-requests/`
 - `POST /api/v1/scoresheets/{scoresheet_id}/publish`
 - `POST /api/v1/admin/schedule-imports/{batch_id}/confirm`

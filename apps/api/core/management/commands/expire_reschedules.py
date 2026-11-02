@@ -7,6 +7,7 @@ import time
 from django.core.management.base import BaseCommand
 
 from core.services.game_media import reconcile_staged_game_media
+from core.services.notifications import process_delivery
 from core.services.rescheduling import expire_due_confirmations
 from core.services.system_write_fence import (
     SystemWriteFenceActive,
@@ -30,8 +31,10 @@ class Command(BaseCommand):
                 with shared_system_write_access():
                     count = expire_due_confirmations()
                     media_summary = reconcile_staged_game_media(limit=100)
+                    notification_processed = process_delivery()
             except SystemWriteFenceActive:
                 count = 0
+                notification_processed = False
                 media_summary = {
                     "promoted": 0,
                     "failed": 0,
@@ -41,10 +44,15 @@ class Command(BaseCommand):
             touch_worker_heartbeat(
                 "expiry",
                 worker,
-                details={"expired": count, "media_staging": media_summary},
+                details={
+                    "expired": count,
+                    "media_staging": media_summary,
+                    "notification_processed": notification_processed,
+                },
             )
             if count:
                 self.stdout.write(f"expired={count}")
             if not options["loop"]:
                 break
-            time.sleep(max(options["interval"], 5))
+            if not notification_processed:
+                time.sleep(max(options["interval"], 5))

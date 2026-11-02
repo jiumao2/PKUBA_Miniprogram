@@ -80,6 +80,7 @@ vi.mock("../auth.ts", () => ({
 
 import RescheduleCreatePage from "./reschedule-create/index";
 import InboxPage from "./inbox/index";
+vi.mock("../components/notification-subscribe", () => ({ NotificationSubscribe: () => null }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

@@ -137,7 +137,16 @@ export default function MinePage() {
           </View>
 
           <View className="account-section">
+            <Text className="section-title">裁判与记录台</Text>
+            <Text className="section-detail">查看本赛季人员资格、报名可用时段和比赛选派安排。</Text>
+            <Button className="role-workspace-link" onClick={() => void navigateToOnce("/pages/referee/index")}>
+              进入执裁工作台
+            </Button>
+          </View>
+
+          <View className="account-section">
             <Text className="section-title">领队</Text>
+            <Button className="role-workspace-link" onClick={() => void navigateToOnce("/pages/registration/index")}>球队报名与领队传承</Button>
             {me.leader_binding ? (
               <>
                 <View className={`role-line ${genderClass(me.leader_binding.division_gender)}`}>
@@ -152,7 +161,7 @@ export default function MinePage() {
               </>
             ) : (
               <>
-                <Text className="section-detail">每个赛季一人只能认领一队，认领后仅超级管理员可纠正。</Text>
+                <Text className="section-detail">每赛季一人一队；可创建球队报名，也可认领已有球队。领队传承在球队报名页办理。</Text>
                 <Button
                   className="secondary-action"
                   onClick={() => void navigateToOnce("/pages/leader-register/index")}

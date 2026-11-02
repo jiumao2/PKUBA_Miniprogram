@@ -692,6 +692,16 @@ def _initial_import_blockers(
     season: Season, *, exclude_batch_id: object | None = None
 ) -> list[dict]:
     blockers: list[dict] = []
+    from core.models import TeamRegistration
+
+    if TeamRegistration.objects.filter(season=season).exists():
+        blockers.append(
+            {
+                "code": "REGISTRATIONS_EXIST",
+                "message": "本赛季已有领队报名资料，不能执行首次整季名单导入。",
+                "count": 1,
+            }
+        )
     confirmed = season.roster_imports.filter(status=RosterImportBatch.Status.CONFIRMED)
     if exclude_batch_id:
         confirmed = confirmed.exclude(id=exclude_batch_id)
@@ -1047,9 +1057,7 @@ def create_team_with_roster(
             raise RosterManagementError("赛季已被其他操作修改，请刷新。", "VERSION_CONFLICT")
         division = Division.objects.get(id=division_id, season=locked_season)
         _validate_team_name_unique(season=locked_season, division=division, name=normalized_name)
-        team = Team.objects.create(
-            season=locked_season, division=division, name=normalized_name
-        )
+        team = Team.objects.create(season=locked_season, division=division, name=normalized_name)
         for row in normalized_players:
             RosterPlayer.objects.create(
                 team=team,
@@ -1175,9 +1183,8 @@ def save_team_roster(
                 .select_related("season", "division")
                 .get(id=team_id, season=season)
             )
-            if (
-                team.season.status == Season.Status.ARCHIVED
-                and not bool(payload.get("archived_correction_confirmed"))
+            if team.season.status == Season.Status.ARCHIVED and not bool(
+                payload.get("archived_correction_confirmed")
             ):
                 raise RosterManagementError(
                     "归档赛季名单纠错必须在预览后完成独立确认。",
@@ -1241,14 +1248,17 @@ def save_team_roster(
                     )
                     if changed:
                         changed_players.append((player, row))
-                    if player.active and player.jersey_number and (
-                        player.jersey_number != row["jersey_number"] or not row["active"]
+                    if (
+                        player.active
+                        and player.jersey_number
+                        and (player.jersey_number != row["jersey_number"] or not row["active"])
                     ):
                         release_ids.append(player.id)
                 else:
                     new_players.append(row)
             omitted_players = [
-                player for player_id, player in existing.items()
+                player
+                for player_id, player in existing.items()
                 if player_id not in incoming_ids and player.active
             ]
             release_ids.extend(player.id for player in omitted_players if player.jersey_number)
@@ -1264,7 +1274,12 @@ def save_team_roster(
                 player.version += 1
                 player.save(
                     update_fields=[
-                        "name", "jersey_number", "eligible", "active", "version", "updated_at",
+                        "name",
+                        "jersey_number",
+                        "eligible",
+                        "active",
+                        "version",
+                        "updated_at",
                     ]
                 )
             for row in new_players:

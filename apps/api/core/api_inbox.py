@@ -37,6 +37,7 @@ class InboxTaskOut(Schema):
     target_url: str
     created_at: datetime
     updated_at: datetime
+    wechat_status: str | None = None
 
 
 class InboxPageOut(Schema):
@@ -46,6 +47,14 @@ class InboxPageOut(Schema):
 
 def _target_url(item: InboxItem) -> str:
     params = item.route_params if isinstance(item.route_params, dict) else {}
+    if item.route == InboxItem.Route.REGISTRATION:
+        return f"/pages/registration/index?season_id={item.season_id}"
+    if item.route == InboxItem.Route.REFEREE:
+        return "/pages/referee/index"
+    if item.route == InboxItem.Route.LEADER:
+        return "/pages/leader/index"
+    if item.route == InboxItem.Route.GAME:
+        return f"/pages/game-media/index?id={item.object_id}"
     if item.route == InboxItem.Route.RESCHEDULE_REQUEST:
         request_id = str(params.get("request_id") or item.object_id or "")
         return f"/pages/reschedule-requests/index?request_id={request_id}"
@@ -69,6 +78,7 @@ def _serialize(item: InboxItem) -> dict[str, object]:
         "target_url": _target_url(item),
         "created_at": item.created_at,
         "updated_at": item.updated_at,
+        "wechat_status": getattr(getattr(item, "wechat_delivery", None), "status", None),
     }
 
 
@@ -91,7 +101,9 @@ def list_inbox(
     if status not in InboxItem.Status.values:
         return Status(400, {"code": "INBOX_STATUS_INVALID", "message": "任务状态不合法。"})
     page_size = min(max(page_size, 1), 50)
-    items = InboxItem.objects.filter(account=request.auth, status=status)
+    items = InboxItem.objects.filter(account=request.auth, status=status).select_related(
+        "wechat_delivery"
+    )
     if cursor:
         anchor = InboxItem.objects.filter(
             id=cursor,
@@ -101,8 +113,7 @@ def list_inbox(
         if anchor is None:
             return Status(400, {"code": "INBOX_CURSOR_INVALID", "message": "分页位置已失效。"})
         items = items.filter(
-            Q(created_at__lt=anchor.created_at)
-            | Q(created_at=anchor.created_at, id__lt=anchor.id)
+            Q(created_at__lt=anchor.created_at) | Q(created_at=anchor.created_at, id__lt=anchor.id)
         )
     rows = list(items.order_by("-created_at", "-id")[: page_size + 1])
     has_more = len(rows) > page_size
