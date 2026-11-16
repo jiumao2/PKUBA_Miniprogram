@@ -2381,7 +2381,7 @@ def test_recognition_capability_and_removed_stop_endpoint(tmp_path):
     assert capability.json() == {
         "configured": False,
         "provider": "QWEN",
-        "model": "qwen3.8-max-0902",
+        "model": "qwen4-max",
         "prompt_version": "scoresheet-2026-08-24-v25-cn",
         "max_attempts": 4,
         "retry_delays_seconds": [30, 30, 30],
@@ -2413,7 +2413,7 @@ def test_provider_retry_after_longer_than_default_is_honored(tmp_path, monkeypat
         assert 73 <= remaining <= 77
 
 
-@pytest.mark.parametrize("model", ["qwen3.8-max-0902", "qwen3.8-max"])
+@pytest.mark.parametrize("model", ["qwen4-max", "qwen3.8-max-0902", "qwen3.8-max"])
 def test_qwen_request_uses_strict_private_contract_and_audits_image(tmp_path, monkeypatch, model):
     import base64
     import hashlib
