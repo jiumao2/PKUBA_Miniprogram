@@ -1,21 +1,6 @@
 """Period policy is separate from capacity and from a game's source policy."""
 
-from django.db.migrations.recorder import MigrationRecorder
-
 from core.models import Game, Period, RescheduleRequest, Season
-
-ACTIVATION_MIGRATION = "0050_activate_period_usage_policy"
-
-
-def period_management_enabled():
-    """Bridge also enables management after rolling back from the activation release.
-
-    Do not cache this receipt or use a slot-local flag: the retained application
-    must respect the database's activation state. Remove in the activation release.
-    """
-    return MigrationRecorder.Migration.objects.filter(
-        app="core", name=ACTIVATION_MIGRATION
-    ).exists()
 
 
 def lock_game_season(*, game_id=None, request_id=None):

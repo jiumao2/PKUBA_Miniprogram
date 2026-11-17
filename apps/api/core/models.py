@@ -422,7 +422,7 @@ class Period(UUIDModel):
     start_time = models.TimeField()
     sort_order = models.PositiveSmallIntegerField(default=0)
     usage = models.CharField(
-        max_length=16, choices=Usage.choices, default=Usage.ADMIN_ONLY, db_default=Usage.OPEN
+        max_length=16, choices=Usage.choices, default=Usage.ADMIN_ONLY, db_default=Usage.ADMIN_ONLY
     )
 
     class Meta:
