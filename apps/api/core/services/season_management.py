@@ -23,7 +23,7 @@ from core.models import (
     SlotReservation,
     Venue,
 )
-from core.services.period_policy import period_deletion_blocker, period_management_enabled
+from core.services.period_policy import period_deletion_blocker
 from core.services.schedule_capacity import day_type_for_date, season_occupancy_by_slot
 from core.services.superadmin_command_lock import lock_superadmin_commands
 
@@ -216,14 +216,6 @@ def _normalize_configuration(payload: dict, *, season: Season) -> dict:
     )
     expected_codes = {row["code"] for row in periods if row["id"]}
     kept_ids = {str(row["id"]) for row in periods if row["id"]}
-    if not period_management_enabled() and (
-        kept_ids != set(existing_periods)
-        or any(not row["id"] or row["usage"] != existing_periods[str(row["id"])].usage
-               for row in periods)
-    ):
-        raise SeasonManagementError(
-            "PERIOD_MANAGEMENT_NOT_ACTIVE", "时段增删与使用方式管理暂未启用。"
-        )
     for row_id, existing in existing_periods.items():
         if row_id not in kept_ids:
             blocker = period_deletion_blocker(existing)
@@ -604,7 +596,7 @@ def season_configuration(season: Season) -> dict:
         "timezone": season.timezone,
         "version": season.version,
         "editable": season.status != Season.Status.ARCHIVED,
-        "period_management_enabled": period_management_enabled(),
+        "period_management_enabled": True,
         "maintenance_required": season.status not in {
             Season.Status.SETUP,
             Season.Status.ARCHIVED,
@@ -634,7 +626,6 @@ def season_configuration(season: Season) -> dict:
 
 
 def _create_default_configuration(season: Season) -> None:
-    policy_enabled = period_management_enabled()
     for order, (code, name, gender) in enumerate(
         DEFAULT_DIVISIONS[season.competition_type], start=1
     ):
@@ -648,8 +639,7 @@ def _create_default_configuration(season: Season) -> None:
     for order, (code, name, starts_at) in enumerate(DEFAULT_PERIODS, start=1):
         period = Period.objects.create(
             season=season, code=code, name=name, start_time=starts_at, sort_order=order,
-            usage=(Period.Usage.ADMIN_ONLY
-                   if policy_enabled and code in {"p4", "p7"} else Period.Usage.OPEN),
+            usage=Period.Usage.ADMIN_ONLY if code in {"p4", "p7"} else Period.Usage.OPEN,
         )
         for day_type, capacity in DEFAULT_CAPACITIES[code].items():
             PeriodCapacity.objects.create(

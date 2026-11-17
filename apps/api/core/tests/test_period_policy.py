@@ -2,7 +2,6 @@ from datetime import time, timedelta
 from unittest.mock import patch
 
 import pytest
-from django.db.migrations.recorder import MigrationRecorder
 from django.test import Client
 
 from core.api_admin import PreviewSeasonConfigurationIn
@@ -33,16 +32,6 @@ from core.tests.test_role_workspaces import post_json, put_json
 from core.tests.test_season_management import _update_payload
 
 pytestmark = pytest.mark.django_db
-
-
-@pytest.fixture(autouse=True)
-def activated_database():
-    # Exercise the retained bridge against the next release's activation receipt.
-    from core.services.period_policy import ACTIVATION_MIGRATION
-
-    MigrationRecorder.Migration.objects.create(app="core", name=ACTIVATION_MIGRATION)
-    yield
-    MigrationRecorder.Migration.objects.filter(app="core", name=ACTIVATION_MIGRATION).delete()
 
 
 def configuration_payload(season):

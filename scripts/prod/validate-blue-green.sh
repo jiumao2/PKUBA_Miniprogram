@@ -130,7 +130,7 @@ contract=$(sed -n 's/^PKUBA_PREVIOUS_APP_COMPATIBLE=//p' \
 [[ $contract == 1 ]]
 grep -Fqx 'PKUBA_APP_CAPABILITY=period-policy-v1' \
   "$repo_root/infra/release-contract.env"
-grep -Fqx 'PKUBA_REQUIRED_PREVIOUS_APP_CAPABILITY=reschedule-route-v1' \
+grep -Fqx 'PKUBA_REQUIRED_PREVIOUS_APP_CAPABILITY=period-policy-v1' \
   "$repo_root/infra/release-contract.env"
 
 grep -Fq 'PHASE=PREPARED' \
