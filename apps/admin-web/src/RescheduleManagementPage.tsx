@@ -319,6 +319,7 @@ function RequestDetail({ item, busy, voting, candidates, selectedVoters, setSele
           <button className="primary-action" disabled={busy || !selectedVoters.length} onClick={onSubmitVote} type="button">确认发起投票</button>
         </section>
       )}
+      {item.progress_block_reason && <p className="reschedule-error" role="alert">{item.progress_block_reason}</p>}
       {!!item.actions.length && (
         <footer className="reschedule-actions">
           {has("ADMIN_APPROVE") && item.request_type === "SAME_WEEK" && <button className="approve-action" disabled={busy} onClick={() => onAction("ADMIN_APPROVE", "按普通办法批准", "管理员将认定本次申请不属于跨轮次调整，并直接批准；领队无需重新提交。", "ORDINARY")}>按普通办法批准</button>}

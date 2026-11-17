@@ -63,6 +63,7 @@ vi.mock("../components/game-timeline", () => ({
 
 import LeaderWorkspacePage from "./leader/index";
 import RescheduleCreatePage from "./reschedule-create/index";
+import RescheduleRequestsPage from "./reschedule-requests/index";
 
 const game = {
   id: "game-1",
@@ -138,6 +139,24 @@ afterEach(async () => {
 });
 
 describe("leader reschedule pages", () => {
+  it("keeps reject and withdraw visible but hides acceptance for a blocked target", async () => {
+    testState.api.listRescheduleRequests.mockResolvedValue([{
+      id: "request-1", game, status: "WAITING_OPPONENT", status_label: "等待对手确认",
+      request_type_label: "同一自然周", process_route_label: "普通调赛",
+      original_home_name: "本地甲队", original_away_name: "本地乙队",
+      original_date: game.date, original_start_time: "12:50", original_venue_name: "本地场地",
+      target_date: "2026-04-12", target_start_time: "20:30", requester_team_name: "本地甲队",
+      confirmations: [], is_terminal: false, actions: ["RESPOND_OPPONENT", "WITHDRAW"],
+      progress_block_reason: "目标时段已不开放调赛，请重新选择。",
+    }]);
+    await act(async () => root.render(<RescheduleRequestsPage />));
+    await flush();
+    const buttons = [...container.querySelectorAll("button")].map((item) => item.textContent);
+    expect(buttons).not.toContain("同意");
+    expect(buttons).toContain("拒绝");
+    expect(buttons).toContain("撤回申请");
+    expect(container.textContent).toContain("目标时段已不开放调赛");
+  });
   it("renders both leader entry buttons and navigates to their distinct routes", async () => {
     testState.api.getMiniAppMe.mockResolvedValue({
       account: { id: "account-1", username: "领队甲", role: "USER", active: true },

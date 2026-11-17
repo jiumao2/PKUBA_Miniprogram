@@ -20,6 +20,7 @@ from core.models import (
     TeamConfirmation,
 )
 from core.services.idempotency import IdempotencyError, execute_idempotent
+from core.services.period_policy import progress_block_reason
 from core.services.rescheduling import (
     RescheduleError,
     admin_cancel_request,
@@ -107,6 +108,7 @@ class RescheduleRequestOut(Schema):
     confirmation_deadline: datetime
     confirmations: list[ConfirmationOut]
     actions: list[str]
+    progress_block_reason: str | None
     is_terminal: bool
     version: int
     created_at: datetime
@@ -175,6 +177,7 @@ def _error(error: RescheduleError):
         "REQUEST_ALREADY_TERMINAL",
         "ALREADY_RESPONDED",
         "ADMIN_ACTOR_STATE_CHANGED",
+        "TARGET_PERIOD_NOT_OPEN",
     }:
         status = 409
     else:
@@ -258,6 +261,10 @@ def _actions(request_item: RescheduleRequest, actor: Account) -> list[str]:
         if request_item.status == RescheduleRequest.Status.WAITING_ADMIN_FINAL:
             actions.extend(["ADMIN_FINAL_APPROVE", "ADMIN_FINAL_REJECT"])
         actions.append("ADMIN_CANCEL")
+    if progress_block_reason(request_item):
+        actions = [action for action in actions if action not in {
+            "ADMIN_APPROVE", "ADMIN_START_VOTE", "ADMIN_FINAL_APPROVE"
+        }]
     return actions
 
 
@@ -307,6 +314,7 @@ def _request_out(request_item: RescheduleRequest, actor: Account) -> dict[str, o
             for confirmation in request_item.confirmations.all()
         ],
         "actions": _actions(request_item, actor),
+        "progress_block_reason": progress_block_reason(request_item),
         "is_terminal": request_item.is_terminal,
         "version": request_item.version,
         "created_at": request_item.created_at,

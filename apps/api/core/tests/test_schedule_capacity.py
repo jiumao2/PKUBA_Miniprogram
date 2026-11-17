@@ -63,6 +63,7 @@ def test_daily_ledger_uses_sparse_override_and_live_games_plus_active_reservatio
         "period_id": setup["period"].id,
         "period_code": "P1",
         "period_name": "第一时段",
+        "period_usage": "OPEN",
         "nominal_start_time": "12:50",
         "default_capacity": 3,
         "override_capacity": 1,

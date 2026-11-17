@@ -95,7 +95,7 @@ export function CapacityCalendar({
         />
         <CalendarTable
           title="当天可用场次"
-          detail="已扣除正式比赛与有效调赛预留"
+          detail="仅含启用时段，已扣除比赛与预留；领队调入还须开放调赛"
           metric="remaining"
           weeks={calendar.weeks}
           maxValue={calendar.maxRemaining}
@@ -208,8 +208,10 @@ function buildCalendar(ledger: CapacityLedgerRow[]) {
     };
     current.gameCount += row.game_count;
     current.reservationCount += row.reservation_count;
-    current.effectiveCapacity += row.effective_capacity;
-    current.remainingCount += row.remaining_count;
+    if (row.period_usage !== "DISABLED") {
+      current.effectiveCapacity += row.effective_capacity;
+      current.remainingCount += row.remaining_count;
+    }
     current.overCapacity ||= row.over_capacity;
     current.hasOverride ||= row.override_capacity !== null;
     byDate.set(row.date, current);

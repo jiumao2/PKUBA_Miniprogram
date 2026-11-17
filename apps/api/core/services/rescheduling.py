@@ -26,6 +26,7 @@ from core.models import (
     Venue,
 )
 from core.services.inbox_tasks import sync_reschedule_tasks
+from core.services.period_policy import lock_game_season, progress_block_reason
 from core.services.schedule_capacity import effective_capacity
 from core.services.superadmin_command_lock import (
     SuperadminActorStateError,
@@ -328,7 +329,9 @@ def available_reschedule_targets(
     if process_route is not None and process_route not in RescheduleRequest.ProcessRoute.values:
         _raise("PROCESS_ROUTE_INVALID", "调赛处理通道无效，请刷新后重试。")
 
-    periods = list(Period.objects.filter(season=game.season).order_by("sort_order", "start_time"))
+    periods = list(Period.objects.filter(
+        season=game.season, usage=Period.Usage.OPEN
+    ).order_by("sort_order", "start_time"))
     venues = list(
         Venue.objects.filter(
             season=game.season, active=True, is_standard=True
@@ -447,6 +450,7 @@ def submit_reschedule(
     now: datetime | None = None,
 ) -> RescheduleRequest:
     now = now or timezone.now()
+    lock_game_season(game_id=game_id)
     try:
         game = (
             Game.objects.select_for_update(of=("self",))
@@ -486,6 +490,8 @@ def submit_reschedule(
         target_period = Period.objects.get(id=target_period_id, season_id=game.season_id)
     except Period.DoesNotExist:
         _raise("TARGET_PERIOD_INVALID", "目标时段不属于本赛季。")
+    if target_period.usage != Period.Usage.OPEN:
+        _raise("TARGET_PERIOD_NOT_OPEN", "目标时段不开放调赛，请重新选择。")
     if target_date == game.date and target_period.id == game.period_id:
         _raise("TARGET_UNCHANGED", "目标日期和时段与原比赛相同。")
 
@@ -545,6 +551,7 @@ def submit_reschedule(
 
 
 def _locked_request(request_id: UUID) -> tuple[RescheduleRequest, Game, SlotReservation]:
+    lock_game_season(request_id=request_id)
     try:
         request = RescheduleRequest.objects.select_for_update().get(id=request_id)
     except RescheduleRequest.DoesNotExist:
@@ -552,6 +559,12 @@ def _locked_request(request_id: UUID) -> tuple[RescheduleRequest, Game, SlotRese
     game = Game.objects.select_for_update().select_related("season").get(id=request.game_id)
     reservation = SlotReservation.objects.select_for_update().get(id=request.reservation_id)
     return request, game, reservation
+
+
+def _require_open_target(request: RescheduleRequest) -> None:
+    reason = progress_block_reason(request)
+    if reason:
+        _raise("TARGET_PERIOD_NOT_OPEN", reason)
 
 
 def _require_version(request: RescheduleRequest, expected_version: int) -> None:
@@ -628,6 +641,7 @@ def _approve_request(
         return request
     if request.is_terminal:
         _raise("REQUEST_ALREADY_TERMINAL", "申请已进入终态，不能批准。")
+    _require_open_target(request)
     if reservation.status != SlotReservation.Status.ACTIVE:
         _raise("RESERVATION_NOT_ACTIVE", "目标预留已失效，不能批准。")
     if game.active_reschedule_request_id != request.id:
@@ -733,6 +747,8 @@ def respond_to_opponent(
             now,
         )
 
+    if accept:
+        _require_open_target(request)
     confirmation.response = (
         TeamConfirmation.Response.ACCEPTED if accept else TeamConfirmation.Response.REJECTED
     )
@@ -907,6 +923,8 @@ def admin_decide_review_route(
     ):
         _raise("CLASSIFICATION_ACTION_INVALID", "按普通办法处理时应直接批准，无需投票或拒绝。")
     selected_ids = list(selected_team_ids)
+    if action in {"approve", "vote"}:
+        _require_open_target(request)
     if action != "vote" and selected_ids:
         _raise("SELECTED_TEAMS_NOT_ALLOWED", "只有发起指定球队确认时可以提交球队名单。")
     before = _audit_snapshot(request, game, reservation)
@@ -1035,6 +1053,7 @@ def respond_as_selected_team(
             RescheduleRequest.Status.REJECTED,
             now,
         )
+    _require_open_target(request)
     pending_exists = TeamConfirmation.objects.filter(
         request=request,
         purpose=TeamConfirmation.Purpose.VOTER,

@@ -294,10 +294,11 @@ function RequestCard({
         </View>
       )}
 
+      {item.progress_block_reason && <Text className="request-policy-notice">{item.progress_block_reason}</Text>}
       {!!item.actions.length && (
         <View className="request-actions">
-          {has("RESPOND_OPPONENT") && <><Button disabled={busy} onClick={() => onAction("OPPONENT_ACCEPT")}>同意</Button><Button className="outline" disabled={busy} onClick={() => onAction("OPPONENT_REJECT")}>拒绝</Button></>}
-          {has("RESPOND_SELECTED_TEAM") && <><Button disabled={busy} onClick={() => onAction("VOTER_ACCEPT")}>同意</Button><Button className="outline" disabled={busy} onClick={() => onAction("VOTER_REJECT")}>拒绝</Button></>}
+          {has("RESPOND_OPPONENT") && <>{!item.progress_block_reason && <Button disabled={busy} onClick={() => onAction("OPPONENT_ACCEPT")}>同意</Button>}<Button className="outline" disabled={busy} onClick={() => onAction("OPPONENT_REJECT")}>拒绝</Button></>}
+          {has("RESPOND_SELECTED_TEAM") && <>{!item.progress_block_reason && <Button disabled={busy} onClick={() => onAction("VOTER_ACCEPT")}>同意</Button>}<Button className="outline" disabled={busy} onClick={() => onAction("VOTER_REJECT")}>拒绝</Button></>}
           {has("ADMIN_APPROVE") && item.request_type === "SAME_WEEK" && <Button disabled={busy} onClick={() => onAction("ADMIN_APPROVE_ORDINARY")}>按普通办法批准</Button>}
           {has("ADMIN_APPROVE") && <Button disabled={busy} onClick={() => onAction("ADMIN_APPROVE_CROSS_ROUND")}>认定跨轮次并批准</Button>}
           {has("ADMIN_REJECT") && <Button className="outline" disabled={busy} onClick={() => onAction("ADMIN_REJECT_CROSS_ROUND")}>认定跨轮次并拒绝</Button>}

@@ -411,15 +411,29 @@ class Venue(UUIDModel):
 
 
 class Period(UUIDModel):
+    class Usage(models.TextChoices):
+        OPEN = "OPEN", "开放调赛"
+        ADMIN_ONLY = "ADMIN_ONLY", "仅管理员安排"
+        DISABLED = "DISABLED", "停用"
+
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="periods")
     code = models.SlugField(max_length=16)
     name = models.CharField(max_length=40)
     start_time = models.TimeField()
     sort_order = models.PositiveSmallIntegerField(default=0)
+    usage = models.CharField(
+        max_length=16, choices=Usage.choices, default=Usage.ADMIN_ONLY, db_default=Usage.OPEN
+    )
 
     class Meta:
         ordering = ["sort_order", "start_time"]
-        constraints = [models.UniqueConstraint(fields=["season", "code"], name="uniq_period_code")]
+        constraints = [
+            models.UniqueConstraint(fields=["season", "code"], name="uniq_period_code"),
+            models.CheckConstraint(
+                condition=Q(usage__in=["OPEN", "ADMIN_ONLY", "DISABLED"]),
+                name="period_usage_valid",
+            ),
+        ]
 
 
 class PeriodCapacity(UUIDModel):

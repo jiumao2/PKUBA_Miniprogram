@@ -250,9 +250,17 @@ def _normalize_venue_name(value: object) -> tuple[str, bool]:
 
 
 def _default_grid_columns(season: Season) -> list[ParsedGridColumn]:
-    periods = {item.code.lower(): item for item in _periods(season)}
+    periods = {item.code.lower(): item for item in _periods(season)
+               if item.usage != Period.Usage.DISABLED}
     columns: list[ParsedGridColumn] = []
-    for period_code, venue_name, final_only in DEFAULT_GRID_COLUMNS:
+    presets = list(DEFAULT_GRID_COLUMNS)
+    preset_codes = {row[0] for row in presets}
+    for code in periods:
+        if code not in preset_codes:
+            presets.extend((code, venue.name, False) for venue in season.venues.filter(
+                active=True, is_standard=True
+            ).order_by("sort_order", "name"))
+    for period_code, venue_name, final_only in presets:
         period = periods.get(period_code)
         if period is None:
             continue
@@ -329,7 +337,7 @@ def schedule_import_readiness(season: Season) -> dict[str, object]:
     default_columns = _default_grid_columns(season)
     division_count = len(divisions)
     team_count = Team.objects.filter(season=season, active=True).count()
-    period_count = Period.objects.filter(season=season).count()
+    period_count = Period.objects.filter(season=season).exclude(usage=Period.Usage.DISABLED).count()
     venue_count = Venue.objects.filter(season=season, active=True).count()
     calendar_day_count = len(_calendar_dates(season))
     expected_game_count = sum(
@@ -460,6 +468,11 @@ def generate_schedule_template(
     families = _slot_families(season)
     columns = _default_grid_columns(season) if columns is None else columns
     cells = cells or {}
+    if len(columns) > MAX_GRID_COLUMNS:
+        raise ScheduleImportError(
+            f"排期超过 {MAX_GRID_COLUMNS} 列，请先减少启用的时段或标准场地。",
+            "INVALID_GRID_COLUMN_COUNT",
+        )
     if not columns:
         raise ScheduleImportError(
             "当前赛季没有可用于空白模板的默认时段，请先检查赛季时段。",
@@ -1129,7 +1142,8 @@ def _parse_grid_columns(season: Season, sheet) -> list[ParsedGridColumn]:
 
     periods_by_time: dict[str, list[Period]] = defaultdict(list)
     for period in _periods(season):
-        periods_by_time[period.start_time.strftime("%H:%M")].append(period)
+        if period.usage != Period.Usage.DISABLED:
+            periods_by_time[period.start_time.strftime("%H:%M")].append(period)
     columns: list[ParsedGridColumn] = []
     seen: set[tuple[str, str]] = set()
     for sort_order, column_index in enumerate(
@@ -1148,7 +1162,8 @@ def _parse_grid_columns(season: Season, sheet) -> list[ParsedGridColumn]:
         if not matching_periods:
             allowed = "、".join(sorted(periods_by_time))
             raise ScheduleImportError(
-                f"赛程网格 {get_column_letter(column_index)}5 的时间必须匹配赛季时段：{allowed}。",
+                f"赛程网格 {get_column_letter(column_index)}5 的时间必须匹配启用时段：{allowed}；"
+                "请更换停用或已删除的时段列。",
                 "UNKNOWN_GRID_PERIOD",
             )
         if len(matching_periods) > 1:

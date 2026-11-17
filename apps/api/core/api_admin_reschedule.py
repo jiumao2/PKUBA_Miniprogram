@@ -75,6 +75,7 @@ class AdminRescheduleRequestOut(Schema):
     confirmation_deadline: datetime
     confirmations: list[ConfirmationOut]
     actions: list[str]
+    progress_block_reason: str | None
     is_terminal: bool
     version: int
     created_at: datetime

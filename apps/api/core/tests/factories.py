@@ -39,6 +39,7 @@ def placeholder_game(target_season: Season):
     home = ParticipantSlot.objects.create(division=division, code="A1", label="A 组 1 号签")
     away = ParticipantSlot.objects.create(division=division, code="A2", label="A 组 2 号签")
     period = Period.objects.create(
+        usage=Period.Usage.OPEN,
         season=target_season, code="P1", name="第一时段", start_time=time(12, 50)
     )
     venue = Venue.objects.create(season=target_season, name="五四东一")
@@ -75,6 +76,7 @@ def reschedule_setup(*, capacity: int = 3):
     )
     group = CompetitionGroup.objects.create(division=division, code="a", name="A 组")
     period = Period.objects.create(
+        usage=Period.Usage.OPEN,
         season=target_season,
         code="P1",
         name="第一时段",
@@ -101,6 +103,7 @@ def reschedule_setup(*, capacity: int = 3):
         start=2,
     ):
         extra_period = Period.objects.create(
+        usage=Period.Usage.OPEN,
             season=target_season,
             code=code,
             name=name,

@@ -8,6 +8,7 @@ import { SeasonLifecyclePanel } from "./SeasonLifecyclePanel";
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 const configuration: SeasonConfiguration = {
+  period_management_enabled: true,
   id: "10000000-0000-0000-0000-000000000001",
   name: "2027 北大杯",
   competition_type: "PKU_CUP",

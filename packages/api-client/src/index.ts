@@ -591,7 +591,7 @@ export interface ScheduleDraft {
   columns: ScheduleDraftColumn[];
   cells: ScheduleDraftCell[];
   dates: { date: string; weekday: string }[];
-  periods: { id: string; code: string; name: string; start_time: string }[];
+  periods: { id: string; code: string; name: string; start_time: string; usage: string }[];
   matchup_pool: ScheduleDraftMatchup[];
   summary: {
     expected_game_count: number;

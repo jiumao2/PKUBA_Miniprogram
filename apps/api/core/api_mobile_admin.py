@@ -25,12 +25,14 @@ from core.models import (
     Venue,
 )
 from core.services.game_results import append_game_result_revision
+from core.services.period_policy import lock_game_season
 from core.services.rescheduling import (
     RescheduleError,
     _lock_schedule_slot,
     admin_cancel_request,
 )
 from core.services.schedule_capacity import effective_capacity
+from core.services.superadmin_command_lock import lock_superadmin_commands
 
 router = Router(tags=["mobile-admin"], auth=miniapp_bearer_auth)
 
@@ -41,6 +43,7 @@ class MobileAdminErrorOut(Schema):
 
 
 class PeriodOptionOut(Schema):
+    usage: str
     id: UUID
     code: str
     name: str
@@ -342,6 +345,7 @@ def schedule_options(request: HttpRequest):
             {
                 "id": period.id,
                 "code": period.code,
+                "usage": period.usage,
                 "name": period.name,
                 "start_time": period.start_time.strftime("%H:%M"),
             }
@@ -412,6 +416,8 @@ def update_admin_game(
         return _error("SECOND_CONFIRMATION_REQUIRED", "直接修改赛程前必须完成二次确认。")
     try:
         with transaction.atomic():
+            lock_superadmin_commands()
+            lock_game_season(game_id=game_id)
             games = _game_queryset().select_for_update(of=("self",)).filter(id=game_id)
             if not allow_nonpublic:
                 games = games.filter(season__status=Season.Status.PUBLISHED)
@@ -445,6 +451,12 @@ def update_admin_game(
                     "该比赛已有正式记录表；比分或赛果纠错必须在记录表工作台重新发布。",
                     409,
                 )
+            period = Period.objects.get(id=payload.period_id, season=game.season)
+            if period.usage == Period.Usage.DISABLED and (
+                period.id != game.period_id or payload.date != game.date
+                or payload.start_time != game.start_time
+            ):
+                return _error("TARGET_PERIOD_DISABLED", "停用时段不能新增或调整排期。", 409)
             cancelled_request_id = game.active_reschedule_request_id
             if cancelled_request_id and not payload.cancel_active_request:
                 return _error(
@@ -461,7 +473,6 @@ def update_admin_game(
                 )
                 game.refresh_from_db()
 
-            period = Period.objects.get(id=payload.period_id, season=game.season)
             venue = None
             if payload.standard_venue_id:
                 venue = Venue.objects.get(

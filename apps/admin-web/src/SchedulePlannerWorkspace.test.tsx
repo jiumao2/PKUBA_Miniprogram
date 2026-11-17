@@ -30,7 +30,7 @@ const draft: ScheduleDraft = {
   source_name: "",
   updated_at: "2026-08-21T00:00:00Z",
   periods: [
-    { id: "period-1", code: "p1", name: "第一时段", start_time: "12:50" },
+    { id: "period-1", code: "p1", name: "第一时段", start_time: "12:50", usage: "OPEN" },
   ],
   dates: [
     { date: "2026-03-21", weekday: "周六" },
