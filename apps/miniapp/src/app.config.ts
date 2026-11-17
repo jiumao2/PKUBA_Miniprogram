@@ -5,6 +5,8 @@ export default defineAppConfig({
     "pages/standings/index",
     "pages/data/index",
     "pages/mine/index",
+    "pages/referee/index",
+    "pages/registration/index",
     "pages/auth/index",
     "pages/leader-register/index",
     "pages/admin-register/index",

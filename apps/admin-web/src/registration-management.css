@@ -1,0 +1,21 @@
+.registration-management { display: grid; gap: 18px; min-width: 0; }
+.registration-management h2, .registration-management h3 { margin: 0 0 12px; }
+.registration-panel { border: 1px solid #ddd7ce; border-radius: 16px; padding: 22px; background: #fffdf9; min-width: 0; }
+.registration-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.registration-management label { display: grid; gap: 7px; min-width: 0; }
+.registration-management input, .registration-management select, .registration-management textarea { padding: 10px 12px; border: 1px solid #c9c1b7; border-radius: 8px; background: white; max-width: 100%; box-sizing: border-box; }
+.registration-management textarea { width: min(620px, 100%); min-height: 80px; }
+.registration-management button { border: 1px solid #c9c1b7; border-radius: 8px; padding: 10px 14px; background: #fff; cursor: pointer; }
+.registration-management button:disabled { opacity: .48; cursor: default; }
+.registration-muted { color: #726b61; }
+.registration-error { color: #a31523; white-space: pre-wrap; }
+.registration-list { display: grid; gap: 10px; }
+.registration-list article { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 16px; border: 1px solid #e4ded5; border-radius: 12px; background: white; }
+.registration-list p { margin: 6px 0 0; }
+.registration-table-wrap { overflow-x: auto; }
+.registration-management table { width: 100%; min-width: 480px; border-collapse: collapse; }
+.registration-management th, .registration-management td { padding: 11px; border-bottom: 1px solid #e4ded5; text-align: left; }
+.registration-review { display: grid; gap: 14px; margin-top: 22px; }
+.registration-confirm { border-left: 4px solid #bb1f2d; padding: 14px; background: #fcf0ec; }
+.registration-history { border-top: 1px solid #e4ded5; margin-top: 14px; padding-top: 10px; overflow-wrap: anywhere; }
+@media(max-width: 600px) { .registration-panel { padding: 15px; } .registration-management input, .registration-management select { width: 100%; } .registration-toolbar > label { flex: 1 1 100%; } .registration-panel > p { overflow-wrap: anywhere; } }

@@ -342,6 +342,27 @@ def _season_querysets(season: Season) -> list[tuple[str, models.QuerySet]]:
         ("draw_assignments", m.DrawAssignment.objects.filter(slot__division__season=season)),
         ("roster_players", m.RosterPlayer.objects.filter(team__season=season)),
         ("leader_bindings", m.SeasonLeaderBinding.objects.filter(season=season)),
+        ("registration_policy", m.RegistrationPolicy.objects.filter(season=season)),
+        ("team_registrations", m.TeamRegistration.objects.filter(season=season)),
+        (
+            "registration_submissions",
+            m.RegistrationSubmission.objects.filter(registration__season=season),
+        ),
+        (
+            "registration_decisions",
+            m.RegistrationDecision.objects.filter(submission__registration__season=season),
+        ),
+        ("registration_player_claims", m.RegistrationPlayerClaim.objects.filter(season=season)),
+        (
+            "registration_player_identities",
+            m.RegistrationPlayerIdentity.objects.filter(registration__season=season),
+        ),
+        ("leader_handovers", m.LeaderHandover.objects.filter(registration__season=season)),
+        ("business_notification_events", m.BusinessNotificationEvent.objects.filter(season=season)),
+        ("wechat_deliveries", m.WeChatDelivery.objects.filter(inbox__season=season)),
+        ("referee_qualifications", m.RefereeQualification.objects.filter(season=season)),
+        ("referee_availabilities", m.RefereeAvailability.objects.filter(season=season)),
+        ("referee_assignments", m.RefereeAssignment.objects.filter(season=season)),
         ("venues", m.Venue.objects.filter(season=season)),
         ("periods", m.Period.objects.filter(season=season)),
         ("period_capacities", m.PeriodCapacity.objects.filter(season=season)),
@@ -699,14 +720,10 @@ def _build_system_raw(job: ArchiveJob, output: Path) -> dict[str, object]:
         with exclusive_system_write_fence():
             blockers = _system_backup_blockers()
             if blockers:
-                raise ArchiveError(
-                    blockers[0]["code"], blockers[0]["message"], status=409
-                )
+                raise ArchiveError(blockers[0]["code"], blockers[0]["message"], status=409)
             with _consistent_system_snapshot() as snapshot:
                 captured_media = sorted(
-                    (path, path.stat().st_size)
-                    for path in media_root.rglob("*")
-                    if path.is_file()
+                    (path, path.stat().st_size) for path in media_root.rglob("*") if path.is_file()
                 )
                 if snapshot:
                     _pg_dump(dump, snapshot=snapshot)
@@ -812,9 +829,7 @@ def _maintain_job_lease(job: ArchiveJob | MediaPurgeJob):
                 id=job.id,
                 worker_lease_token=job.worker_lease_token,
             ).update(worker_lease_expires_at=timezone.now() + LEASE_TTL)
-            touch_worker_heartbeat(
-                "archive", job.worker_lease_owner or "archive-worker"
-            )
+            touch_worker_heartbeat("archive", job.worker_lease_owner or "archive-worker")
 
     thread = threading.Thread(target=refresh, name=f"archive-lease-{job.id}", daemon=True)
     thread.start()
@@ -926,6 +941,7 @@ def media_purge_preview(season: Season) -> dict[str, object]:
             confirmed_saved_at__isnull=False,
         )
     )
+
     def complete_job(kind: str) -> ArchiveJob | None:
         for candidate in eligible_jobs.filter(kind=kind):
             if not (
@@ -1083,9 +1099,7 @@ def process_media_purge_job(job: MediaPurgeJob) -> MediaPurgeJob:
                 size = path.stat().st_size
                 if size != asset.byte_size or _sha256_path(path) != asset.file_sha256:
                     missing_files += 1
-                    warnings.append(
-                        {"asset_id": str(asset.id), "code": "MEDIA_FILE_HASH_MISMATCH"}
-                    )
+                    warnings.append({"asset_id": str(asset.id), "code": "MEDIA_FILE_HASH_MISMATCH"})
                     next_status = GameMediaAsset.StorageStatus.MISSING
                 else:
                     path.unlink()

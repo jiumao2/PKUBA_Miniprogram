@@ -47,9 +47,7 @@ class Account(AbstractUser):
     objects = AccountManager()
 
     class Meta(AbstractUser.Meta):
-        constraints = [
-            models.UniqueConstraint(Lower("username"), name="uniq_account_username_ci")
-        ]
+        constraints = [models.UniqueConstraint(Lower("username"), name="uniq_account_username_ci")]
 
     @property
     def is_pkuba_admin(self) -> bool:
@@ -119,9 +117,7 @@ class WeChatAuthTicket(UUIDModel):
 
 
 class MiniAppSession(UUIDModel):
-    account = models.ForeignKey(
-        Account, on_delete=models.CASCADE, related_name="miniapp_sessions"
-    )
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="miniapp_sessions")
     token_hash = models.CharField(max_length=128, unique=True)
     expires_at = models.DateTimeField()
     last_seen_at = models.DateTimeField(default=timezone.now)
@@ -268,6 +264,112 @@ class Team(UUIDModel):
         return self.name
 
 
+class RegistrationPolicy(UUIDModel):
+    season = models.OneToOneField(Season, on_delete=models.PROTECT)
+    deadline = models.DateTimeField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=1)
+
+
+class TeamRegistration(UUIDModel):
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "草稿"
+        PENDING = "PENDING", "待审核"
+        RETURNED = "RETURNED", "已退回"
+        APPROVED = "APPROVED", "已通过"
+        CHANGE_PENDING = "CHANGE_PENDING", "名单变更待审核"
+
+    season = models.ForeignKey(Season, on_delete=models.PROTECT)
+    leader = models.ForeignKey(Account, on_delete=models.PROTECT)
+    team = models.OneToOneField(Team, null=True, blank=True, on_delete=models.PROTECT)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    # Private form; never serialized through public team/account/roster endpoints or audit logs.
+    form = models.JSONField(default=dict)
+    approved_form = models.JSONField(default=dict)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["season", "leader"],
+                condition=Q(team__isnull=True),
+                name="uniq_registration_leader",
+            ),
+            models.UniqueConstraint(fields=["id", "season"], name="registration_id_season"),
+        ]
+
+
+class RegistrationSubmission(UUIDModel):
+    registration = models.ForeignKey(TeamRegistration, on_delete=models.PROTECT)
+    version = models.PositiveIntegerField()
+    team_version = models.PositiveIntegerField(null=True)
+    form = models.JSONField()
+    submitted_by = models.ForeignKey(Account, on_delete=models.PROTECT)
+    reason = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["registration", "version"], name="uniq_registration_submission"
+            )
+        ]
+
+
+class RegistrationDecision(UUIDModel):
+    submission = models.OneToOneField(RegistrationSubmission, on_delete=models.PROTECT)
+    approved = models.BooleanField()
+    reason = models.CharField(max_length=500, blank=True)
+    reviewed_by = models.ForeignKey(Account, on_delete=models.PROTECT)
+
+
+class RegistrationPlayerClaim(UUIDModel):
+    season = models.ForeignKey(Season, on_delete=models.PROTECT)
+    registration = models.ForeignKey(TeamRegistration, on_delete=models.PROTECT)
+    student_number = models.CharField(max_length=64)
+    player = models.OneToOneField("RosterPlayer", null=True, blank=True, on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["season", "student_number"], name="uniq_student_per_season"
+            )
+        ]
+
+
+class RegistrationPlayerIdentity(UUIDModel):
+    registration = models.ForeignKey(TeamRegistration, on_delete=models.PROTECT)
+    student_number = models.CharField(max_length=64)
+    player = models.OneToOneField("RosterPlayer", on_delete=models.PROTECT)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["registration", "student_number"], name="uniq_registration_student_identity"
+            )
+        ]
+
+
+class LeaderHandover(UUIDModel):
+    registration = models.ForeignKey(TeamRegistration, on_delete=models.PROTECT)
+    source = models.ForeignKey(
+        Account, on_delete=models.PROTECT, related_name="initiated_handovers"
+    )
+    target = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="received_handovers")
+    status = models.CharField(
+        max_length=16,
+        default="PENDING",
+        choices=[("PENDING", "待接受"), ("ACCEPTED", "已生效"), ("CANCELLED", "已取消")],
+    )
+    version = models.PositiveIntegerField(default=1)
+    registration_version = models.PositiveIntegerField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["registration"], condition=Q(status="PENDING"), name="uniq_pending_handover"
+            )
+        ]
+
+
 class DrawAssignment(UUIDModel):
     class ValidationMode(models.TextChoices):
         NOT_APPLICABLE = "NOT_APPLICABLE", "无需校验"
@@ -405,9 +507,7 @@ class Venue(UUIDModel):
 
     class Meta:
         ordering = ["sort_order", "name"]
-        constraints = [
-            models.UniqueConstraint(fields=["season", "name"], name="uniq_venue_name")
-        ]
+        constraints = [models.UniqueConstraint(fields=["season", "name"], name="uniq_venue_name")]
 
 
 class Period(UUIDModel):
@@ -550,8 +650,7 @@ class Game(UUIDModel):
                 name="game_scores_both_set_or_null",
             ),
             models.CheckConstraint(
-                condition=Q(home_score__isnull=True)
-                | ~Q(home_score=models.F("away_score")),
+                condition=Q(home_score__isnull=True) | ~Q(home_score=models.F("away_score")),
                 name="game_official_score_not_tied",
             ),
             models.CheckConstraint(
@@ -801,8 +900,7 @@ class GameResultRevision(UUIDModel):
                 name="game_result_revision_state_valid",
             ),
             models.CheckConstraint(
-                condition=Q(home_score__isnull=True)
-                | ~Q(home_score=models.F("away_score")),
+                condition=Q(home_score__isnull=True) | ~Q(home_score=models.F("away_score")),
                 name="game_result_revision_not_tied",
             ),
         ]
@@ -865,8 +963,7 @@ class ScheduleSlotFamily(UUIDModel):
         if self.stage == Game.Stage.FINAL and self.slot_count != 2:
             raise ValidationError("决赛签位数固定为 2。")
         if (
-            self.stage
-            in {Game.Stage.SEMIFINAL, Game.Stage.FINAL, Game.Stage.RELEGATION}
+            self.stage in {Game.Stage.SEMIFINAL, Game.Stage.FINAL, Game.Stage.RELEGATION}
             and self.round_number != 1
         ):
             raise ValidationError("半决赛、决赛和保级赛的轮次固定为 1。")
@@ -894,9 +991,7 @@ class ScheduleGridDraft(UUIDModel):
 
 
 class ScheduleGridDraftColumn(UUIDModel):
-    draft = models.ForeignKey(
-        ScheduleGridDraft, on_delete=models.CASCADE, related_name="columns"
-    )
+    draft = models.ForeignKey(ScheduleGridDraft, on_delete=models.CASCADE, related_name="columns")
     period = models.ForeignKey(
         Period, on_delete=models.PROTECT, related_name="schedule_grid_draft_columns"
     )
@@ -921,9 +1016,7 @@ class ScheduleGridDraftColumn(UUIDModel):
 
 
 class ScheduleGridDraftCell(UUIDModel):
-    draft = models.ForeignKey(
-        ScheduleGridDraft, on_delete=models.CASCADE, related_name="cells"
-    )
+    draft = models.ForeignKey(ScheduleGridDraft, on_delete=models.CASCADE, related_name="cells")
     column = models.ForeignKey(
         ScheduleGridDraftColumn, on_delete=models.CASCADE, related_name="cells"
     )
@@ -1105,26 +1198,17 @@ class RescheduleRequest(UUIDModel):
                 name="reschedule_cross_week_requires_review_route",
             ),
             models.CheckConstraint(
-                condition=(
-                    ~Q(review_classification="ORDINARY")
-                    | Q(request_type="SAME_WEEK")
-                ),
+                condition=(~Q(review_classification="ORDINARY") | Q(request_type="SAME_WEEK")),
                 name="reschedule_ordinary_classification_same_week",
             ),
             models.CheckConstraint(
-                condition=(
-                    ~Q(review_classification="ORDINARY")
-                    | Q(status="APPROVED")
-                ),
+                condition=(~Q(review_classification="ORDINARY") | Q(status="APPROVED")),
                 name="reschedule_ordinary_classification_approved",
             ),
             models.CheckConstraint(
                 condition=(
                     Q(review_classification__isnull=True)
-                    | (
-                        Q(process_route__isnull=False)
-                        & Q(process_route="HANDBOOK_REVIEW")
-                    )
+                    | (Q(process_route__isnull=False) & Q(process_route="HANDBOOK_REVIEW"))
                 ),
                 name="reschedule_classification_requires_review_route",
             ),
@@ -1470,10 +1554,7 @@ class GameMediaAsset(UUIDModel):
                 name="uniq_active_game_media_hash",
             ),
             models.CheckConstraint(
-                condition=(
-                    ~Q(kind="SCORESHEET")
-                    | Q(scoresheet_complete_confirmed=True)
-                ),
+                condition=(~Q(kind="SCORESHEET") | Q(scoresheet_complete_confirmed=True)),
                 name="scoresheet_requires_complete_confirmation",
             ),
         ]
@@ -1549,16 +1630,12 @@ class GameMediaUploadStaging(UUIDModel):
                 name="media_stage_replace_version_pair",
             ),
             models.CheckConstraint(
-                condition=(
-                    ~Q(kind="SCORESHEET")
-                    | Q(scoresheet_complete_confirmed=True)
-                ),
+                condition=(~Q(kind="SCORESHEET") | Q(scoresheet_complete_confirmed=True)),
                 name="media_stage_scoresheet_confirmed",
             ),
             models.CheckConstraint(
                 condition=(
-                    Q(status="PROMOTED", promoted_asset__isnull=False)
-                    | ~Q(status="PROMOTED")
+                    Q(status="PROMOTED", promoted_asset__isnull=False) | ~Q(status="PROMOTED")
                 ),
                 name="media_stage_promotion_has_asset",
             ),
@@ -1975,6 +2052,10 @@ class InboxItem(UUIDModel):
         RESCHEDULE_REQUEST = "RESCHEDULE_REQUEST", "调赛申请"
         SCORESHEET = "SCORESHEET", "记录表"
         ADMIN_WORKSPACE = "ADMIN_WORKSPACE", "管理员工作台"
+        REGISTRATION = "REGISTRATION", "球队报名"
+        REFEREE = "REFEREE", "执裁工作台"
+        GAME = "GAME", "比赛详情"
+        LEADER = "LEADER", "领队工作台"
 
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="inbox_items")
     season = models.ForeignKey(
@@ -2022,6 +2103,56 @@ class InboxItem(UUIDModel):
                 fields=["object_type", "object_id", "status"],
                 name="inbox_object_status_idx",
             ),
+        ]
+
+
+class BusinessNotificationEvent(UUIDModel):
+    season = models.ForeignKey(Season, null=True, on_delete=models.PROTECT)
+    key = models.CharField(max_length=180, unique=True)
+    kind = models.CharField(max_length=64)
+    object_id = models.UUIDField()
+    recipients = models.JSONField(default=list)
+    processed_at = models.DateTimeField(null=True)
+
+
+class WeChatDelivery(UUIDModel):
+    inbox = models.OneToOneField(
+        InboxItem, on_delete=models.PROTECT, related_name="wechat_delivery"
+    )
+    template_key = models.CharField(max_length=64, default="business")
+    status = models.CharField(
+        max_length=24,
+        default="PENDING",
+        choices=[
+            ("PENDING", "待发送"),
+            ("SENDING", "发送中"),
+            ("SENT", "已发送"),
+            ("NEEDS_AUTH", "需订阅"),
+            ("NOT_CONFIGURED", "待配置"),
+            ("UNKNOWN", "结果不明"),
+            ("FAILED", "发送失败"),
+            ("SKIPPED", "已跳过"),
+        ],
+    )
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True)
+    last_code = models.CharField(max_length=40, blank=True)
+    template_id = models.CharField(max_length=128, blank=True)
+
+
+class WeChatSubscriptionPreference(UUIDModel):
+    account = models.ForeignKey(Account, on_delete=models.CASCADE)
+    template_id = models.CharField(max_length=128)
+    choice = models.CharField(
+        max_length=12,
+        choices=[("accept", "接受"), ("reject", "拒绝"), ("ban", "禁用"), ("filter", "过滤")],
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "template_id"], name="uniq_wechat_preference"
+            )
         ]
 
 
@@ -2088,9 +2219,7 @@ class ApiIdempotencyRecord(UUIDModel):
                 name="uniq_api_idempotency_command",
             )
         ]
-        indexes = [
-            models.Index(fields=["expires_at"], name="api_idempotency_expiry_idx")
-        ]
+        indexes = [models.Index(fields=["expires_at"], name="api_idempotency_expiry_idx")]
 
 
 class ArchiveJob(UUIDModel):
@@ -2220,6 +2349,105 @@ class MediaPurgeJob(UUIDModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["status", "created_at"], name="purge_status_created_idx")]
+
+
+class RefereeQualification(UUIDModel):
+    season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="referees")
+    account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="referee_roles")
+    active = models.BooleanField(default=True)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["season", "account"], name="uniq_season_referee"),
+            models.UniqueConstraint(fields=["id", "season"], name="referee_id_season_scope"),
+        ]
+
+
+class RefereeAvailability(UUIDModel):
+    season = models.ForeignKey(Season, on_delete=models.PROTECT)
+    referee = models.ForeignKey(
+        RefereeQualification, on_delete=models.PROTECT, related_name="availabilities"
+    )
+    date = models.DateField()
+    period = models.ForeignKey(Period, on_delete=models.PROTECT)
+    active = models.BooleanField(default=True)
+    version = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["date", "period__sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["referee", "date", "period"], name="uniq_referee_availability"
+            ),
+            models.UniqueConstraint(
+                fields=["id", "season", "referee", "date", "period"],
+                name="availability_referee_slot_scope",
+            ),
+        ]
+
+
+class RefereeAssignment(UUIDModel):
+    class Role(models.TextChoices):
+        CREW_CHIEF = "CREW_CHIEF", "主裁判"
+        FIRST_UMPIRE = "FIRST_UMPIRE", "第一副裁判"
+        SECOND_UMPIRE = "SECOND_UMPIRE", "第二副裁判"
+        SCORER = "SCORER", "记录员"
+        TIMER = "TIMER", "计时员"
+        ASSISTANT_SCORER = "ASSISTANT_SCORER", "助理记录员"
+        SHOT_CLOCK_OPERATOR = "SHOT_CLOCK_OPERATOR", "进攻计时员"
+
+    season = models.ForeignKey(Season, on_delete=models.PROTECT)
+    game = models.ForeignKey(Game, on_delete=models.PROTECT, related_name="referee_assignments")
+    referee = models.ForeignKey(
+        RefereeQualification, on_delete=models.PROTECT, related_name="assignments"
+    )
+    availability = models.ForeignKey(RefereeAvailability, on_delete=models.PROTECT)
+    role = models.CharField(max_length=24, choices=Role.choices)
+    date = models.DateField()
+    period = models.ForeignKey(Period, on_delete=models.PROTECT)
+    active = models.BooleanField(default=True)
+    assigned_by = models.ForeignKey(Account, on_delete=models.PROTECT)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["date", "period__sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "referee"],
+                condition=Q(active=True),
+                name="uniq_active_game_referee",
+            ),
+            models.UniqueConstraint(
+                fields=["game", "role"],
+                condition=Q(active=True),
+                name="uniq_active_game_referee_role",
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    role__in=[
+                        "CREW_CHIEF",
+                        "FIRST_UMPIRE",
+                        "SECOND_UMPIRE",
+                        "SCORER",
+                        "TIMER",
+                        "ASSISTANT_SCORER",
+                        "SHOT_CLOCK_OPERATOR",
+                    ]
+                ),
+                name="referee_assignment_valid_role",
+            ),
+            models.UniqueConstraint(
+                fields=["referee", "date", "period"],
+                condition=Q(active=True),
+                name="uniq_active_referee_slot",
+            ),
+            models.CheckConstraint(
+                condition=Q(active=True, released_at__isnull=True)
+                | Q(active=False, released_at__isnull=False),
+                name="referee_assignment_release_state",
+            ),
+        ]
 
 
 class AdminAuditLog(UUIDModel):

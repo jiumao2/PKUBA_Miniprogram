@@ -519,4 +519,9 @@ def mark_task_viewed(*, account: Account, task_id) -> InboxItem:
     if task.read_at is None:
         task.read_at = timezone.now()
         task.save(update_fields=["read_at", "updated_at"])
+    if task.kind.startswith("NOTICE_") and task.status == InboxItem.Status.OPEN:
+        task.status = InboxItem.Status.CLOSED
+        task.closed_at = timezone.now()
+        task.close_reason = "NOTICE_VIEWED"
+        task.save(update_fields=["status", "closed_at", "close_reason", "updated_at"])
     return task

@@ -13,11 +13,13 @@ from core.models import (
     Account,
     AdminAuditLog,
     Game,
+    LeaderHandover,
     RescheduleRequest,
     ScoresheetEditLease,
     ScoresheetRecognitionRun,
     Season,
     SlotReservation,
+    TeamRegistration,
 )
 
 
@@ -30,6 +32,12 @@ class SeasonLifecycleError(Exception):
 def _archive_active_flows(season: Season, now: datetime) -> dict[str, int]:
     terminal = list(RescheduleRequest.TERMINAL_STATUSES)
     return {
+        "pending_registrations": TeamRegistration.objects.filter(
+            season=season, status__in=["PENDING", "CHANGE_PENDING"]
+        ).count(),
+        "pending_handovers": LeaderHandover.objects.filter(
+            registration__season=season, status="PENDING"
+        ).count(),
         "reschedule_requests": RescheduleRequest.objects.filter(
             game__season=season,
         )
@@ -79,11 +87,7 @@ def _analyze(
                 "INVALID_TRANSITION",
                 "只有准备中的赛季可以公开。",
             )
-        if (
-            Season.objects.filter(status=Season.Status.PUBLISHED)
-            .exclude(id=season.id)
-            .exists()
-        ):
+        if Season.objects.filter(status=Season.Status.PUBLISHED).exclude(id=season.id).exists():
             blockers.append(
                 {
                     "code": "PUBLIC_SEASON_EXISTS",

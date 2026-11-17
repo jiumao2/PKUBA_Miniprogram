@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -159,6 +160,9 @@ WECHAT_APP_ID = os.getenv("WECHAT_APP_ID", "")
 WECHAT_APP_SECRET = os.getenv("WECHAT_APP_SECRET", "")
 WECHAT_API_BASE_URL = os.getenv("WECHAT_API_BASE_URL", "https://api.weixin.qq.com")
 MINIAPP_SESSION_AGE = int(os.getenv("MINIAPP_SESSION_AGE", str(30 * 24 * 60 * 60)))
+WECHAT_SUBSCRIBE_ENABLED = env_bool("WECHAT_SUBSCRIBE_ENABLED", False)
+WECHAT_SUBSCRIBE_STATE = os.getenv("WECHAT_SUBSCRIBE_STATE", "formal")
+WECHAT_SUBSCRIBE_TEMPLATES = json.loads(os.getenv("WECHAT_SUBSCRIBE_TEMPLATES", "{}"))
 
 QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
 QWEN_BASE_URL = os.getenv(
