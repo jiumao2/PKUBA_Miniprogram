@@ -4,7 +4,9 @@ from django.db.models.functions import Lower
 
 def activate_usage(apps, schema_editor):
     Period = apps.get_model("core", "Period")
-    Period.objects.using(schema_editor.connection.alias).alias(
+    Period.objects.using(schema_editor.connection.alias).exclude(
+        season__status="ARCHIVED"
+    ).alias(
         normalized_code=Lower("code")
     ).filter(normalized_code__in=["p4", "p7"], usage="OPEN").update(usage="ADMIN_ONLY")
 
