@@ -2,6 +2,20 @@
   "schema_version": 2,
   "entries": [
     {
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "scope": "production-transitive",
+      "dependency_path": "Taro webpack5 / Vite / Vitest / @parcel/watcher / fdir / tinyglobby > picomatch 4.0.5; anymatch / jest-util / micromatch / readdirp > picomatch 2.3.2",
+      "command_boundary": "仅在构建、测试和本地监听中匹配受代码评审控制的仓库文件与配置；不处理线上用户输入或不可信匹配模式，正式后台镜像只包含静态制品。",
+      "expires_on": "2026-11-30",
+      "reason": "用户于 2026-11-18 接受此 high 公告的限时构建风险。重复 extglob 可导致正则回溯耗尽构建进程资源；上游最新 4.0.7 仍受影响，尚无官方修复版。漏洞仍存在，不适用于不可信仓库、外部模式或线上请求。",
+      "build_only": {
+        "severity": "high",
+        "lock_sha256": "ef1856f287ae7cc553a1db28ad0da950e5299c310fb95eb573a92189933b4d6a",
+        "usage_sha256": "a484118ed65e252175de831ac20a48fc441045c1b46cd0a9acbab7df9df8ae70"
+      }
+    },
+    {
       "id": "GHSA-qr28-fpjm-wq7f",
       "package": "decode-uri-component",
       "scope": "development",
