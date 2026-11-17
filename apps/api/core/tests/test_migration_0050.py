@@ -125,6 +125,9 @@ def test_activation_rejects_stale_page_preview_and_save_without_writes():
     configuration = client.get(url)
     assert configuration.status_code == 200
     payload = _update_payload(configuration.json())
+    original_usage = {row["id"]: row["usage"] for row in configuration.json()["periods"]}
+    for row in payload["periods"]:
+        row["usage"] = original_usage[row["id"]]
     payload["name"] += "更名"
     preview = client.post(url + "/preview", data=json.dumps(payload),
                           content_type="application/json", HTTP_X_CSRFTOKEN=csrf_token)
