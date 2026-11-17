@@ -22,6 +22,7 @@ const historical: SeasonConfiguration = {
   timezone: "Asia/Shanghai",
   version: 1,
   editable: false,
+  period_management_enabled: true,
   maintenance_required: false,
   locked_reason: "赛季公开后，组别、场地、时段与容量元信息即被锁定。",
   divisions: ["男甲", "男乙", "女甲", "女乙"].map((name, index) => ({
@@ -52,6 +53,7 @@ const historical: SeasonConfiguration = {
       default_capacities: { WEEKDAY: 1, WEEKEND: 3 },
       game_count: 70,
       active_reservation_count: 0,
+      usage: "OPEN", deletion_blocker: null, draft_column_count: 0,
     },
     {
       id: "40000000-0000-0000-0000-000000000002",
@@ -62,6 +64,7 @@ const historical: SeasonConfiguration = {
       default_capacities: { WEEKDAY: 1, WEEKEND: 0 },
       game_count: 20,
       active_reservation_count: 0,
+      usage: "OPEN", deletion_blocker: null, draft_column_count: 0,
     },
   ],
   slot_families: [
@@ -115,6 +118,7 @@ function clientWith(configuration: SeasonConfiguration, overrides = {}) {
       changed: true,
       over_capacity: [],
       affected_reschedule_request_ids: [],
+      period_blocking_request_ids: [], retained_game_count: 0,
       templates_invalidated: false,
       impact_hash: "preview-hash",
     }),
@@ -142,6 +146,48 @@ afterEach(() => {
 });
 
 describe("SeasonManagementPage", () => {
+  it("keeps period policy controls closed during the compatibility stage", async () => {
+    renderPage(clientWith({ ...historical, editable: true, period_management_enabled: false }));
+    expect(await screen.findByLabelText("12:50使用方式")).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("button", { name: "＋ 添加时段" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "删除时段12:50" })).toBeNull();
+    expect(screen.getByLabelText("12:50周中容量")).toHaveProperty("disabled", false);
+  });
+
+  it("adds restricted periods and reenables without discarding capacities", async () => {
+    const editable = { ...historical, status: "SETUP", editable: true, locked_reason: "" };
+    const client = clientWith(editable);
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage(client);
+    await user.selectOptions(await screen.findByLabelText("12:50使用方式"), "DISABLED");
+    expect(screen.getByLabelText("12:50周中容量")).toHaveProperty("disabled", true);
+    expect(screen.getByLabelText("12:50周中容量")).toHaveProperty("value", "1");
+    await user.selectOptions(screen.getByLabelText("12:50使用方式"), "ADMIN_ONLY");
+    expect(screen.getByLabelText("12:50周中容量")).toHaveProperty("disabled", false);
+    await user.click(screen.getByRole("button", { name: "＋ 添加时段" }));
+    expect(screen.getByLabelText("新时段使用方式")).toHaveProperty("value", "ADMIN_ONLY");
+    await user.click(screen.getByRole("button", { name: "预览并保存" }));
+    await waitFor(() => expect(client.updateSeasonConfiguration).toHaveBeenCalledOnce());
+    expect(vi.mocked(client.updateSeasonConfiguration).mock.calls[0][1].periods[2]).toMatchObject({
+      id: null, usage: "ADMIN_ONLY", default_capacities: { WEEKDAY: 0, WEEKEND: 0 },
+    });
+  });
+
+  it("blocks policy save when the preview lists active requests", async () => {
+    const client = clientWith({ ...historical, editable: true }, {
+      previewSeasonConfiguration: vi.fn().mockResolvedValue({
+        over_capacity: [], affected_reschedule_request_ids: [],
+        period_blocking_request_ids: ["request-1"], retained_game_count: 0,
+      }),
+    });
+    const user = userEvent.setup();
+    renderPage(client);
+    await user.selectOptions(await screen.findByLabelText("12:50使用方式"), "DISABLED");
+    await user.click(screen.getByRole("button", { name: "预览并保存" }));
+    expect(await screen.findByText(/请先到调赛管理取消/)).toBeTruthy();
+    expect(client.updateSeasonConfiguration).not.toHaveBeenCalled();
+  });
   it("renders historical divisions and capacity as locked real data", async () => {
     renderPage(clientWith(historical));
 

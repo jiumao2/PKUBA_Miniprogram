@@ -115,6 +115,11 @@ def _create_default_columns(draft: ScheduleGridDraft) -> None:
         raise ScheduleImportError(
             "当前赛季没有可用于新草稿的默认时段。", "NO_DEFAULT_GRID_COLUMNS"
         )
+    if len(specs) > MAX_GRID_COLUMNS:
+        raise ScheduleImportError(
+            f"默认排期超过 {MAX_GRID_COLUMNS} 列，请先减少启用的时段或标准场地。",
+            "INVALID_GRID_COLUMN_COUNT",
+        )
     ScheduleGridDraftColumn.objects.bulk_create(
         [
             ScheduleGridDraftColumn(
@@ -134,6 +139,7 @@ def get_or_create_schedule_draft(
     *, actor: Account, season: Season
 ) -> ScheduleGridDraft:
     _require_superadmin(actor)
+    season = Season.objects.select_for_update().get(id=season.id)
     if season.status == Season.Status.ARCHIVED:
         draft = ScheduleGridDraft.objects.filter(season=season).first()
         if draft is None:
@@ -275,6 +281,7 @@ def serialize_schedule_draft(draft: ScheduleGridDraft) -> dict[str, object]:
             {
                 "id": str(item.id),
                 "code": item.code,
+                "usage": item.usage,
                 "name": item.name,
                 "start_time": item.start_time.strftime("%H:%M"),
             }
@@ -303,6 +310,7 @@ def replace_schedule_draft(
     source_sha256: str | None = None,
 ) -> ScheduleGridDraft:
     _require_superadmin(actor)
+    season = Season.objects.select_for_update().get(id=season.id)
     _assert_season_mutable(season)
     draft = get_or_create_schedule_draft(actor=actor, season=season)
     draft = ScheduleGridDraft.objects.select_for_update().get(id=draft.id)
@@ -318,6 +326,7 @@ def replace_schedule_draft(
 
     periods = {
         str(item.id): item for item in Period.objects.filter(season=season)
+        .exclude(usage=Period.Usage.DISABLED)
     }
     normalized_columns: list[dict[str, object]] = []
     seen_ids: set[UUID] = set()
@@ -333,7 +342,9 @@ def replace_schedule_draft(
         period_id = str(raw.get("period_id") or "")
         period = periods.get(period_id)
         if period is None:
-            raise ScheduleImportError("赛程列使用了其他赛季或未知时段。", "UNKNOWN_GRID_PERIOD")
+            raise ScheduleImportError(
+                "赛程列使用了停用、其他赛季或未知时段，请删除或更换该列。", "UNKNOWN_GRID_PERIOD"
+            )
         venue_name, marker_final_only = _normalize_venue_name(raw.get("venue_name"))
         if not venue_name or len(venue_name) > 120:
             raise ScheduleImportError("场地名称必须为 1 至 120 个字符。", "INVALID_GRID_VENUE")

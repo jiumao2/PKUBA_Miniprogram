@@ -39,6 +39,7 @@ def web_schedule_options(request: HttpRequest, season_id: UUID | None = None):
             {
                 "id": period.id,
                 "code": period.code,
+                "usage": period.usage,
                 "name": period.name,
                 "start_time": period.start_time.strftime("%H:%M"),
             }

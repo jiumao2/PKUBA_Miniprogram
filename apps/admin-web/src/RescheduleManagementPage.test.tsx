@@ -64,6 +64,7 @@ const dataset: AdminReschedulePage = {
       }],
       actions: ["ADMIN_APPROVE", "ADMIN_REJECT", "ADMIN_START_VOTE", "ADMIN_CANCEL"],
       is_terminal: false,
+      progress_block_reason: null,
       version: 3,
       created_at: "2026-04-08T07:00:00Z",
       decided_at: null,

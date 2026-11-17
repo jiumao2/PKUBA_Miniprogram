@@ -13,6 +13,7 @@ from core.models import (
     Account,
     AdminAuditLog,
     Game,
+    Period,
     RescheduleRequest,
     ScoresheetEditLease,
     ScoresheetRecognitionRun,
@@ -92,6 +93,10 @@ def _analyze(
                 }
             )
         divisions = list(season.divisions.order_by("sort_order", "name"))
+        if not season.periods.exclude(usage=Period.Usage.DISABLED).exists():
+            blockers.append({
+                "code": "NO_ACTIVE_PERIODS", "message": "至少启用一个比赛时段。", "count": 1,
+            })
         if not divisions:
             blockers.append(
                 {

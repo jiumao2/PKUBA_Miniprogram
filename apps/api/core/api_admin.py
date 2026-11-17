@@ -194,6 +194,7 @@ class ConfirmScheduleImportIn(Schema):
 
 
 class ScheduleDraftPeriodOut(Schema):
+    usage: str
     id: UUID
     code: str
     name: str
@@ -361,6 +362,9 @@ class SeasonPeriodConfigurationOut(Schema):
     default_capacities: dict[str, int]
     game_count: int
     active_reservation_count: int
+    usage: str
+    deletion_blocker: str | None
+    draft_column_count: int
 
 
 class ScheduleSlotFamilyOut(Schema):
@@ -405,6 +409,7 @@ class SeasonConfigurationOut(Schema):
     timezone: str
     version: int
     editable: bool
+    period_management_enabled: bool
     maintenance_required: bool
     locked_reason: str
     divisions: list[SeasonDivisionConfigurationOut]
@@ -422,11 +427,14 @@ class SeasonConfigurationPreviewOut(Schema):
     changed: bool
     over_capacity: list[OverCapacityOut]
     affected_reschedule_request_ids: list[UUID]
+    period_blocking_request_ids: list[UUID]
+    retained_game_count: int
     templates_invalidated: bool
     impact_hash: str
 
 
 class CapacityLedgerRowOut(Schema):
+    period_usage: str
     date: date
     day_type: str
     period_id: UUID
@@ -469,6 +477,7 @@ class SeasonPeriodConfigurationIn(Schema):
     name: str
     start_time: time
     default_capacities: dict[str, int]
+    usage: str | None = None
 
 
 class DateCapacityOverrideIn(Schema):
@@ -643,6 +652,10 @@ def _season_management_error(error: SeasonManagementError):
         "DATE_RANGE_IN_USE",
         "SEASON_ARCHIVED",
         "SEASON_ALREADY_EXISTS",
+        "PERIOD_ACTIVE_REQUESTS",
+        "PERIOD_DELETE_BLOCKED",
+        "PERIOD_CAPACITY_READ_ONLY",
+        "PERIOD_MANAGEMENT_NOT_ACTIVE",
     }:
         status = 409
     elif error.code in {"SEASON_NOT_FOUND", "TEMPLATE_NOT_FOUND"}:

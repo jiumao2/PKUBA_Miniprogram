@@ -43,6 +43,9 @@ const statusLabels: Record<string, string> = {
   ARCHIVED: "已归档",
 };
 const dayTypeLabels: Record<string, string> = { WEEKDAY: "周中", WEEKEND: "周末" };
+const periodUsageLabels: Record<string, string> = {
+  OPEN: "开放调赛", ADMIN_ONLY: "仅管理员安排", DISABLED: "停用",
+};
 const stageOptions = [
   ["GROUP", "小组赛"],
   ["ROUND_ROBIN", "循环赛"],
@@ -197,7 +200,7 @@ export function SeasonManagementPage({
 
   const activeVenueCount = draft?.venues.filter((row) => row.active).length ?? 0;
   const weeklyCapacity = useMemo(
-    () => draft?.periods.reduce(
+    () => draft?.periods.filter((period) => period.usage !== "DISABLED").reduce(
       (sum, period) => sum
         + (period.default_capacities.WEEKDAY ?? 0) * 5
         + (period.default_capacities.WEEKEND ?? 0) * 2,
@@ -303,6 +306,23 @@ export function SeasonManagementPage({
     if (!draft) return;
     markChanged({ ...draft, periods: draft.periods.map((row) => row.key === key ? { ...row, ...patch } : row) });
   };
+  const addPeriod = () => {
+    if (!draft) return;
+    markChanged({ ...draft, periods: [...draft.periods, {
+      id: "", key: nextKey("period"), code: "", name: "新时段", start_time: "12:00",
+      sort_order: nextSortOrder(draft.periods), usage: "ADMIN_ONLY",
+      default_capacities: { WEEKDAY: 0, WEEKEND: 0 }, game_count: 0,
+      active_reservation_count: 0, draft_column_count: 0, deletion_blocker: null,
+    }] });
+  };
+  const removePeriod = (row: PeriodDraft) => {
+    if (!draft || (row.id && row.deletion_blocker)) return;
+    if (!window.confirm(`删除“${row.name}”？保存后同时删除该时段的默认容量和特殊日期容量。`)) return;
+    markChanged({ ...draft,
+      periods: continuousOrder(draft.periods.filter((item) => item.key !== row.key)),
+      date_capacity_overrides: draft.date_capacity_overrides.filter((item) => item.period_code !== row.code),
+    });
+  };
   const updateSlotFamily = (key: string, patch: Partial<SlotFamilyDraft>) => {
     if (!draft) return;
     markChanged({
@@ -371,12 +391,16 @@ export function SeasonManagementPage({
         buildSeasonConfigurationPayload(draft) as PreviewSeasonConfiguration,
       );
       const warnings = [
+        preview.retained_game_count ? `停用时段仍保留 ${preview.retained_game_count} 场既有比赛，不移动或取消。` : "",
         preview.maintenance_required ? "当前不是准备期，将以维护模式修改。" : "",
         preview.over_capacity.length ? `保存后有 ${preview.over_capacity.length} 个时段处于超容状态。` : "",
         preview.affected_reschedule_request_ids.length
           ? `将明确取消 ${preview.affected_reschedule_request_ids.length} 个受影响的调赛申请。`
           : "",
       ].filter(Boolean);
+      if (preview.period_blocking_request_ids.length) {
+        throw new Error(`目标时段还有 ${preview.period_blocking_request_ids.length} 个活动申请，请先到调赛管理取消：${preview.period_blocking_request_ids.join("、")}`);
+      }
       if (!window.confirm(["确认保存全部赛季配置？", ...warnings, "操作会记录完整前后快照。"].join("\n"))) return;
       const updated = await client.updateSeasonConfiguration(draft.id, {
         ...buildSeasonConfigurationPayload(draft),
@@ -570,28 +594,30 @@ export function SeasonManagementPage({
     </section>
 
     <section className="season-config-section">
-      <div className="season-section-heading"><div><h2>标准时段</h2><p>系统已预设 8 个标准时段；通常只需核对显示名称和默认时间，无需手动添加。</p></div><span>固定 8 个</span></div>
+      <div className="season-section-heading"><div><h2>标准时段</h2><p>{draft.period_management_enabled ? "开放调赛供领队选择；仅管理员安排不出现在领队选项中。停用后可重新启用，既有比赛不变。公开后仅可停用。" : "时段增删与使用方式管理暂未启用；名称、时间与容量仍可调整。"}</p></div>{editable && draft.period_management_enabled && <button className="text-action" type="button" onClick={addPeriod}>＋ 添加时段</button>}</div>
       <div className="period-config-table">
-        <div className="period-config-row period-config-head"><span>移动</span><span>名称</span><span>默认时间</span><span>已关联</span></div>
+        <div className="period-config-row period-config-head"><span>排序</span><span>时段名称</span><span>默认时间</span><span>使用方式</span><span>关联情况</span><span>操作</span></div>
         {draft.periods.map((row) => <div className={`period-config-row ${dragging?.key === row.key ? "is-dragging" : ""}`} key={row.key} {...sortableRow("periods", row.key)}>
           {renderOrderHandle("periods", row.key, row.name)}
-          <input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updatePeriod(row.key, { name: event.target.value })} />
-          <input aria-label={`${row.name}默认时间`} disabled={!editable} type="time" value={row.start_time.slice(0, 5)} onChange={(event) => updatePeriod(row.key, { start_time: event.target.value })} />
-          <span className="resource-usage">{row.game_count} 场 · {row.active_reservation_count} 个预留</span>
+          <label className="period-field"><span>时段名称</span><input aria-label={`${row.name}名称`} disabled={!editable} value={row.name} onChange={(event) => updatePeriod(row.key, { name: event.target.value })} /></label>
+          <label className="period-field"><span>默认时间</span><input aria-label={`${row.name}默认时间`} disabled={!editable} type="time" value={row.start_time.slice(0, 5)} onChange={(event) => updatePeriod(row.key, { start_time: event.target.value })} /></label>
+          <label className="period-field period-usage-field"><span>使用方式</span><select aria-label={`${row.name}使用方式`} disabled={!editable || !draft.period_management_enabled} value={row.usage} onChange={(event) => updatePeriod(row.key, { usage: event.target.value })}>{Object.entries(periodUsageLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <span className="resource-usage">{row.game_count} 场 · {row.active_reservation_count} 个预留 · {row.draft_column_count} 个草稿列</span>
+          {draft.period_management_enabled && <button className="text-action" type="button" disabled={!editable || Boolean(row.id && row.deletion_blocker)} title={row.id ? row.deletion_blocker ?? "删除未使用的时段" : "移除此未保存时段"} aria-label={`删除时段${row.name}`} onClick={() => removePeriod(row)}>删除</button>}
         </div>)}
       </div>
     </section>
 
     <section className="season-config-section capacity-section">
-      <div className="season-section-heading"><div><h2>默认容量</h2><p>周中与周末各维护一套默认值；0 表示普通流程不可用。容量可以高于标准场地数。</p></div></div>
+      <div className="season-section-heading"><div><h2>默认容量</h2><p>周中与周末分别设置容量；领队能否调入还取决于时段使用方式。特殊日期容量单独覆盖。</p></div></div>
       <div className="capacity-default-table">
         <div className="capacity-default-row capacity-default-head"><span>时段</span><span>默认时间</span><span>周中</span><span>周末</span></div>
         {draft.periods.map((period) => <div className="capacity-default-row" key={period.key}>
-          <strong>{period.name}</strong><span>{period.start_time.slice(0, 5)}</span>
+          <div><strong>{period.name}</strong><small className="period-usage-label">{periodUsageLabels[period.usage]}</small></div><span>{period.start_time.slice(0, 5)}</span>
           {(["WEEKDAY", "WEEKEND"] as const).map((dayType) => {
             const value = period.default_capacities[dayType] ?? 0;
             return <label className={`capacity-number ${value === 0 ? "zero" : "open"}`} key={dayType}>
-              <input aria-label={`${period.name}${dayTypeLabels[dayType]}容量`} disabled={!editable} min="0" type="number" value={value} onChange={(event) => updatePeriod(period.key, { default_capacities: { ...period.default_capacities, [dayType]: Number(event.target.value) } })} /><span>场</span>
+              <input aria-label={`${period.name}${dayTypeLabels[dayType]}容量`} disabled={!editable || period.usage === "DISABLED"} min="0" type="number" value={value} onChange={(event) => updatePeriod(period.key, { default_capacities: { ...period.default_capacities, [dayType]: Number(event.target.value) } })} /><span>场</span>
             </label>;
           })}
         </div>)}
@@ -599,16 +625,18 @@ export function SeasonManagementPage({
     </section>
 
     <section className="season-config-section capacity-section">
-      <div className="season-section-heading"><div><h2>特殊日期容量</h2><p>默认不设置。仅由管理员为节假日、补赛日等例外填写，系统不会根据已排比赛自动生成或补高。</p></div>{editable && <button className="text-action" type="button" onClick={() => markChanged({ ...draft, date_capacity_overrides: [...draft.date_capacity_overrides, { id: "", key: nextKey("override"), date: "", period_code: draft.periods[0]?.code.toUpperCase() ?? "P1", capacity: 0, note: "" }] })}>＋ 添加例外</button>}</div>
+      <div className="season-section-heading"><div><h2>特殊日期容量</h2><p>默认不设置。仅由管理员为节假日、补赛日等例外填写，系统不会根据已排比赛自动生成或补高。</p></div>{editable && <button className="text-action" disabled={!draft.periods.some((period) => period.id && period.usage !== "DISABLED")} type="button" onClick={() => markChanged({ ...draft, date_capacity_overrides: [...draft.date_capacity_overrides, { id: "", key: nextKey("override"), date: "", period_code: draft.periods.find((period) => period.id && period.usage !== "DISABLED")?.code.toUpperCase() ?? "", capacity: 0, note: "" }] })}>＋ 添加例外</button>}</div>
       {draft.date_capacity_overrides.length ? <div className="capacity-override-table">
         <div className="capacity-override-row capacity-override-head"><span>日期</span><span>时段</span><span>容量</span><span>备注</span><span /></div>
-        {draft.date_capacity_overrides.map((row) => <div className="capacity-override-row" key={row.key}>
-          <input aria-label="特殊日期" disabled={!editable} required type="date" value={row.date} onChange={(event) => updateOverride(row.key, { date: event.target.value })} />
-          <select aria-label="特殊日期时段" disabled={!editable} value={row.period_code.toUpperCase()} onChange={(event) => updateOverride(row.key, { period_code: event.target.value })}>{draft.periods.map((period) => <option key={period.id} value={period.code.toUpperCase()}>{period.name}</option>)}</select>
-          <label className="capacity-number"><input aria-label="特殊日期容量" disabled={!editable} min="0" type="number" value={row.capacity} onChange={(event) => updateOverride(row.key, { capacity: Number(event.target.value) })} /><span>场</span></label>
-          <input aria-label="特殊日期备注" disabled={!editable} placeholder="如：清明假期" value={row.note} onChange={(event) => updateOverride(row.key, { note: event.target.value })} />
-          <button aria-label="删除特殊日期容量" className="row-remove" disabled={!editable} type="button" onClick={() => markChanged({ ...draft, date_capacity_overrides: draft.date_capacity_overrides.filter((item) => item.key !== row.key) })}>×</button>
-        </div>)}
+        {draft.date_capacity_overrides.map((row) => {
+          const disabled = !editable || draft.periods.some((period) => period.code.toUpperCase() === row.period_code.toUpperCase() && period.usage === "DISABLED");
+          return <div className="capacity-override-row" key={row.key}>
+          <input aria-label="特殊日期" disabled={disabled} required type="date" value={row.date} onChange={(event) => updateOverride(row.key, { date: event.target.value })} />
+          <select aria-label="特殊日期时段" disabled={disabled} value={row.period_code.toUpperCase()} onChange={(event) => updateOverride(row.key, { period_code: event.target.value })}>{draft.periods.filter((period) => period.id && (period.usage !== "DISABLED" || period.code.toUpperCase() === row.period_code.toUpperCase())).map((period) => <option disabled={period.usage === "DISABLED"} key={period.id} value={period.code.toUpperCase()}>{period.name}</option>)}</select>
+          <label className="capacity-number"><input aria-label="特殊日期容量" disabled={disabled} min="0" type="number" value={row.capacity} onChange={(event) => updateOverride(row.key, { capacity: Number(event.target.value) })} /><span>场</span></label>
+          <input aria-label="特殊日期备注" disabled={disabled} placeholder="如：清明假期" value={row.note} onChange={(event) => updateOverride(row.key, { note: event.target.value })} />
+          <button aria-label="删除特殊日期容量" className="row-remove" disabled={disabled} type="button" onClick={() => markChanged({ ...draft, date_capacity_overrides: draft.date_capacity_overrides.filter((item) => item.key !== row.key) })}>×</button>
+        </div>; })}
       </div> : <p className="capacity-empty">未设置特殊日期容量，全部使用周中或周末默认值。</p>}
     </section>
 
@@ -617,12 +645,14 @@ export function SeasonManagementPage({
       <CapacityCalendar ledger={ledger} variant="embedded" />
     </section>
 
+    <div className="season-save-feedback">
+    {message && <p className={`season-management-message ${messageTone}`} role="status">{message}</p>}
     {editable && <div className={`season-save-bar ${dirty ? "dirty" : ""}`}>
       <div><strong>{dirty ? "有尚未保存的修改" : "配置已与服务器同步"}</strong><span>保存前会预览容量、调赛申请和历史赛程影响。</span></div>
       {dirty && <button className="text-action" type="button" onClick={() => configuration && (setDraft(toDraft(configuration)), setDirty(false), setMessage(null))}>撤销修改</button>}
       <button className="primary-action" disabled={!dirty || busy} type="button" onClick={() => void submit()}>{busy ? "正在保存…" : "预览并保存"}</button>
     </div>}
-    {message && <p className={`season-management-message ${messageTone}`} role="status">{message}</p>}
+    </div>
     {showCreate && <CreateSeasonDialog client={client} seasons={seasons} onClose={() => setShowCreate(false)} onCreated={async (created) => { setShowCreate(false); await onDataChanged(created.id); onSeasonChange(created.id); }} />}
   </div>;
 }
@@ -660,7 +690,7 @@ function CreateSeasonDialog({ client, seasons, onClose, onCreated }: {
         <label>赛季年份<input min="1" step="1" required type="number" value={form.year} onChange={(event) => setForm({ ...form, year: Number(event.target.value) })} /></label>
         <label>开始日期<input required type="date" value={form.starts_on} onChange={(event) => setForm({ ...form, starts_on: event.target.value })} /></label>
         <label>结束日期<input required type="date" value={form.ends_on} onChange={(event) => setForm({ ...form, ends_on: event.target.value })} /></label>
-        <label className="wide">配置来源<select aria-label="配置来源" value={form.template_season_id ?? ""} onChange={(event) => setForm({ ...form, template_season_id: event.target.value || null })}><option value="">系统默认配置（推荐）</option>{seasons.map((season) => <option key={season.id} value={season.id}>明确沿用 {formatAdminSeasonLabel(season)} 的组别、场地、签位与容量</option>)}</select><small>默认从当前代码生成组别、三个标准场地、八个标准时段和容量；只有主动选择时才沿用历史配置。比赛时段始终使用当前系统默认值。</small></label>
+        <label className="wide">配置来源<select aria-label="配置来源" value={form.template_season_id ?? ""} onChange={(event) => setForm({ ...form, template_season_id: event.target.value || null })}><option value="">系统默认配置（推荐）</option>{seasons.map((season) => <option key={season.id} value={season.id}>明确沿用 {formatAdminSeasonLabel(season)} 的组别、场地、签位与容量</option>)}</select><small>默认从当前代码生成组别、三个标准场地、八个标准时段和容量；只有主动选择时才沿用历史配置。沿用历史配置时保留已启用时段的名称、时间、使用方式和默认容量。</small></label>
         {error && <p className="dialog-error wide" role="alert">{error}</p>}
         <div className="dialog-actions wide"><button className="secondary-action" type="button" onClick={onClose}>取消</button><button className="primary-action" disabled={busy} type="submit">{busy ? "正在创建…" : "创建赛季"}</button></div>
       </form>

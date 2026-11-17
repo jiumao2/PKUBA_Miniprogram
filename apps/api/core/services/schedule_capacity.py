@@ -191,6 +191,7 @@ def capacity_ledger(
                     "period_id": period.id,
                     "period_code": period.code.upper(),
                     "period_name": period.name,
+                    "period_usage": period.usage,
                     "nominal_start_time": period.start_time.strftime("%H:%M"),
                     "default_capacity": default_capacity,
                     "override_capacity": override_capacity,

@@ -32,3 +32,10 @@
 .voter-close::after { border: 0; }
 .voter-option { display: flex; align-items: center; min-height: 68rpx; gap: 12rpx; font-size: 27rpx; }
 .voter-empty { color: #6f6b65; font-size: 27rpx; }
+.request-policy-notice {
+  display: block;
+  margin-top: 16rpx;
+  color: #96262b;
+  font-size: 24rpx;
+  line-height: 1.5;
+}

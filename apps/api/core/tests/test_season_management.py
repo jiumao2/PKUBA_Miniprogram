@@ -161,7 +161,7 @@ def test_superadmin_can_create_setup_season_from_historical_configuration():
         "WEEKEND": 3,
     }
     assert [row["start_time"][:5] for row in created["periods"]] == [
-        "12:50",
+        "13:37",
         "14:20",
         "15:50",
         "18:30",

@@ -681,6 +681,14 @@ def analyze_correction(
                 }
             )
         period = Period.objects.filter(id=_uuid(change["period_id"]), season=season).first()
+        if period and period.usage == Period.Usage.DISABLED and (
+            period.id != game.period_id or change["date"] != game.date.isoformat()
+            or change["start_time"] != game.start_time.strftime("%H:%M")
+        ):
+            blockers.append({
+                "code": "TARGET_PERIOD_DISABLED", "message": "停用时段不能新增或调整排期。",
+                "game_id": str(game.id),
+            })
         if period is None:
             blockers.append(
                 {

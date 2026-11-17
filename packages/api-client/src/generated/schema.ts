@@ -3745,6 +3745,8 @@ export interface components {
             version: number;
             /** Editable */
             editable: boolean;
+            /** Period Management Enabled */
+            period_management_enabled: boolean;
             /** Maintenance Required */
             maintenance_required: boolean;
             /** Locked Reason */
@@ -3809,6 +3811,12 @@ export interface components {
             game_count: number;
             /** Active Reservation Count */
             active_reservation_count: number;
+            /** Usage */
+            usage: string;
+            /** Deletion Blocker */
+            deletion_blocker: string | null;
+            /** Draft Column Count */
+            draft_column_count: number;
         };
         /** SeasonVenueConfigurationOut */
         SeasonVenueConfigurationOut: {
@@ -3909,6 +3917,8 @@ export interface components {
             default_capacities: {
                 [key: string]: number;
             };
+            /** Usage */
+            usage?: string | null;
         };
         /** SeasonVenueConfigurationIn */
         SeasonVenueConfigurationIn: {
@@ -3985,6 +3995,10 @@ export interface components {
             over_capacity: components["schemas"]["OverCapacityOut"][];
             /** Affected Reschedule Request Ids */
             affected_reschedule_request_ids: string[];
+            /** Period Blocking Request Ids */
+            period_blocking_request_ids: string[];
+            /** Retained Game Count */
+            retained_game_count: number;
             /** Templates Invalidated */
             templates_invalidated: boolean;
             /** Impact Hash */
@@ -4029,6 +4043,8 @@ export interface components {
         };
         /** CapacityLedgerRowOut */
         CapacityLedgerRowOut: {
+            /** Period Usage */
+            period_usage: string;
             /**
              * Date
              * Format: date
@@ -4199,6 +4215,8 @@ export interface components {
         };
         /** ScheduleDraftPeriodOut */
         ScheduleDraftPeriodOut: {
+            /** Usage */
+            usage: string;
             /**
              * Id
              * Format: uuid
@@ -6012,6 +6030,8 @@ export interface components {
             confirmations: components["schemas"]["ConfirmationOut"][];
             /** Actions */
             actions: string[];
+            /** Progress Block Reason */
+            progress_block_reason: string | null;
             /** Is Terminal */
             is_terminal: boolean;
             /** Version */
@@ -6171,6 +6191,8 @@ export interface components {
         };
         /** PeriodOptionOut */
         PeriodOptionOut: {
+            /** Usage */
+            usage: string;
             /**
              * Id
              * Format: uuid
@@ -6862,6 +6884,8 @@ export interface components {
             confirmations: components["schemas"]["ConfirmationOut"][];
             /** Actions */
             actions: string[];
+            /** Progress Block Reason */
+            progress_block_reason: string | null;
             /** Is Terminal */
             is_terminal: boolean;
             /** Version */

@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from datetime import time
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connection, transaction
@@ -23,7 +23,9 @@ from core.models import (
     SlotReservation,
     Venue,
 )
+from core.services.period_policy import period_deletion_blocker, period_management_enabled
 from core.services.schedule_capacity import day_type_for_date, season_occupancy_by_slot
+from core.services.superadmin_command_lock import lock_superadmin_commands
 
 CODE_PATTERN = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 
@@ -183,18 +185,19 @@ def _normalize_configuration(payload: dict, *, season: Season) -> dict:
         raise SeasonManagementError("ACTIVE_VENUE_REQUIRED", "至少保留一个自动分配场地。")
     _validate_unique(venues, "name", "场地名称")
 
-    existing_period_codes = {
-        str(item.id): item.code.lower() for item in season.periods.only("id", "code")
-    }
+    existing_periods = {str(item.id): item for item in season.periods.all()}
     periods = []
     for order, raw in enumerate(payload["periods"], start=1):
         row_id = str(raw.get("id") or "")
-        code = existing_period_codes.get(row_id)
-        if code is None:
-            raise SeasonManagementError(
-                "CANONICAL_PERIOD_MISSING",
-                "标准时段必须引用当前赛季中的既有记录。",
-            )
+        existing = existing_periods.get(row_id)
+        if row_id and existing is None:
+            raise SeasonManagementError("FOREIGN_RESOURCE", "时段不属于当前赛季。")
+        code = existing.code.lower() if existing else f"new-{order}"
+        usage = raw.get("usage")
+        if usage is None:
+            usage = existing.usage if existing else Period.Usage.ADMIN_ONLY
+        if usage not in Period.Usage.values:
+            raise SeasonManagementError("INVALID_PERIOD_USAGE", "请选择有效的时段使用方式。")
         periods.append(
             {
                 "id": raw.get("id"),
@@ -202,15 +205,30 @@ def _normalize_configuration(payload: dict, *, season: Season) -> dict:
                 "name": _validate_text(str(raw.get("name") or code), "时段名称", 40),
                 "start_time": raw["start_time"],
                 "sort_order": order,
+                "usage": usage,
                 "default_capacities": _normalize_capacities(raw),
             }
         )
-    expected_codes = {item[0] for item in DEFAULT_PERIODS}
-    if {row["code"] for row in periods} != expected_codes or len(periods) != len(DEFAULT_PERIODS):
+    _validate_unique(periods, "code", "时段")
+    _validate_unique(
+        [row for row in periods if row["usage"] != Period.Usage.DISABLED],
+        "start_time", "启用时段的默认时间",
+    )
+    expected_codes = {row["code"] for row in periods if row["id"]}
+    kept_ids = {str(row["id"]) for row in periods if row["id"]}
+    if not period_management_enabled() and (
+        kept_ids != set(existing_periods)
+        or any(not row["id"] or row["usage"] != existing_periods[str(row["id"])].usage
+               for row in periods)
+    ):
         raise SeasonManagementError(
-            "CANONICAL_PERIODS_REQUIRED",
-            "标准比赛时段代码固定，不能新增、删除或修改代码。",
+            "PERIOD_MANAGEMENT_NOT_ACTIVE", "时段增删与使用方式管理暂未启用。"
         )
+    for row_id, existing in existing_periods.items():
+        if row_id not in kept_ids:
+            blocker = period_deletion_blocker(existing)
+            if blocker:
+                raise SeasonManagementError("PERIOD_DELETE_BLOCKED", f"{existing.name}：{blocker}")
 
     overrides = []
     override_keys = set()
@@ -233,6 +251,31 @@ def _normalize_configuration(payload: dict, *, season: Season) -> dict:
                 "capacity": capacity,
                 "note": str(raw.get("note", "")).strip()[:160],
             }
+        )
+
+    disabled_codes = set()
+    for row in periods:
+        previous = existing_periods.get(str(row["id"]))
+        if previous and previous.usage == row["usage"] == Period.Usage.DISABLED:
+            disabled_codes.add(row["code"])
+            capacities = {item.day_type: item.capacity for item in previous.capacities.all()}
+            if any(row["default_capacities"][day] != capacities.get(day, 0)
+                   for day in PeriodCapacity.DayType.values):
+                raise SeasonManagementError(
+                    "PERIOD_CAPACITY_READ_ONLY", "停用时段容量只读，请重新启用后调整。"
+                )
+    existing_overrides = {
+        (item.date, item.period.code.lower()): (item.capacity, item.note)
+        for item in season.date_capacity_overrides.select_related("period").all()
+        if item.period.code.lower() in disabled_codes
+    }
+    proposed_overrides = {
+        (row["date"], row["period_code"]): (row["capacity"], row["note"])
+        for row in overrides if row["period_code"] in disabled_codes
+    }
+    if existing_overrides != proposed_overrides:
+        raise SeasonManagementError(
+            "PERIOD_CAPACITY_READ_ONLY", "停用时段容量只读，请重新启用后调整。"
         )
 
     division_by_id = {
@@ -348,6 +391,9 @@ def _period_snapshot(period: Period) -> dict:
         "name": period.name,
         "start_time": period.start_time.strftime("%H:%M"),
         "sort_order": period.sort_order,
+        "usage": period.usage,
+        "deletion_blocker": period_deletion_blocker(period),
+        "draft_column_count": period.schedule_grid_draft_columns.count(),
         "default_capacities": {
             PeriodCapacity.DayType.WEEKDAY: capacity_rows.get(
                 PeriodCapacity.DayType.WEEKDAY, 0
@@ -473,6 +519,24 @@ def _impact_hash(expected_version: int, normalized: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _period_change_impact(season: Season, normalized: dict) -> tuple[list[str], int]:
+    current = {str(item.id): item for item in season.periods.all()}
+    restricted = [
+        row["id"] for row in normalized["periods"]
+        if str(row["id"]) in current
+        and row["usage"] != current[str(row["id"])].usage
+        and row["usage"] != Period.Usage.OPEN
+    ]
+    request_ids = list(RescheduleRequest.objects.filter(
+        target_period_id__in=restricted,
+        reservation__status=SlotReservation.Status.ACTIVE,
+    ).values_list("id", flat=True))
+    disabled = [row["id"] for row in normalized["periods"]
+                if row["id"] in restricted and row["usage"] == Period.Usage.DISABLED]
+    games = Game.objects.filter(period_id__in=disabled).count()
+    return [str(item) for item in request_ids], games
+
+
 def preview_season_configuration(
     *, season: Season, expected_version: int, payload: dict
 ) -> dict:
@@ -484,6 +548,7 @@ def preview_season_configuration(
     _validate_slot_family_team_counts(season, normalized)
     active_requests = _active_requests_for_removed_venues(season, normalized)
     over_capacity = _over_capacity_from_normalized(season, normalized)
+    blocked_requests, retained_games = _period_change_impact(season, normalized)
     return {
         "season_id": str(season.id),
         "season_version": season.version,
@@ -491,6 +556,8 @@ def preview_season_configuration(
         "changed": True,
         "over_capacity": over_capacity,
         "affected_reschedule_request_ids": active_requests,
+        "period_blocking_request_ids": blocked_requests,
+        "retained_game_count": retained_games,
         "templates_invalidated": True,
         "impact_hash": _impact_hash(expected_version, normalized),
     }
@@ -537,6 +604,7 @@ def season_configuration(season: Season) -> dict:
         "timezone": season.timezone,
         "version": season.version,
         "editable": season.status != Season.Status.ARCHIVED,
+        "period_management_enabled": period_management_enabled(),
         "maintenance_required": season.status not in {
             Season.Status.SETUP,
             Season.Status.ARCHIVED,
@@ -566,6 +634,7 @@ def season_configuration(season: Season) -> dict:
 
 
 def _create_default_configuration(season: Season) -> None:
+    policy_enabled = period_management_enabled()
     for order, (code, name, gender) in enumerate(
         DEFAULT_DIVISIONS[season.competition_type], start=1
     ):
@@ -578,7 +647,9 @@ def _create_default_configuration(season: Season) -> None:
         )
     for order, (code, name, starts_at) in enumerate(DEFAULT_PERIODS, start=1):
         period = Period.objects.create(
-            season=season, code=code, name=name, start_time=starts_at, sort_order=order
+            season=season, code=code, name=name, start_time=starts_at, sort_order=order,
+            usage=(Period.Usage.ADMIN_ONLY
+                   if policy_enabled and code in {"p4", "p7"} else Period.Usage.OPEN),
         )
         for day_type, capacity in DEFAULT_CAPACITIES[code].items():
             PeriodCapacity.objects.create(
@@ -621,18 +692,16 @@ def _copy_configuration(season: Season, source: Season) -> None:
             is_standard=True,
         )
 
-    source_by_code = {
-        item.code.lower(): item
-        for item in source.periods.prefetch_related("capacities").all()
-    }
-    for order, (code, default_name, default_time) in enumerate(DEFAULT_PERIODS, start=1):
-        original = source_by_code.get(code)
+    for original in source.periods.exclude(usage=Period.Usage.DISABLED).prefetch_related(
+        "capacities"
+    ):
         copied = Period.objects.create(
             season=season,
-            code=code,
-            name=default_name,
-            start_time=default_time,
-            sort_order=order,
+            code=original.code,
+            name=original.name,
+            start_time=original.start_time,
+            sort_order=original.sort_order,
+            usage=original.usage,
         )
         source_capacity = (
             {row.day_type: row.capacity for row in original.capacities.all()}
@@ -747,6 +816,7 @@ def update_season_configuration(
     impact_hash: str | None = None,
     cancel_reschedule_request_ids: list[UUID] | None = None,
 ) -> Season:
+    lock_superadmin_commands()
     season = Season.objects.select_for_update().filter(id=season_id).first()
     if season is None:
         raise SeasonManagementError("SEASON_NOT_FOUND", "赛季不存在。")
@@ -756,6 +826,11 @@ def update_season_configuration(
     if season.version != expected_version:
         raise SeasonManagementError("VERSION_CONFLICT", "赛季配置已更新，请刷新后重试。")
     _validate_slot_family_team_counts(season, normalized)
+    blocked_requests, _ = _period_change_impact(season, normalized)
+    if blocked_requests:
+        raise SeasonManagementError(
+            "PERIOD_ACTIVE_REQUESTS", "请先在调赛管理中取消目标时段的活动申请，再更改使用方式。"
+        )
     expected_hash = _impact_hash(expected_version, normalized)
     if season.status != Season.Status.SETUP and (
         not maintenance_confirmed or impact_hash != expected_hash
@@ -832,22 +907,22 @@ def update_season_configuration(
         venue.sort_order = row["sort_order"]
         venue.save()
 
+    kept_period_ids = {row["id"] for row in normalized["periods"] if row["id"]}
+    for item_id, period in existing_periods.items():
+        if item_id not in kept_period_ids:
+            period.capacities.all().delete()
+            period.date_capacity_overrides.all().delete()
+            period.delete()
     periods_by_code = {}
-    existing_periods_by_code = {item.code.lower(): item for item in existing_periods.values()}
     for row in normalized["periods"]:
-        period = existing_periods.get(row["id"]) if row["id"] else None
-        period = period or existing_periods_by_code.get(row["code"])
-        if period is None:
-            raise SeasonManagementError(
-                "CANONICAL_PERIOD_MISSING",
-                f"当前赛季缺少 {row['code'].upper()}，请先修复赛季数据。",
-            )
-        if period.code.lower() != row["code"]:
-            raise SeasonManagementError("PERIOD_CODE_IMMUTABLE", "标准时段代码不能修改。")
+        period = existing_periods.get(row["id"]) if row["id"] else Period(
+            season=season, code=f"p-{uuid4().hex[:14]}"
+        )
         period.name = row["name"]
         period.start_time = row["start_time"]
         period.sort_order = row["sort_order"]
-        period.save(update_fields=["name", "start_time", "sort_order", "updated_at"])
+        period.usage = row["usage"]
+        period.save()
         periods_by_code[period.code.lower()] = period
         for day_type, capacity in row["default_capacities"].items():
             PeriodCapacity.objects.update_or_create(

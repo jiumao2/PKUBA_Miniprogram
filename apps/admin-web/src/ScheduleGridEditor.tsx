@@ -491,7 +491,7 @@ export function ScheduleGridEditor({
       onNotice("最多支持 64 个排期列");
       return;
     }
-    const period = draft.periods[0];
+    const period = draft.periods.find((item) => item.usage !== "DISABLED");
     if (!period) return;
     apply({
       ...value,
@@ -630,7 +630,7 @@ export function ScheduleGridEditor({
                       });
                     }}
                   >
-                    {draft.periods.map((period) => (
+                    {draft.periods.filter((period) => period.usage !== "DISABLED" || period.id === column.period_id).map((period) => (
                       <option key={period.id} value={period.id}>{period.start_time}</option>
                     ))}
                   </select>

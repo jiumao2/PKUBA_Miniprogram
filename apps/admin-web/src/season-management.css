@@ -299,7 +299,21 @@
 
 .division-config-row { grid-template-columns: 64px minmax(220px, 1fr) 108px 190px 32px; }
 .venue-config-row { grid-template-columns: 64px 150px minmax(180px, 1fr) 108px 190px 32px; }
-.period-config-row { grid-template-columns: 64px minmax(220px, 1fr) 130px 210px; }
+.period-config-row { min-width: 0; grid-template-columns: 48px minmax(140px, 1fr) 120px 150px minmax(100px, 1fr) 48px; }
+.period-config-row select { width: 100%; min-width: 0; }
+.period-field { min-width: 0; }
+.period-field > span { display: none; }
+.period-config-row > .resource-usage { white-space: normal; min-width: 0; overflow-wrap: anywhere; }
+.period-config-row > .text-action:disabled { color: var(--pkuba-muted); opacity: .5; cursor: default; }
+.period-usage-label { display: block; margin-top: 4px; color: var(--pkuba-muted); font-size: 12px; }
+@media (max-width: 1000px) {
+  .period-config-row { grid-template-columns: 44px minmax(0, 1fr) minmax(100px, 1fr); }
+  .period-config-row.period-config-head { display: none; }
+  .period-config-row > .period-usage-field { grid-column: 2; }
+  .period-field > span { display: block; margin-bottom: 4px; color: var(--pkuba-muted); font-size: 11px; }
+  .period-config-row > .resource-usage { grid-column: 3; }
+  .period-config-row > .text-action { grid-column: 2; justify-self: start; }
+}
 .slot-family-row {
   min-width: 1010px;
   grid-template-columns: 64px minmax(190px, 1fr) 140px 70px 64px 92px 120px 32px;
@@ -673,10 +687,13 @@
 .capacity-ledger-row.over .ledger-status { color: var(--pkuba-red-dark); font-weight: 800; }
 .ledger-status { color: #356348; font-size: 12px; font-weight: 700; }
 
-.season-save-bar {
+.season-save-feedback {
   position: sticky;
   bottom: 18px;
   z-index: 4;
+}
+.season-save-feedback .season-management-message { margin: 0 0 6px; }
+.season-save-bar {
   gap: 16px;
   padding: 14px 16px;
   background: rgb(255 255 255 / 96%);
@@ -780,7 +797,7 @@
   .season-section-heading { padding-inline: 16px; }
   .season-name-field,
   .season-create-form .wide { grid-column: auto; }
-  .season-save-bar { bottom: 8px; }
+  .season-save-feedback { bottom: 8px; }
   .season-save-bar .primary-action { width: 100%; }
   .season-create-dialog { padding: 24px 18px; }
   .slot-family-overview { grid-template-columns: 1fr; }

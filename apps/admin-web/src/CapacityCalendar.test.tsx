@@ -16,6 +16,7 @@ function row(
     period_id: `40000000-0000-0000-0000-00000000000${period}`,
     period_code: `P${period}`,
     period_name: `第${period}时段`,
+    period_usage: "OPEN",
     nominal_start_time: "12:50",
     default_capacity: 3,
     override_capacity: null,
@@ -71,5 +72,13 @@ describe("CapacityCalendar", () => {
   it("does not invent a season range before the first game is scheduled", () => {
     render(<CapacityCalendar ledger={[row("2026-03-21", 1)]} />);
     expect(screen.getByText("当前赛季还没有比赛，排入首场比赛后将生成周历。")).toBeTruthy();
+  });
+
+  it("retains disabled-period games without advertising its unused capacity", () => {
+    render(<CapacityCalendar ledger={[
+      row("2026-03-21", 1, { game_count: 1, remaining_count: 2 }),
+      row("2026-03-21", 2, { period_usage: "DISABLED", game_count: 2, remaining_count: 8, effective_capacity: 10 }),
+    ]} />);
+    expect(screen.getAllByLabelText(/3月21日.*已排 3 场.*可用 2 场/)).toHaveLength(2);
   });
 });

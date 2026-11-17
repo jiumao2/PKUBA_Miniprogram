@@ -31,6 +31,7 @@ export function buildSeasonConfigurationPayload(
       name: row.name,
       start_time: row.start_time,
       default_capacities: row.default_capacities,
+      usage: row.usage,
     })),
     slot_families: configuration.slot_families
       .filter((row) => divisionIds.has(row.division_id))
